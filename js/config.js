@@ -2,7 +2,10 @@
 export const AK = '2b834d5234781ad70bd646922e9ddd18';
 export const BASE = 'https://api.themoviedb.org/3';
 export const IMG = 'https://image.tmdb.org/t/p/';
-export const PH = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect fill="%2314141f" width="300" height="450"/><text x="150" y="230" text-anchor="middle" fill="%234b5563" font-size="14" font-family="sans-serif">No Image</text></svg>';
+// Single-quoted SVG attrs (not double) so this string is safe to embed
+// directly inside a double-quoted HTML attribute (data-ph="${PH}") without
+// the HTML parser terminating the attribute early on an internal ".
+export const PH = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'><rect fill='%2314141f' width='300' height='450'/><text x='150' y='230' text-anchor='middle' fill='%234b5563' font-size='14' font-family='sans-serif'>No Image</text></svg>";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyDtcGPY2iCh4SsjFIid_H0lwMfIj9ocN8I",

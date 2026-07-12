@@ -128,7 +128,7 @@ function providerHTML(det, region) {
   const results = det['watch/providers']?.results || {};
   const prov = results[region] || {};
   const options = REGIONS.map(([code, label]) => `<option value="${code}" ${code === region ? 'selected' : ''}>${label}</option>`).join('');
-  const groups = [['Stream', prov.flatrate], ['Rent', prov.rent], ['Buy', prov.buy], ['Ads', prov.ads]]
+  const groups = [['Stream', prov.flatrate], ['Ads', prov.ads]]
     .filter(([, list]) => list && list.length);
   const inner = groups.length
     ? groups.map(([label, list]) => `<div class="provider-group"><div class="provider-group-label">${label}</div><div class="provider-icons">${list.slice(0, 6).map(p => `<img class="provider-logo" src="${IMG}w92${p.logo_path}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}" loading="lazy">`).join('')}</div></div>`).join('')
@@ -179,7 +179,7 @@ export async function openCollection(cid) {
     if (d.parts?.length) {
       const sorted = d.parts.sort((a, b) => new Date(a.release_date || '9999') - new Date(b.release_date || '9999'));
       document.title = `${d.name} — CineVerse`;
-      ct.innerHTML = `<div style="padding:calc(var(--nav-h)+20px) clamp(16px,4vw,40px) 100px;max-width:1100px;margin:0 auto">
+      ct.innerHTML = `<div style="padding:calc(var(--nav-h) + 20px) clamp(16px,4vw,40px) 100px;max-width:1100px;margin:0 auto">
         <h1 style="font-family:var(--font-display);font-size:2rem;margin-bottom:4px">${esc(d.name)}</h1>
         ${d.overview ? `<p style="color:var(--text2);font-size:.92rem;line-height:1.7;margin-bottom:24px;max-width:600px">${esc(d.overview)}</p>` : ''}
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:14px">${sorted.map(m => buildCard(m, 'movie')).join('')}</div>

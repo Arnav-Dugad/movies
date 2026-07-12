@@ -19,7 +19,10 @@ function dispatch(el, e) {
 export function initDelegation() {
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-action]');
-    if (el) dispatch(el, e);
+    // SELECT/INPUT act on 'change' (handled below) — dispatching (and
+    // preventDefault-ing) their click would stop native controls like a
+    // <select> from opening its dropdown at all.
+    if (el && el.tagName !== 'SELECT' && el.tagName !== 'INPUT') dispatch(el, e);
   });
 
   // Form controls (select/input) dispatch on change, not click.
