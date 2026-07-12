@@ -1,19 +1,18 @@
-// ===== PERSON MODAL =====
+// ===== PERSON PAGE =====
 import { tmdb } from './api.js';
 import { IMG, PH } from './config.js';
-import { esc, $, lockScroll, unlockScroll } from './ui.js';
+import { esc, $ } from './ui.js';
 import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 
-let personLocked = false;
-
 export async function openPerson(id) {
-  const ov = $('personOv'), ct = $('personContent');
-  ov.classList.add('active'); lockScroll(); personLocked = true;
+  const ct = $('personContent');
   ct.innerHTML = '<div style="text-align:center;padding:100px"><div class="loader-text">Loading...</div></div>';
+  document.title = 'Loading… — CineVerse';
   try {
     const [p, credits] = await Promise.all([tmdb(`/person/${id}`), tmdb(`/person/${id}/combined_credits`)]);
+    document.title = `${p.name} — CineVerse`;
     const photo = p.profile_path ? `${IMG}w500${p.profile_path}` : PH;
     const knownFor = (credits.cast || []).sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0)).slice(0, 14);
     const directed = (credits.crew || []).filter(c => c.job === 'Director').sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0)).slice(0, 10);
@@ -36,20 +35,12 @@ export async function openPerson(id) {
       ${knownFor.length ? `<div class="d-sec-title">Known For</div><div class="similar-row">${knownFor.map(k => buildCard(k, k.media_type || 'movie')).join('')}</div>` : ''}
       ${directed.length ? `<div class="d-sec-title" style="margin-top:28px">Directed</div><div class="similar-row">${directed.map(k => buildCard(k, k.media_type || 'movie')).join('')}</div>` : ''}`;
     observeReveals(ct);
-    ov.scrollTop = 0;
-  } catch (e) { ct.innerHTML = '<p style="text-align:center;padding:100px;color:var(--text3)">Failed to load</p>'; }
+  } catch (e) { ct.innerHTML = '<div style="text-align:center;padding:100px 20px"><p style="color:var(--text3)">Failed to load</p><br><button class="btn-primary" data-action="back">Back</button></div>'; }
 }
-
-export function closePerson() {
-  $('personOv').classList.remove('active');
-  if (personLocked) { unlockScroll(); personLocked = false; }
-}
-export function isPersonOpen() { return $('personOv').classList.contains('active'); }
 
 export function initPerson() {
   registerActions({
-    'open-person': (el, e) => { if (e) e.stopPropagation(); openPerson(+el.dataset.id); },
-    'close-person': () => closePerson(),
+    'open-person': (el, e) => { if (e) e.stopPropagation(); document.dispatchEvent(new CustomEvent('cv:go', { detail: `/person/${+el.dataset.id}` })); },
     'toggle-bio': (el) => {
       const bio = $('personBio'); if (!bio) return;
       const clamped = bio.style.webkitLineClamp !== 'unset';

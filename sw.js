@@ -1,5 +1,5 @@
 // ===== CineVerse Service Worker =====
-const VERSION = 'cineverse-v1';
+const VERSION = 'cineverse-v2';
 const SHELL = [
   './',
   './index.html',

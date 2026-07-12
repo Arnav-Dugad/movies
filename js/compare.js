@@ -2,7 +2,7 @@
 import { tmdb } from './api.js';
 import { IMG, PH, genreMap } from './config.js';
 import { state } from './state.js';
-import { esc, toast, $, lockScroll } from './ui.js';
+import { esc, toast, $ } from './ui.js';
 import { fmt } from './ui.js';
 import { registerActions } from './events.js';
 
@@ -42,15 +42,15 @@ function updateBar() {
   bar.querySelector('.cmp-go').disabled = state.compareItems.length !== 2;
 }
 
-async function openCompare() {
+export async function openCompare() {
   if (state.compareItems.length !== 2) return;
-  const ov = $('detailOv'), ct = $('detailContent');
-  ov.classList.add('active'); lockScroll();
-  ct.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh"><div class="loader-text">Loading comparison…</div></div>';
+  const ct = $('detailContent');
+  document.title = 'Compare — CineVerse';
+  ct.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh"><div class="loader-text">Loading comparison…</div></div>';
   try {
     const [a, b] = await Promise.all(state.compareItems.map(c => tmdb(`/${c.type}/${c.id}`)));
     ct.innerHTML = renderCompare(a, state.compareItems[0].type, b, state.compareItems[1].type);
-  } catch (e) { ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-weight:600">Failed to load comparison</p><button class="btn-primary" data-action="close-detail">Close</button></div>'; }
+  } catch (e) { ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-weight:600">Failed to load comparison</p><button class="btn-primary" data-action="back">Back</button></div>'; }
 }
 
 function row(label, a, b) { return `<tr><th>${label}</th><td>${a}</td><td>${b}</td></tr>`; }
@@ -96,7 +96,7 @@ function renderCompare(a, ta, b, tb) {
 export function initCompare() {
   registerActions({
     'toggle-compare': () => toggleCompareMode(),
-    'compare-go': () => openCompare(),
+    'compare-go': () => document.dispatchEvent(new CustomEvent('cv:go', { detail: '/compare' })),
     'compare-clear': () => clearCompare(),
   });
 }

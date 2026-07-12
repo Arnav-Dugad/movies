@@ -2,6 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script>
+(function () {
+  var l = window.location;
+  var base = l.pathname; // captured BEFORE any rewriting below
+  // Restore the real path GitHub's 404.html redirected here as a query string
+  // (spa-github-pages trick). Must run before anything reads location.pathname
+  // or resolves a relative URL.
+  if (l.search[1] === '/') {
+    // Redirect case: at this exact moment location.pathname IS the base
+    // directory GitHub Pages truncated the request down to (e.g. "/movies/"),
+    // by construction of 404.html — no guessing needed, just use it as-is.
+    var decoded = l.search.slice(1).split('&').map(function (s) { return s.replace(/~and~/g, '&'); }).join('?');
+    window.history.replaceState(null, '', l.pathname.slice(0, -1) + decoded + l.hash);
+  } else {
+    // Direct/normal load of a real static path (e.g. "/movies/",
+    // "/movies/index.html", or "/" locally): base is this pathname with its
+    // trailing filename (or nothing, for a directory) stripped off. This
+    // deliberately does NOT try to recognize route names — a "known route
+    // segment" allowlist is unsafe here since this site's own deployed
+    // directory is named "movies", identical to the in-app /movies route.
+    base = base.replace(/[^/]*$/, '');
+  }
+  if (!base) base = '/';
+  var b = document.createElement('base'); b.href = base;
+  document.head.appendChild(b);
+})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>CineVerse — Discover Movies & TV</title>
 <meta name="description" content="CineVerse — discover, track, and rate movies and TV shows. A premium cinematic browsing experience.">
@@ -98,14 +125,11 @@
       <a class="nav-link" data-page="stats" data-action="show-page" role="button" tabindex="0">Stats</a>
     </div>
     <div class="nav-right">
-      <button class="nav-btn" data-action="open-cmdk" data-tip="Command (Ctrl K)" aria-label="Command palette">
+      <button class="nav-btn" data-action="open-cmdk" data-tip="Command palette" aria-label="Command palette">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 9h6v6H9z"/></svg>
       </button>
-      <button class="nav-btn" data-action="open-search" data-tip="Search (/)" aria-label="Search">
+      <button class="nav-btn" data-action="show-page" data-page="search" data-tip="Search" aria-label="Search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      </button>
-      <button class="nav-btn" data-action="toggle-kb" data-tip="Shortcuts (?)" aria-label="Keyboard shortcuts">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
       </button>
       <div style="position:relative">
         <div class="nav-avatar" id="navAv" role="button" tabindex="0" data-action="toggle-profile" aria-label="Profile menu">?</div>
@@ -163,7 +187,7 @@
   <div class="mobile-nav-inner">
     <a class="mob-item active" data-page="home" data-action="show-page" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Home</a>
     <a class="mob-item" data-page="movies" data-action="show-page" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/></svg>Movies</a>
-    <a class="mob-item mob-search-btn" data-action="open-search" role="button" tabindex="0" aria-label="Search"><div class="mob-search-circle"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></div>Search</a>
+    <a class="mob-item mob-search-btn" data-action="show-page" data-page="search" role="button" tabindex="0" aria-label="Search"><div class="mob-search-circle"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></div>Search</a>
     <a class="mob-item" data-page="tv" data-action="show-page" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>TV</a>
     <a class="mob-item" data-page="watchlist" data-action="show-page" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>My List</a>
   </div>
@@ -181,14 +205,108 @@
   </div>
 </div>
 
-<!-- SEARCH OVERLAY -->
-<div class="search-overlay" id="searchOv">
+<!-- TRAILER -->
+<div class="trailer-overlay" id="trailerOv">
+  <div class="trailer-box">
+    <button class="trailer-x" data-action="close-trailer" aria-label="Close trailer">✕</button>
+    <iframe id="trailerFrame" src="" title="Trailer" allow="autoplay;encrypted-media" allowfullscreen></iframe>
+  </div>
+</div>
+
+<!-- RATING MODAL -->
+<div class="rate-overlay" id="rateOv">
+  <div class="rate-modal">
+    <div class="rate-title" id="rateTitle">Rate this</div>
+    <div class="rate-subtitle" id="rateSub"></div>
+    <div class="rate-stars" id="rateStars"></div>
+    <div>
+      <button class="rate-submit" data-action="rate-submit">Rate</button>
+      <button class="rate-clear" data-action="rate-clear">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<main class="page-container" id="homePage"><div class="hero" id="heroWrap"></div><div id="homeRows"></div></main>
+
+<!-- BROWSE: MOVIES -->
+<div class="browse-page page-container" id="moviesPage">
+  <div class="browse-top"><h1>Movies</h1><p>Discover your next favorite film</p></div>
+  <div class="genre-scroll" id="mGenres"></div>
+  <div class="browse-filters">
+    <select class="browse-select" id="mSort" data-action="filter-movies"><option value="popularity.desc">Popular</option><option value="vote_average.desc">Top Rated</option><option value="primary_release_date.desc">Newest</option><option value="revenue.desc">Highest Grossing</option></select>
+    <select class="browse-select" id="mYear" data-action="filter-movies"></select>
+    <select class="browse-select" id="mLang" data-action="filter-movies"><option value="">All Languages</option><option value="en">English</option><option value="hi">Hindi</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="fr">French</option><option value="es">Spanish</option><option value="de">German</option><option value="it">Italian</option><option value="zh">Chinese</option><option value="ta">Tamil</option><option value="te">Telugu</option></select>
+    <select class="browse-select" id="mRating" data-action="filter-movies"><option value="">Any Rating</option><option value="8">8+ ★</option><option value="7">7+ ★</option><option value="6">6+ ★</option><option value="5">5+ ★</option></select>
+  </div>
+  <div class="browse-grid" id="mGrid"></div>
+  <div class="load-more"><button data-action="more-movies">Load More</button></div>
+</div>
+
+<!-- BROWSE: TV -->
+<div class="browse-page page-container" id="tvPage">
+  <div class="browse-top"><h1>TV Shows</h1><p>Binge-worthy series</p></div>
+  <div class="genre-scroll" id="tGenres"></div>
+  <div class="browse-filters">
+    <select class="browse-select" id="tSort" data-action="filter-tv"><option value="popularity.desc">Popular</option><option value="vote_average.desc">Top Rated</option><option value="first_air_date.desc">Newest</option></select>
+    <select class="browse-select" id="tLang" data-action="filter-tv"><option value="">All Languages</option><option value="en">English</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="hi">Hindi</option><option value="es">Spanish</option></select>
+  </div>
+  <div class="browse-grid" id="tGrid"></div>
+  <div class="load-more"><button data-action="more-tv">Load More</button></div>
+</div>
+
+<!-- WATCHLIST -->
+<div class="wl-page page-container" id="wlPage">
+  <div class="wl-head"><h1>My List</h1></div>
+  <div class="wl-count" id="wlCount">0 titles</div>
+  <div class="wl-tabs">
+    <div class="wl-tab active" role="button" tabindex="0" data-action="wl-filter" data-filter="all">All</div>
+    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="movie">Movies</div>
+    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="tv">TV Shows</div>
+    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="watched">Watched ✓</div>
+  </div>
+  <div id="wlContent"></div>
+</div>
+
+<!-- DISCOVER -->
+<div class="discover-page page-container" id="discoverPage">
+  <div class="mood-hero">
+    <h1>What's Your Mood?</h1>
+    <p>Tell us how you're feeling and we'll find the perfect movie or show for you</p>
+  </div>
+  <div class="mood-grid" id="moodGrid"></div>
+  <div class="mood-results" id="moodResults"></div>
+  <div class="picker-section">
+    <h2>🎲 Can't Decide?</h2>
+    <p>Let fate choose for you — spin for a random pick!</p>
+    <div style="display:flex;gap:12px;justify-content:center;margin-bottom:16px;flex-wrap:wrap">
+      <button class="spin-btn" id="spinBtn" data-action="random-pick" data-type="movie">🎬 Random Movie</button>
+      <button class="spin-btn" id="spinBtnTV" data-action="random-pick" data-type="tv" style="background:linear-gradient(135deg,var(--cyan),var(--green))">📺 Random Show</button>
+    </div>
+    <div class="picker-result" id="pickerResult"></div>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats-page page-container" id="statsPage">
+  <h1>My CineVerse Stats</h1>
+  <div id="statsContent">
+    <div class="wl-empty" style="padding:40px 20px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+      <h3>Sign in to see your stats</h3>
+      <p>Create an account to track your viewing habits</p>
+      <br><button class="btn-primary" data-action="open-auth">Sign In</button>
+    </div>
+  </div>
+</div>
+
+<!-- SEARCH -->
+<div class="search-page page-container" id="searchPage">
   <div class="search-top">
     <div class="search-field">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input id="searchIn" type="text" placeholder="Search movies, TV shows, people..." autocomplete="off">
     </div>
-    <button class="search-x" data-action="close-search" aria-label="Close search">✕</button>
   </div>
   <div class="search-chips">
     <button class="chip active" data-f="multi" data-action="set-filter">All</button>
@@ -214,131 +332,16 @@
   </div>
 </div>
 
-<!-- DETAIL OVERLAY -->
-<div class="detail-overlay" id="detailOv">
-  <button class="detail-x" data-action="close-detail" aria-label="Close">✕</button>
+<!-- DETAIL -->
+<div class="detail-page page-container" id="detailPage">
+  <button class="page-back" data-action="back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg><span>Back</span></button>
   <div id="detailContent"></div>
 </div>
 
-<!-- PERSON OVERLAY -->
-<div class="person-overlay" id="personOv">
-  <button class="detail-x" data-action="close-person" aria-label="Close">✕</button>
+<!-- PERSON -->
+<div class="person-page page-container" id="personPage">
+  <button class="page-back" data-action="back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg><span>Back</span></button>
   <div class="person-inner" id="personContent"></div>
-</div>
-
-<!-- TRAILER -->
-<div class="trailer-overlay" id="trailerOv">
-  <div class="trailer-box">
-    <button class="trailer-x" data-action="close-trailer" aria-label="Close trailer">✕</button>
-    <iframe id="trailerFrame" src="" title="Trailer" allow="autoplay;encrypted-media" allowfullscreen></iframe>
-  </div>
-</div>
-
-<!-- RATING MODAL -->
-<div class="rate-overlay" id="rateOv">
-  <div class="rate-modal">
-    <div class="rate-title" id="rateTitle">Rate this</div>
-    <div class="rate-subtitle" id="rateSub"></div>
-    <div class="rate-stars" id="rateStars"></div>
-    <div>
-      <button class="rate-submit" data-action="rate-submit">Rate</button>
-      <button class="rate-clear" data-action="rate-clear">Remove</button>
-    </div>
-  </div>
-</div>
-
-<!-- KEYBOARD SHORTCUTS -->
-<div class="kb-overlay" id="kbOv">
-  <div class="kb-modal">
-    <h2>Keyboard Shortcuts</h2>
-    <p>Navigate CineVerse like a pro</p>
-    <div class="kb-row"><span class="kb-action">Command palette</span><span class="kb-key">Ctrl / ⌘ + K</span></div>
-    <div class="kb-row"><span class="kb-action">Search</span><span class="kb-key">/</span></div>
-    <div class="kb-row"><span class="kb-action">Close overlay</span><span class="kb-key">Esc</span></div>
-    <div class="kb-row"><span class="kb-action">Go Home</span><span class="kb-key">H</span></div>
-    <div class="kb-row"><span class="kb-action">Movies</span><span class="kb-key">M</span></div>
-    <div class="kb-row"><span class="kb-action">TV Shows</span><span class="kb-key">T</span></div>
-    <div class="kb-row"><span class="kb-action">My Watchlist</span><span class="kb-key">W</span></div>
-    <div class="kb-row"><span class="kb-action">Discover</span><span class="kb-key">D</span></div>
-    <div class="kb-row"><span class="kb-action">Stats</span><span class="kb-key">S</span></div>
-    <div class="kb-row"><span class="kb-action">Random Pick</span><span class="kb-key">R</span></div>
-    <div class="kb-row"><span class="kb-action">Cinema Mode</span><span class="kb-key">C</span></div>
-    <div class="kb-row"><span class="kb-action">Show Shortcuts</span><span class="kb-key">?</span></div>
-  </div>
-</div>
-
-<!-- HOME -->
-<main id="homePage"><div class="hero" id="heroWrap"></div><div id="homeRows"></div></main>
-
-<!-- BROWSE: MOVIES -->
-<div class="browse-page" id="moviesPage">
-  <div class="browse-top"><h1>Movies</h1><p>Discover your next favorite film</p></div>
-  <div class="genre-scroll" id="mGenres"></div>
-  <div class="browse-filters">
-    <select class="browse-select" id="mSort" data-action="filter-movies"><option value="popularity.desc">Popular</option><option value="vote_average.desc">Top Rated</option><option value="primary_release_date.desc">Newest</option><option value="revenue.desc">Highest Grossing</option></select>
-    <select class="browse-select" id="mYear" data-action="filter-movies"></select>
-    <select class="browse-select" id="mLang" data-action="filter-movies"><option value="">All Languages</option><option value="en">English</option><option value="hi">Hindi</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="fr">French</option><option value="es">Spanish</option><option value="de">German</option><option value="it">Italian</option><option value="zh">Chinese</option><option value="ta">Tamil</option><option value="te">Telugu</option></select>
-    <select class="browse-select" id="mRating" data-action="filter-movies"><option value="">Any Rating</option><option value="8">8+ ★</option><option value="7">7+ ★</option><option value="6">6+ ★</option><option value="5">5+ ★</option></select>
-  </div>
-  <div class="browse-grid" id="mGrid"></div>
-  <div class="load-more"><button data-action="more-movies">Load More</button></div>
-</div>
-
-<!-- BROWSE: TV -->
-<div class="browse-page" id="tvPage">
-  <div class="browse-top"><h1>TV Shows</h1><p>Binge-worthy series</p></div>
-  <div class="genre-scroll" id="tGenres"></div>
-  <div class="browse-filters">
-    <select class="browse-select" id="tSort" data-action="filter-tv"><option value="popularity.desc">Popular</option><option value="vote_average.desc">Top Rated</option><option value="first_air_date.desc">Newest</option></select>
-    <select class="browse-select" id="tLang" data-action="filter-tv"><option value="">All Languages</option><option value="en">English</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="hi">Hindi</option><option value="es">Spanish</option></select>
-  </div>
-  <div class="browse-grid" id="tGrid"></div>
-  <div class="load-more"><button data-action="more-tv">Load More</button></div>
-</div>
-
-<!-- WATCHLIST -->
-<div class="wl-page" id="wlPage">
-  <div class="wl-head"><h1>My List</h1></div>
-  <div class="wl-count" id="wlCount">0 titles</div>
-  <div class="wl-tabs">
-    <div class="wl-tab active" role="button" tabindex="0" data-action="wl-filter" data-filter="all">All</div>
-    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="movie">Movies</div>
-    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="tv">TV Shows</div>
-    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="watched">Watched ✓</div>
-  </div>
-  <div id="wlContent"></div>
-</div>
-
-<!-- DISCOVER -->
-<div class="discover-page" id="discoverPage">
-  <div class="mood-hero">
-    <h1>What's Your Mood?</h1>
-    <p>Tell us how you're feeling and we'll find the perfect movie or show for you</p>
-  </div>
-  <div class="mood-grid" id="moodGrid"></div>
-  <div class="mood-results" id="moodResults"></div>
-  <div class="picker-section">
-    <h2>🎲 Can't Decide?</h2>
-    <p>Let fate choose for you — spin for a random pick!</p>
-    <div style="display:flex;gap:12px;justify-content:center;margin-bottom:16px;flex-wrap:wrap">
-      <button class="spin-btn" id="spinBtn" data-action="random-pick" data-type="movie">🎬 Random Movie</button>
-      <button class="spin-btn" id="spinBtnTV" data-action="random-pick" data-type="tv" style="background:linear-gradient(135deg,var(--cyan),var(--green))">📺 Random Show</button>
-    </div>
-    <div class="picker-result" id="pickerResult"></div>
-  </div>
-</div>
-
-<!-- STATS -->
-<div class="stats-page" id="statsPage">
-  <h1>My CineVerse Stats</h1>
-  <div id="statsContent">
-    <div class="wl-empty" style="padding:40px 20px">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-      <h3>Sign in to see your stats</h3>
-      <p>Create an account to track your viewing habits</p>
-      <br><button class="btn-primary" data-action="open-auth">Sign In</button>
-    </div>
-  </div>
 </div>
 
 <!-- FOOTER -->

@@ -1,25 +1,26 @@
-// ===== SEARCH OVERLAY =====
+// ===== SEARCH PAGE =====
 import { tmdb } from './api.js';
-import { IMG, PH } from './config.js';
 import { state } from './state.js';
 import { esc, debounce, $ } from './ui.js';
 import { buildCard, personCard } from './cards.js';
 import { registerActions } from './events.js';
 
-export function openSearch() {
-  $('searchOv').classList.add('active');
-  setTimeout(() => $('searchIn').focus(), 150);
+export function openSearch(initialQuery = '') {
+  document.title = 'Search — CineVerse';
   loadTrending();
   renderSearchHistory();
   renderRecentStrip();
+  const input = $('searchIn');
+  if (initialQuery) {
+    input.value = initialQuery;
+    doSearch(initialQuery);
+  } else {
+    input.value = '';
+    $('searchDefault').style.display = 'block';
+    $('searchResultsWrap').style.display = 'none';
+  }
+  setTimeout(() => input.focus(), 150);
 }
-export function closeSearch() {
-  $('searchOv').classList.remove('active');
-  $('searchIn').value = '';
-  $('searchDefault').style.display = 'block';
-  $('searchResultsWrap').style.display = 'none';
-}
-export function isSearchOpen() { return $('searchOv').classList.contains('active'); }
 
 function setFilter(f, el) {
   state.searchFilt = f;
@@ -31,6 +32,9 @@ function setFilter(f, el) {
 export async function doSearch(q) {
   $('searchDefault').style.display = 'none';
   $('searchResultsWrap').style.display = 'block';
+  // Reflect the query in the URL (no new history entry) so /search is
+  // refreshable/shareable with its results intact.
+  try { history.replaceState(history.state, '', location.pathname + '?q=' + encodeURIComponent(q)); } catch (e) {}
   try {
     const d = await tmdb(`/search/${state.searchFilt}`, { query: q });
     const g = $('searchGrid'); const empty = $('searchEmpty');
@@ -87,8 +91,6 @@ export function initSearch() {
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { const q = e.target.value.trim(); if (q.length >= 2) { addToHistory(q); doSearch(q); } } });
 
   registerActions({
-    'open-search': () => openSearch(),
-    'close-search': () => closeSearch(),
     'set-filter': (el) => setFilter(el.dataset.f, el),
     'history-search': (el) => { const q = el.dataset.q ? decodeEntities(el.dataset.q) : (el.querySelector('span')?.textContent || ''); $('searchIn').value = q; doSearch(q); addToHistory(q); },
     'history-remove': (el, e) => { e.stopPropagation(); removeHistory(+el.dataset.i); },

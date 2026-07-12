@@ -16,12 +16,11 @@ const COMMANDS = [
   { label: 'Discover by Mood', kw: 'discover mood', icon: '🧭', action: 'show-page', data: { page: 'discover' } },
   { label: 'My Watchlist', kw: 'watchlist list saved', icon: '🔖', action: 'show-page', data: { page: 'watchlist' } },
   { label: 'My Stats', kw: 'stats profile taste', icon: '📊', action: 'show-page', data: { page: 'stats' } },
-  { label: 'Search', kw: 'search find', icon: ic.search, action: 'open-search', data: {} },
+  { label: 'Search', kw: 'search find', icon: ic.search, action: 'show-page', data: { page: 'search' } },
   { label: 'Random Movie', kw: 'random surprise movie', icon: '🎲', action: 'random-pick', data: { type: 'movie' }, then: 'discover' },
   { label: 'Random Show', kw: 'random surprise tv show', icon: '🎲', action: 'random-pick', data: { type: 'tv' }, then: 'discover' },
   { label: 'Toggle Cinema Mode', kw: 'cinema dark theatre', icon: '🎦', action: 'toggle-cinema', data: {} },
   { label: 'Toggle Compare Mode', kw: 'compare versus head to head', icon: '⚖️', action: 'toggle-compare', data: {} },
-  { label: 'Keyboard Shortcuts', kw: 'keyboard shortcuts help', icon: '⌨️', action: 'toggle-kb', data: {} },
   ...['red', 'blue', 'purple', 'green', 'orange', 'pink', 'gold'].map(t => ({ label: `Theme: ${t[0].toUpperCase() + t.slice(1)}`, kw: 'theme color accent ' + t, icon: '🎨', action: 'set-theme', data: { t } })),
 ];
 
