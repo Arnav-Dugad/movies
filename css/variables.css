@@ -1,0 +1,32 @@
+/* ===== DESIGN TOKENS ===== */
+:root{
+--bg:#06060b;--bg2:#0c0c14;--bg3:#14141f;--bg4:#1c1c2e;--bg5:#24243a;
+--surface:rgba(18,18,30,.85);--surface2:rgba(28,28,46,.9);--surface3:rgba(36,36,58,.9);
+--red:#e50914;--red2:#ff2030;--red-glow:rgba(229,9,20,.35);--red-soft:rgba(229,9,20,.08);
+--gold:#fbbf24;--gold2:#f59e0b;--gold-glow:rgba(251,191,36,.2);
+--cyan:#06b6d4;--cyan2:#22d3ee;--cyan-glow:rgba(6,182,212,.15);
+--green:#10b981;--green2:#34d399;--green-glow:rgba(16,185,129,.15);
+--purple:#8b5cf6;--purple2:#a78bfa;
+--pink:#ec4899;
+--text:#f0f0f5;--text2:#9ca3af;--text3:#4b5563;
+--font:'Outfit',sans-serif;
+--font-display:'Playfair Display',serif;
+--font-mono:'JetBrains Mono',monospace;
+--radius:10px;--radius-sm:6px;--radius-lg:16px;--radius-xl:24px;
+--ease:cubic-bezier(.4,0,.2,1);--bounce:cubic-bezier(.34,1.56,.64,1);--spring:cubic-bezier(.175,.885,.32,1.275);
+--shadow:0 8px 32px rgba(0,0,0,.6);--shadow-lg:0 20px 60px rgba(0,0,0,.7);
+--glass:rgba(255,255,255,.03);--glass-border:rgba(255,255,255,.06);
+--nav-h:60px;--mobile-nav-h:68px;
+--accent:var(--red);--accent2:var(--red2);--accent-glow:var(--red-glow);
+}
+
+/* Theme variants */
+[data-theme="blue"]{--accent:#2563eb;--accent2:#3b82f6;--accent-glow:rgba(37,99,235,.35);--red:#2563eb;--red2:#3b82f6;--red-glow:rgba(37,99,235,.35);--red-soft:rgba(37,99,235,.08)}
+[data-theme="purple"]{--accent:#7c3aed;--accent2:#8b5cf6;--accent-glow:rgba(124,58,237,.35);--red:#7c3aed;--red2:#8b5cf6;--red-glow:rgba(124,58,237,.35);--red-soft:rgba(124,58,237,.08)}
+[data-theme="green"]{--accent:#059669;--accent2:#10b981;--accent-glow:rgba(5,150,105,.35);--red:#059669;--red2:#10b981;--red-glow:rgba(5,150,105,.35);--red-soft:rgba(5,150,105,.08)}
+[data-theme="orange"]{--accent:#ea580c;--accent2:#f97316;--accent-glow:rgba(234,88,12,.35);--red:#ea580c;--red2:#f97316;--red-glow:rgba(234,88,12,.35);--red-soft:rgba(234,88,12,.08)}
+[data-theme="pink"]{--accent:#db2777;--accent2:#ec4899;--accent-glow:rgba(219,39,119,.35);--red:#db2777;--red2:#ec4899;--red-glow:rgba(219,39,119,.35);--red-soft:rgba(219,39,119,.08)}
+[data-theme="gold"]{--accent:#d97706;--accent2:#f59e0b;--accent-glow:rgba(217,119,6,.35);--red:#d97706;--red2:#f59e0b;--red-glow:rgba(217,119,6,.35);--red-soft:rgba(217,119,6,.08)}
+
+/* Cinema mode */
+[data-cinema="true"]{--bg:#000;--bg2:#050505;--bg3:#0a0a0a;--bg4:#111;--bg5:#1a1a1a}

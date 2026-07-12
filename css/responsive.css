@@ -1,0 +1,58 @@
+/* ===== RESPONSIVE ===== */
+@media(min-width:769px){
+  .card-wl{opacity:0}
+  .card:hover .card-wl{opacity:1}
+}
+
+@media(max-width:768px){
+  .nav-links{display:none}
+  .mobile-nav{display:block}
+  body{padding-bottom:var(--mobile-nav-h)}
+  .hero{height:78vh;min-height:440px}
+  .hero-content{bottom:14%;max-width:100%}
+  .hero-desc{-webkit-line-clamp:2;font-size:.85rem}
+  .hero-actions .btn-primary,.hero-actions .btn-glass{padding:12px 20px;font-size:.84rem}
+  .card{width:130px}
+  .card-w{width:240px}
+  .card-t10{width:170px}
+  .card-t10 .t10-num{font-size:5.5rem}
+  .card-t10 .card-img{width:100px}
+  .section-title{font-size:1.1rem}
+  .detail-top{flex-direction:column;align-items:center;text-align:center;margin-top:-80px}
+  .detail-poster{width:160px}
+  .detail-head{padding-top:16px}
+  .detail-tags{justify-content:center}
+  .detail-btns{justify-content:center}
+  .detail-overview{text-align:left}
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .cd-num{font-size:1.7rem}
+  .ep-still{width:100px}
+  .vid-card{width:210px}
+  .person-top{flex-direction:column;align-items:center;text-align:center}
+  .person-photo{width:150px}
+  .browse-grid,.wl-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+  .toast-zone{bottom:calc(var(--mobile-nav-h) + 14px)}
+  .btt{bottom:calc(var(--mobile-nav-h) + 14px);right:12px}
+  .card-preview{display:none !important}
+  .mood-grid{grid-template-columns:repeat(2,1fr)}
+  .footer-inner{flex-direction:column;gap:24px}
+  .footer-cols{gap:32px}
+  .cmdk-overlay{padding:8vh 12px 20px}
+  /* Larger tap targets on touch */
+  .card-wl{width:36px;height:36px}
+  .g-pill,.chip,.s-tab,.wl-tab{padding-top:10px;padding-bottom:10px}
+}
+
+@media(max-width:380px){
+  .card{width:112px}
+  .hero-title{font-size:1.9rem}
+  .hero-actions{flex-direction:column;width:100%}
+  .hero-actions .btn-primary,.hero-actions .btn-glass{width:100%;justify-content:center}
+  .compare-table th{width:96px}
+}
+
+/* Coarse pointer / touch: disable hover-only heavy effects */
+@media (hover:none){
+  .card-preview{display:none !important}
+  .tilt{transform:none !important}
+}
