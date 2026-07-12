@@ -19,14 +19,3 @@
 --nav-h:60px;--mobile-nav-h:68px;
 --accent:var(--red);--accent2:var(--red2);--accent-glow:var(--red-glow);
 }
-
-/* Theme variants */
-[data-theme="blue"]{--accent:#2563eb;--accent2:#3b82f6;--accent-glow:rgba(37,99,235,.35);--red:#2563eb;--red2:#3b82f6;--red-glow:rgba(37,99,235,.35);--red-soft:rgba(37,99,235,.08)}
-[data-theme="purple"]{--accent:#7c3aed;--accent2:#8b5cf6;--accent-glow:rgba(124,58,237,.35);--red:#7c3aed;--red2:#8b5cf6;--red-glow:rgba(124,58,237,.35);--red-soft:rgba(124,58,237,.08)}
-[data-theme="green"]{--accent:#059669;--accent2:#10b981;--accent-glow:rgba(5,150,105,.35);--red:#059669;--red2:#10b981;--red-glow:rgba(5,150,105,.35);--red-soft:rgba(5,150,105,.08)}
-[data-theme="orange"]{--accent:#ea580c;--accent2:#f97316;--accent-glow:rgba(234,88,12,.35);--red:#ea580c;--red2:#f97316;--red-glow:rgba(234,88,12,.35);--red-soft:rgba(234,88,12,.08)}
-[data-theme="pink"]{--accent:#db2777;--accent2:#ec4899;--accent-glow:rgba(219,39,119,.35);--red:#db2777;--red2:#ec4899;--red-glow:rgba(219,39,119,.35);--red-soft:rgba(219,39,119,.08)}
-[data-theme="gold"]{--accent:#d97706;--accent2:#f59e0b;--accent-glow:rgba(217,119,6,.35);--red:#d97706;--red2:#f59e0b;--red-glow:rgba(217,119,6,.35);--red-soft:rgba(217,119,6,.08)}
-
-/* Cinema mode */
-[data-cinema="true"]{--bg:#000;--bg2:#050505;--bg3:#0a0a0a;--bg4:#111;--bg5:#1a1a1a}

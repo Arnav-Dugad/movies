@@ -9,10 +9,8 @@ import { renderPersonalRows } from './home.js';
 import { openSearch } from './search.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
-import { openCompare } from './compare.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeTrailer, isTrailerOpen } from './media.js';
-import { closeCmdk, isCmdkOpen } from './cmdk.js';
 import { closeAuth, isAuthOpen } from './auth.js';
 
 // Every route maps to one page-container element id and a render function.
@@ -29,7 +27,6 @@ const ROUTES = [
   { test: /^\/tv\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'tv') },
   { test: /^\/person\/(\d+)\/?$/, page: 'personPage', render: (p) => openPerson(+p[0]) },
   { test: /^\/collection\/(\d+)\/?$/, page: 'detailPage', render: (p) => openCollection(+p[0]) },
-  { test: /^\/compare\/?$/, page: 'detailPage', render: () => openCompare() },
 ];
 
 const TITLES = {
@@ -48,18 +45,6 @@ const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/wat
 
 let currentPath = null;
 
-function getBase() {
-  const baseEl = document.querySelector('base');
-  return baseEl ? new URL(baseEl.href).pathname.replace(/\/$/, '') : '';
-}
-const BASE = getBase();
-
-function fullPath(path) { return BASE + path; }
-function stripBase(pathname) {
-  if (BASE && pathname.startsWith(BASE)) return pathname.slice(BASE.length) || '/';
-  return pathname;
-}
-
 function matchRoute(path) {
   for (const r of ROUTES) {
     const m = path.match(r.test);
@@ -73,7 +58,6 @@ function matchRoute(path) {
 // navigating away from search is just navigating, there's nothing left to
 // coordinate since search is a real page now, not an overlay.
 function closeAllModals() {
-  if (isCmdkOpen()) closeCmdk();
   if (isTrailerOpen()) closeTrailer();
   if (isRatingOpen()) closeRating();
   if (isAuthOpen()) closeAuth();
@@ -107,9 +91,8 @@ function renderRoute(path, { isPopState = false, scroll = true } = {}) {
 }
 
 export function navigate(path, { replace = false } = {}) {
-  const full = fullPath(path);
-  if (replace) history.replaceState({ path }, '', full);
-  else history.pushState({ path }, '', full);
+  if (replace) history.replaceState({ path }, '', path);
+  else history.pushState({ path }, '', path);
   renderRoute(path);
 }
 
@@ -118,7 +101,6 @@ export function goHome() { navigate('/'); }
 function pageToPath(page) { return page === 'home' ? '/' : (PAGE_TO_PATH[page] || '/'); }
 
 function handleEscape() {
-  if (isCmdkOpen()) return closeCmdk();
   if (isTrailerOpen()) return closeTrailer();
   if (isRatingOpen()) return closeRating();
   if (isAuthOpen()) return closeAuth();
@@ -150,7 +132,7 @@ export function initRouter() {
   document.addEventListener('cv:navigate', e => navigate(pageToPath(e.detail)));
 
   window.addEventListener('popstate', () => {
-    renderRoute(stripBase(location.pathname), { isPopState: true });
+    renderRoute(location.pathname, { isPopState: true });
   });
 
   // Nav scroll state + back-to-top visibility.
@@ -160,11 +142,11 @@ export function initRouter() {
     $('btt').classList.toggle('show', y > 600);
   }, { passive: true });
 
-  // Escape still dismisses the remaining true modals (auth/trailer/rating/
-  // cmdk/profile dropdown) — standard modal UX, not a "shortcut" feature.
+  // Escape still dismisses the remaining true modals (auth / trailer / rating /
+  // profile dropdown) — standard modal UX.
   document.addEventListener('keydown', e => { if (e.key === 'Escape') handleEscape(); });
 
-  // Initial load — <head> restore script has already fixed location.pathname
-  // (and appended <base>) before this module even started executing.
-  renderRoute(stripBase(location.pathname), { scroll: false });
+  // Initial load — Vercel serves index.html for deep links (see vercel.json),
+  // so location.pathname is already the real route.
+  renderRoute(location.pathname, { scroll: false });
 }

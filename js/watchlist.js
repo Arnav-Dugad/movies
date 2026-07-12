@@ -41,7 +41,7 @@ export async function toggleWL(item, type) {
     }
     refreshWLBtns();
     document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { toast('Error updating list', 'error'); }
+  } catch (e) { console.error('toggleWL failed:', e); toast('Error updating list', 'error'); }
 }
 
 export async function loadWatched() {
@@ -50,7 +50,7 @@ export async function loadWatched() {
     const s = await db.collection('users').doc(state.user.uid).collection('watched').get();
     state.watched = {};
     s.docs.forEach(d => state.watched[d.id] = d.data());
-  } catch (e) {}
+  } catch (e) { console.error('loadWatched failed:', e); }
 }
 
 export async function toggleWatched(id, type, title) {
@@ -65,7 +65,7 @@ export async function toggleWatched(id, type, title) {
       await ref.set(d); state.watched[key] = d; toast('Marked as watched!', 'success');
     }
     document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { toast('Error', 'error'); }
+  } catch (e) { console.error('toggleWatched failed:', e); toast('Error', 'error'); }
 }
 
 // ===== WATCHLIST PAGE =====

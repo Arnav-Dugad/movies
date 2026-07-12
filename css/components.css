@@ -68,28 +68,6 @@
 .search-history-item .remove{margin-left:auto;opacity:0;transition:opacity .2s}
 .search-history-item:hover .remove{opacity:.6}
 
-/* ===== COMMAND PALETTE ===== */
-.cmdk-overlay{position:fixed;inset:0;background:rgba(6,6,11,.7);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:9300;display:flex;align-items:flex-start;justify-content:center;padding:14vh 16px 20px;opacity:0;visibility:hidden;transition:all .25s var(--ease)}
-.cmdk-overlay.active{opacity:1;visibility:visible}
-.cmdk-modal{width:min(620px,100%);background:var(--bg2);border:1px solid var(--glass-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden;transform:translateY(-14px) scale(.98);transition:transform .28s var(--spring);display:flex;flex-direction:column;max-height:70vh}
-.cmdk-overlay.active .cmdk-modal{transform:translateY(0) scale(1)}
-.cmdk-input-wrap{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--glass-border)}
-.cmdk-input-wrap svg{width:18px;height:18px;color:var(--text3);flex-shrink:0}
-.cmdk-input-wrap input{flex:1;font-size:1rem;background:none}
-.cmdk-hint{font-family:var(--font-mono);font-size:.66rem;padding:3px 7px;background:var(--bg4);border:1px solid var(--glass-border);border-radius:5px;color:var(--text3)}
-.cmdk-list{overflow-y:auto;padding:8px;flex:1}
-.cmdk-group-label{font-size:.66rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;padding:10px 12px 6px}
-.cmdk-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--radius);cursor:pointer;color:var(--text2);font-size:.9rem;transition:background .12s}
-.cmdk-item .cmdk-ic{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:7px;background:var(--bg3);flex-shrink:0;font-size:.9rem}
-.cmdk-item .cmdk-ic svg{width:15px;height:15px}
-.cmdk-item .cmdk-thumb{width:34px;height:50px;border-radius:5px;object-fit:cover;flex-shrink:0;background:var(--bg3)}
-.cmdk-item .cmdk-meta{min-width:0;flex:1}
-.cmdk-item .cmdk-t{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cmdk-item .cmdk-s{font-size:.72rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cmdk-item.sel,.cmdk-item:hover{background:var(--glass);color:var(--text)}
-.cmdk-item.sel{background:var(--red-soft);box-shadow:inset 2px 0 0 var(--red)}
-.cmdk-empty{padding:32px;text-align:center;color:var(--text3);font-size:.88rem}
-
 /* ===== CARD ===== */
 .card{flex-shrink:0;width:155px;scroll-snap-align:start;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent;transition:transform .35s var(--ease)}
 /* Cards inside CSS-grid containers must fill their grid cell instead of
@@ -147,10 +125,6 @@
 .card-t10:hover .t10-num{-webkit-text-stroke-color:var(--red)}
 .card-t10 .card-img{width:120px;flex-shrink:0;z-index:1}
 .card-t10 .card-info{position:absolute;bottom:0;left:0;right:0;z-index:2}
-
-/* Compare-mode selection state */
-.card.compare-sel .card-img{outline:3px solid var(--red);outline-offset:-3px}
-.card.compare-sel::after{content:'✓';position:absolute;top:8px;left:8px;width:24px;height:24px;background:var(--red);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;z-index:3}
 
 /* ===== DETAIL / PERSON PAGES ===== */
 .detail-page,.person-page{display:none}
@@ -342,18 +316,3 @@
 
 /* Live indicator */
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse-live 2s ease-in-out infinite}
-
-/* ===== COMPARE PANEL ===== */
-.compare-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--mobile-nav-h) + 16px);z-index:6500;background:var(--surface2);border:1px solid var(--glass-border);border-radius:50px;box-shadow:var(--shadow-lg);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;align-items:center;gap:12px;padding:8px 8px 8px 18px;opacity:0;visibility:hidden;transition:all .3s var(--spring)}
-.compare-bar.show{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
-.compare-bar .cmp-count{font-size:.82rem;font-weight:600;color:var(--text2)}
-.compare-bar .cmp-go{padding:8px 18px;background:linear-gradient(135deg,var(--red),var(--red2));color:#fff;border-radius:50px;font-weight:700;font-size:.82rem}
-.compare-bar .cmp-go:disabled{opacity:.4;pointer-events:none}
-.compare-bar .cmp-x{width:32px;height:32px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;color:var(--text2)}
-.compare-table{width:100%;border-collapse:collapse;margin-top:8px}
-.compare-table th,.compare-table td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--glass-border);font-size:.85rem;vertical-align:top}
-.compare-table th{color:var(--text3);font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:1px;width:130px}
-.compare-poster{display:flex;gap:14px;flex-wrap:wrap}
-.compare-poster>div{flex:1;min-width:0}
-.compare-poster img{width:100%;border-radius:var(--radius);aspect-ratio:2/3;object-fit:cover}
-.compare-poster h3{font-size:.95rem;font-weight:700;margin-top:8px}

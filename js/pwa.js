@@ -1,10 +1,17 @@
-// ===== PWA REGISTRATION (feature-detected, degrades gracefully) =====
-export function initPWA() {
-  if (!('serviceWorker' in navigator)) return;
-  // Service workers require a secure context (https or localhost). On file:// or
-  // plain http this silently no-ops — no errors.
-  if (!window.isSecureContext) return;
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => { /* offline features simply unavailable */ });
-  });
+// ===== SERVICE-WORKER CLEANUP =====
+// The app previously registered a cache-first service worker for offline use,
+// which caused returning browsers to keep serving a stale build. We no longer
+// use a caching service worker (the site is served fresh from Vercel). This
+// unregisters any lingering registration and clears all caches on load, so a
+// browser that reaches this fresh code never gets stuck on old content again.
+// (Browsers still stuck on the OLD worker self-heal via the kill-switch in sw.js.)
+export function cleanupServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations()
+      .then(regs => regs.forEach(r => r.unregister()))
+      .catch(() => {});
+  }
+  if (window.caches) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+  }
 }

@@ -36,4 +36,4 @@ export const moods=[
   {emoji:'🔮',name:'Fantasy Worlds',sub:'Magic & wonder',genres:'14,10765',type:'multi'},
 ];
 
-export const REGIONS=[['US','🇺🇸 US'],['IN','🇮🇳 IN'],['GB','🇬🇧 GB'],['CA','🇨🇦 CA'],['AU','🇦🇺 AU'],['DE','🇩🇪 DE'],['FR','🇫🇷 FR'],['BR','🇧🇷 BR'],['JP','🇯🇵 JP'],['KR','🇰🇷 KR']];
+export const REGIONS=[['IN','🇮🇳 India'],['US','🇺🇸 US'],['GB','🇬🇧 UK'],['SA','🇸🇦 Saudi Arabia'],['AU','🇦🇺 Australia']];

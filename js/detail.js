@@ -6,7 +6,6 @@ import { esc, fmt, $ } from './ui.js';
 import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals, observeCountUps } from './effects.js';
-import { isCompareMode, toggleCompareSelect } from './compare.js';
 
 let curDet = null, curType = null;
 
@@ -68,7 +67,7 @@ export async function openDetail(id, type) {
 
     let collHTML = '';
     if (det.belongs_to_collection) { const c = det.belongs_to_collection;
-      collHTML = `<div class="coll-banner" role="button" tabindex="0" data-action="go-collection" data-cid="${c.id}" style="margin:0 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div></div></div>`; }
+      collHTML = `<div class="coll-banner" role="button" tabindex="0" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div></div></div>`; }
 
     ct.innerHTML = `
       ${back ? `<div class="detail-back"><img src="${back}" alt=""><div class="detail-back-grad"></div></div>` : '<div style="height:var(--nav-h)"></div>'}
@@ -86,11 +85,11 @@ export async function openDetail(id, type) {
               ${genres.map(g => `<span class="dtag">${esc(g)}</span>`).join('')}
             </div>
             <div class="detail-btns">
-              ${trailer ? `<button class="btn-primary magnetic" data-action="play-trailer" data-key="${trailer.key}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play Trailer</button>` : ''}
-              <button class="dbtn-icon ${wl ? 'active' : ''}" data-wl="${type}|${id}" data-action="toggle-wl" data-item="${wlPayload}" aria-label="Watchlist">${wl ? '✓' : '+'}</button>
-              <button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
-              <button class="dbtn-icon" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
-              <button class="dbtn-icon" data-action="share-item" data-title="${safeTitle}" data-id="${id}" data-type="${type}" aria-label="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+              ${trailer ? `<button class="btn-primary magnetic" data-action="play-trailer" data-key="${trailer.key}" data-tip="Play trailer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play Trailer</button>` : ''}
+              <button class="dbtn-icon ${wl ? 'active' : ''}" data-wl="${type}|${id}" data-action="toggle-wl" data-item="${wlPayload}" aria-label="Watchlist" data-tip="${wl ? 'Remove from list' : 'Add to list'}">${wl ? '✓' : '+'}</button>
+              <button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
+              <button class="dbtn-icon" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate" data-tip="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
+              <button class="dbtn-icon" data-action="share-item" data-title="${safeTitle}" data-id="${id}" data-type="${type}" aria-label="Share" data-tip="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
             </div>
           </div>
         </div>
@@ -194,7 +193,6 @@ export function initDetail() {
     'open-detail': (el, e) => {
       if (e) e.stopPropagation();
       const id = +el.dataset.id, type = el.dataset.type;
-      if (isCompareMode()) { const card = el.closest('.card') || el; toggleCompareSelect(id, type, card); return; }
       document.dispatchEvent(new CustomEvent('cv:go', { detail: `/${type}/${id}` }));
     },
     'toggle-overview': (el) => {

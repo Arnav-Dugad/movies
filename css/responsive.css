@@ -37,7 +37,6 @@
   .mood-grid{grid-template-columns:repeat(2,1fr)}
   .footer-inner{flex-direction:column;gap:24px}
   .footer-cols{gap:32px}
-  .cmdk-overlay{padding:8vh 12px 20px}
   /* Larger tap targets on touch */
   .card-wl{width:36px;height:36px}
   .g-pill,.chip,.s-tab,.wl-tab{padding-top:10px;padding-bottom:10px}
@@ -48,7 +47,6 @@
   .hero-title{font-size:1.9rem}
   .hero-actions{flex-direction:column;width:100%}
   .hero-actions .btn-primary,.hero-actions .btn-glass{width:100%;justify-content:center}
-  .compare-table th{width:96px}
 }
 
 /* Coarse pointer / touch: disable hover-only heavy effects */

@@ -51,7 +51,7 @@ export async function submitRating() {
     confettiBurst();
     closeRating();
     document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { toast('Error saving rating', 'error'); }
+  } catch (e) { console.error('submitRating failed:', e); toast('Error saving rating', 'error'); }
 }
 
 export async function clearRating() {
@@ -62,7 +62,7 @@ export async function clearRating() {
     toast('Rating removed', 'info');
     closeRating();
     document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { toast('Error', 'error'); }
+  } catch (e) { console.error('clearRating failed:', e); toast('Error', 'error'); }
 }
 
 export function isRatingOpen() { return $('rateOv').classList.contains('active'); }

@@ -15,11 +15,7 @@ export const state = {
   wlFilter: 'all',
   searchHistory: [],
   recentlyViewed: [],
-  currentTheme: 'red',
-  cinemaMode: false,
-  region: 'US',
-  compareMode: false,
-  compareItems: [],
+  region: 'IN',
 };
 
 // ===== LOOKUP HELPERS =====

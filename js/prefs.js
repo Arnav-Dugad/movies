@@ -1,33 +1,16 @@
-// ===== PREFERENCES: THEME + CINEMA MODE =====
+// ===== PREFERENCES (region only) =====
 import { state } from './state.js';
-import { toast } from './ui.js';
-import { registerActions } from './events.js';
-
-export function setTheme(t) {
-  state.currentTheme = t;
-  document.documentElement.setAttribute('data-theme', t === 'red' ? '' : t);
-  document.querySelectorAll('.theme-dot').forEach(d => d.classList.toggle('active', d.dataset.t === t));
-  try { localStorage.setItem('cv_theme', t); } catch (e) {}
-}
-
-export function toggleCinema() {
-  state.cinemaMode = !state.cinemaMode;
-  document.documentElement.setAttribute('data-cinema', state.cinemaMode);
-  toast(state.cinemaMode ? 'Cinema mode on' : 'Cinema mode off', 'info');
-  try { localStorage.setItem('cv_cinema', state.cinemaMode); } catch (e) {}
-}
+import { REGIONS } from './config.js';
 
 export function loadPrefs() {
   try {
-    const t = localStorage.getItem('cv_theme'); if (t) setTheme(t);
-    const c = localStorage.getItem('cv_cinema'); if (c === 'true') { state.cinemaMode = true; document.documentElement.setAttribute('data-cinema', 'true'); }
-    const r = localStorage.getItem('cv_region'); if (r) state.region = r;
+    // Restore the persisted "Where to Watch" region, but only if it's still a
+    // supported region (older builds allowed regions no longer offered).
+    const r = localStorage.getItem('cv_region');
+    if (r && REGIONS.some(([code]) => code === r)) state.region = r;
+    // One-time cleanup of preferences from removed features (accent themes,
+    // cinema mode) so no stale state lingers.
+    localStorage.removeItem('cv_theme');
+    localStorage.removeItem('cv_cinema');
   } catch (e) {}
-}
-
-export function initPrefs() {
-  registerActions({
-    'set-theme': (el) => setTheme(el.dataset.t),
-    'toggle-cinema': () => toggleCinema(),
-  });
 }
