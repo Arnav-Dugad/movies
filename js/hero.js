@@ -5,6 +5,33 @@ import { state } from './state.js';
 import { esc, $ } from './ui.js';
 import { registerActions, readItem } from './events.js';
 import { toggleWL } from './watchlist.js';
+import { mountAmbientVideo, ambientOK } from './video-bg.js';
+
+let heroAmbientTeardown = null;
+const heroKeyCache = {};
+
+async function getTrailerKey(item) {
+  const ck = `${item.media_type}_${item.id}`;
+  if (ck in heroKeyCache) return heroKeyCache[ck];
+  try {
+    const d = await tmdb(`/${item.media_type}/${item.id}/videos`);
+    const v = (d.results || []).find(x => x.type === 'Trailer' && x.site === 'YouTube') || (d.results || []).find(x => x.site === 'YouTube');
+    return (heroKeyCache[ck] = v?.key || null);
+  } catch (e) { return (heroKeyCache[ck] = null); }
+}
+
+async function mountHeroVideo() {
+  if (heroAmbientTeardown) { heroAmbientTeardown(); heroAmbientTeardown = null; }
+  if (!ambientOK()) return;
+  const item = state.heroItems[state.heroIdx];
+  if (!item) return;
+  const idxAtRequest = state.heroIdx;
+  const key = await getTrailerKey(item);
+  // Bail if the slide changed while we were fetching.
+  if (!key || idxAtRequest !== state.heroIdx) return;
+  const slide = document.querySelector('.hero-slide.active');
+  if (slide) heroAmbientTeardown = mountAmbientVideo(slide, key, { overlaySelector: '.hero-vignette', delay: 900 });
+}
 
 export async function initHero() {
   try {
@@ -40,6 +67,7 @@ export async function initHero() {
     slidesHTML += `<div class="hero-progress">${state.heroItems.map((_, i) => `<div class="hero-prog-item ${i === 0 ? 'active' : ''}" role="button" tabindex="0" aria-label="Go to slide ${i + 1}" data-action="hero-go" data-idx="${i}"><div class="hero-prog-fill"></div></div>`).join('')}</div>`;
     wrap.innerHTML = slidesHTML;
     startHeroTimer();
+    mountHeroVideo();
   } catch (e) { console.error('Hero error:', e); }
 }
 
@@ -48,6 +76,7 @@ export function goHero(i) {
   document.querySelectorAll('.hero-slide').forEach((s, idx) => s.classList.toggle('active', idx === i));
   document.querySelectorAll('.hero-prog-item').forEach((p, idx) => { p.classList.remove('active', 'done'); if (idx < i) p.classList.add('done'); if (idx === i) p.classList.add('active'); });
   startHeroTimer();
+  mountHeroVideo();
 }
 
 export function startHeroTimer() {
@@ -74,7 +103,10 @@ export function initHeroInteractions() {
   // Pause on hover (desktop) and when tab hidden.
   wrap.addEventListener('mouseenter', pauseHero);
   wrap.addEventListener('mouseleave', resumeHero);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { clearInterval(state.heroTimer); } else if (!state.heroPaused) { startHeroTimer(); } });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearInterval(state.heroTimer); if (heroAmbientTeardown) { heroAmbientTeardown(); heroAmbientTeardown = null; } }
+    else if (!state.heroPaused) { startHeroTimer(); mountHeroVideo(); }
+  });
 
   registerActions({
     'hero-go': (el) => goHero(+el.dataset.idx),

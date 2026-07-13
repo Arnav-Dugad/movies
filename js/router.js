@@ -12,6 +12,8 @@ import { openPerson } from './person.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeTrailer, isTrailerOpen } from './media.js';
 import { closeAuth, isAuthOpen } from './auth.js';
+import { renderFriends } from './friends.js';
+import { renderParty } from './party.js';
 
 // Every route maps to one page-container element id and a render function.
 // render() must be safe to call again with the same params.
@@ -23,6 +25,8 @@ const ROUTES = [
   { test: /^\/watchlist\/?$/, page: 'wlPage', render: () => renderWL() },
   { test: /^\/stats\/?$/, page: 'statsPage', render: () => renderStats() },
   { test: /^\/search\/?$/, page: 'searchPage', render: (p, query) => openSearch(query.get('q') || '') },
+  { test: /^\/friends\/?$/, page: 'friendsPage', render: () => renderFriends() },
+  { test: /^\/party\/?$/, page: 'partyPage', render: () => renderParty() },
   { test: /^\/movie\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'movie') },
   { test: /^\/tv\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'tv') },
   { test: /^\/person\/(\d+)\/?$/, page: 'personPage', render: (p) => openPerson(+p[0]) },
@@ -37,11 +41,13 @@ const TITLES = {
   wlPage: 'My List — CineVerse',
   statsPage: 'My Stats — CineVerse',
   searchPage: 'Search — CineVerse',
+  friendsPage: 'Friends — CineVerse',
+  partyPage: 'Watch Party — CineVerse',
   detailPage: 'CineVerse',
   personPage: 'CineVerse',
 };
 
-const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', discover: '/discover', stats: '/stats', search: '/search' };
+const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', discover: '/discover', stats: '/stats', search: '/search', friends: '/friends', party: '/party' };
 
 let currentPath = null;
 
@@ -90,10 +96,24 @@ function renderRoute(path, { isPopState = false, scroll = true } = {}) {
   if (scroll) window.scrollTo({ top: 0, behavior: isPopState ? 'auto' : 'smooth' });
 }
 
+// Progressive enhancement: on browsers with the View Transitions API, wrap the
+// page swap so shared elements (a card poster tagged view-transition-name:cv-hero
+// → the detail scaffold poster) morph with zero layout shift. Elsewhere it's a
+// plain synchronous render (falls back to the CSS .page-transition fade).
+function runRender(path, opts) {
+  if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const t = document.startViewTransition(() => renderRoute(path, opts));
+    // After the morph, drop any lingering shared name so the next transition is clean.
+    t.finished.finally(() => { document.querySelectorAll('[style*="view-transition-name"]').forEach(el => { el.style.viewTransitionName = ''; }); }).catch(() => {});
+  } else {
+    renderRoute(path, opts);
+  }
+}
+
 export function navigate(path, { replace = false } = {}) {
   if (replace) history.replaceState({ path }, '', path);
   else history.pushState({ path }, '', path);
-  renderRoute(path);
+  runRender(path);
 }
 
 export function goHome() { navigate('/'); }
@@ -125,6 +145,8 @@ export function initRouter() {
   const refresh = () => {
     if (currentPath === '/watchlist') renderWL();
     else if (currentPath === '/stats') renderStats();
+    else if (currentPath === '/friends') renderFriends();
+    else if (currentPath === '/party') renderParty();
     renderPersonalRows();
   };
   document.addEventListener('cv:auth', refresh);
@@ -132,7 +154,7 @@ export function initRouter() {
   document.addEventListener('cv:navigate', e => navigate(pageToPath(e.detail)));
 
   window.addEventListener('popstate', () => {
-    renderRoute(location.pathname, { isPopState: true });
+    runRender(location.pathname, { isPopState: true });
   });
 
   // Nav scroll state + back-to-top visibility.

@@ -125,6 +125,15 @@
             My Stats
           </div>
           <div class="profile-dd-sep"></div>
+          <div class="profile-dd-item" data-action="show-page" data-page="friends">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+            Friends
+          </div>
+          <div class="profile-dd-item" data-action="show-page" data-page="party">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            Watch Party
+          </div>
+          <div class="profile-dd-sep"></div>
           <div class="profile-dd-item danger" id="ddSignOut" data-action="sign-out" style="display:none">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             Sign Out
@@ -239,6 +248,18 @@
       <br><button class="btn-primary" data-action="open-auth">Sign In</button>
     </div>
   </div>
+</div>
+
+<!-- FRIENDS -->
+<div class="browse-page page-container" id="friendsPage">
+  <div class="browse-top"><h1>Friends &amp; Family</h1><p>Connect and plan the perfect movie night together</p></div>
+  <div id="friendsContent"></div>
+</div>
+
+<!-- WATCH PARTY -->
+<div class="browse-page page-container" id="partyPage">
+  <div class="browse-top"><h1>Smart Watch-Party Matcher</h1><p>The one film that satisfies everyone's taste</p></div>
+  <div id="partyContent"></div>
 </div>
 
 <!-- SEARCH -->

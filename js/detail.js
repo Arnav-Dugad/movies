@@ -6,12 +6,33 @@ import { esc, fmt, $ } from './ui.js';
 import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals, observeCountUps } from './effects.js';
+import { mountAmbientVideo } from './video-bg.js';
 
 let curDet = null, curType = null;
+let ambientTeardown = null;   // tears down the detail ambient video
+let navHint = null;           // instant-paint hint captured from the clicked card
+let lastVTSource = null;      // element currently holding the shared view-transition-name
 
 export async function openDetail(id, type) {
   const ct = $('detailContent');
-  ct.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh"><div class="loader-text">Loading...</div></div>';
+  if (ambientTeardown) { ambientTeardown(); ambientTeardown = null; }
+
+  // Zero-layout-shift instant paint: if we arrived from a card click, render the
+  // real poster + title synchronously (no spinner) before the fetch resolves.
+  const hint = (navHint && navHint.id === id && navHint.type === type) ? navHint : null;
+  navHint = null;
+  // Clear the shared-element name from the source poster BEFORE this new render is
+  // snapshotted, so at most one element ever holds `cv-hero` at snapshot time.
+  if (lastVTSource) { try { lastVTSource.style.viewTransitionName = ''; } catch (e) {} lastVTSource = null; }
+  if (hint) {
+    ct.innerHTML = `<div class="detail-back detail-back-pending"><div class="detail-back-grad"></div></div>
+      <div class="detail-inner"><div class="detail-top">
+        <div class="detail-poster" style="view-transition-name:cv-hero"><img src="${esc(hint.poster)}" alt=""></div>
+        <div class="detail-head"><h1 class="detail-title">${esc(hint.title)}</h1><div class="detail-skel"><span></span><span></span><span></span></div></div>
+      </div></div>`;
+  } else {
+    ct.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh"><div class="loader-text">Loading...</div></div>';
+  }
   document.title = 'Loading… — CineVerse';
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
   try {
@@ -122,6 +143,8 @@ export async function openDetail(id, type) {
     // Animate the Box Office bar widths after paint (horizontal %-widths resolve
     // against the definite-width card).
     requestAnimationFrame(() => ct.querySelectorAll('.bo-fill').forEach(f => { f.style.width = (+f.dataset.w || 0) + '%'; }));
+    // Video-forward: fade a muted looping trailer in behind the backdrop (desktop + motion only).
+    if (back && trailer?.key) { const backEl = ct.querySelector('.detail-back'); if (backEl) ambientTeardown = mountAmbientVideo(backEl, trailer.key); }
   } catch (e) {
     console.error(e);
     ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-size:1.1rem;font-weight:600">Failed to load</p><p style="color:var(--text3);margin:8px 0 20px">Please try again</p><button class="btn-primary" data-action="back">Back</button></div>';
@@ -159,6 +182,7 @@ function boxOfficeHTML(det) {
 
 export function closeDetail() {
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
+  if (ambientTeardown) { ambientTeardown(); ambientTeardown = null; }
 }
 
 function getCert(d, t) {
@@ -215,6 +239,14 @@ export function initDetail() {
     'open-detail': (el, e) => {
       if (e) e.stopPropagation();
       const id = +el.dataset.id, type = el.dataset.type;
+      // Capture the clicked card's poster + title for the instant-paint scaffold,
+      // and tag the poster as the shared-element morph source.
+      const img = el.querySelector && el.querySelector('.card-img img');
+      if (img && img.src) {
+        navHint = { id, type, poster: img.src, title: (el.querySelector('.card-title')?.textContent) || el.getAttribute('aria-label') || '' };
+        if (lastVTSource) { try { lastVTSource.style.viewTransitionName = ''; } catch (er) {} }
+        try { img.style.viewTransitionName = 'cv-hero'; lastVTSource = img; } catch (er) {}
+      } else { navHint = null; }
       document.dispatchEvent(new CustomEvent('cv:go', { detail: `/${type}/${id}` }));
     },
     'toggle-overview': (el) => {

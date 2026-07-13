@@ -22,44 +22,88 @@ function titleForKey(type, id) {
 }
 
 // ----- Taste profile -----
-function buildTasteProfile() {
+// Parameterized so it can build a profile for the signed-in user (default),
+// or for any explicit {watchlist, ratings, watched, recentlyViewed} set (used
+// by the Watch-Party matcher to build a profile from a friend's stored data).
+export function buildTasteProfile(sources = state) {
+  const watchlist = sources.watchlist || [];
+  const ratings = sources.ratings || {};
+  const watched = sources.watched || {};
+  const recentlyViewed = sources.recentlyViewed || [];
+
   const genreWeights = {};
   const add = (genres, w) => (genres || []).forEach(g => { genreWeights[g] = (genreWeights[g] || 0) + w; });
 
-  state.watchlist.forEach(w => {
+  watchlist.forEach(w => {
     add(w.genres, 2);
-    const score = state.ratings[`${w.type}_${w.tmdbId}`];
+    const score = ratings[`${w.type}_${w.tmdbId}`];
     if (score) add(w.genres, score - 5); // ratings signal: liked → boost, disliked → penalize
   });
-  state.recentlyViewed.forEach(r => add(r.genres, 1));
+  recentlyViewed.forEach(r => add(r.genres, 1));
 
   let movie = 0, tv = 0;
-  state.watchlist.forEach(w => (w.type === 'tv' ? tv++ : movie++));
-  state.recentlyViewed.forEach(r => (r.type === 'tv' ? tv++ : movie++));
+  watchlist.forEach(w => (w.type === 'tv' ? tv++ : movie++));
+  recentlyViewed.forEach(r => (r.type === 'tv' ? tv++ : movie++));
 
   // Seeds for /recommendations: highly-rated titles first, then most-recent.
   const seedIds = [];
-  Object.entries(state.ratings).forEach(([key, score]) => {
+  Object.entries(ratings).forEach(([key, score]) => {
     if (score >= 8) { const [type, id] = splitKey(key); if (type && id) seedIds.push({ id, type, score, reason: 'liked' }); }
   });
   seedIds.sort((a, b) => b.score - a.score);
-  state.recentlyViewed.slice(0, 2).forEach(r => {
+  recentlyViewed.slice(0, 2).forEach(r => {
     if (!seedIds.some(s => s.id === r.id && s.type === r.type)) seedIds.push({ id: r.id, type: r.type, score: 0, reason: 'viewed', title: r.title });
   });
 
   const seen = new Set();
-  state.watchlist.forEach(w => seen.add(`${w.type}_${w.tmdbId}`));
-  Object.keys(state.watched).forEach(k => seen.add(k));
-  state.recentlyViewed.forEach(r => seen.add(`${r.type}_${r.id}`));
+  watchlist.forEach(w => seen.add(`${w.type}_${w.tmdbId}`));
+  Object.keys(watched).forEach(k => seen.add(k));
+  recentlyViewed.forEach(r => seen.add(`${r.type}_${r.id}`));
 
   const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
   return { genreWeights, topGenres, seedIds, seen, movieBias: movie >= tv, hasSignal: topGenres.length > 0 || seedIds.length > 0 };
 }
 
+// Build a profile-shape from a friend's stored "shared taste" doc (see social.js).
+export function profileFromShared(shared) {
+  const genreWeights = shared?.genreWeights || {};
+  const topGenres = (shared?.topGenres || []).map(Number);
+  const seen = new Set(shared?.seen || []);
+  return { genreWeights, topGenres, seedIds: [], seen, movieBias: shared?.movieBias !== false, hasSignal: topGenres.length > 0 };
+}
+
+// Blend N profiles into one group profile. Genres liked by MORE members rank
+// higher (consensus), and `seen` is the union so nothing anyone has watched is
+// recommended. Feeds the existing fetchCandidates/rankAndDedupe unchanged.
+export function blendProfiles(profiles) {
+  const list = (profiles || []).filter(Boolean);
+  const n = list.length || 1;
+  const genreWeights = {};
+  const seen = new Set();
+  let movie = 0, tv = 0;
+  const genreMembers = {}; // genre id -> # members with positive weight
+  list.forEach(p => {
+    Object.entries(p.genreWeights || {}).forEach(([g, w]) => {
+      genreWeights[g] = (genreWeights[g] || 0) + w;
+      if (w > 0) genreMembers[g] = (genreMembers[g] || 0) + 1;
+    });
+    (p.seen || new Set()).forEach(k => seen.add(k));
+    p.movieBias ? movie++ : tv++;
+  });
+  // Consensus scaling: multiply each genre's summed weight by the fraction of
+  // members who like it, so mutual tastes dominate.
+  Object.keys(genreWeights).forEach(g => { genreWeights[g] = genreWeights[g] * ((genreMembers[g] || 0) / n); });
+  const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
+  // Seeds: pool everyone's liked seeds so /recommendations pulls broadly-loved titles.
+  const seedIds = [];
+  list.forEach(p => (p.seedIds || []).forEach(s => { if (s.score >= 8 && !seedIds.some(x => x.id === s.id && x.type === s.type)) seedIds.push(s); }));
+  return { genreWeights, topGenres, seedIds: seedIds.slice(0, 3), seen, movieBias: movie >= tv, hasSignal: topGenres.length > 0, genreMembers, members: n };
+}
+
 // ----- Candidate generation -----
 function tag(results, type, source) { return (results || []).map(r => ({ ...r, __type: r.media_type || type, __source: source })); }
 
-async function fetchCandidates(profile) {
+export async function fetchCandidates(profile) {
   const calls = [];
   const movieG = profile.topGenres.filter(g => MOVIE_GENRES.has(g)).slice(0, 3);
   const tvG = profile.topGenres.filter(g => TV_GENRES.has(g)).slice(0, 3);
@@ -79,7 +123,7 @@ function scoreCandidate(c, profile, maxW) {
   return genreScore + sourceBonus + quality;
 }
 
-function rankAndDedupe(cands, profile) {
+export function rankAndDedupe(cands, profile) {
   const maxW = Math.max(1, ...Object.values(profile.genreWeights).map(Math.abs));
   const byId = new Map();
   cands.forEach(c => {
@@ -95,7 +139,7 @@ function rankAndDedupe(cands, profile) {
   return [...byId.values()].sort((a, b) => b.__score - a.__score);
 }
 
-function matchBadge(score, top) { const pct = Math.max(60, Math.min(99, Math.round((score / (top || 1)) * 100))); return `${pct}% match`; }
+export function matchBadge(score, top) { const pct = Math.max(60, Math.min(99, Math.round((score / (top || 1)) * 100))); return `${pct}% match`; }
 
 function pickLabeledSeed(profile) {
   for (const s of profile.seedIds) {

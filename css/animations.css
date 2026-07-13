@@ -69,3 +69,11 @@
   .reveal{opacity:1;transform:none}
   .scroll-progress{display:none}
 }
+
+/* ===== VIEW TRANSITIONS (shared-element morph, progressive enhancement) ===== */
+::view-transition-group(cv-hero){animation-duration:.4s;animation-timing-function:cubic-bezier(.4,0,.2,1)}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.3s}
+@media (prefers-reduced-motion: reduce){
+  ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none !important}
+  .ambient-video{display:none !important}
+}
