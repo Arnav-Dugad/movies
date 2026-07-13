@@ -47,19 +47,36 @@ export function renderStats() {
       <div class="stat-big"><div class="stat-big-num" data-count="${movies}">0</div><div class="stat-big-label">Movies</div></div>
       <div class="stat-big"><div class="stat-big-num" data-count="${shows}">0</div><div class="stat-big-label">TV Shows</div></div>
     </div>
-    ${sortedGenres.length ? `<div class="genre-chart"><div class="d-sec-title">Your Top Genres</div><div class="genre-bar-wrap">${sortedGenres.map(([name, count]) => `<div class="genre-bar-item"><span class="gb-label">${name}</span><div class="gb-track"><div class="gb-fill" style="width:0">${count}</div></div></div>`).join('')}</div></div>` : ''}
+    ${sortedGenres.length ? `<div class="genre-chart"><div class="d-sec-title">Your Top Genres</div><div class="genre-bar-wrap">${sortedGenres.map(([name, count]) => `<div class="genre-bar-item"><span class="gb-label">${name}</span><div class="gb-track" title="${count} title${count !== 1 ? 's' : ''} in ${name}"><div class="gb-fill" style="width:0">${count}</div></div></div>`).join('')}</div></div>` : ''}
     <div class="d-sec-title">Rating Distribution</div>
-    <div style="display:flex;gap:4px;align-items:flex-end;height:120px;margin-bottom:32px;padding:0 4px">
-      ${Array.from({ length: 10 }, (_, i) => { const score = i + 1; const count = Object.values(state.ratings).filter(r => r === score).length; const pct = totalRated ? Math.round(count / totalRated * 100) : 0; return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px"><div style="font-size:.65rem;color:var(--text3)">${count || ''}</div><div style="width:100%;height:${Math.max(pct, 2)}%;min-height:4px;background:linear-gradient(to top,var(--red),var(--gold));border-radius:4px 4px 0 0;transition:height 1s var(--ease)"></div><div style="font-size:.68rem;color:var(--text2);font-weight:600">${score}</div></div>`; }).join('')}
-    </div>`;
+    ${totalRated ? `<div class="rating-dist">
+      ${Array.from({ length: 10 }, (_, i) => {
+        const score = i + 1;
+        const count = Object.values(state.ratings).filter(r => r === score).length;
+        const pct = Math.round(count / totalRated * 100);
+        return `<div class="rd-col" title="${count} rating${count !== 1 ? 's' : ''} at ${score}/10">
+          <div class="rd-count">${count || ''}</div>
+          <div class="rd-track"><div class="rd-fill" style="height:0" data-pct="${pct}"></div></div>
+          <div class="rd-score">${score}</div>
+        </div>`;
+      }).join('')}
+    </div>` : `<div class="rating-dist-empty">Rate a few titles to see your distribution here.</div>`}`;
 
   observeCountUps(ct);
-  // Animate genre bars after paint.
+  // Animate bars after paint (pixel heights computed against the fixed-height
+  // .rd-track, not a percentage of an auto-sized flex column — percentage
+  // heights there silently collapse to 0/min-height since the ancestor has
+  // no definite height, which is why this is done in JS against real px).
   requestAnimationFrame(() => {
     ct.querySelectorAll('.genre-bar-item').forEach((item, i) => {
       const count = sortedGenres[i] ? sortedGenres[i][1] : 0;
       const fill = item.querySelector('.gb-fill');
       if (fill) fill.style.width = Math.round(count / maxGenre * 100) + '%';
+    });
+    ct.querySelectorAll('.rd-fill').forEach(fill => {
+      const pct = +fill.dataset.pct || 0;
+      const trackHeight = fill.parentElement.clientHeight || 90;
+      fill.style.height = pct > 0 ? Math.max(Math.round(trackHeight * pct / 100), 3) + 'px' : '0';
     });
   });
 }
