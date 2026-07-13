@@ -38,6 +38,7 @@ export function buildCard(item, type, opts = {}) {
   let h = `<div class="${cls}" role="button" tabindex="0" aria-label="${safeTitle}" data-action="open-detail" data-id="${item.id}" data-type="${t}"${yt}>`;
   if (opts.t10) h += `<div class="t10-num">${opts.rank}</div>`;
   h += `<div class="card-img"><img src="${poster}" alt="${safeTitle}" loading="lazy" data-ph="${PH}">`;
+  if (opts.badge) h += `<div class="card-badge">${esc(opts.badge)}</div>`;
   if (rating && !opts.t10) h += `<div class="card-rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rating}</div>`;
   if (wd) h += `<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>`;
   h += `</div>`;

@@ -41,6 +41,10 @@ export async function openDetail(id, type) {
     // Watchlist payload
     const wlPayload = esc(JSON.stringify({ id, type, title, poster: det.poster_path || '', rating: det.vote_average || 0, year, genres: (det.genres || []).map(g => g.id) }));
 
+    // Prefer a production company that actually has a logo; else the first.
+    const studio = det.production_companies?.length ? (det.production_companies.find(c => c.logo_path) || det.production_companies[0]) : null;
+    const boHTML = boxOfficeHTML(det);
+
     let cdHTML = '';
     if (type === 'tv' && det.next_episode_to_air) { const nd = new Date(det.next_episode_to_air.air_date); if (nd > new Date()) {
       cdHTML = `<div class="countdown"><div class="countdown-label"><span class="live-dot"></span>Next Episode — S${det.next_episode_to_air.season_number}E${det.next_episode_to_air.episode_number}${det.next_episode_to_air.name ? ` "${esc(det.next_episode_to_air.name)}"` : ''}</div><div class="countdown-grid"><div class="cd-unit"><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">Days</div></div><div class="cd-unit"><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">Hours</div></div><div class="cd-unit"><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">Min</div></div><div class="cd-unit"><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">Sec</div></div></div></div>`;
@@ -99,15 +103,13 @@ export async function openDetail(id, type) {
         <div class="stats-grid">
           ${det.status ? `<div class="stat-card"><div class="stat-label">Status</div><div class="stat-val"><span style="color:${det.status === 'Released' || det.status === 'Returning Series' ? 'var(--green2)' : 'var(--text)'}">${det.status === 'Returning Series' ? '<span class="live-dot"></span>' : ''} ${esc(det.status)}</span></div></div>` : ''}
           ${det.original_language ? `<div class="stat-card"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
-          ${det.budget ? `<div class="stat-card"><div class="stat-label">Budget</div><div class="stat-val money">$${fmt(det.budget)}</div></div>` : ''}
-          ${det.revenue ? `<div class="stat-card"><div class="stat-label">Revenue</div><div class="stat-val money">$${fmt(det.revenue)}</div></div>` : ''}
-          ${det.budget && det.revenue ? `<div class="stat-card"><div class="stat-label">Profit</div><div class="stat-val" style="color:${det.revenue - det.budget > 0 ? 'var(--green2)' : 'var(--red2)'}">$${fmt(det.revenue - det.budget)}</div></div>` : ''}
+          ${boHTML}
           ${det.vote_count ? `<div class="stat-card"><div class="stat-label">Votes</div><div class="stat-val" data-count="${det.vote_count}">${det.vote_count.toLocaleString()}</div></div>` : ''}
-          ${dir ? `<div class="stat-card" style="cursor:pointer" data-action="open-person" data-id="${dir.id}"><div class="stat-label">Director</div><div class="stat-val">${esc(dir.name)}</div></div>` : ''}
+          ${dir ? `<div class="stat-card stat-person" style="cursor:pointer" data-action="open-person" data-id="${dir.id}" data-tip="View ${esc(dir.name)}"><div class="stat-label">Director</div><div class="sp-row"><div class="sp-pic">${dir.profile_path ? `<img src="${IMG}w185${dir.profile_path}" alt="${esc(dir.name)}" loading="lazy" data-ph="${PH}">` : `<span class="sp-mono">${esc((dir.name || '?')[0])}</span>`}</div><div class="sp-name">${esc(dir.name)}</div></div></div>` : ''}
           ${type === 'tv' && det.number_of_seasons ? `<div class="stat-card"><div class="stat-label">Seasons</div><div class="stat-val" data-count="${det.number_of_seasons}">${det.number_of_seasons}</div></div>` : ''}
           ${type === 'tv' && det.number_of_episodes ? `<div class="stat-card"><div class="stat-label">Episodes</div><div class="stat-val" data-count="${det.number_of_episodes}">${det.number_of_episodes}</div></div>` : ''}
           ${type === 'tv' && det.networks?.length ? `<div class="stat-card"><div class="stat-label">Network</div><div class="stat-val">${det.networks.map(n => esc(n.name)).join(', ')}</div></div>` : ''}
-          ${det.production_companies?.length ? `<div class="stat-card"><div class="stat-label">Studio</div><div class="stat-val">${esc(det.production_companies[0].name)}</div></div>` : ''}
+          ${studio ? `<div class="stat-card"><div class="stat-label">Studio</div>${studio.logo_path ? `<div class="studio-logo"><img src="${IMG}w185${studio.logo_path}" alt="${esc(studio.name)}" title="${esc(studio.name)}" loading="lazy"></div>` : `<div class="stat-val">${esc(studio.name)}</div>`}</div>` : ''}
           ${det.homepage ? `<div class="stat-card"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit →</a></div></div>` : ''}
           <div id="providerBlock">${providerHTML(det, state.region)}</div>
         </div>
@@ -117,6 +119,9 @@ export async function openDetail(id, type) {
     if (type === 'tv' && det.next_episode_to_air) startCD(id, det.next_episode_to_air.air_date);
     if (type === 'tv' && det.seasons?.length) { const fs = det.seasons.find(s => s.season_number > 0); if (fs) loadEps(id, fs.season_number); }
     observeReveals(ct); observeCountUps(ct);
+    // Animate the Box Office bar widths after paint (horizontal %-widths resolve
+    // against the definite-width card).
+    requestAnimationFrame(() => ct.querySelectorAll('.bo-fill').forEach(f => { f.style.width = (+f.dataset.w || 0) + '%'; }));
   } catch (e) {
     console.error(e);
     ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-size:1.1rem;font-weight:600">Failed to load</p><p style="color:var(--text3);margin:8px 0 20px">Please try again</p><button class="btn-primary" data-action="back">Back</button></div>';
@@ -133,6 +138,23 @@ function providerHTML(det, region) {
     ? groups.map(([label, list]) => `<div class="provider-group"><div class="provider-group-label">${label}</div><div class="provider-icons">${list.slice(0, 6).map(p => `<img class="provider-logo" src="${IMG}w92${p.logo_path}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}" loading="lazy">`).join('')}</div></div>`).join('')
     : '<span style="font-size:.78rem;color:var(--text3)">Not available in your region</span>';
   return `<div class="stat-card"><div class="stat-label" style="display:flex;align-items:center">Where to Watch<select class="region-select" data-action="region-change">${options}</select></div><div class="stat-val providers">${inner}</div></div>`;
+}
+
+// Combined Budget / Revenue / Profit "Box Office" graph card (spans the grid).
+function boxOfficeHTML(det) {
+  const budget = det.budget || 0, revenue = det.revenue || 0;
+  if (!budget && !revenue) return '';
+  const max = Math.max(budget, revenue, 1);
+  const bW = Math.round(budget / max * 100), rW = Math.round(revenue / max * 100);
+  const profit = revenue - budget, hasBoth = budget && revenue, roi = budget ? revenue / budget : 0;
+  return `<div class="stat-card boxoffice">
+    <div class="stat-label">💰 Box Office</div>
+    <div class="bo-bars">
+      ${budget ? `<div class="bo-row"><span class="bo-name">Budget</span><div class="bo-track"><div class="bo-fill budget" style="width:0" data-w="${bW}"></div></div><span class="bo-val">$${fmt(budget)}</span></div>` : ''}
+      ${revenue ? `<div class="bo-row"><span class="bo-name">Revenue</span><div class="bo-track"><div class="bo-fill revenue" style="width:0" data-w="${rW}"></div></div><span class="bo-val">$${fmt(revenue)}</span></div>` : ''}
+    </div>
+    ${hasBoth ? `<div class="bo-summary"><div class="bo-chip ${profit >= 0 ? 'up' : 'down'}"><span class="bo-clabel">${profit >= 0 ? 'Profit' : 'Loss'}</span><span class="bo-cval">${profit >= 0 ? '+' : '−'}$${fmt(Math.abs(profit))}</span></div><div class="bo-chip roi"><span class="bo-clabel">ROI</span><span class="bo-cval">${roi.toFixed(1)}×</span></div></div>` : ''}
+  </div>`;
 }
 
 export function closeDetail() {

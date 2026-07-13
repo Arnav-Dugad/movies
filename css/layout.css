@@ -80,6 +80,9 @@
 .section-head{display:flex;align-items:center;justify-content:space-between;padding:0 clamp(16px,5vw,60px);margin-bottom:18px}
 .section-title{font-weight:800;font-size:1.25rem;letter-spacing:-.3px;display:flex;align-items:center;gap:10px}
 .section-title .icon{width:20px;height:20px;color:var(--red)}
+/* Home rows emit the icon as an emoji in a plain <span>; size/align it so it
+   sits consistently beside the label instead of at the inherited 1.25rem. */
+.section-title>span{font-size:1.15rem;line-height:1;display:inline-flex;align-items:center;flex-shrink:0}
 .section-see-all{font-size:.82rem;color:var(--text3);font-weight:600;display:flex;align-items:center;gap:4px;transition:all .3s;padding:6px 12px;border-radius:50px;border:1px solid transparent;cursor:pointer}
 .section-see-all:hover{color:var(--text);border-color:var(--glass-border);background:var(--glass)}
 .section-see-all svg{width:14px;height:14px;transition:transform .3s}
@@ -92,7 +95,7 @@
 /* ===== GENRE PILLS ===== */
 .genre-scroll{display:flex;gap:8px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 12px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .genre-scroll::-webkit-scrollbar{display:none}
-.g-pill{flex-shrink:0;padding:9px 20px;border-radius:50px;font-size:.82rem;font-weight:600;background:var(--bg3);border:1px solid var(--glass-border);transition:all .3s var(--ease);white-space:nowrap;cursor:pointer;color:var(--text2)}
+.g-pill{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;padding:8px 18px;border-radius:50px;font-size:.82rem;font-weight:600;background:var(--bg3);border:1px solid var(--glass-border);transition:all .3s var(--ease);white-space:nowrap;cursor:pointer;color:var(--text2)}
 .g-pill:hover{background:var(--bg4);border-color:rgba(255,255,255,.1);color:var(--text)}
 .g-pill.active{background:var(--red);border-color:var(--red);color:#fff}
 
@@ -116,7 +119,7 @@
 .wl-head h1{font-family:var(--font-display);font-size:clamp(1.6rem,4vw,2.4rem);font-weight:900}
 .wl-count{color:var(--text2);font-size:.88rem;margin-bottom:24px}
 .wl-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
-.wl-tab{padding:8px 18px;border-radius:50px;font-size:.82rem;font-weight:600;background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .25s;border:1px solid transparent}
+.wl-tab{display:inline-flex;align-items:center;justify-content:center;padding:8px 18px;border-radius:50px;font-size:.82rem;font-weight:600;background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .25s;border:1px solid transparent}
 .wl-tab.active{background:var(--red);color:#fff;border-color:var(--red)}
 .wl-tab:not(.active):hover{background:var(--bg4)}
 .wl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:14px}

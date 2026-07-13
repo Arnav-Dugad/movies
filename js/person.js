@@ -13,14 +13,14 @@ export async function openPerson(id) {
   try {
     const [p, credits] = await Promise.all([tmdb(`/person/${id}`), tmdb(`/person/${id}/combined_credits`)]);
     document.title = `${p.name} — CineVerse`;
-    const photo = p.profile_path ? `${IMG}w500${p.profile_path}` : PH;
+    const photo = p.profile_path ? `${IMG}w342${p.profile_path}` : PH;
     const knownFor = (credits.cast || []).sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0)).slice(0, 14);
     const directed = (credits.crew || []).filter(c => c.job === 'Director').sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0)).slice(0, 10);
     const age = p.birthday ? Math.floor((new Date() - new Date(p.birthday)) / (365.25 * 24 * 60 * 60 * 1000)) : '';
     ct.innerHTML = `
       <div class="person-top">
         <div class="person-photo"><img src="${photo}" alt="${esc(p.name)}" data-ph="${PH}"></div>
-        <div>
+        <div class="person-head">
           <h1 class="person-name">${esc(p.name)}</h1>
           <div class="person-dept">${esc(p.known_for_department) || ''}</div>
           ${p.biography ? `<p class="person-bio" id="personBio">${esc(p.biography)}</p>${p.biography.length > 500 ? `<span class="detail-overview-toggle" data-action="toggle-bio">Read more</span>` : ''}` : ''}

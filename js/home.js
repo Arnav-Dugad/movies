@@ -1,11 +1,14 @@
 // ===== HOME SECTIONS (+ personalization) =====
 import { tmdb } from './api.js';
-import { genreMap } from './config.js';
-import { state } from './state.js';
-import { esc, $ } from './ui.js';
+import { $ } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
 import { registerActions } from './events.js';
+import { renderRecommendations } from './recommend.js';
+
+// Re-exported so router.js (cv:auth / cv:wl-changed) and initHome can refresh the
+// personalized rows. The advanced logic lives in recommend.js.
+export function renderPersonalRows() { return renderRecommendations(); }
 
 export function initHomeActions() {
   registerActions({
@@ -62,51 +65,4 @@ export async function initHome() {
   }));
 
   renderPersonalRows();
-}
-
-// ----- Personalization -----
-export function topGenres(limit = 3) {
-  const counts = {};
-  state.watchlist.forEach(w => (w.genres || []).forEach(g => counts[g] = (counts[g] || 0) + 1));
-  state.recentlyViewed.forEach(r => (r.genres || []).forEach(g => counts[g] = (counts[g] || 0) + 0.5));
-  Object.keys(state.ratings).forEach(k => { /* rated items boost handled elsewhere */ });
-  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, limit).map(([g]) => g);
-}
-
-export async function renderPersonalRows() {
-  const wrap = $('personalRows');
-  if (!wrap) return;
-  const blocks = [];
-
-  // For You — based on top genres
-  const genres = topGenres(3);
-  if (genres.length) {
-    blocks.push({ id: 'rowForYou', icon: '✨', title: 'For You', render: async () => {
-      const d = await tmdb('/discover/movie', { with_genres: genres.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 150, page: 1 });
-      return d.results.slice(0, 20).map(m => buildCard(m, 'movie')).join('');
-    }});
-  }
-
-  // Because you watched … — recommendations from most recent title
-  const seed = state.recentlyViewed[0];
-  if (seed) {
-    blocks.push({ id: 'rowBecause', icon: '🍿', title: `Because you viewed ${seed.title}`, render: async () => {
-      const d = await tmdb(`/${seed.type}/${seed.id}/recommendations`);
-      const items = (d.results || []).slice(0, 20);
-      return items.length ? items.map(m => buildCard(m, m.media_type || seed.type)).join('') : '';
-    }});
-  }
-
-  if (!blocks.length) { wrap.innerHTML = ''; return; }
-
-  wrap.innerHTML = blocks.map(b => `<div class="section reveal"><div class="section-head"><h2 class="section-title"><span>${b.icon}</span> ${esc(b.title)}</h2></div><div class="row" id="${b.id}">${skelCards(8)}</div></div>`).join('');
-  observeReveals(wrap);
-
-  for (const b of blocks) {
-    try {
-      const inner = await b.render();
-      const el = $(b.id);
-      if (el) { if (inner) el.innerHTML = inner; else el.closest('.section').remove(); }
-    } catch (e) { const el = $(b.id); if (el) el.closest('.section').remove(); }
-  }
 }

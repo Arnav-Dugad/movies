@@ -54,7 +54,7 @@
 .search-field input::placeholder{color:var(--text3)}
 .search-chips{padding:10px clamp(16px,5vw,60px);display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .search-chips::-webkit-scrollbar{display:none}
-.chip{padding:7px 18px;border-radius:50px;font-size:.8rem;font-weight:600;background:var(--bg3);color:var(--text2);transition:all .25s var(--ease);white-space:nowrap;flex-shrink:0;border:1px solid transparent;cursor:pointer}
+.chip{display:inline-flex;align-items:center;justify-content:center;padding:8px 18px;border-radius:50px;font-size:.82rem;font-weight:600;background:var(--bg3);color:var(--text2);transition:all .25s var(--ease);white-space:nowrap;flex-shrink:0;border:1px solid transparent;cursor:pointer}
 .chip.active{background:var(--red);color:#fff;border-color:var(--red)}
 .chip:not(.active):hover{background:var(--bg4);border-color:var(--glass-border)}
 .search-body{padding:16px clamp(16px,5vw,60px)}
@@ -93,6 +93,8 @@
 .card-rating{position:absolute;top:8px;right:8px;background:rgba(6,6,11,.75);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:3px 8px;border-radius:50px;font-size:.72rem;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:3px;z-index:1;border:1px solid rgba(251,191,36,.15)}
 .card-rating svg{width:11px;height:11px}
 .card-type-badge{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:4px;font-size:.62rem;font-weight:800;z-index:1;letter-spacing:.5px;text-transform:uppercase}
+/* Recommender match badge (top-left) */
+.card-badge{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:50px;font-size:.64rem;font-weight:800;z-index:1;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,var(--red),var(--red2));box-shadow:0 2px 8px var(--red-glow)}
 .card-wl{position:absolute;bottom:8px;right:8px;width:32px;height:32px;background:rgba(6,6,11,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:2;opacity:0;transform:translateY(8px);transition:all .3s var(--ease);font-size:16px;border:1px solid rgba(255,255,255,.1)}
 .card:hover .card-wl,.card-wl.in{opacity:1;transform:translateY(0)}
 .card-wl.in{color:var(--red);border-color:rgba(229,9,20,.3)}
@@ -152,7 +154,7 @@
 .dtag.gold svg{width:13px;height:13px}
 .dtag.green{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.2);color:var(--green2)}
 .detail-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;align-items:center}
-.detail-btns .btn-primary{padding:11px 22px;font-size:.85rem}
+.detail-btns .btn-primary{height:42px;padding:0 22px;font-size:.85rem}
 .dbtn-icon{width:42px;height:42px;border-radius:50%;background:var(--bg3);border:1.5px solid var(--glass-border);display:flex;align-items:center;justify-content:center;transition:all .3s var(--ease);font-size:15px}
 .dbtn-icon:hover{background:var(--bg4);border-color:rgba(255,255,255,.15);transform:scale(1.1)}
 .dbtn-icon.active{border-color:var(--red);color:var(--red);background:var(--red-soft)}
@@ -169,6 +171,36 @@
 .stat-val{font-size:1rem;font-weight:700}
 .stat-val.money{color:var(--green2)}
 .stat-val.providers{margin-top:4px}
+
+/* Director photo (reuses cast look) */
+.stat-person .sp-row{display:flex;align-items:center;gap:10px;margin-top:2px}
+.stat-person .sp-pic{width:40px;height:40px;flex-shrink:0;border-radius:50%;overflow:hidden;background:var(--bg5);border:1.5px solid var(--glass-border);display:flex;align-items:center;justify-content:center;transition:border-color .3s}
+.stat-person:hover .sp-pic{border-color:var(--red)}
+.stat-person .sp-pic img{width:100%;height:100%;object-fit:cover;display:block}
+.stat-person .sp-mono{font-weight:800;color:var(--text2);font-size:1rem}
+.stat-person .sp-name{font-size:.92rem;font-weight:700;line-height:1.2;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+/* Studio logo chip (TMDB logos are transparent → light backing) */
+.studio-logo{margin-top:6px;background:#fff;border-radius:8px;padding:8px 10px;display:inline-flex;align-items:center;justify-content:center;max-width:100%}
+.studio-logo img{max-width:100%;max-height:34px;width:auto;height:auto;object-fit:contain;display:block}
+
+/* Box Office combined graph (spans the whole stats grid) */
+.boxoffice{grid-column:1/-1}
+.bo-bars{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.bo-row{display:flex;align-items:center;gap:12px}
+.bo-name{width:64px;flex-shrink:0;font-size:.78rem;font-weight:600;color:var(--text2)}
+.bo-track{flex:1;height:16px;background:var(--bg5);border-radius:8px;overflow:hidden}
+.bo-fill{height:100%;border-radius:8px;width:0;transition:width 1s var(--ease)}
+.bo-fill.budget{background:linear-gradient(90deg,var(--gold2),var(--gold))}
+.bo-fill.revenue{background:linear-gradient(90deg,var(--green),var(--green2))}
+.bo-val{width:72px;flex-shrink:0;text-align:right;font-family:var(--font-mono);font-size:.82rem;font-weight:600;color:var(--text)}
+.bo-summary{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.bo-chip{display:flex;flex-direction:column;gap:2px;padding:8px 14px;border-radius:var(--radius);background:var(--bg4);border:1px solid var(--glass-border)}
+.bo-clabel{font-size:.62rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700}
+.bo-cval{font-family:var(--font-mono);font-size:1rem;font-weight:700}
+.bo-chip.up .bo-cval{color:var(--green2)}
+.bo-chip.down .bo-cval{color:var(--red2)}
+.bo-chip.roi .bo-cval{color:var(--cyan2)}
 .provider-group{margin-bottom:8px}
 .provider-group:last-child{margin-bottom:0}
 .provider-group-label{font-size:.68rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
@@ -202,7 +234,7 @@
 /* Seasons */
 .season-tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .season-tabs::-webkit-scrollbar{display:none}
-.s-tab{padding:8px 18px;border-radius:50px;font-size:.8rem;font-weight:600;background:var(--bg3);color:var(--text2);transition:all .25s var(--ease);white-space:nowrap;flex-shrink:0;cursor:pointer;border:1px solid transparent}
+.s-tab{display:inline-flex;align-items:center;justify-content:center;padding:8px 18px;border-radius:50px;font-size:.82rem;font-weight:600;background:var(--bg3);color:var(--text2);transition:all .25s var(--ease);white-space:nowrap;flex-shrink:0;cursor:pointer;border:1px solid transparent}
 .s-tab:hover{background:var(--bg4)}
 .s-tab.active{background:var(--red);color:#fff;border-color:var(--red)}
 .ep-list{display:flex;flex-direction:column;gap:8px}
@@ -254,13 +286,16 @@
 /* ===== PERSON MODAL ===== */
 .person-inner{max-width:900px;margin:0 auto;padding:80px clamp(16px,4vw,40px) 100px}
 .person-top{display:flex;gap:28px;margin-bottom:32px}
-.person-photo{width:180px;flex-shrink:0;border-radius:var(--radius-lg);overflow:hidden;background:var(--bg3)}
-.person-photo img{width:100%;aspect-ratio:2/3;object-fit:cover}
-.person-name{font-family:var(--font-display);font-size:2.2rem;font-weight:900;margin-bottom:8px}
+.person-photo{width:180px;flex-shrink:0;border-radius:var(--radius-lg);overflow:hidden;background:var(--bg3);border:1px solid var(--glass-border);box-shadow:var(--shadow-lg)}
+.person-photo img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block}
+/* The text column MUST flex-shrink and clamp its min-width, or long bio/credits
+   text overflows and pushes the fixed-width photo past the container edge. */
+.person-head{flex:1;min-width:0}
+.person-name{font-family:var(--font-display);font-size:2.2rem;font-weight:900;margin-bottom:8px;overflow-wrap:anywhere}
 .person-dept{font-size:.88rem;color:var(--text2);margin-bottom:14px}
-.person-bio{font-size:.9rem;color:var(--text2);line-height:1.7;display:-webkit-box;-webkit-line-clamp:8;-webkit-box-orient:vertical;overflow:hidden}
+.person-bio{font-size:.9rem;color:var(--text2);line-height:1.7;display:-webkit-box;-webkit-line-clamp:8;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .person-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px}
-.person-stat{font-size:.82rem;color:var(--text3)}
+.person-stat{font-size:.82rem;color:var(--text3);overflow-wrap:anywhere}
 .person-stat strong{color:var(--text);font-weight:600}
 
 /* ===== RATING MODAL ===== */
