@@ -1,6 +1,6 @@
 // ===== SMART WATCH-PARTY MATCHER (/party) =====
 import { tmdb } from './api.js';
-import { genreMap, mGenreList } from './config.js';
+import { genreMap, mGenreList, tGenreList } from './config.js';
 import { state } from './state.js';
 import { esc, $ } from './ui.js';
 import { registerActions } from './events.js';
@@ -9,8 +9,10 @@ import { social, loadFriends, getFriendTaste } from './social.js';
 import { buildTasteProfile, profileFromShared, blendProfiles, fetchCandidates, rankAndDedupe, matchBadge } from './recommend.js';
 
 const MOVIE_GENRES = new Set(mGenreList.map(g => g.id));
+const TV_GENRES = new Set(tGenreList.map(g => g.id));
 const sel = new Set();      // selected friend uids
 let allowSeen = false;
+let partyMode = 'movie';    // 'movie' | 'tv'
 
 export function renderParty() {
   const ct = $('partyContent');
@@ -33,9 +35,13 @@ export function renderParty() {
   ct.innerHTML = `
     <p style="color:var(--text2);margin-bottom:18px">Pick who's watching, and we'll find the film that satisfies everyone.</p>
     ${members}
+    <div class="party-mode">
+      <button class="party-mode-btn ${partyMode === 'movie' ? 'on' : ''}" data-action="party-mode" data-mode="movie"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/></svg>Movie</button>
+      <button class="party-mode-btn ${partyMode === 'tv' ? 'on' : ''}" data-action="party-mode" data-mode="tv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>TV Show</button>
+    </div>
     <div class="party-controls">
-      <button class="btn-primary" data-action="party-compute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Find our movie</button>
-      <label class="party-toggle"><input type="checkbox" data-action="party-allow-seen" ${allowSeen ? 'checked' : ''}> Include films some have seen</label>
+      <button class="btn-primary" data-action="party-compute"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Find our ${partyMode === 'tv' ? 'show' : 'movie'}</button>
+      <label class="party-toggle"><input type="checkbox" data-action="party-allow-seen" ${allowSeen ? 'checked' : ''}> Include ${partyMode === 'tv' ? 'shows' : 'films'} some have seen</label>
     </div>
     <div id="partyResults"></div>`;
 }
@@ -64,13 +70,21 @@ async function compute() {
   if (allowSeen) blended.seen = new Set();
   if (!blended.hasSignal) { res.innerHTML = `<p style="color:var(--text3);padding:20px">Not enough shared taste data yet. Add a few titles to your lists and try again.</p>`; return; }
 
-  let cands = await fetchCandidates(blended);
-  // Extra: discover by the group's shared top genres for breadth.
-  const mg = blended.topGenres.filter(g => MOVIE_GENRES.has(g)).slice(0, 3);
-  if (mg.length) { try { const d = await tmdb('/discover/movie', { with_genres: mg.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 200 }); cands = cands.concat((d.results || []).map(r => ({ ...r, __type: 'movie', __source: 'discover' }))); } catch (e) {} }
+  let cands = await fetchCandidates(blended, { only: partyMode });
+  // Extra: discover by the group's shared top genres for breadth. Fall back to
+  // popular titles of the chosen type when the group has no genre signal for it
+  // (e.g. a movie-loving group asking for a TV pick).
+  const path = partyMode === 'tv' ? '/discover/tv' : '/discover/movie';
+  const gset = partyMode === 'tv' ? TV_GENRES : MOVIE_GENRES;
+  const g = blended.topGenres.filter(x => gset.has(x)).slice(0, 3);
+  try {
+    const params = g.length ? { with_genres: g.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 200 } : { sort_by: 'popularity.desc', 'vote_count.gte': 300 };
+    const d = await tmdb(path, params);
+    cands = cands.concat((d.results || []).map(r => ({ ...r, __type: partyMode, __source: 'discover' })));
+  } catch (e) {}
 
   const ranked = rankAndDedupe(cands, blended).slice(0, 18);
-  if (!ranked.length) { res.innerHTML = `<p style="color:var(--text3);padding:20px">Couldn't find a crossover pick — try including films some have seen.</p>`; return; }
+  if (!ranked.length) { res.innerHTML = `<p style="color:var(--text3);padding:20px">Couldn't find a crossover pick — try including ${partyMode === 'tv' ? 'shows' : 'films'} some have seen.</p>`; return; }
 
   const top = ranked[0];
   const topScore = top.__score || 1;
@@ -82,7 +96,7 @@ async function compute() {
     <div class="party-hero">
       <div class="party-hero-poster" role="button" tabindex="0" data-action="open-detail" data-id="${top.id}" data-type="${top.__type}">${poster ? `<img src="${poster}" alt="${esc(top.title || top.name || '')}" loading="lazy">` : ''}</div>
       <div class="party-hero-body">
-        <div class="party-hero-tag">🍿 The one for tonight</div>
+        <div class="party-hero-tag">🍿 The one ${partyMode === 'tv' ? 'show' : 'film'} for tonight</div>
         <h2 class="party-hero-title">${esc(top.title || top.name || '')}</h2>
         <div class="party-hero-match">${matchBadge(top.__score, topScore)} for ${esc(memberLine)}</div>
         ${why.length ? `<p class="party-hero-why">Because you all love <strong>${why.map(esc).join(', ')}</strong>.</p>` : ''}
@@ -97,6 +111,7 @@ export function initParty() {
   document.addEventListener('cv:social', () => { if (location.pathname === '/party') renderParty(); });
   registerActions({
     'party-toggle': (el) => { const uid = el.dataset.uid; sel.has(uid) ? sel.delete(uid) : sel.add(uid); renderParty(); },
+    'party-mode': (el) => { partyMode = el.dataset.mode === 'tv' ? 'tv' : 'movie'; renderParty(); },
     'party-allow-seen': (el) => { allowSeen = !!el.checked; },
     'party-compute': () => compute(),
   });

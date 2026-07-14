@@ -103,13 +103,17 @@ export function blendProfiles(profiles) {
 // ----- Candidate generation -----
 function tag(results, type, source) { return (results || []).map(r => ({ ...r, __type: r.media_type || type, __source: source })); }
 
-export async function fetchCandidates(profile) {
+// `only` restricts candidates to a single media type ('movie' | 'tv'); null
+// keeps the default blended behavior (movies always, TV when not movie-biased).
+// The Watch-Party matcher passes only='movie'/'tv' for its dedicated toggles.
+export async function fetchCandidates(profile, { only = null } = {}) {
   const calls = [];
+  const wantMovie = only !== 'tv', wantTV = only !== 'movie';
   const movieG = profile.topGenres.filter(g => MOVIE_GENRES.has(g)).slice(0, 3);
   const tvG = profile.topGenres.filter(g => TV_GENRES.has(g)).slice(0, 3);
-  if (movieG.length) calls.push(tmdb('/discover/movie', { with_genres: movieG.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 150 }).then(d => tag(d.results, 'movie', 'discover')).catch(() => []));
-  if (tvG.length && !profile.movieBias) calls.push(tmdb('/discover/tv', { with_genres: tvG.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 150 }).then(d => tag(d.results, 'tv', 'discover')).catch(() => []));
-  profile.seedIds.slice(0, 3).forEach(s => calls.push(tmdb(`/${s.type}/${s.id}/recommendations`).then(d => tag(d.results, s.type, 'rec')).catch(() => [])));
+  if (wantMovie && movieG.length) calls.push(tmdb('/discover/movie', { with_genres: movieG.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 150 }).then(d => tag(d.results, 'movie', 'discover')).catch(() => []));
+  if (wantTV && tvG.length && (only === 'tv' || !profile.movieBias)) calls.push(tmdb('/discover/tv', { with_genres: tvG.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 150 }).then(d => tag(d.results, 'tv', 'discover')).catch(() => []));
+  profile.seedIds.slice(0, 3).filter(s => !only || s.type === only).forEach(s => calls.push(tmdb(`/${s.type}/${s.id}/recommendations`).then(d => tag(d.results, s.type, 'rec')).catch(() => [])));
   const groups = await Promise.all(calls);
   return groups.flat();
 }

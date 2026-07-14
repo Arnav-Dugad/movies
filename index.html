@@ -120,6 +120,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
             My Watchlist
           </div>
+          <div class="profile-dd-item" data-action="show-page" data-page="watched">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+            Watched
+          </div>
           <div class="profile-dd-item" data-action="show-page" data-page="stats">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
             My Stats
@@ -216,6 +220,18 @@
     <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="watched">Watched ✓</div>
   </div>
   <div id="wlContent"></div>
+</div>
+
+<!-- WATCHED -->
+<div class="wl-page page-container" id="watchedPage">
+  <div class="wl-head"><h1>Watched</h1></div>
+  <div class="wl-count" id="watchedCount">0 titles</div>
+  <div class="wl-tabs">
+    <div class="wl-tab active" role="button" tabindex="0" data-action="watched-filter" data-filter="all">All</div>
+    <div class="wl-tab" role="button" tabindex="0" data-action="watched-filter" data-filter="movie">Movies</div>
+    <div class="wl-tab" role="button" tabindex="0" data-action="watched-filter" data-filter="tv">TV Shows</div>
+  </div>
+  <div id="watchedContent"></div>
 </div>
 
 <!-- DISCOVER -->
@@ -324,6 +340,7 @@
       <div class="footer-col">
         <h4>You</h4>
         <a data-action="show-page" data-page="watchlist">My List</a>
+        <a data-action="show-page" data-page="watched">Watched</a>
         <a data-action="show-page" data-page="stats">My Stats</a>
         <a data-action="show-page" data-page="search">Search</a>
       </div>

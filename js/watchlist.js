@@ -53,7 +53,7 @@ export async function loadWatched() {
   } catch (e) { console.error('loadWatched failed:', e); }
 }
 
-export async function toggleWatched(id, type, title) {
+export async function toggleWatched(id, type, title, meta = {}) {
   if (!state.user) return requireAuth();
   const key = `${type}_${id}`;
   try {
@@ -61,7 +61,17 @@ export async function toggleWatched(id, type, title) {
     if (state.watched[key]) {
       await ref.delete(); delete state.watched[key]; toast('Unmarked as watched', 'info');
     } else {
-      const d = { tmdbId: id, type, title, watchedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      // Enrich with poster/year/genres so the Watched page (and anywhere else)
+      // can render a real card without an extra TMDB fetch. Fall back to the
+      // watchlist entry for titles marked watched before this data was stored.
+      const wl = state.watchlist.find(w => w.id === key);
+      const d = {
+        tmdbId: id, type, title,
+        poster: meta.poster || wl?.poster || '',
+        year: meta.year || wl?.year || '',
+        genres: meta.genres || wl?.genres || [],
+        watchedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
       await ref.set(d); state.watched[key] = d; toast('Marked as watched!', 'success');
     }
     document.dispatchEvent(new Event('cv:wl-changed'));
@@ -104,7 +114,9 @@ export function initWatchlist() {
     'toggle-wl': (el, e) => { e.stopPropagation(); toggleWL(readItem(el), readItem(el).type); },
     'toggle-watched': (el, e) => {
       e.stopPropagation();
-      toggleWatched(+el.dataset.id, el.dataset.type, el.dataset.title || '');
+      let genres = [];
+      try { genres = el.dataset.genres ? JSON.parse(el.dataset.genres) : []; } catch (_) {}
+      toggleWatched(+el.dataset.id, el.dataset.type, el.dataset.title || '', { poster: el.dataset.poster || '', year: el.dataset.year || '', genres });
       el.classList.toggle('active');
     },
     'wl-filter': (el) => setWLFilter(el.dataset.filter, el),

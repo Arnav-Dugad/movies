@@ -13,6 +13,7 @@ export const state = {
   mGenre: '', tGenre: '',
   cdIntervals: [],
   wlFilter: 'all',
+  watchedFilter: 'all',
   searchHistory: [],
   recentlyViewed: [],
   region: 'IN',

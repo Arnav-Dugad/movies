@@ -3,6 +3,7 @@ import { $, forceUnlockScroll } from './ui.js';
 import { registerActions } from './events.js';
 import { loadMovies, loadTV } from './browse.js';
 import { renderWL } from './watchlist.js';
+import { renderWatched } from './watched.js';
 import { initDiscover } from './discover.js';
 import { renderStats } from './stats.js';
 import { renderPersonalRows } from './home.js';
@@ -23,6 +24,7 @@ const ROUTES = [
   { test: /^\/tv\/?$/, page: 'tvPage', render: () => loadTV() },
   { test: /^\/discover\/?$/, page: 'discoverPage', render: () => initDiscover() },
   { test: /^\/watchlist\/?$/, page: 'wlPage', render: () => renderWL() },
+  { test: /^\/watched\/?$/, page: 'watchedPage', render: () => renderWatched() },
   { test: /^\/stats\/?$/, page: 'statsPage', render: () => renderStats() },
   { test: /^\/search\/?$/, page: 'searchPage', render: (p, query) => openSearch(query.get('q') || '') },
   { test: /^\/friends\/?$/, page: 'friendsPage', render: () => renderFriends() },
@@ -39,6 +41,7 @@ const TITLES = {
   tvPage: 'TV Shows — CineVerse',
   discoverPage: 'Discover — CineVerse',
   wlPage: 'My List — CineVerse',
+  watchedPage: 'Watched — CineVerse',
   statsPage: 'My Stats — CineVerse',
   searchPage: 'Search — CineVerse',
   friendsPage: 'Friends — CineVerse',
@@ -47,7 +50,7 @@ const TITLES = {
   personPage: 'CineVerse',
 };
 
-const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', discover: '/discover', stats: '/stats', search: '/search', friends: '/friends', party: '/party' };
+const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', stats: '/stats', search: '/search', friends: '/friends', party: '/party' };
 
 let currentPath = null;
 
@@ -144,6 +147,7 @@ export function initRouter() {
   // Re-render data-dependent pages when auth or lists change.
   const refresh = () => {
     if (currentPath === '/watchlist') renderWL();
+    else if (currentPath === '/watched') renderWatched();
     else if (currentPath === '/stats') renderStats();
     else if (currentPath === '/friends') renderFriends();
     else if (currentPath === '/party') renderParty();
