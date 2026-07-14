@@ -101,7 +101,7 @@ export function goHero(i) {
 export function startHeroTimer() {
   clearInterval(state.heroTimer);
   if (state.heroPaused) return;
-  state.heroTimer = setInterval(() => { state.heroIdx = (state.heroIdx + 1) % state.heroItems.length; goHero(state.heroIdx); }, 8000);
+  state.heroTimer = setInterval(() => { state.heroIdx = (state.heroIdx + 1) % state.heroItems.length; goHero(state.heroIdx); }, 12000);
 }
 function pauseHero() { state.heroPaused = true; clearInterval(state.heroTimer); expandDesc(); }
 function resumeHero() { if (!state.heroPaused) return; state.heroPaused = false; startHeroTimer(); scheduleDescCollapse(); }
