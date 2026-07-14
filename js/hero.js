@@ -20,7 +20,7 @@ function scheduleDescCollapse() {
   heroDescTimer = setTimeout(() => {
     const active = document.querySelector('.hero-slide.active');
     if (active) active.classList.add('collapsed');
-  }, 5000);
+  }, 3000);
 }
 function expandDesc() {
   clearTimeout(heroDescTimer);
