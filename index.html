@@ -296,7 +296,9 @@
   <div class="search-top">
     <div class="search-field">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input id="searchIn" type="text" placeholder="Search movies, TV shows, people..." autocomplete="off">
+      <input id="searchIn" type="text" placeholder="Search movies, TV shows, people..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="searchSuggest">
+      <button class="search-clear" id="searchClear" data-action="search-clear" aria-label="Clear search" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      <div class="search-suggest" id="searchSuggest" role="listbox"></div>
     </div>
   </div>
   <div class="search-chips">
@@ -305,20 +307,34 @@
     <button class="chip" data-f="tv" data-action="set-filter">TV Shows</button>
     <button class="chip" data-f="person" data-action="set-filter">People</button>
   </div>
+  <div class="search-filters" id="searchFilters" style="display:none">
+    <select class="search-select" id="fltGenre" data-action="search-filter" aria-label="Genre"><option value="">All genres</option></select>
+    <select class="search-select" id="fltDecade" data-action="search-filter" aria-label="Decade">
+      <option value="">Any year</option><option value="2020">2020s</option><option value="2010">2010s</option><option value="2000">2000s</option><option value="1990">1990s</option><option value="older">Older</option>
+    </select>
+    <select class="search-select" id="fltRating" data-action="search-filter" aria-label="Minimum rating">
+      <option value="">Any rating</option><option value="6">6+ ★</option><option value="7">7+ ★</option><option value="8">8+ ★</option><option value="9">9+ ★</option>
+    </select>
+    <select class="search-select" id="fltSort" data-action="search-filter" aria-label="Sort by">
+      <option value="relevance">Relevance</option><option value="rating">Top rated</option><option value="newest">Newest</option><option value="popularity">Most popular</option>
+    </select>
+    <button class="filter-reset" id="fltReset" data-action="search-reset" aria-label="Reset filters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 109-9 9 9 0 00-6.36 2.64L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
+  </div>
   <div class="search-body" id="searchBody">
     <div id="searchDefault">
       <div id="searchHistoryWrap"></div>
+      <div id="trendingSearches"></div>
+      <div id="vibeChips"></div>
       <div id="recentStrip"></div>
       <div class="search-section-title">Trending Now</div>
       <div class="search-grid" id="trendGrid"></div>
     </div>
     <div id="searchResultsWrap" style="display:none">
+      <div class="search-results-head" id="searchResultsHead"></div>
       <div class="search-grid" id="searchGrid"></div>
-      <div id="searchEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text3)">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:12px;opacity:.4"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <p style="font-size:.95rem;font-weight:600">No results found</p>
-        <p style="font-size:.82rem;margin-top:4px">Try a different search term</p>
-      </div>
+      <div class="load-more-wrap" id="searchMoreWrap" style="display:none"><button class="load-more" id="searchMore" data-action="load-more-search">Load more results</button></div>
+      <div id="searchEmpty" style="display:none"></div>
+      <div id="searchError" style="display:none"></div>
     </div>
   </div>
 </div>
