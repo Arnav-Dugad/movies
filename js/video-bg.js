@@ -3,11 +3,14 @@
 // vignette/gradient of a hero or detail backdrop. The static image paints first
 // (zero layout shift); the video is purely decorative (pointer-events:none) and
 // only mounts on desktop with motion enabled — mobile/reduced-motion keep the image.
-import { prefersReducedMotion } from './ui.js';
+import { prefersReducedMotion, isTouch } from './ui.js';
 
-// Ambient trailers autoplay on mobile too — they're muted + playsinline, which
-// satisfies mobile autoplay policies. Only reduced-motion opts out.
-export function ambientOK() { return !prefersReducedMotion(); }
+// Desktop only. On mobile, muted autoplay is unreliable — a YouTube embed that
+// doesn't autoplay sits paused and shows its full chrome (title bar, centre
+// play/pause, share/watch-later, YouTube branding) that no embed parameter can
+// suppress, and a 16:9 trailer in a portrait hero crops its own title card. So
+// touch devices keep the clean static backdrop + title logo instead.
+export function ambientOK() { return !prefersReducedMotion() && !isTouch(); }
 
 // Mounts an ambient video into `container` (which must be position:relative and
 // already hold the backdrop image + a gradient overlay above it). Returns a
