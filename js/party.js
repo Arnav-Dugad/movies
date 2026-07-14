@@ -109,6 +109,13 @@ async function compute() {
 
 export function initParty() {
   document.addEventListener('cv:social', () => { if (location.pathname === '/party') renderParty(); });
+  // Selection state is per-account — clear it on sign-out so a second user signing
+  // in on the same tab/session doesn't inherit the previous user's selected
+  // friends/mode (social.js already resets the friends list itself the same way).
+  document.addEventListener('cv:auth', () => {
+    if (state.user) return;
+    sel.clear(); allowSeen = false; partyMode = 'movie';
+  });
   registerActions({
     'party-toggle': (el) => { const uid = el.dataset.uid; sel.has(uid) ? sel.delete(uid) : sel.add(uid); renderParty(); },
     'party-mode': (el) => { partyMode = el.dataset.mode === 'tv' ? 'tv' : 'movie'; renderParty(); },

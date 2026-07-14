@@ -31,11 +31,15 @@ export function countUp(el, target, { dur = 900, decimals = 0, prefix = '', suff
   }
   requestAnimationFrame(tick);
 }
-// Animate any [data-count] within root when it scrolls into view.
-export function observeCountUps(root = document) {
-  const els = root.querySelectorAll('[data-count]');
-  if (!els.length) return;
-  const obs = new IntersectionObserver(entries => {
+// Animate any [data-count] within root when it scrolls into view. Shares one
+// IntersectionObserver across every call (same pattern as revealObs above) —
+// this is invoked on every openDetail()/renderStats() render, and a fresh
+// per-call observer would never disconnect() for elements that never scroll
+// into view, leaking one observer (holding detached-DOM refs) per navigation.
+let countObs = null;
+function ensureCountObs() {
+  if (countObs) return countObs;
+  countObs = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (!e.isIntersecting) return;
       const el = e.target;
@@ -44,9 +48,15 @@ export function observeCountUps(root = document) {
         decimals: parseInt(el.dataset.decimals || '0'),
         prefix: el.dataset.prefix || '', suffix: el.dataset.suffix || ''
       });
-      obs.unobserve(el);
+      countObs.unobserve(el);
     });
   }, { threshold: .4 });
+  return countObs;
+}
+export function observeCountUps(root = document) {
+  const els = root.querySelectorAll('[data-count]');
+  if (!els.length) return;
+  const obs = ensureCountObs();
   els.forEach(el => obs.observe(el));
 }
 

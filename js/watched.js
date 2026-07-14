@@ -137,4 +137,7 @@ export function initWatched() {
   });
   const inp = $('watchedSearch');
   if (inp) inp.addEventListener('input', debounce(function () { watchedQuery = this.value.trim(); renderGrid(); }, 200));
+  // Reset the one-shot backfill guard on sign-out — otherwise a second account
+  // signing in on the same tab/session never gets ITS old watched docs backfilled.
+  document.addEventListener('cv:auth', () => { if (!state.user) backfilled = false; });
 }

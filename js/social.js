@@ -5,7 +5,7 @@
 // composite indexes are required.
 import { db, firebase } from './firebase.js';
 import { state } from './state.js';
-import { debounce } from './ui.js';
+import { debounce, toast } from './ui.js';
 import { buildTasteProfile } from './recommend.js';
 
 export const social = { code: '', friends: [], reqIn: [], reqOut: [], ready: false };
@@ -98,8 +98,15 @@ export async function acceptRequest(req) {
       since: ts(),
     });
     await db.collection('friendRequests').doc(req.id).set({ status: 'accepted' }, { merge: true });
+  } catch (e) {
+    console.error('acceptRequest', e);
+    toast('Could not accept request — try again', 'error');
+  } finally {
+    // Always refresh — if the friendship write above succeeded but the status
+    // write failed, this at least reflects the new friendship (and the still-
+    // "pending" request just re-runs this same, idempotent write on a retry).
     await loadFriends();
-  } catch (e) { console.error('acceptRequest', e); }
+  }
 }
 
 export async function declineRequest(req) {

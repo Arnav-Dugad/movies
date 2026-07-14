@@ -2,13 +2,16 @@
 import { tmdb } from './api.js';
 import { IMG, genreMap } from './config.js';
 import { state } from './state.js';
-import { esc, $, prefersReducedMotion } from './ui.js';
+import { esc, $, prefersReducedMotion, isTouch } from './ui.js';
 import { registerActions, readItem } from './events.js';
 import { toggleWL } from './watchlist.js';
 import { mountAmbientVideo, ambientOK } from './video-bg.js';
 
+const HERO_INTERVAL_MS = 30000;
+
 let heroAmbientTeardown = null;
 let heroDescTimer = null;
+let heroVideoGen = 0; // bumped on every mountHeroVideo() call; stale resolutions bail
 const heroKeyCache = {};
 
 // Netflix-style: collapse the meta/genres/description on the active slide a few
@@ -20,7 +23,7 @@ function scheduleDescCollapse() {
   heroDescTimer = setTimeout(() => {
     const active = document.querySelector('.hero-slide.active');
     if (active) active.classList.add('collapsed');
-  }, 5000);
+  }, 3000);
 }
 function expandDesc() {
   clearTimeout(heroDescTimer);
@@ -38,14 +41,19 @@ async function getTrailerKey(item) {
 }
 
 async function mountHeroVideo() {
+  // Generation token: any overlapping call (e.g. rapid visibility toggling) that
+  // starts after this one invalidates it, so two in-flight calls for the same
+  // slide can never both mount (the loser would otherwise orphan its iframe/
+  // listener with no teardown reference left).
+  const gen = ++heroVideoGen;
   if (heroAmbientTeardown) { heroAmbientTeardown(); heroAmbientTeardown = null; }
   if (!ambientOK()) return;
   const item = state.heroItems[state.heroIdx];
   if (!item) return;
   const idxAtRequest = state.heroIdx;
   const key = await getTrailerKey(item);
-  // Bail if the slide changed while we were fetching.
-  if (!key || idxAtRequest !== state.heroIdx) return;
+  // Bail if the slide changed, or a newer mountHeroVideo() call has superseded us.
+  if (!key || idxAtRequest !== state.heroIdx || gen !== heroVideoGen) return;
   const slide = document.querySelector('.hero-slide.active');
   if (slide) heroAmbientTeardown = mountAmbientVideo(slide, key, { overlaySelector: '.hero-vignette', delay: 900 });
 }
@@ -56,6 +64,7 @@ export async function initHero() {
     state.heroItems = d.results.filter(r => r.backdrop_path && (r.media_type === 'movie' || r.media_type === 'tv')).slice(0, 6);
     if (!state.heroItems.length) return;
     const wrap = $('heroWrap');
+    if (!wrap) return;
     let slidesHTML = '';
     state.heroItems.forEach((item, i) => {
       const title = item.title || item.name; const safeTitle = esc(title);
@@ -81,7 +90,7 @@ export async function initHero() {
         </div>
       </div>`;
     });
-    slidesHTML += `<div class="hero-progress">${state.heroItems.map((_, i) => `<div class="hero-prog-item ${i === 0 ? 'active' : ''}" role="button" tabindex="0" aria-label="Go to slide ${i + 1}" data-action="hero-go" data-idx="${i}"><div class="hero-prog-fill"></div></div>`).join('')}</div>`;
+    slidesHTML += `<div class="hero-progress">${state.heroItems.map((_, i) => `<div class="hero-prog-item ${i === 0 ? 'active' : ''}" role="button" tabindex="0" aria-label="Go to slide ${i + 1}" data-action="hero-go" data-idx="${i}"><div class="hero-prog-fill" style="animation-duration:${HERO_INTERVAL_MS}ms"></div></div>`).join('')}</div>`;
     wrap.innerHTML = slidesHTML;
     startHeroTimer();
     mountHeroVideo();
@@ -90,9 +99,13 @@ export async function initHero() {
 }
 
 export function goHero(i) {
-  state.heroIdx = i;
-  document.querySelectorAll('.hero-slide').forEach((s, idx) => s.classList.toggle('active', idx === i));
-  document.querySelectorAll('.hero-prog-item').forEach((p, idx) => { p.classList.remove('active', 'done'); if (idx < i) p.classList.add('done'); if (idx === i) p.classList.add('active'); });
+  // Defend against a stale/out-of-range call (e.g. leftover DOM after a re-render):
+  // without this, an empty heroItems array turns the next timer tick's modulo into
+  // NaN, silently corrupting state.heroIdx forever.
+  if (!state.heroItems.length) return;
+  state.heroIdx = ((i % state.heroItems.length) + state.heroItems.length) % state.heroItems.length;
+  document.querySelectorAll('.hero-slide').forEach((s, idx) => s.classList.toggle('active', idx === state.heroIdx));
+  document.querySelectorAll('.hero-prog-item').forEach((p, idx) => { p.classList.remove('active', 'done'); if (idx < state.heroIdx) p.classList.add('done'); if (idx === state.heroIdx) p.classList.add('active'); });
   startHeroTimer();
   mountHeroVideo();
   scheduleDescCollapse();
@@ -101,29 +114,43 @@ export function goHero(i) {
 export function startHeroTimer() {
   clearInterval(state.heroTimer);
   if (state.heroPaused) return;
-  state.heroTimer = setInterval(() => { state.heroIdx = (state.heroIdx + 1) % state.heroItems.length; goHero(state.heroIdx); }, 8000);
+  state.heroTimer = setInterval(() => { goHero(state.heroIdx + 1); }, HERO_INTERVAL_MS);
 }
 function pauseHero() { state.heroPaused = true; clearInterval(state.heroTimer); expandDesc(); }
 function resumeHero() { if (!state.heroPaused) return; state.heroPaused = false; startHeroTimer(); scheduleDescCollapse(); }
 
 export function initHeroInteractions() {
   const wrap = $('heroWrap');
+  if (!wrap) return;
   // Swipe
-  let touchStartX = 0;
-  wrap.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+  let touchStartX = 0, touchStartY = 0;
+  wrap.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, { passive: true });
   wrap.addEventListener('touchend', e => {
-    const diff = touchStartX - e.changedTouches[0].clientX;
-    if (Math.abs(diff) > 50 && state.heroItems.length) {
-      if (diff > 0) goHero((state.heroIdx + 1) % state.heroItems.length);
-      else goHero((state.heroIdx - 1 + state.heroItems.length) % state.heroItems.length);
+    const diffX = touchStartX - e.changedTouches[0].clientX;
+    const diffY = touchStartY - e.changedTouches[0].clientY;
+    // Require horizontal movement to dominate vertical, so a diagonal drag while
+    // scrolling the page doesn't spuriously trigger a slide change.
+    if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY) && state.heroItems.length) {
+      if (diffX > 0) goHero(state.heroIdx + 1);
+      else goHero(state.heroIdx - 1);
     }
   }, { passive: true });
 
-  // Pause on hover (desktop) and when tab hidden.
-  wrap.addEventListener('mouseenter', pauseHero);
-  wrap.addEventListener('mouseleave', resumeHero);
+  // Pause on hover (desktop only — touch devices can fire a synthetic mouseenter
+  // on tap with no matching mouseleave, which would pause the carousel forever).
+  if (!isTouch()) {
+    wrap.addEventListener('mouseenter', pauseHero);
+    wrap.addEventListener('mouseleave', resumeHero);
+  }
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { clearInterval(state.heroTimer); if (heroAmbientTeardown) { heroAmbientTeardown(); heroAmbientTeardown = null; } }
+    if (document.hidden) {
+      clearInterval(state.heroTimer);
+      if (heroAmbientTeardown) { heroAmbientTeardown(); heroAmbientTeardown = null; }
+      // Pair with expandDesc() like every other pause path — a backgrounded tab's
+      // setTimeout still fires (throttled), so without this the description could
+      // silently collapse while hidden and stay collapsed for no visible reason.
+      expandDesc();
+    }
     else if (!state.heroPaused) { startHeroTimer(); mountHeroVideo(); scheduleDescCollapse(); }
   });
 

@@ -12,8 +12,10 @@ let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
 let navHint = null;           // instant-paint hint captured from the clicked card
 let lastVTSource = null;      // element currently holding the shared view-transition-name
+let reqGen = 0;                // bumped on every openDetail/openCollection call; guards against a slower, stale fetch overwriting a newer one
 
 export async function openDetail(id, type) {
+  const gen = ++reqGen;
   const ct = $('detailContent');
   if (ambientTeardown) { ambientTeardown(); ambientTeardown = null; }
 
@@ -40,6 +42,11 @@ export async function openDetail(id, type) {
       tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,content_ratings,release_dates,watch/providers,keywords,recommendations' }),
       tmdb(`/${type}/${id}/credits`), tmdb(`/${type}/${id}/videos`), tmdb(`/${type}/${id}/similar`), tmdb(`/${type}/${id}/reviews`)
     ]);
+    // Bail if a newer openDetail()/openCollection() call has started since — a
+    // slower response for a title the user already navigated away from must not
+    // overwrite the page (or leak this call's ambient-video listener) once a
+    // faster, newer response has already rendered.
+    if (gen !== reqGen) return;
     curDet = det; curType = type;
 
     const title = det.title || det.name || ''; const safeTitle = esc(title);
@@ -217,10 +224,12 @@ async function loadEps(tid, sn) {
 }
 
 export async function openCollection(cid) {
+  const gen = ++reqGen; // shares the counter with openDetail — navigating between either invalidates the other's in-flight fetch
   const ct = $('detailContent');
   document.title = 'Collection — CineVerse';
   try {
     const d = await tmdb(`/collection/${cid}`);
+    if (gen !== reqGen) return;
     if (d.parts?.length) {
       const sorted = d.parts.sort((a, b) => new Date(a.release_date || '9999') - new Date(b.release_date || '9999'));
       document.title = `${d.name} — CineVerse`;

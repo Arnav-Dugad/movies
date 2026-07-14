@@ -6,12 +6,17 @@ import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 
+let reqGen = 0; // bumped on every openPerson() call; guards against a slower, stale fetch overwriting a newer one
+
 export async function openPerson(id) {
+  const gen = ++reqGen;
   const ct = $('personContent');
   ct.innerHTML = '<div style="text-align:center;padding:100px"><div class="loader-text">Loading...</div></div>';
   document.title = 'Loading… — CineVerse';
   try {
     const [p, credits] = await Promise.all([tmdb(`/person/${id}`), tmdb(`/person/${id}/combined_credits`)]);
+    // Bail if the user has since opened a different person page.
+    if (gen !== reqGen) return;
     document.title = `${p.name} — CineVerse`;
     const photo = p.profile_path ? `${IMG}w342${p.profile_path}` : PH;
     const knownFor = (credits.cast || []).sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0)).slice(0, 14);

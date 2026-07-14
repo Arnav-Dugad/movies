@@ -113,12 +113,16 @@ export function renderWL() {
 export function initWatchlist() {
   registerActions({
     'toggle-wl': (el, e) => { e.stopPropagation(); toggleWL(readItem(el), readItem(el).type); },
-    'toggle-watched': (el, e) => {
+    'toggle-watched': async (el, e) => {
       e.stopPropagation();
       let genres = [];
       try { genres = el.dataset.genres ? JSON.parse(el.dataset.genres) : []; } catch (_) {}
-      toggleWatched(+el.dataset.id, el.dataset.type, el.dataset.title || '', { poster: el.dataset.poster || '', year: el.dataset.year || '', genres });
-      el.classList.toggle('active');
+      const id = +el.dataset.id, type = el.dataset.type;
+      await toggleWatched(id, type, el.dataset.title || '', { poster: el.dataset.poster || '', year: el.dataset.year || '', genres });
+      // Sync the button from the actual result rather than toggling blind — on a
+      // failed write, toggleWatched leaves state.watched unchanged, so this
+      // correctly leaves the button as-is instead of flipping to a wrong state.
+      el.classList.toggle('active', !!state.watched[`${type}_${id}`]);
     },
     'wl-filter': (el) => setWLFilter(el.dataset.filter, el),
   });
