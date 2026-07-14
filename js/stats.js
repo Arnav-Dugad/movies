@@ -20,12 +20,25 @@ function computeStats(scope) {
   const totalWatched = watchedKeys.length;
   const avgRating = totalRated ? (ratingEntries.reduce((a, [, v]) => a + v, 0) / totalRated).toFixed(1) : '0';
 
+  // Taste profile (genres + era) draws from BOTH the watchlist and watched history,
+  // deduped — otherwise a scope where the user has only *watched* titles (common for
+  // TV) computes nothing. Watched docs carry genres/year (enriched on write/backfill).
+  const titleMap = new Map();
+  watchlist.forEach(w => titleMap.set(`${w.type}_${w.tmdbId}`, { genres: w.genres || [], year: w.year }));
+  Object.entries(state.watched).forEach(([k, d]) => {
+    if (!inScope(d.type)) return;
+    const ex = titleMap.get(k);
+    if (ex) { if (!ex.genres.length && d.genres) ex.genres = d.genres; if (!ex.year && d.year) ex.year = d.year; }
+    else titleMap.set(k, { genres: d.genres || [], year: d.year });
+  });
+  const titles = [...titleMap.values()];
+
   const genreCounts = {};
-  watchlist.forEach(w => (w.genres || []).forEach(gid => { const name = genreMap[gid]; if (name) genreCounts[name] = (genreCounts[name] || 0) + 1; }));
+  titles.forEach(t => (t.genres || []).forEach(gid => { const name = genreMap[gid]; if (name) genreCounts[name] = (genreCounts[name] || 0) + 1; }));
   const sortedGenres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   const decadeCounts = {};
-  watchlist.forEach(w => { const y = parseInt(w.year); if (y) { const dec = Math.floor(y / 10) * 10; decadeCounts[dec] = (decadeCounts[dec] || 0) + 1; } });
+  titles.forEach(t => { const y = parseInt(t.year); if (y) { const dec = Math.floor(y / 10) * 10; decadeCounts[dec] = (decadeCounts[dec] || 0) + 1; } });
   const favDecade = Object.entries(decadeCounts).sort((a, b) => b[1] - a[1])[0];
 
   const ratingCounts = Array.from({ length: 10 }, (_, i) => ratingEntries.filter(([, v]) => v === i + 1).length);

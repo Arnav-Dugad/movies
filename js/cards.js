@@ -41,8 +41,11 @@ export function buildCard(item, type, opts = {}) {
   if (opts.badge) h += `<div class="card-badge">${esc(opts.badge)}</div>`;
   if (rating && !opts.t10) h += `<div class="card-rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rating}</div>`;
   if (wd) h += `<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>`;
-  h += `</div>`;
+  // Watchlist toggle lives INSIDE .card-img so it overlays the poster (its
+  // absolute bottom/right anchors to the poster, not the whole card) — keeps the
+  // text area clean so the title sits tight under the poster.
   h += `<button class="card-wl ${wl ? 'in' : ''}" data-wl="${t}|${item.id}" data-action="toggle-wl" data-item="${wlPayload(item, t)}" aria-label="${wl ? 'Remove from list' : 'Add to list'}" data-tip="${wl ? 'Remove from list' : 'Add to list'}">${wl ? '✓' : '+'}</button>`;
+  h += `</div>`;
   if (!opts.t10) h += `<div class="card-info"><div class="card-title">${safeTitle}</div><div class="card-sub"><span>${year}</span><span class="dot"></span><span>${t === 'tv' ? 'TV' : 'Movie'}</span></div></div>`;
   h += `</div>`;
   return h;
@@ -65,7 +68,8 @@ export function refreshWLBtns() {
     const yes = inWL(parseInt(i), t);
     b.classList.toggle('in', yes);
     b.classList.toggle('active', yes);
-    if (b.classList.contains('card-wl')) b.textContent = yes ? '✓' : '+';
+    // wl-remove buttons use an SVG icon, not the +/✓ glyph — don't clobber it.
+    if (b.classList.contains('card-wl') && !b.classList.contains('wl-remove')) b.textContent = yes ? '✓' : '+';
   });
 }
 

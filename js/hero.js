@@ -2,13 +2,30 @@
 import { tmdb } from './api.js';
 import { IMG, genreMap } from './config.js';
 import { state } from './state.js';
-import { esc, $ } from './ui.js';
+import { esc, $, prefersReducedMotion } from './ui.js';
 import { registerActions, readItem } from './events.js';
 import { toggleWL } from './watchlist.js';
 import { mountAmbientVideo, ambientOK } from './video-bg.js';
 
 let heroAmbientTeardown = null;
+let heroDescTimer = null;
 const heroKeyCache = {};
+
+// Netflix-style: collapse the meta/genres/description on the active slide a few
+// seconds in, leaving the title + action buttons. Reset whenever the slide changes.
+function scheduleDescCollapse() {
+  clearTimeout(heroDescTimer);
+  document.querySelectorAll('.hero-slide.collapsed').forEach(s => s.classList.remove('collapsed'));
+  if (prefersReducedMotion()) return; // keep full info visible when motion is reduced
+  heroDescTimer = setTimeout(() => {
+    const active = document.querySelector('.hero-slide.active');
+    if (active) active.classList.add('collapsed');
+  }, 5000);
+}
+function expandDesc() {
+  clearTimeout(heroDescTimer);
+  document.querySelectorAll('.hero-slide.collapsed').forEach(s => s.classList.remove('collapsed'));
+}
 
 async function getTrailerKey(item) {
   const ck = `${item.media_type}_${item.id}`;
@@ -68,6 +85,7 @@ export async function initHero() {
     wrap.innerHTML = slidesHTML;
     startHeroTimer();
     mountHeroVideo();
+    scheduleDescCollapse();
   } catch (e) { console.error('Hero error:', e); }
 }
 
@@ -77,6 +95,7 @@ export function goHero(i) {
   document.querySelectorAll('.hero-prog-item').forEach((p, idx) => { p.classList.remove('active', 'done'); if (idx < i) p.classList.add('done'); if (idx === i) p.classList.add('active'); });
   startHeroTimer();
   mountHeroVideo();
+  scheduleDescCollapse();
 }
 
 export function startHeroTimer() {
@@ -84,8 +103,8 @@ export function startHeroTimer() {
   if (state.heroPaused) return;
   state.heroTimer = setInterval(() => { state.heroIdx = (state.heroIdx + 1) % state.heroItems.length; goHero(state.heroIdx); }, 8000);
 }
-function pauseHero() { state.heroPaused = true; clearInterval(state.heroTimer); }
-function resumeHero() { if (!state.heroPaused) return; state.heroPaused = false; startHeroTimer(); }
+function pauseHero() { state.heroPaused = true; clearInterval(state.heroTimer); expandDesc(); }
+function resumeHero() { if (!state.heroPaused) return; state.heroPaused = false; startHeroTimer(); scheduleDescCollapse(); }
 
 export function initHeroInteractions() {
   const wrap = $('heroWrap');
@@ -105,7 +124,7 @@ export function initHeroInteractions() {
   wrap.addEventListener('mouseleave', resumeHero);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { clearInterval(state.heroTimer); if (heroAmbientTeardown) { heroAmbientTeardown(); heroAmbientTeardown = null; } }
-    else if (!state.heroPaused) { startHeroTimer(); mountHeroVideo(); }
+    else if (!state.heroPaused) { startHeroTimer(); mountHeroVideo(); scheduleDescCollapse(); }
   });
 
   registerActions({

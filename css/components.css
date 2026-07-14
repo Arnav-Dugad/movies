@@ -99,6 +99,10 @@
 .card:hover .card-wl,.card-wl.in{opacity:1;transform:translateY(0)}
 .card-wl.in{color:var(--red);border-color:rgba(229,9,20,.3)}
 .card-wl:hover{background:var(--red);color:#fff;border-color:var(--red)}
+.card-wl svg{width:16px;height:16px}
+/* Watchlist "remove" button: always visible, reads as a clear delete affordance. */
+.wl-remove{color:#fff;background:rgba(6,6,11,.7)}
+.wl-remove:hover{background:var(--red);border-color:var(--red)}
 .card-info{padding:6px 2px 2px}
 .card-title{font-size:.84rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
 .card-sub{font-size:.72rem;color:var(--text3);margin-top:3px;display:flex;align-items:center;gap:6px}
@@ -171,6 +175,12 @@
 .stat-val{font-size:1rem;font-weight:700}
 .stat-val.money{color:var(--green2)}
 .stat-val.providers{margin-top:4px}
+/* Where-to-Watch is the most-used stat card — give it more room + bigger logos. */
+#providerBlock{grid-column:span 2}
+#providerBlock .stat-card{padding:16px 20px;height:100%}
+#providerBlock .provider-logo{width:44px;height:44px;border-radius:10px}
+#providerBlock .provider-icons{gap:8px}
+#providerBlock .region-select{margin-left:auto}
 
 /* Director photo (reuses cast look) */
 .stat-person .sp-row{display:flex;align-items:center;gap:10px;margin-top:2px}
@@ -237,7 +247,12 @@
 .s-tab{display:inline-flex;align-items:center;justify-content:center;padding:8px 18px;border-radius:50px;font-size:.82rem;font-weight:600;background:var(--bg3);color:var(--text2);transition:all .25s var(--ease);white-space:nowrap;flex-shrink:0;cursor:pointer;border:1px solid transparent}
 .s-tab:hover{background:var(--bg4)}
 .s-tab.active{background:var(--red);color:#fff;border-color:var(--red)}
-.ep-list{display:flex;flex-direction:column;gap:8px}
+/* Cap the episode list height and scroll inside it so long seasons don't push
+   the rest of the page way down. */
+.ep-list{display:flex;flex-direction:column;gap:8px;max-height:440px;overflow-y:auto;padding-right:6px;scrollbar-width:thin}
+.ep-list::-webkit-scrollbar{width:6px}
+.ep-list::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+.ep-list::-webkit-scrollbar-thumb:hover{background:var(--red)}
 .ep-card{display:flex;gap:14px;background:var(--bg3);border:1px solid var(--glass-border);border-radius:var(--radius);padding:10px;transition:all .3s var(--ease);cursor:pointer}
 .ep-card:hover{background:var(--bg4);border-color:rgba(255,255,255,.06);transform:translateX(4px)}
 .ep-still{width:130px;aspect-ratio:16/9;border-radius:var(--radius-sm);overflow:hidden;background:var(--bg4);flex-shrink:0;position:relative}
@@ -346,6 +361,9 @@
    keep it — the generic [data-tip] rule above would otherwise clobber it back to
    relative (equal specificity, later source order) and drop them into normal flow. */
 .btt[data-tip],.page-back[data-tip]{position:fixed}
+/* .card-wl carries data-tip too — keep it absolutely positioned over the poster
+   instead of collapsing into flow (which was adding a gap under every card). */
+.card-wl[data-tip]{position:absolute}
 [data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);padding:5px 10px;background:var(--bg2);border:1px solid var(--glass-border);border-radius:6px;font-size:.7rem;white-space:nowrap;color:var(--text);z-index:999;pointer-events:none;animation:fadeUp .2s var(--ease)}
 
 /* ===== WATCHED BADGE ===== */
@@ -361,7 +379,10 @@
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse-live 2s ease-in-out infinite}
 
 /* ===== AMBIENT VIDEO BACKGROUND ===== */
-.ambient-video{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;opacity:0;transition:opacity 1.2s ease;transform:scale(1.35);transform-origin:center}
+/* Scale the frame up so YouTube's residual chrome (title bar, control strip,
+   end-screen "next/previous" cards near the edges) is cropped out of view.
+   Combined with the reveal-on-playing gate in video-bg.js, the buttons never show. */
+.ambient-video{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;opacity:0;transition:opacity 1.2s ease;transform:scale(1.5);transform-origin:center}
 .ambient-video.show{opacity:.92}
 
 /* ===== ZERO-CLS DETAIL SCAFFOLD (instant paint) ===== */
