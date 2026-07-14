@@ -126,8 +126,12 @@
 .card-w .card-img{aspect-ratio:16/9}
 .card-w .card-img img{object-position:center 20%}
 
-/* Top 10 */
-.card-t10{width:205px;display:flex;align-items:flex-end;gap:0}
+/* Top 10 — overflow:hidden contains the rank number's font-descender overflow
+   (line-height:.78 makes the glyph box spill below the card) so rows never grow a
+   vertical scrollbar, regardless of device font metrics; the digits sit above the
+   clip line (margin-bottom nudge below), so nothing visible is cut. Width fits the
+   two-digit "10" so its poster isn't clipped by the same overflow:hidden. */
+.card-t10{width:230px;display:flex;align-items:flex-end;justify-content:flex-end;gap:0;overflow:hidden}
 /* line-height:.78 makes the glyph ink spill below its line-box; with the number
    bottom-aligned (align-items:flex-end) that spill pushes past the card and used to
    force a vertical scrollbar / get clipped. A small em-based bottom margin lifts the
@@ -387,10 +391,10 @@
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;animation:pulse-live 2s ease-in-out infinite}
 
 /* ===== AMBIENT VIDEO BACKGROUND ===== */
-/* Scale the frame up so YouTube's residual chrome (title bar, control strip,
-   end-screen "next/previous" cards near the edges) is cropped out of view.
-   Combined with the reveal-on-playing gate in video-bg.js, the buttons never show. */
-.ambient-video{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;opacity:0;transition:opacity 1.2s ease;transform:scale(1.5);transform-origin:center}
+/* Only a hair of scale to hide the 1px frame edge — a big zoom (was 1.5) blew up
+   and cropped the trailer's own title card. Chrome is handled in video-bg.js
+   (controls=0, no playlist, JS-API loop) + the vignette gradient over the edges. */
+.ambient-video{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;opacity:0;transition:opacity 1.2s ease;transform:scale(1.04);transform-origin:center}
 .ambient-video.show{opacity:.92}
 
 /* ===== ZERO-CLS DETAIL SCAFFOLD (instant paint) ===== */

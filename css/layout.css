@@ -101,10 +101,7 @@
 .section-see-all:hover svg{transform:translateX(3px)}
 
 /* ===== CARD ROW ===== */
-/* padding-bottom absorbs the small ink spill of the oversized Top-10 rank number
-   (line-height:.78) so rows never grow a vertical scrollbar — no overflow clipping
-   needed (which would shave the glyphs). */
-.row{display:flex;gap:12px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 16px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-padding:0 clamp(16px,5vw,60px);overscroll-behavior-x:contain}
+.row{display:flex;gap:12px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-padding:0 clamp(16px,5vw,60px);overscroll-behavior-x:contain}
 .row::-webkit-scrollbar{display:none}
 
 /* ===== GENRE PILLS ===== */

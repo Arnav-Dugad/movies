@@ -25,21 +25,26 @@ export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelec
     el.setAttribute('tabindex', '-1');
     el.setAttribute('aria-hidden', 'true');
     el.allow = 'autoplay; encrypted-media';
-    // mute + playlist=key → programmatic autoplay + single-video loop.
-    // enablejsapi lets us hold the fade-in until the trailer is actually PLAYING,
-    // so YouTube's initial play/next/prev chrome + buffering never flash into view.
-    el.src = `https://www.youtube.com/embed/${ytKey}?autoplay=1&mute=1&loop=1&playlist=${ytKey}&controls=0&playsinline=1&modestbranding=1&rel=0&disablekb=1&fs=0&iv_load_policy=3&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+    // controls=0 + NO playlist param: the `playlist=key` loop trick is what makes
+    // YouTube render prev/next buttons, so we loop via the JS API instead (seek to
+    // 0 on END below) for a clean, chrome-free video. enablejsapi also lets us hold
+    // the fade-in until the trailer is actually PLAYING so nothing flashes in.
+    const post = (func, args = []) => { try { el.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com'); } catch (_) {} };
+    el.src = `https://www.youtube.com/embed/${ytKey}?autoplay=1&mute=1&controls=0&playsinline=1&modestbranding=1&rel=0&disablekb=1&fs=0&iv_load_policy=3&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
     // Insert just BEFORE the gradient/vignette so paint order is: image → video → overlay.
     const overlay = container.querySelector(overlaySelector);
     if (overlay) container.insertBefore(el, overlay); else container.appendChild(el);
 
-    // Ask the embed to stream player-state events, then reveal on PLAYING(=1).
+    // Stream player-state events: reveal on PLAYING(=1); loop on ENDED(=0) by
+    // seeking back to the start and replaying (no playlist → no next/prev chrome).
     onMsg = (e) => {
       if (dead || !el || e.source !== el.contentWindow) return;
       let d = e.data;
       if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { return; } }
-      const st = d && (d.info?.playerState ?? d.info);
-      if (d && (d.event === 'onStateChange' || d.event === 'infoDelivery') && st === 1) reveal();
+      if (!d || (d.event !== 'onStateChange' && d.event !== 'infoDelivery')) return;
+      const st = d.info?.playerState ?? d.info;
+      if (st === 1) reveal();
+      else if (st === 0) { post('seekTo', [0, true]); post('playVideo'); }
     };
     window.addEventListener('message', onMsg);
     el.addEventListener('load', () => {
