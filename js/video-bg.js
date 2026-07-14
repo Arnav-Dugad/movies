@@ -3,9 +3,11 @@
 // vignette/gradient of a hero or detail backdrop. The static image paints first
 // (zero layout shift); the video is purely decorative (pointer-events:none) and
 // only mounts on desktop with motion enabled — mobile/reduced-motion keep the image.
-import { prefersReducedMotion, isTouch } from './ui.js';
+import { prefersReducedMotion } from './ui.js';
 
-export function ambientOK() { return !prefersReducedMotion() && !isTouch(); }
+// Ambient trailers autoplay on mobile too — they're muted + playsinline, which
+// satisfies mobile autoplay policies. Only reduced-motion opts out.
+export function ambientOK() { return !prefersReducedMotion(); }
 
 // Mounts an ambient video into `container` (which must be position:relative and
 // already hold the backdrop image + a gradient overlay above it). Returns a

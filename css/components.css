@@ -342,6 +342,10 @@
 
 /* ===== TOOLTIP ===== */
 [data-tip]{position:relative}
+/* Elements that establish their own positioning context (fixed/absolute) must
+   keep it — the generic [data-tip] rule above would otherwise clobber it back to
+   relative (equal specificity, later source order) and drop them into normal flow. */
+.btt[data-tip],.page-back[data-tip]{position:fixed}
 [data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);padding:5px 10px;background:var(--bg2);border:1px solid var(--glass-border);border-radius:6px;font-size:.7rem;white-space:nowrap;color:var(--text);z-index:999;pointer-events:none;animation:fadeUp .2s var(--ease)}
 
 /* ===== WATCHED BADGE ===== */

@@ -50,18 +50,11 @@ function updateAuthUI() {
   $('ddAv').textContent = i;
   $('ddName').textContent = u ? (u.displayName || 'User') : 'Guest';
   $('ddEmail').textContent = u ? u.email : 'Sign in to continue';
+  // When signed in, the top item is hidden and the dedicated ddSignOut item at
+  // the bottom handles sign-out — otherwise there'd be two Sign Out buttons.
   const da = $('ddAuth');
-  if (u) {
-    da.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Sign Out</span>';
-    da.className = 'profile-dd-item danger';
-    da.dataset.action = 'sign-out';
-    $('ddSignOut').style.display = 'flex';
-  } else {
-    da.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg><span>Sign In</span>';
-    da.className = 'profile-dd-item';
-    da.dataset.action = 'open-auth';
-    $('ddSignOut').style.display = 'none';
-  }
+  da.style.display = u ? 'none' : 'flex';
+  $('ddSignOut').style.display = u ? 'flex' : 'none';
 }
 
 export function openAuth() { $('authOverlay').classList.add('active'); }
