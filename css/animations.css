@@ -50,7 +50,8 @@
 .magnetic{will-change:transform;transition:transform .18s var(--ease)}
 
 /* ===== KEN BURNS on active hero ===== */
-.hero-slide.active img{animation:kenBurns 9s ease-out both}
+/* Direct child only — the backdrop, not the nested .hero-logo. */
+.hero-slide.active>img{animation:kenBurns 9s ease-out both}
 
 /* ===== COUNT-UP ===== */
 .count-pop{animation:countUpPop .5s var(--spring) both}
@@ -65,7 +66,7 @@
 /* ===== REDUCED MOTION ===== */
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
-  .aurora,.hero-slide.active img{animation:none !important}
+  .aurora,.hero-slide.active>img{animation:none !important}
   .reveal{opacity:1;transform:none}
   .scroll-progress{display:none}
 }

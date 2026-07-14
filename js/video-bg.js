@@ -3,21 +3,20 @@
 // vignette/gradient of a hero or detail backdrop. The static image paints first
 // (zero layout shift); the video is purely decorative (pointer-events:none) and
 // only mounts on desktop with motion enabled — mobile/reduced-motion keep the image.
-import { prefersReducedMotion, isTouch } from './ui.js';
+import { prefersReducedMotion } from './ui.js';
 
-// Desktop only. On mobile, muted autoplay is unreliable — a YouTube embed that
-// doesn't autoplay sits paused and shows its full chrome (title bar, centre
-// play/pause, share/watch-later, YouTube branding) that no embed parameter can
-// suppress, and a 16:9 trailer in a portrait hero crops its own title card. So
-// touch devices keep the clean static backdrop + title logo instead.
-export function ambientOK() { return !prefersReducedMotion() && !isTouch(); }
+// Mobile included. The video only ever becomes visible on a confirmed PLAYING
+// state (see below) — so if muted autoplay is blocked/paused on a device, the
+// iframe stays hidden (opacity 0) behind the static backdrop instead of showing
+// YouTube's paused chrome. Only reduced-motion opts out entirely.
+export function ambientOK() { return !prefersReducedMotion(); }
 
 // Mounts an ambient video into `container` (which must be position:relative and
 // already hold the backdrop image + a gradient overlay above it). Returns a
 // teardown function. Safe to call when not ambientOK() (it just no-ops).
 export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelector = '.detail-back-grad, .hero-vignette' } = {}) {
   if (!container || !ytKey || !ambientOK()) return () => {};
-  let el = null, timer = null, revealTimer = null, dead = false, onMsg = null;
+  let el = null, timer = null, dead = false, onMsg = null;
 
   const reveal = () => { if (el && !dead) el.classList.add('show'); };
 
@@ -53,15 +52,14 @@ export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelec
     el.addEventListener('load', () => {
       try { el.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: ytKey, channel: 'widget' }), 'https://www.youtube.com'); } catch (_) {}
     });
-    // Safety net: if no PLAYING event arrives (API blocked/slow), reveal anyway
-    // so the feature never silently disappears — no worse than before.
-    revealTimer = setTimeout(reveal, 4000);
+    // NO fallback reveal: we only ever show the iframe on a confirmed PLAYING
+    // state. If autoplay is blocked/paused (common on mobile), it stays hidden
+    // behind the static backdrop rather than exposing YouTube's paused chrome.
   }, delay);
 
   return () => {
     dead = true;
     if (timer) clearTimeout(timer);
-    if (revealTimer) clearTimeout(revealTimer);
     if (onMsg) { window.removeEventListener('message', onMsg); onMsg = null; }
     if (el) { el.src = 'about:blank'; el.remove(); el = null; }
   };
