@@ -1,6 +1,6 @@
 // ===== DETAIL PAGE =====
 import { tmdb } from './api.js';
-import { IMG, PH, REGIONS } from './config.js';
+import { IMG, PH, REGIONS, pickLogo } from './config.js';
 import { state, pushRecentlyViewed } from './state.js';
 import { esc, fmt, $ } from './ui.js';
 import { buildCard } from './cards.js';
@@ -39,7 +39,7 @@ export async function openDetail(id, type) {
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
   try {
     const [det, cred, vids, sim, revs] = await Promise.all([
-      tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,content_ratings,release_dates,watch/providers,keywords,recommendations' }),
+      tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,content_ratings,release_dates,watch/providers,keywords,recommendations,images', include_image_language: 'en,null' }),
       tmdb(`/${type}/${id}/credits`), tmdb(`/${type}/${id}/videos`), tmdb(`/${type}/${id}/similar`), tmdb(`/${type}/${id}/reviews`)
     ]);
     // Bail if a newer openDetail()/openCollection() call has started since — a
@@ -50,6 +50,11 @@ export async function openDetail(id, type) {
     curDet = det; curType = type;
 
     const title = det.title || det.name || ''; const safeTitle = esc(title);
+    const logoPath = pickLogo(det.images?.logos);
+    // Official title-logo art when available, else the plain title text.
+    const titleHTML = logoPath
+      ? `<h1 class="detail-title has-logo"><img class="title-logo" src="${IMG}w500${logoPath}" alt="${safeTitle}"></h1>`
+      : `<h1 class="detail-title">${safeTitle}</h1>`;
     const year = (det.release_date || det.first_air_date || '').slice(0, 4);
     document.title = `${title}${year ? ' (' + year + ')' : ''} — CineVerse`;
     const back = det.backdrop_path ? `${IMG}original${det.backdrop_path}` : ''; const poster = det.poster_path ? `${IMG}w500${det.poster_path}` : PH;
@@ -107,7 +112,7 @@ export async function openDetail(id, type) {
         <div class="detail-top">
           <div class="detail-poster"><img src="${poster}" alt="${safeTitle}" data-ph="${PH}"></div>
           <div class="detail-head">
-            <h1 class="detail-title">${safeTitle}</h1>
+            ${titleHTML}
             ${det.tagline ? `<p class="detail-tagline">"${esc(det.tagline)}"</p>` : ''}
             <div class="detail-tags">
               <span class="dtag gold"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span data-count="${det.vote_average || 0}" data-decimals="1">${rat}</span></span>

@@ -7,6 +7,17 @@ export const IMG = 'https://image.tmdb.org/t/p/';
 // the HTML parser terminating the attribute early on an internal ".
 export const PH = "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450'><rect fill='%2314141f' width='300' height='450'/><text x='150' y='230' text-anchor='middle' fill='%234b5563' font-size='14' font-family='sans-serif'>No Image</text></svg>";
 
+// Pick the best title-logo file_path from a TMDB images.logos array: prefer an
+// English logo, then a language-neutral one (iso_639_1 === null), then the first.
+// Returns null when there are no logos (caller falls back to the title text).
+export function pickLogo(logos) {
+  if (!Array.isArray(logos) || !logos.length) return null;
+  const en = logos.find(l => l && l.iso_639_1 === 'en' && l.file_path);
+  const neutral = logos.find(l => l && l.iso_639_1 === null && l.file_path);
+  const any = logos.find(l => l && l.file_path);
+  return (en || neutral || any || {}).file_path || null;
+}
+
 export const firebaseConfig = {
   apiKey: "AIzaSyDtcGPY2iCh4SsjFIid_H0lwMfIj9ocN8I",
   authDomain: "movies-2b6dd.firebaseapp.com",

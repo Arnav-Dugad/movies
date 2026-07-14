@@ -1,13 +1,13 @@
 /* ===== BUTTONS ===== */
-.btn-primary{padding:13px 28px;background:linear-gradient(135deg,var(--red),var(--red2));color:#fff;border-radius:50px;font-weight:700;font-size:.9rem;display:inline-flex;align-items:center;gap:8px;transition:all .3s var(--ease);letter-spacing:.3px;position:relative;overflow:hidden}
+.btn-primary{padding:13px 28px;background:linear-gradient(135deg,var(--red),var(--red2));color:#fff;border-radius:50px;font-weight:700;font-size:.9rem;display:inline-flex;align-items:center;gap:8px;transition:transform .3s var(--ease-out),box-shadow .3s var(--ease-out);letter-spacing:.3px;position:relative;overflow:hidden}
 .btn-primary::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,.15));opacity:0;transition:opacity .3s}
 .btn-primary:hover::before{opacity:1}
 .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 30px var(--red-glow)}
-.btn-primary:active{transform:translateY(0)}
+.btn-primary:active{transform:translateY(0) scale(.98)}
 .btn-primary svg{width:18px;height:18px}
-.btn-glass{padding:13px 24px;background:rgba(255,255,255,.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);color:#fff;border-radius:50px;font-weight:600;font-size:.9rem;display:inline-flex;align-items:center;gap:8px;transition:all .3s var(--ease)}
+.btn-glass{padding:13px 24px;background:rgba(255,255,255,.08);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);color:#fff;border-radius:50px;font-weight:600;font-size:.9rem;display:inline-flex;align-items:center;gap:8px;transition:background .3s var(--ease-out),border-color .3s var(--ease-out),transform .3s var(--ease-out)}
 .btn-glass:hover{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.2);transform:translateY(-2px)}
-.btn-glass:active{transform:translateY(0)}
+.btn-glass:active{transform:translateY(0) scale(.98)}
 .btn-glass svg{width:18px;height:18px}
 
 /* ===== AUTH OVERLAY ===== */
@@ -69,7 +69,7 @@
 .search-history-item:hover .remove{opacity:.6}
 
 /* ===== CARD ===== */
-.card{flex-shrink:0;width:155px;scroll-snap-align:start;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent;transition:transform .35s var(--ease)}
+.card{flex-shrink:0;width:155px;scroll-snap-align:start;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent;transition:transform .4s var(--ease-out)}
 /* Cards inside CSS-grid containers must fill their grid cell instead of
    fighting the grid with .card's flex-row fixed width (that width is for
    the horizontal scrollers: .row/.cast-scroll/.similar-row/.vid-scroll,
@@ -85,10 +85,11 @@
 }
 .card:hover{transform:translateY(-6px)}
 .card:active{transform:scale(.97)}
-.card-img{aspect-ratio:2/3;background:var(--bg3);border-radius:var(--radius);overflow:hidden;position:relative}
-.card-img img{width:100%;height:100%;object-fit:cover;transition:all .5s var(--ease)}
-.card:hover .card-img img{transform:scale(1.05)}
-.card-img::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(6,6,11,.8) 0%,transparent 50%);opacity:0;transition:opacity .3s}
+.card-img{aspect-ratio:2/3;background:var(--bg3);border-radius:var(--radius);overflow:hidden;position:relative;transition:box-shadow .4s var(--ease-out)}
+.card:hover .card-img{box-shadow:0 14px 34px rgba(0,0,0,.55)}
+.card-img img{width:100%;height:100%;object-fit:cover;transition:transform .6s var(--ease-out)}
+.card:hover .card-img img{transform:scale(1.06)}
+.card-img::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(6,6,11,.8) 0%,transparent 50%);opacity:0;transition:opacity .4s var(--ease-out)}
 .card:hover .card-img::after{opacity:1}
 .card-rating{position:absolute;top:8px;right:8px;background:rgba(6,6,11,.75);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:3px 8px;border-radius:50px;font-size:.72rem;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:3px;z-index:1;border:1px solid rgba(251,191,36,.15)}
 .card-rating svg{width:11px;height:11px}
@@ -151,6 +152,9 @@
 .detail-poster img{width:100%;aspect-ratio:2/3;object-fit:cover}
 .detail-head{flex:1;min-width:0;padding-top:40px}
 .detail-title{font-family:var(--font-display);font-size:clamp(1.6rem,4.5vw,2.8rem);font-weight:900;line-height:1.1;margin-bottom:8px}
+/* Official title-logo art on the detail page (replaces the h1 text when present). */
+.detail-title.has-logo{margin-bottom:10px}
+.detail-title .title-logo{max-height:clamp(52px,8.5vw,104px);max-width:min(460px,100%);height:auto;width:auto;object-fit:contain;display:block}
 .detail-tagline{font-style:italic;color:var(--text3);font-size:.88rem;margin-bottom:14px}
 .detail-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
 .dtag{padding:5px 12px;border-radius:50px;font-size:.76rem;font-weight:600;background:var(--bg3);border:1px solid var(--glass-border);color:var(--text2)}

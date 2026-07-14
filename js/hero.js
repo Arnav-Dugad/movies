@@ -1,6 +1,6 @@
 // ===== HERO CAROUSEL =====
 import { tmdb } from './api.js';
-import { IMG, genreMap } from './config.js';
+import { IMG, genreMap, pickLogo } from './config.js';
 import { state } from './state.js';
 import { esc, $, prefersReducedMotion, isTouch } from './ui.js';
 import { registerActions, readItem } from './events.js';
@@ -13,6 +13,30 @@ let heroAmbientTeardown = null;
 let heroDescTimer = null;
 let heroVideoGen = 0; // bumped on every mountHeroVideo() call; stale resolutions bail
 const heroKeyCache = {};
+const heroLogoCache = {};
+
+// Trending items carry no title-logo art, so fetch it per slide (cached), mirroring
+// getTrailerKey. Returns a logo file_path or null.
+async function getTitleLogo(item) {
+  const ck = `${item.media_type}_${item.id}`;
+  if (ck in heroLogoCache) return heroLogoCache[ck];
+  try {
+    const d = await tmdb(`/${item.media_type}/${item.id}/images`, { include_image_language: 'en,null' });
+    return (heroLogoCache[ck] = pickLogo(d.logos));
+  } catch (e) { return (heroLogoCache[ck] = null); }
+}
+
+// After the slides render (text titles first, for zero layout shift), swap each
+// slide's title to its official logo art where one exists. Fallback = leave text.
+function mountHeroLogos() {
+  state.heroItems.forEach((item, i) => {
+    getTitleLogo(item).then(path => {
+      if (!path) return;
+      const el = document.querySelector(`.hero-slide[data-idx="${i}"] .hero-title`);
+      if (el) el.innerHTML = `<img class="hero-logo" src="${IMG}w500${path}" alt="${esc(item.title || item.name || '')}">`;
+    });
+  });
+}
 
 // Netflix-style: collapse the meta/genres/description on the active slide a few
 // seconds in, leaving the title + action buttons. Reset whenever the slide changes.
@@ -94,6 +118,7 @@ export async function initHero() {
     wrap.innerHTML = slidesHTML;
     startHeroTimer();
     mountHeroVideo();
+    mountHeroLogos();
     scheduleDescCollapse();
   } catch (e) { console.error('Hero error:', e); }
 }
