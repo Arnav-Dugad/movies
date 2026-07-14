@@ -89,7 +89,7 @@
 .section-see-all:hover svg{transform:translateX(3px)}
 
 /* ===== CARD ROW ===== */
-.row{display:flex;gap:12px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-padding:0 clamp(16px,5vw,60px)}
+.row{display:flex;gap:12px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-padding:0 clamp(16px,5vw,60px);overscroll-behavior-x:contain}
 .row::-webkit-scrollbar{display:none}
 
 /* ===== GENRE PILLS ===== */
@@ -124,6 +124,14 @@
 .wl-tab:not(.active):hover{background:var(--bg4)}
 .wl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:14px}
 .wl-empty{text-align:center;padding:80px 20px}
+/* Watched-page tools: search + genre/sort selects */
+.watched-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:22px}
+.watched-search{display:flex;align-items:center;gap:8px;flex:1;min-width:200px;max-width:340px;background:var(--bg3);border:1px solid var(--glass-border);border-radius:50px;padding:9px 16px}
+.watched-search svg{width:16px;height:16px;color:var(--text3);flex-shrink:0}
+.watched-search input{flex:1;min-width:0;background:transparent;border:0;outline:none;color:var(--text);font-size:.86rem;font-family:var(--font)}
+.watched-search input::placeholder{color:var(--text3)}
+.watched-select{background:var(--bg3);border:1px solid var(--glass-border);border-radius:50px;padding:9px 16px;color:var(--text2);font-size:.82rem;font-weight:600;font-family:var(--font);cursor:pointer;outline:none}
+.watched-select:focus{border-color:var(--red)}
 .wl-empty svg{width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5}
 .wl-empty h3{font-size:1.15rem;margin-bottom:6px;font-weight:700}
 .wl-empty p{color:var(--text3);font-size:.88rem;max-width:300px;margin:0 auto}

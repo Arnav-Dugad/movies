@@ -13,7 +13,9 @@ export function closeTrailer() {
 export function isTrailerOpen() { return $('trailerOv').classList.contains('active'); }
 
 export function shareItem(title, id, type) {
-  const url = `https://www.themoviedb.org/${type}/${id}`;
+  // Deep link into CineVerse itself (Vercel serves /movie/:id and /tv/:id) so the
+  // shared link opens this site on that exact title — not TMDB.
+  const url = `${location.origin}/${type}/${id}`;
   if (navigator.share) {
     navigator.share({ title: `CineVerse: ${title}`, url }).catch(() => {});
   } else if (navigator.clipboard) {

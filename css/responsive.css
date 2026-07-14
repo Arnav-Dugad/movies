@@ -42,6 +42,13 @@
   .g-pill,.chip,.s-tab,.wl-tab{padding-top:10px;padding-bottom:10px}
 }
 
+/* Touch devices: drop the horizontal snap so a vertical swipe over a card row
+   scrolls the page straight down instead of first "catching" on a snap point. */
+@media (hover:none){
+  .row{scroll-snap-type:none}
+  .card{scroll-snap-align:none}
+}
+
 @media(max-width:380px){
   .card{width:112px}
   .hero-title{font-size:1.9rem}

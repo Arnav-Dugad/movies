@@ -90,6 +90,23 @@ export function initSearch() {
   }, 300));
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { const q = e.target.value.trim(); if (q.length >= 2) { addToHistory(q); doSearch(q); } } });
 
+  // Record the query into Recent Searches when the user actually opens a result
+  // (the common flow — typing then clicking never went through the Enter path).
+  // Capture phase so it runs before the card's navigation handler.
+  const resultsWrap = $('searchResultsWrap');
+  if (resultsWrap) resultsWrap.addEventListener('click', e => {
+    if (e.target.closest('[data-action="open-detail"],[data-action="open-person"]')) {
+      const q = input.value.trim();
+      if (q.length >= 2) addToHistory(q);
+    }
+  }, true);
+
+  // Deep-loading /search renders before auth has loaded searchHistory from
+  // localStorage; re-render the history/recent strip once auth settles.
+  document.addEventListener('cv:auth', () => {
+    if (location.pathname === '/search') { renderSearchHistory(); renderRecentStrip(); }
+  });
+
   registerActions({
     'set-filter': (el) => setFilter(el.dataset.f, el),
     'history-search': (el) => { const q = el.dataset.q ? decodeEntities(el.dataset.q) : (el.querySelector('span')?.textContent || ''); $('searchIn').value = q; doSearch(q); addToHistory(q); },
