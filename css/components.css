@@ -128,7 +128,11 @@
 
 /* Top 10 */
 .card-t10{width:205px;display:flex;align-items:flex-end;gap:0}
-.card-t10 .t10-num{font-family:var(--font-display);font-size:7.5rem;font-weight:900;line-height:.78;color:transparent;-webkit-text-stroke:2px rgba(255,255,255,.12);flex-shrink:0;margin-right:-18px;z-index:0;transition:all .3s}
+/* line-height:.78 makes the glyph ink spill below its line-box; with the number
+   bottom-aligned (align-items:flex-end) that spill pushes past the card and used to
+   force a vertical scrollbar / get clipped. A small em-based bottom margin lifts the
+   ink back inside the card (scales with font-size across breakpoints). */
+.card-t10 .t10-num{font-family:var(--font-display);font-size:7.5rem;font-weight:900;line-height:.78;color:transparent;-webkit-text-stroke:2px rgba(255,255,255,.12);flex-shrink:0;margin-right:-18px;margin-bottom:.09em;z-index:0;transition:all .3s}
 .card-t10:hover .t10-num{-webkit-text-stroke-color:var(--red)}
 .card-t10 .card-img{width:120px;flex-shrink:0;z-index:1}
 .card-t10 .card-info{position:absolute;bottom:0;left:0;right:0;z-index:2}

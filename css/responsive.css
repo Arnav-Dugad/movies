@@ -18,14 +18,9 @@
   .hero-actions .btn-primary,.hero-actions .btn-glass{padding:12px 20px;font-size:.84rem}
   .card{width:130px}
   .card-w{width:240px}
-  .card-t10{width:170px}
+  .card-t10{width:178px}
   .card-t10 .t10-num{font-size:5.5rem}
   .card-t10 .card-img{width:100px}
-  /* Clip the tiny vertical spill from the oversized Top-10 rank number (its
-     line-box is shorter than the glyph) so horizontal rows don't get an
-     annoying vertical scrollbar on mobile. Digits have no descenders, so
-     nothing visible is lost. (Desktop keeps overflow-y so the hover-lift shows.) */
-  .row{overflow-y:hidden}
   /* Center the detail title-logo when the header stacks + centers on mobile. */
   .detail-title .title-logo{margin-left:auto;margin-right:auto}
   .section-title{font-size:1.1rem}
@@ -58,6 +53,9 @@
 @media (hover:none){
   .row{scroll-snap-type:none}
   .card{scroll-snap-align:none}
+  /* No hover on touch, so the add-to-list button must be permanently visible
+     (its default state is opacity:0, revealed only on :hover). */
+  .card-wl{opacity:1;transform:none}
 }
 
 @media(max-width:380px){

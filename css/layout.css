@@ -59,8 +59,12 @@
 .hero-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:50px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:18px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:fadeUp .7s var(--ease-out) backwards;max-height:44px;overflow:hidden;transition:opacity .5s var(--ease),max-height .6s var(--ease),margin .5s var(--ease),transform .5s var(--ease)}
 .hero-badge.trending{background:rgba(229,9,20,.15);border:1px solid rgba(229,9,20,.3);color:var(--red2)}
 .hero-title{font-family:var(--font-display);font-size:clamp(2.2rem,6.5vw,4.5rem);font-weight:900;line-height:1.05;letter-spacing:-.5px;margin-bottom:14px;text-shadow:0 4px 30px rgba(0,0,0,.5);animation:fadeUp .7s .1s var(--ease-out) both}
-/* Official title-logo art in the hero (swapped in over the text — see hero.js). */
-.hero-logo{max-height:clamp(64px,11vh,140px);max-width:min(520px,82%);height:auto;width:auto;object-fit:contain;display:block;filter:drop-shadow(0 4px 24px rgba(0,0,0,.55))}
+/* Official title-logo art in the hero (swapped in over the text — see hero.js).
+   Kept modest in height so the bottom-anchored .hero-content stack never grows
+   past the hero's top edge (where .hero{overflow:hidden} would clip it), and
+   width is sized against the viewport — a % here resolves against the shrink-to-
+   fit .hero-content and under-sizes wide logos. */
+.hero-logo{max-height:clamp(44px,7.5vh,90px);max-width:min(440px,70vw);height:auto;width:auto;object-fit:contain;display:block;filter:drop-shadow(0 4px 24px rgba(0,0,0,.55))}
 .hero-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:.88rem;animation:fadeUp .7s .2s var(--ease-out) backwards;max-height:60px;overflow:hidden;transition:opacity .5s var(--ease),max-height .6s var(--ease),margin .5s var(--ease),transform .5s var(--ease)}
 .hero-meta-item{display:flex;align-items:center;gap:5px;color:var(--text2)}
 .hero-meta-item.rating{color:var(--gold);font-weight:700}
@@ -97,7 +101,10 @@
 .section-see-all:hover svg{transform:translateX(3px)}
 
 /* ===== CARD ROW ===== */
-.row{display:flex;gap:12px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-padding:0 clamp(16px,5vw,60px);overscroll-behavior-x:contain}
+/* padding-bottom absorbs the small ink spill of the oversized Top-10 rank number
+   (line-height:.78) so rows never grow a vertical scrollbar — no overflow clipping
+   needed (which would shave the glyphs). */
+.row{display:flex;gap:12px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 16px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-padding:0 clamp(16px,5vw,60px);overscroll-behavior-x:contain}
 .row::-webkit-scrollbar{display:none}
 
 /* ===== GENRE PILLS ===== */
