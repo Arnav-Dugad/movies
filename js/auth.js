@@ -1,12 +1,13 @@
 // ===== AUTH =====
 import { auth, db, firebase } from './firebase.js';
 import { state, loadRecentlyViewed } from './state.js';
-import { toast, $ } from './ui.js';
+import { toast, $, trapFocus, lockScroll, unlockScroll } from './ui.js';
 import { registerActions } from './events.js';
 import { loadWatchlist, loadWatched } from './watchlist.js';
 import { loadRatings } from './ratings.js';
 
 let authMode = 'login';
+let delRelease = null;
 
 export function initAuth() {
   auth.onAuthStateChanged(async u => {
@@ -40,7 +41,13 @@ export function initAuth() {
     'toggle-profile': () => toggleProfile(),
     'reset-password': (el, e) => resetPassword(e),
     'sign-out': () => { auth.signOut(); toggleProfile(); toast('Signed out', 'info'); },
+    'open-delete': () => { toggleProfile(); openDelete(); },
+    'close-delete': () => closeDelete(),
+    'confirm-delete': () => confirmDelete(),
   });
+
+  const dov = $('delOv');
+  if (dov) dov.addEventListener('click', e => { if (e.target === dov) closeDelete(); });
 }
 
 function updateAuthUI() {
@@ -55,6 +62,8 @@ function updateAuthUI() {
   const da = $('ddAuth');
   da.style.display = u ? 'none' : 'flex';
   $('ddSignOut').style.display = u ? 'flex' : 'none';
+  const dd = $('ddDelete');
+  if (dd) dd.style.display = u ? 'flex' : 'none';
 }
 
 export function openAuth() { $('authOverlay').classList.add('active'); }
@@ -117,4 +126,134 @@ async function resetPassword(e) {
   if (!email) return showAuthErr('Enter your email first');
   try { await auth.sendPasswordResetEmail(email); toast('Password reset email sent!', 'success'); }
   catch (e2) { showAuthErr(e2.message); }
+}
+
+// ===== DELETE ACCOUNT =====
+const providerOf = (u) => (u && u.providerData && u.providerData[0] && u.providerData[0].providerId) || 'password';
+
+export function openDelete() {
+  if (!state.user) return;
+  const trigger = document.activeElement;
+  const isPw = providerOf(state.user) === 'password';
+  // For a password account the field is doing double duty: it confirms intent AND
+  // satisfies Firebase's recent-login requirement, so we can reauthenticate BEFORE
+  // deleting anything rather than discovering the problem half-way through.
+  $('delReauth').innerHTML = isPw
+    ? `<div class="auth-field" style="margin-bottom:14px;text-align:left"><label for="delPass">Confirm your password</label><input type="password" id="delPass" placeholder="Your password" autocomplete="current-password"></div>`
+    : `<p class="del-note">You'll be asked to confirm with Google before anything is deleted.</p>`;
+  $('delErr').classList.remove('show');
+  const btn = $('delBtn');
+  btn.disabled = false;
+  btn.textContent = 'Delete account';
+  const ov = $('delOv');
+  ov.classList.add('active');
+  lockScroll();
+  delRelease = trapFocus(ov, trigger);
+  const f = $('delPass');
+  if (f) f.focus();
+}
+
+export function closeDelete() {
+  const ov = $('delOv');
+  // Idempotent — closeAllModals() calls this on every navigation, and an
+  // unbalanced unlockScroll() would corrupt the lock's reference count.
+  if (!ov || !ov.classList.contains('active')) return;
+  ov.classList.remove('active');
+  unlockScroll();
+  if (delRelease) { delRelease(); delRelease = null; }
+}
+
+export function isDeleteOpen() { const ov = $('delOv'); return !!ov && ov.classList.contains('active'); }
+
+function showDelErr(msg) { $('delErrText').textContent = msg; $('delErr').classList.add('show'); }
+
+// Firestore has no client-side recursive delete: subcollections must be listed and
+// removed doc by doc. Batched (the server caps a batch at 500).
+async function deleteAll(refs) {
+  for (let i = 0; i < refs.length; i += 450) {
+    const batch = db.batch();
+    refs.slice(i, i + 450).forEach(r => batch.delete(r));
+    await batch.commit();
+  }
+}
+
+async function deleteSub(uid, name) {
+  const snap = await db.collection('users').doc(uid).collection(name).get();
+  await deleteAll(snap.docs.map(d => d.ref));
+}
+
+// Every place this account leaves data. allSettled per group so one failure (e.g. a
+// shared friendship doc the rules won't let us touch) can't strand the rest.
+async function purgeUserData(uid, email) {
+  const jobs = [
+    deleteSub(uid, 'watchlist'),
+    deleteSub(uid, 'watched'),
+    deleteSub(uid, 'ratings'),
+    deleteSub(uid, 'shared'),
+    db.collection('publicProfiles').doc(uid).delete(),
+    (async () => {
+      const snap = await db.collection('friendships').where('members', 'array-contains', uid).get();
+      await deleteAll(snap.docs.map(d => d.ref));
+    })(),
+    (async () => {
+      const [to, from] = await Promise.all([
+        db.collection('friendRequests').where('to', '==', uid).get(),
+        db.collection('friendRequests').where('from', '==', uid).get(),
+      ]);
+      await deleteAll([...to.docs, ...from.docs].map(d => d.ref));
+    })(),
+  ];
+  if (email) jobs.push(db.collection('emailIndex').doc(email.trim().toLowerCase()).delete());
+  const results = await Promise.allSettled(jobs);
+  // The profile doc goes last — it's the anchor the rest hangs off.
+  await db.collection('users').doc(uid).delete().catch(() => {});
+  return results.filter(r => r.status === 'rejected').length;
+}
+
+function purgeLocal(uid) {
+  ['cv_history_', 'cv_recent_', 'cv_badges_'].forEach(k => { try { localStorage.removeItem(k + uid); } catch (_) {} });
+}
+
+async function confirmDelete() {
+  const u = state.user;
+  if (!u) return closeDelete();
+  const btn = $('delBtn');
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  $('delErr').classList.remove('show');
+
+  const uid = u.uid, email = u.email;
+  try {
+    // 1. Reauthenticate FIRST. Firebase rejects delete() on a stale session, and
+    //    discovering that after the data is gone would leave an empty account.
+    if (providerOf(u) === 'password') {
+      const pass = ($('delPass') || {}).value || '';
+      if (!pass) throw { code: 'cv/no-password' };
+      await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(email, pass));
+    } else {
+      await u.reauthenticateWithPopup(new firebase.auth.GoogleAuthProvider());
+    }
+
+    // 2. Data while we're still authorised to write, 3. then the account itself.
+    const failed = await purgeUserData(uid, email);
+    purgeLocal(uid);
+    await u.delete();
+
+    closeDelete();
+    toast(failed ? 'Account deleted (some shared data may remain)' : 'Your account has been deleted', failed ? 'info' : 'success');
+    document.dispatchEvent(new CustomEvent('cv:go', { detail: '/' }));
+  } catch (e) {
+    const m = {
+      'cv/no-password': 'Please enter your password to confirm',
+      'auth/wrong-password': 'Incorrect password',
+      'auth/invalid-credential': 'Incorrect password',
+      'auth/too-many-requests': 'Too many attempts — try again later',
+      'auth/popup-closed-by-user': 'Confirmation cancelled — nothing was deleted',
+      'auth/user-mismatch': 'That account does not match the one signed in',
+      'auth/requires-recent-login': 'Please sign out and back in, then try again',
+    };
+    showDelErr(m[e.code] || e.message || 'Could not delete account');
+    btn.disabled = false;
+    btn.textContent = 'Delete account';
+  }
 }

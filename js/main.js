@@ -21,6 +21,7 @@ import { initFriends } from './friends.js';
 import { initParty } from './party.js';
 import { initRouter } from './router.js';
 import { initEffects } from './effects.js';
+import { initHScroll } from './hscroll.js';
 import { initBadges } from './badges.js';
 import { initWatchedMeta } from './watched-meta.js';
 import { cleanupServiceWorker } from './pwa.js';
@@ -55,6 +56,7 @@ async function init() {
   // any .reveal rendered on that first synchronous pass would stay at opacity:0
   // forever. Nothing in initEffects depends on the router.
   initEffects();
+  initHScroll();
   // initBadges BEFORE initRouter too: both listen on `document` for cv:wl-changed,
   // and same-target listeners fire in registration order. Badges must sync (ledger +
   // recentUnlocks) before the router's refresh renders stats, so a freshly-unlocked

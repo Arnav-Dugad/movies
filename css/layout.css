@@ -107,7 +107,7 @@
 .section-see-all:hover svg{transform:translateX(3px)}
 
 /* ===== CARD ROW ===== */
-.row{display:flex;gap:12px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-padding:0 clamp(16px,5vw,60px);overscroll-behavior-x:contain}
+.row{display:flex;gap:12px;overflow-x:auto;padding:0 clamp(16px,5vw,60px) 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scroll-padding:0 clamp(16px,5vw,60px);overscroll-behavior-x:contain;scrollbar-width:none}
 .row::-webkit-scrollbar{display:none}
 
 /* ===== GENRE PILLS ===== */

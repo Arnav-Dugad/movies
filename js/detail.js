@@ -62,11 +62,13 @@ export async function openDetail(id, type) {
     const rat = det.vote_average ? det.vote_average.toFixed(1) : 'N/A';
     const rt = det.runtime ? `${Math.floor(det.runtime / 60)}h ${det.runtime % 60}m` : (det.episode_run_time?.length ? `${det.episode_run_time[0]}m/ep` : '');
     const genres = (det.genres || []).map(g => g.name); const cert = getCert(det, type);
-    const dir = cred.crew?.find(c => c.job === 'Director');
+    const dirs = directorsOf(det, cred, type);
     const trailer = vids.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube') || vids.results?.find(v => v.site === 'YouTube');
     const wl = state.watchlist.some(w => w.id === `${type}_${id}`);
     const myRating = state.ratings[`${type}_${id}`];
     const wd = !!state.watched[`${type}_${id}`];
+    // You can't have watched — or have an opinion on — something that isn't out yet.
+    const out = isReleased(det, type);
     const recs = det.recommendations?.results || sim.results || [];
 
     // Record for personalization
@@ -128,8 +130,9 @@ export async function openDetail(id, type) {
             <div class="detail-btns">
               ${trailer ? `<button class="btn-primary magnetic" data-action="play-trailer" data-key="${trailer.key}" data-tip="Play trailer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play Trailer</button>` : ''}
               <button class="dbtn-icon ${wl ? 'active' : ''}" data-wl="${type}|${id}" data-action="toggle-wl" data-item="${wlPayload}" aria-label="Watchlist" data-tip="${wl ? 'Remove from list' : 'Add to list'}">${wl ? '✓' : '+'}</button>
-              <button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
-              <button class="dbtn-icon" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate" data-tip="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>
+              ${out ? `<button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>` : ''}
+              ${out ? `<button class="dbtn-icon" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate" data-tip="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>` : ''}
+              ${out ? '' : `<span class="unreleased-note" data-tip="You can still add it to your list">${type === 'tv' ? 'Not aired yet' : 'Not released yet'}</span>`}
               <button class="dbtn-icon" data-action="share-item" data-title="${safeTitle}" data-id="${id}" data-type="${type}" aria-label="Share" data-tip="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
             </div>
           </div>
@@ -142,7 +145,7 @@ export async function openDetail(id, type) {
           ${det.original_language ? `<div class="stat-card"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
           ${boHTML}
           ${det.vote_count ? `<div class="stat-card"><div class="stat-label">Votes</div><div class="stat-val" data-count="${det.vote_count}">${det.vote_count.toLocaleString()}</div></div>` : ''}
-          ${dir ? `<div class="stat-card stat-person" style="cursor:pointer" data-action="open-person" data-id="${dir.id}" data-tip="View ${esc(dir.name)}"><div class="stat-label">Director</div><div class="sp-row"><div class="sp-pic">${dir.profile_path ? `<img src="${IMG}w185${dir.profile_path}" alt="${esc(dir.name)}" loading="lazy" data-ph="${PH}">` : `<span class="sp-mono">${esc((dir.name || '?')[0])}</span>`}</div><div class="sp-name">${esc(dir.name)}</div></div></div>` : ''}
+          ${directorCardHTML(dirs, type)}
           ${type === 'tv' && det.number_of_seasons ? `<div class="stat-card"><div class="stat-label">Seasons</div><div class="stat-val" data-count="${det.number_of_seasons}">${det.number_of_seasons}</div></div>` : ''}
           ${type === 'tv' && det.number_of_episodes ? `<div class="stat-card"><div class="stat-label">Episodes</div><div class="stat-val" data-count="${det.number_of_episodes}">${det.number_of_episodes}</div></div>` : ''}
           ${type === 'tv' && det.networks?.length ? `<div class="stat-card"><div class="stat-label">Network</div><div class="stat-val">${det.networks.map(n => esc(n.name)).join(', ')}</div></div>` : ''}
@@ -166,6 +169,47 @@ export async function openDetail(id, type) {
     console.error(e);
     ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-size:1.1rem;font-weight:600">Failed to load</p><p style="color:var(--text3);margin:8px 0 20px">Please try again</p><button class="btn-primary" data-action="back">Back</button></div>';
   }
+}
+
+// ===== RELEASE STATE =====
+// Has this actually come out? Drives whether "mark as watched" and "rate" are
+// offered — they're meaningless on an unreleased title, and because this is
+// computed from the date at render time, both appear on their own the day it lands.
+// The date is the source of truth (TMDB `status` lags, and lists "Released" for
+// titles still weeks out in some regions); status is only a fallback when a title
+// carries no date at all.
+export function isReleased(det, type) {
+  const raw = type === 'tv' ? det.first_air_date : det.release_date;
+  if (raw) {
+    const d = new Date(raw + 'T00:00:00');
+    if (!isNaN(d)) return d.getTime() <= Date.now();
+  }
+  // No date on record: trust status, and default to treating it as out so a data
+  // gap can never silently strip the buttons from an old title.
+  if (type === 'tv') return det.status !== 'Planned' && det.status !== 'In Production';
+  return det.status ? det.status === 'Released' : true;
+}
+
+// ===== DIRECTORS =====
+// A film can have several (the Coens, the Russos, the Daniels). Dedupe by person —
+// TMDB lists someone once per job — and fall back to a TV show's creators, which is
+// the closest equivalent when the crew carries no series-level director.
+function directorsOf(det, cred, type) {
+  const seen = new Map();
+  (cred.crew || []).forEach(c => { if (c.job === 'Director' && !seen.has(c.id)) seen.set(c.id, { id: c.id, name: c.name || '', profile_path: c.profile_path }); });
+  if (!seen.size && type === 'tv') {
+    (det.created_by || []).forEach(c => { if (!seen.has(c.id)) seen.set(c.id, { id: c.id, name: c.name || '', profile_path: c.profile_path, __creator: true }); });
+  }
+  return [...seen.values()].slice(0, 4);
+}
+
+function directorCardHTML(dirs, type) {
+  if (!dirs.length) return '';
+  const isCreator = type === 'tv' && dirs.some(d => d.__creator);
+  const label = dirs.length > 1 ? (isCreator ? 'Creators' : 'Directors') : (isCreator ? 'Creator' : 'Director');
+  const rows = dirs.map(d => `<div class="sp-row" role="button" tabindex="0" data-action="open-person" data-id="${d.id}" data-tip="View ${esc(d.name)}"><div class="sp-pic">${d.profile_path ? `<img src="${IMG}w185${d.profile_path}" alt="${esc(d.name)}" loading="lazy" data-ph="${PH}">` : `<span class="sp-mono">${esc((d.name || '?')[0])}</span>`}</div><div class="sp-name">${esc(d.name)}</div></div>`).join('');
+  // Each name is its own link now, so the card itself is no longer the click target.
+  return `<div class="stat-card stat-person${dirs.length > 1 ? ' stat-person-multi' : ''}"><div class="stat-label">${label}</div>${rows}</div>`;
 }
 
 // ===== EXTERNAL LINKS =====
