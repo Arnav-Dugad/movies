@@ -1,19 +1,19 @@
 // ===== WATCHED PAGE (/watched) =====
 // Lists every title the user has marked as watched, with type tabs (All/Movies/TV)
 // plus a search box, sort, and genre filter. Watched docs are enriched with
-// poster/year/genres on write (see watchlist.js); older docs are backfilled from
-// TMDB on first view so their artwork and genres show up.
-import { tmdb } from './api.js';
-import { db } from './firebase.js';
+// poster/year/genres on write (see watchlist.js); older docs — and the
+// runtime/director/cast the badge engine needs — are filled in by the shared
+// backfill in watched-meta.js on first view.
 import { state } from './state.js';
 import { IMG, PH, genreMap } from './config.js';
 import { esc, debounce, $ } from './ui.js';
 import { registerActions } from './events.js';
+import { rateBtnHTML } from './cards.js';
+import { ensureWatchedMeta } from './watched-meta.js';
 
 let watchedSort = 'recent';   // recent | title | year_desc | year_asc
 let watchedGenre = 'all';     // 'all' | genre id (string)
 let watchedQuery = '';
-let backfilled = false;
 
 // Normalize a watched doc into a renderable item, filling poster/year from the
 // watchlist for entries saved before enrichment existed.
@@ -55,27 +55,6 @@ function genreOptions() {
   return `<option value="all">All genres</option>` + opts.map(([v, name]) => `<option value="${v}">${esc(name)}</option>`).join('');
 }
 
-// Backfill poster/year/genres for old watched docs missing them, once per session.
-async function backfillWatched() {
-  if (backfilled || !state.user) return;
-  backfilled = true;
-  const missing = Object.entries(state.watched).filter(([, d]) => !d.poster || !(d.genres && d.genres.length));
-  if (!missing.length) return;
-  await Promise.allSettled(missing.map(async ([key, d]) => {
-    try {
-      const det = await tmdb(`/${d.type}/${d.tmdbId}`);
-      const patch = {
-        poster: det.poster_path || d.poster || '',
-        year: d.year || (det.release_date || det.first_air_date || '').slice(0, 4),
-        genres: (det.genres || []).map(g => g.id),
-      };
-      state.watched[key] = { ...d, ...patch };
-      await db.collection('users').doc(state.user.uid).collection('watched').doc(key).set(patch, { merge: true });
-    } catch (e) { /* leave placeholder; don't block the rest */ }
-  }));
-  renderWatched();
-}
-
 export function setWatchedFilter(f, el) {
   state.watchedFilter = f;
   el.parentElement.querySelectorAll('.wl-tab').forEach(t => t.classList.remove('active'));
@@ -100,7 +79,7 @@ function renderGrid() {
 
   ct.innerHTML = `<div class="wl-grid">${items.map(w => {
     const poster = w.poster ? `${IMG}w342${w.poster}` : PH;
-    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.id}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}"><div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
+    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.id}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}"><div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>${rateBtnHTML(w.id, w.type, w.title)}</div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
   }).join('')}</div>`;
 }
 
@@ -126,7 +105,7 @@ export function renderWatched() {
   }
 
   renderGrid();
-  backfillWatched();
+  ensureWatchedMeta();
 }
 
 export function initWatched() {
@@ -137,7 +116,8 @@ export function initWatched() {
   });
   const inp = $('watchedSearch');
   if (inp) inp.addEventListener('input', debounce(function () { watchedQuery = this.value.trim(); renderGrid(); }, 200));
-  // Reset the one-shot backfill guard on sign-out — otherwise a second account
-  // signing in on the same tab/session never gets ITS old watched docs backfilled.
-  document.addEventListener('cv:auth', () => { if (!state.user) backfilled = false; });
+  // Repaint once the backfill fills in posters/genres for older docs. Must be the
+  // full renderWatched(), not renderGrid(): only the former rebuilds the genre
+  // <select>, whose options are derived from the genres the backfill just added.
+  document.addEventListener('cv:meta-backfilled', () => { if (state.user) renderWatched(); });
 }

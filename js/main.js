@@ -21,6 +21,8 @@ import { initFriends } from './friends.js';
 import { initParty } from './party.js';
 import { initRouter } from './router.js';
 import { initEffects } from './effects.js';
+import { initBadges } from './badges.js';
+import { initWatchedMeta } from './watched-meta.js';
 import { cleanupServiceWorker } from './pwa.js';
 
 function hideLoader() { const l = $('loader'); if (l) l.classList.add('hidden'); }
@@ -47,8 +49,18 @@ async function init() {
   initSocial();
   initFriends();
   initParty();
-  initRouter();
+  initWatchedMeta();
+  // initEffects BEFORE initRouter: initRouter ends with a synchronous renderRoute(),
+  // and observeReveals() silently no-ops while its IntersectionObserver is null —
+  // any .reveal rendered on that first synchronous pass would stay at opacity:0
+  // forever. Nothing in initEffects depends on the router.
   initEffects();
+  // initBadges BEFORE initRouter too: both listen on `document` for cv:wl-changed,
+  // and same-target listeners fire in registration order. Badges must sync (ledger +
+  // recentUnlocks) before the router's refresh renders stats, so a freshly-unlocked
+  // badge paints with its pulse on the same tick.
+  initBadges();
+  initRouter();
   cleanupServiceWorker();
 
   // Load initial content; hide loader once hero + home settle (max 4s fallback).

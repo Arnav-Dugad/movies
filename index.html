@@ -27,6 +27,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+<!-- .reveal starts at opacity:0 and is un-hidden by an IntersectionObserver. If the
+     module graph never loads, that observer never runs and the page would render
+     permanently blank — so opt out of the effect entirely when JS is unavailable. -->
+<noscript><style>.reveal{opacity:1 !important;transform:none !important}</style></noscript>
 </head>
 <body>
 
@@ -169,15 +174,27 @@
 
 <!-- RATING MODAL -->
 <div class="rate-overlay" id="rateOv">
-  <div class="rate-modal">
+  <div class="rate-modal" role="dialog" aria-modal="true" aria-labelledby="rateTitle">
     <div class="rate-title" id="rateTitle">Rate this</div>
     <div class="rate-subtitle" id="rateSub"></div>
-    <div class="rate-stars" id="rateStars"></div>
-    <div>
+    <div class="rate-stars" id="rateStars" role="radiogroup" aria-label="Score out of 10"></div>
+    <div class="rate-label" id="rateLabel"></div>
+    <div class="rate-actions">
       <button class="rate-submit" data-action="rate-submit">Rate</button>
       <button class="rate-clear" data-action="rate-clear">Remove</button>
     </div>
   </div>
+</div>
+
+<!-- IMAGE LIGHTBOX (detail media gallery) -->
+<div class="trailer-overlay" id="imgOv">
+  <button class="trailer-close" id="imgClose" data-action="close-lightbox" aria-label="Close">&times;</button>
+  <button class="lb-nav lb-prev" data-action="lightbox-prev" aria-label="Previous image">&#8249;</button>
+  <div class="lb-stage" role="dialog" aria-modal="true" aria-label="Image viewer">
+    <img id="imgStage" alt="">
+    <div class="lb-count" id="imgCount"></div>
+  </div>
+  <button class="lb-nav lb-next" data-action="lightbox-next" aria-label="Next image">&#8250;</button>
 </div>
 
 <!-- HOME -->
@@ -387,7 +404,7 @@
 </button>
 
 <!-- TOAST -->
-<div class="toast-zone" id="toastZone"></div>
+<div class="toast-zone" id="toastZone" role="status" aria-live="polite"></div>
 
 <script>document.getElementById('footerYear').textContent=new Date().getFullYear();</script>
 <script type="module" src="/js/main.js"></script>

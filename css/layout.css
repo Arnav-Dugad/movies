@@ -186,6 +186,9 @@
 .stat-big{background:var(--bg3);border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:20px;text-align:center;transition:all .3s}
 .stat-big:hover{border-color:rgba(255,255,255,.1);transform:translateY(-2px)}
 .stat-big-num{font-family:var(--font-mono);font-size:2.2rem;font-weight:700;background:linear-gradient(135deg,var(--red),var(--gold));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+/* Name variant (top director / most-seen actor) — a person's name needs to wrap
+   and can't ride the mono/gradient numeral treatment. */
+.stat-big-name{font-size:1.15rem;font-weight:800;line-height:1.25;min-height:2.9rem;display:flex;align-items:center;justify-content:center}
 .stat-big-label{font-size:.78rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-top:4px;font-weight:600}
 .genre-chart{background:var(--bg3);border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:24px;margin-bottom:24px}
 .genre-bar-wrap{display:flex;flex-direction:column;gap:8px;margin-top:16px}
@@ -211,6 +214,52 @@
 .rd-fill{width:100%;border-radius:4px 4px 0 0;background:linear-gradient(to top,var(--red),var(--gold));transition:height 1s var(--ease)}
 .rd-score{font-size:.68rem;color:var(--text2);font-weight:600}
 .rating-dist-empty{color:var(--text3);font-size:.85rem;padding:32px 16px;text-align:center;background:var(--bg3);border:1px solid var(--glass-border);border-radius:var(--radius-lg);margin-bottom:32px}
+
+/* ===== VIEWING CHALLENGES (progress rings) ===== */
+.challenge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:32px}
+.challenge-card{display:flex;align-items:center;gap:18px;padding:20px;background:var(--bg3);border:1px solid var(--glass-border);border-radius:var(--radius-lg);transition:border-color .3s var(--ease-out),transform .3s var(--ease-out)}
+.challenge-card:hover{border-color:rgba(255,255,255,.1);transform:translateY(-2px)}
+.ring-wrap{position:relative;width:104px;height:104px;flex-shrink:0}
+.ring{width:100%;height:100%;display:block}
+.ring-bg{fill:none;stroke:var(--bg5);stroke-width:8}
+/* stroke-dasharray = circumference (2*PI*52 = 326.73). JS sets stroke-dashoffset
+   post-paint so the ring animates from empty; the rotate puts 0% at 12 o'clock.
+   Reduced motion needs no special-casing — the global * transition-duration
+   override in animations.css already snaps this to its final value. */
+.ring-fill{fill:none;stroke-width:8;stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;stroke-dasharray:326.73;stroke-dashoffset:326.73;transition:stroke-dashoffset 1.1s var(--ease-out)}
+.ring-cyan{stroke:var(--cyan2)}
+.ring-green{stroke:var(--green2)}
+.ring-gold{stroke:var(--gold)}
+.ring-red{stroke:var(--red2)}
+.ring-purple{stroke:var(--purple2)}
+.ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.ring-num{font-family:var(--font-mono);font-size:1.5rem;font-weight:700;line-height:1}
+.ring-goal{font-size:.8rem;color:var(--text3)}
+.ring-pct{font-size:.66rem;color:var(--text3);font-weight:700;margin-top:2px}
+.challenge-info{min-width:0}
+.challenge-name{font-weight:800;font-size:1.02rem;margin-bottom:3px}
+.challenge-sub{font-size:.8rem;color:var(--text2);margin-bottom:8px}
+.challenge-meta{font-size:.72rem;color:var(--text3);font-weight:600}
+
+/* ===== BADGES ===== */
+.badge-count{font-family:var(--font-mono);font-size:.8rem;color:var(--text3);font-weight:700}
+.badge-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px;margin-bottom:32px}
+/* Locked badges are dimmed+desaturated rather than hidden, so the set reads as a
+   collection with something to chase. .earned restores them. */
+.badge{background:var(--bg3);border:1px solid var(--glass-border);border-radius:var(--radius);padding:14px 8px;text-align:center;opacity:.45;filter:grayscale(1);transition:opacity .4s var(--ease-out),filter .4s var(--ease-out),transform .3s var(--ease-out),border-color .3s var(--ease-out)}
+.badge.earned{opacity:1;filter:none}
+.badge:hover{transform:translateY(-3px);border-color:rgba(255,255,255,.12)}
+.badge-icon{font-size:1.9rem;line-height:1;margin-bottom:7px}
+.badge-name{font-size:.72rem;font-weight:700;line-height:1.25;margin-bottom:5px}
+.badge-prog{font-size:.62rem;color:var(--text3);font-weight:600;font-family:var(--font-mono)}
+.badge-done{color:var(--green2)}
+.badge-pending{color:var(--text3);font-style:italic}
+.badge-bar{height:3px;background:var(--bg5);border-radius:2px;overflow:hidden;margin:0 2px 4px}
+.badge-bar-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--red),var(--gold));transition:width .9s var(--ease-out)}
+.badge.earned.badge-bronze{border-color:rgba(205,127,50,.35)}
+.badge.earned.badge-silver{border-color:rgba(203,213,225,.3)}
+.badge.earned.badge-gold{border-color:var(--gold-glow);background:linear-gradient(160deg,var(--bg3),rgba(251,191,36,.06))}
+.badge.earned.badge-platinum{border-color:rgba(167,139,250,.4);background:linear-gradient(160deg,var(--bg3),rgba(139,92,246,.08))}
 
 /* ===== BACK TO TOP ===== */
 .btt{position:fixed;bottom:90px;right:16px;width:42px;height:42px;background:var(--surface2);border:1px solid var(--glass-border);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:4000;opacity:0;visibility:hidden;transform:translateY(10px);transition:all .3s var(--ease)}

@@ -17,6 +17,20 @@ function wlPayload(item, type) {
   }));
 }
 
+const STAR_OUTLINE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+
+// Quick-rate control. Only emitted on WATCHED cards — rating something you
+// haven't seen is meaningless, and that constraint is also what keeps the card
+// from growing a third always-on control. Reuses the existing `open-rating`
+// action (which already stopPropagation()s), so tapping it never opens the
+// detail page: events.js resolves data-action via closest(), and this button is
+// deeper than the card root's open-detail.
+export function rateBtnHTML(id, type, title) {
+  const score = state.ratings[`${type}_${id}`];
+  const tip = score ? `Your rating: ${score}/10` : 'Rate this';
+  return `<button class="card-rate${score ? ' rated' : ''}" data-rate="${type}|${id}" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${esc(title)}" aria-label="${score ? `Rated ${score} of 10` : 'Rate this'}" data-tip="${tip}">${score || STAR_OUTLINE}</button>`;
+}
+
 export function buildCard(item, type, opts = {}) {
   const t = type || item.media_type || 'movie';
   if (t === 'person') return personCard(item);
@@ -41,6 +55,7 @@ export function buildCard(item, type, opts = {}) {
   if (opts.badge) h += `<div class="card-badge">${esc(opts.badge)}</div>`;
   if (rating && !opts.t10) h += `<div class="card-rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rating}</div>`;
   if (wd) h += `<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>`;
+  if (wd && !opts.t10) h += rateBtnHTML(item.id, t, title);
   // Watchlist toggle lives INSIDE .card-img so it overlays the poster (its
   // absolute bottom/right anchors to the poster, not the whole card) — keeps the
   // text area clean so the title sits tight under the poster.
@@ -70,6 +85,20 @@ export function refreshWLBtns() {
     b.classList.toggle('active', yes);
     // wl-remove buttons use an SVG icon, not the +/✓ glyph — don't clobber it.
     if (b.classList.contains('card-wl') && !b.classList.contains('wl-remove')) b.textContent = yes ? '✓' : '+';
+  });
+}
+
+// Refresh every quick-rate button on screen, so rating from the detail page (or
+// any other card) updates the rest without a full re-render.
+export function refreshRateBtns() {
+  document.querySelectorAll('[data-rate]').forEach(b => {
+    const [t, i] = b.dataset.rate.split('|');
+    const score = state.ratings[`${t}_${i}`];
+    b.classList.toggle('rated', !!score);
+    b.innerHTML = score || STAR_OUTLINE;
+    const tip = score ? `Your rating: ${score}/10` : 'Rate this';
+    b.dataset.tip = tip;
+    b.setAttribute('aria-label', score ? `Rated ${score} of 10` : 'Rate this');
   });
 }
 

@@ -1,7 +1,9 @@
 /* ===== RESPONSIVE ===== */
 @media(min-width:769px){
-  .card-wl{opacity:0}
-  .card:hover .card-wl{opacity:1}
+  .card-wl,.card-rate{opacity:0}
+  .card:hover .card-wl,.card:hover .card-rate{opacity:1}
+  /* An existing rating is always worth showing, hover or not. */
+  .card-rate.rated{opacity:1}
   /* Breathing room between the poster column and the full-width "next episode"
      countdown that sits directly beneath .detail-top on desktop (mobile stacks
      the layout so the countdown already clears the poster). */
@@ -39,17 +41,25 @@
   .browse-grid,.wl-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
   .toast-zone{bottom:calc(var(--mobile-nav-h) + 14px)}
   .btt{bottom:calc(var(--mobile-nav-h) + 14px);right:12px}
-  .card-preview{display:none !important}
   .mood-grid{grid-template-columns:repeat(2,1fr)}
   .footer-inner{flex-direction:column;gap:24px}
   .footer-cols{gap:32px}
+  .challenge-card{gap:14px;padding:16px}
+  .ring-wrap{width:88px;height:88px}
+  .ring-num{font-size:1.25rem}
+  .badge-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
   /* Larger tap targets on touch */
-  .card-wl{width:36px;height:36px}
+  .card-wl,.card-rate{width:36px;height:36px}
   .g-pill,.chip,.s-tab,.wl-tab{padding-top:10px;padding-bottom:10px}
+  /* No .rate-star width override here — the row flexes to fit (components.css).
+     A fixed width would push 10 stars past the modal and wrap the last one. */
+  .rate-modal{padding:32px 20px}
 }
 
 /* Touch devices: drop the horizontal snap so a vertical swipe over a card row
-   scrolls the page straight down instead of first "catching" on a snap point. */
+   scrolls the page straight down instead of first "catching" on a snap point,
+   and make hover-gated affordances permanent. (Single block — this used to be
+   two separate @media (hover:none) rules saying related things.) */
 @media (hover:none){
   .row{scroll-snap-type:none}
   .card{scroll-snap-align:none}
@@ -58,9 +68,11 @@
      clipped at the CARD level, so nothing visible reaches the row's clip line; and
      there's no hover-lift to shave on touch. */
   .row{overflow-y:hidden}
-  /* No hover on touch, so the add-to-list button must be permanently visible
-     (its default state is opacity:0, revealed only on :hover). */
-  .card-wl{opacity:1;transform:none}
+  /* No hover on touch, so the add-to-list and quick-rate buttons must be
+     permanently visible (their default state is opacity:0, revealed on :hover). */
+  .card-wl,.card-rate{opacity:1;transform:none}
+  /* Hover-only heavy effects. */
+  .tilt{transform:none !important}
 }
 
 @media(max-width:380px){
@@ -68,10 +80,5 @@
   .hero-title{font-size:1.9rem}
   .hero-actions{flex-direction:column;width:100%}
   .hero-actions .btn-primary,.hero-actions .btn-glass{width:100%;justify-content:center}
-}
-
-/* Coarse pointer / touch: disable hover-only heavy effects */
-@media (hover:none){
-  .card-preview{display:none !important}
-  .tilt{transform:none !important}
+  .challenge-card{flex-direction:column;text-align:center}
 }

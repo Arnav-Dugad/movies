@@ -7,6 +7,27 @@ export const prefersReducedMotion=()=>window.matchMedia('(prefers-reduced-motion
 export const isTouch=()=>window.matchMedia('(hover: none)').matches;
 export const $=(id)=>document.getElementById(id);
 
+// ===== FOCUS TRAP =====
+// Keeps Tab inside an open modal and restores focus to whatever opened it.
+// Returns a teardown — call it from the modal's close path. Queried lazily on
+// each Tab so modals that rebuild their contents (e.g. the rating stars) work.
+export function trapFocus(container, restore = document.activeElement) {
+  const SEL = 'a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])';
+  const onKey = e => {
+    if (e.key !== 'Tab') return;
+    const f = [...container.querySelectorAll(SEL)].filter(el => el.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  container.addEventListener('keydown', onKey);
+  return () => {
+    container.removeEventListener('keydown', onKey);
+    try { restore && restore.focus(); } catch (_) {}
+  };
+}
+
 // ===== SCROLL LOCK (reference-counted so overlays never strand the page) =====
 let lockCount=0;
 export function lockScroll(){lockCount++;document.body.style.overflow='hidden';}

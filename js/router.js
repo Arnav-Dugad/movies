@@ -11,15 +11,20 @@ import { openSearch } from './search.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
 import { closeRating, isRatingOpen } from './ratings.js';
-import { closeTrailer, isTrailerOpen } from './media.js';
+import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen } from './media.js';
 import { closeAuth, isAuthOpen } from './auth.js';
 import { renderFriends } from './friends.js';
 import { renderParty } from './party.js';
 
+// Set when the watchlist/ratings change while we're NOT on home, so home can
+// re-render its personal rows lazily on arrival instead of every list toggle
+// re-running renderPersonalRows() (which re-blasts skeletons and refetches).
+let personalDirty = false;
+
 // Every route maps to one page-container element id and a render function.
 // render() must be safe to call again with the same params.
 const ROUTES = [
-  { test: /^\/$/, page: 'homePage', render: () => {} },
+  { test: /^\/$/, page: 'homePage', render: () => { if (personalDirty) { personalDirty = false; renderPersonalRows(); } } },
   { test: /^\/movies\/?$/, page: 'moviesPage', render: () => loadMovies() },
   { test: /^\/tv\/?$/, page: 'tvPage', render: () => loadTV() },
   { test: /^\/discover\/?$/, page: 'discoverPage', render: () => initDiscover() },
@@ -68,6 +73,7 @@ function matchRoute(path) {
 // coordinate since search is a real page now, not an overlay.
 function closeAllModals() {
   if (isTrailerOpen()) closeTrailer();
+  if (isLightboxOpen()) closeLightbox();
   if (isRatingOpen()) closeRating();
   if (isAuthOpen()) closeAuth();
   const dd = $('profileDD'); if (dd) dd.classList.remove('active');
@@ -124,6 +130,9 @@ export function goHome() { navigate('/'); }
 function pageToPath(page) { return page === 'home' ? '/' : (PAGE_TO_PATH[page] || '/'); }
 
 function handleEscape() {
+  // Innermost-first: the lightbox can be opened from the detail page, so it must
+  // be dismissed before anything underneath it.
+  if (isLightboxOpen()) return closeLightbox();
   if (isTrailerOpen()) return closeTrailer();
   if (isRatingOpen()) return closeRating();
   if (isAuthOpen()) return closeAuth();
@@ -151,10 +160,15 @@ export function initRouter() {
     else if (currentPath === '/stats') renderStats();
     else if (currentPath === '/friends') renderFriends();
     else if (currentPath === '/party') renderParty();
-    renderPersonalRows();
+    // Only rebuild the home rows when they're actually on screen; otherwise flag
+    // them so home's own render picks it up on arrival. Home's route render is a
+    // no-op by design, which is why this can't simply be dropped.
+    if (currentPath === '/') renderPersonalRows(); else personalDirty = true;
   };
   document.addEventListener('cv:auth', refresh);
   document.addEventListener('cv:wl-changed', refresh);
+  // The meta backfill lands asynchronously and unlocks real hours/director data.
+  document.addEventListener('cv:meta-backfilled', refresh);
   document.addEventListener('cv:navigate', e => navigate(pageToPath(e.detail)));
 
   window.addEventListener('popstate', () => {
@@ -164,8 +178,9 @@ export function initRouter() {
   // Nav scroll state + back-to-top visibility.
   window.addEventListener('scroll', () => {
     const y = window.scrollY;
-    $('navbar').classList.toggle('scrolled', y > 60);
-    $('btt').classList.toggle('show', y > 600);
+    const nav = $('navbar'), btt = $('btt');
+    if (nav) nav.classList.toggle('scrolled', y > 60);
+    if (btt) btt.classList.toggle('show', y > 600);
   }, { passive: true });
 
   // Escape still dismisses the remaining true modals (auth / trailer / rating /

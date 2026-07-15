@@ -3,7 +3,7 @@ import { auth, db, firebase } from './firebase.js';
 import { state } from './state.js';
 import { IMG, PH } from './config.js';
 import { esc, toast, $ } from './ui.js';
-import { refreshWLBtns } from './cards.js';
+import { refreshWLBtns, rateBtnHTML } from './cards.js';
 import { registerActions, readItem } from './events.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
@@ -72,7 +72,14 @@ export async function toggleWatched(id, type, title, meta = {}) {
         genres: meta.genres || wl?.genres || [],
         watchedAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
-      await ref.set(d); state.watched[key] = d; toast('Marked as watched!', 'success');
+      await ref.set(d);
+      // serverTimestamp() is a SENTINEL, not a value — storing `d` as-is leaves
+      // watchedAt.seconds undefined, which reads as epoch 0 (watched.js toItem).
+      // That sorts a just-watched title to the bottom of "recent" and makes it
+      // count as watched in 1970 for the badge/challenge windows. Mirror a local
+      // clock; the real server value wins on the next load.
+      state.watched[key] = { ...d, watchedAt: { seconds: Math.floor(Date.now() / 1000) } };
+      toast('Marked as watched!', 'success');
     }
     document.dispatchEvent(new Event('cv:wl-changed'));
   } catch (e) { console.error('toggleWatched failed:', e); toast('Error', 'error'); }
@@ -106,7 +113,7 @@ export function renderWL() {
     const poster = w.poster ? `${IMG}w342${w.poster}` : PH;
     const wd = state.watched[w.id];
     const payload = esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [] }));
-    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.tmdbId}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${wd ? '<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' : ''}<button class="card-wl in wl-remove" data-wl="${w.type}|${w.tmdbId}" data-action="toggle-wl" data-item="${payload}" aria-label="Remove from list" data-tip="Remove from list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
+    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.tmdbId}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${wd ? '<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' : ''}${wd ? rateBtnHTML(w.tmdbId, w.type, w.title) : ''}<button class="card-wl in wl-remove" data-wl="${w.type}|${w.tmdbId}" data-action="toggle-wl" data-item="${payload}" aria-label="Remove from list" data-tip="Remove from list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
   }).join('')}</div>`;
 }
 

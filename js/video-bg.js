@@ -1,8 +1,7 @@
 // ===== AMBIENT VIDEO BACKGROUNDS =====
 // Fades a muted, controls-free, looping YouTube trailer in BEHIND the existing
 // vignette/gradient of a hero or detail backdrop. The static image paints first
-// (zero layout shift); the video is purely decorative (pointer-events:none) and
-// only mounts on desktop with motion enabled — mobile/reduced-motion keep the image.
+// (zero layout shift) and the video is purely decorative (pointer-events:none).
 import { prefersReducedMotion } from './ui.js';
 
 // Mobile included. The video only ever becomes visible on a confirmed PLAYING

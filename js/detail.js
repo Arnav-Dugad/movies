@@ -13,6 +13,7 @@ let ambientTeardown = null;   // tears down the detail ambient video
 let navHint = null;           // instant-paint hint captured from the clicked card
 let lastVTSource = null;      // element currently holding the shared view-transition-name
 let reqGen = 0;                // bumped on every openDetail/openCollection call; guards against a slower, stale fetch overwriting a newer one
+let epGen = 0;                 // same idea, scoped to the season-episode list (season tabs can be clicked faster than they load)
 
 export async function openDetail(id, type) {
   const gen = ++reqGen;
@@ -93,6 +94,9 @@ export async function openDetail(id, type) {
     const cast = (cred.cast || []).slice(0, 20);
     let castHTML = ''; if (cast.length) castHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Cast</div><div class="cast-scroll">${cast.map(c => `<div class="cast-item" role="button" tabindex="0" data-action="open-person" data-id="${c.id}"><div class="cast-pic">${c.profile_path ? `<img src="${IMG}w185${c.profile_path}" alt="${esc(c.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(c.name)}</div><div class="cast-char">${esc(c.character) || ''}</div></div>`).join('')}</div></div>`;
 
+    const crewHTML = crewSectionHTML(cred);
+    const galHTML = galleryHTML(det);
+
     const revList = (revs.results || []).slice(0, 4);
     let revsHTML = ''; if (revList.length) revsHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Reviews</div>${revList.map(r => `<div class="review"><div class="review-top"><div class="review-av">${(r.author || '?')[0].toUpperCase()}</div><div><div class="review-author">${esc(r.author)}</div><div class="review-date">${r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</div></div>${r.author_details?.rating ? `<div class="review-score"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${r.author_details.rating}</div>` : ''}</div><div class="review-body">${esc(r.content || '')}</div></div>`).join('')}</div>`;
 
@@ -144,9 +148,10 @@ export async function openDetail(id, type) {
           ${type === 'tv' && det.networks?.length ? `<div class="stat-card"><div class="stat-label">Network</div><div class="stat-val">${det.networks.map(n => esc(n.name)).join(', ')}</div></div>` : ''}
           ${studio ? `<div class="stat-card"><div class="stat-label">Studio</div>${studio.logo_path ? `<div class="studio-logo"><img src="${IMG}w185${studio.logo_path}" alt="${esc(studio.name)}" title="${esc(studio.name)}" loading="lazy"></div>` : `<div class="stat-val">${esc(studio.name)}</div>`}</div>` : ''}
           ${det.homepage ? `<div class="stat-card"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit →</a></div></div>` : ''}
+          ${linksHTML(det)}
           <div id="providerBlock">${providerHTML(det, state.region)}</div>
         </div>
-        ${kwHTML}${vidsHTML}${castHTML}${seasHTML}${revsHTML}${simHTML}
+        ${kwHTML}${vidsHTML}${castHTML}${crewHTML}${galHTML}${seasHTML}${revsHTML}${simHTML}
       </div>`;
 
     if (type === 'tv' && det.next_episode_to_air) startCD(id, det.next_episode_to_air.air_date);
@@ -161,6 +166,69 @@ export async function openDetail(id, type) {
     console.error(e);
     ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-size:1.1rem;font-weight:600">Failed to load</p><p style="color:var(--text3);margin:8px 0 20px">Please try again</p><button class="btn-primary" data-action="back">Back</button></div>';
   }
+}
+
+// ===== EXTERNAL LINKS =====
+// external_ids ships on the main response (append_to_response) and was previously
+// fetched and thrown away entirely.
+const EXT_LINKS = [
+  ['imdb_id', 'IMDb', id => `https://www.imdb.com/title/${id}/`],
+  ['wikidata_id', 'Wikidata', id => `https://www.wikidata.org/wiki/${id}`],
+  ['instagram_id', 'Instagram', id => `https://instagram.com/${id}`],
+  ['twitter_id', 'X', id => `https://x.com/${id}`],
+  ['facebook_id', 'Facebook', id => `https://facebook.com/${id}`],
+];
+
+function linksHTML(det) {
+  const ext = det.external_ids || {};
+  const links = EXT_LINKS
+    .filter(([k]) => ext[k])
+    .map(([k, label, url]) => `<a class="ext-link" href="${esc(url(ext[k]))}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+  if (!links.length) return '';
+  return `<div class="stat-card"><div class="stat-label">Links</div><div class="stat-val ext-links">${links.join('')}</div></div>`;
+}
+
+// ===== FULL CREW =====
+// credits.crew is already fetched; only the Director was ever surfaced. Ordered
+// by importance, deduped by person (one human can hold several jobs).
+const CREW_JOBS = ['Director', 'Creator', 'Writer', 'Screenplay', 'Story', 'Original Music Composer', 'Director of Photography', 'Editor', 'Producer', 'Executive Producer'];
+
+function crewSectionHTML(cred) {
+  const crew = cred.crew || [];
+  const byPerson = new Map();
+  crew.forEach(c => {
+    const rank = CREW_JOBS.indexOf(c.job);
+    if (rank === -1) return;
+    const e = byPerson.get(c.id);
+    if (e) { if (!e.jobs.includes(c.job)) e.jobs.push(c.job); e.rank = Math.min(e.rank, rank); }
+    else byPerson.set(c.id, { id: c.id, name: c.name || '', profile_path: c.profile_path, jobs: [c.job], rank });
+  });
+  const people = [...byPerson.values()].sort((a, b) => a.rank - b.rank).slice(0, 20);
+  if (!people.length) return '';
+  // Reuses the cast section's markup/CSS wholesale — .cast-char just carries the
+  // job list instead of a character name (it ellipsises, hence the title attr).
+  return `<div style="margin-bottom:32px"><div class="d-sec-title">Crew</div><div class="cast-scroll">${people.map(p => {
+    const jobs = p.jobs.join(', ');
+    return `<div class="cast-item" role="button" tabindex="0" data-action="open-person" data-id="${p.id}"><div class="cast-pic">${p.profile_path ? `<img src="${IMG}w185${p.profile_path}" alt="${esc(p.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(p.name)}</div><div class="cast-char" title="${esc(jobs)}">${esc(jobs)}</div></div>`;
+  }).join('')}</div></div>`;
+}
+
+// ===== MEDIA GALLERY =====
+// images.{backdrops,posters} already ride along with the logo fetch. Capped at 12
+// each — a popular title can carry 100+. Thumbs get an explicit aspect-ratio so
+// lazy-loaded images reserve their box and never shift the page.
+function galleryHTML(det) {
+  const backs = (det.images?.backdrops || []).slice(0, 12);
+  const posters = (det.images?.posters || []).slice(0, 12);
+  if (!backs.length && !posters.length) return '';
+  const group = (list, size, cls, label) => {
+    if (!list.length) return '';
+    const paths = esc(JSON.stringify(list.map(i => i.file_path)));
+    return `<div class="gal-group"><div class="gal-label">${label}</div><div class="gal-scroll">${list.map((i, idx) =>
+      `<button class="gal-item ${cls}" data-action="open-lightbox" data-paths="${paths}" data-idx="${idx}" aria-label="${label} ${idx + 1} of ${list.length}"><img src="${IMG}${size}${i.file_path}" alt="" loading="lazy"></button>`
+    ).join('')}</div></div>`;
+  };
+  return `<div style="margin-bottom:32px"><div class="d-sec-title">Gallery</div>${group(backs, 'w780', 'gal-back', 'Backdrops')}${group(posters, 'w342', 'gal-poster', 'Posters')}</div>`;
 }
 
 function providerHTML(det, region) {
@@ -221,11 +289,18 @@ async function loadSeason(tid, sn, el) {
 }
 async function loadEps(tid, sn) {
   const el = $(`epList_${tid}`); if (!el) return;
+  // Own generation token (mirrors reqGen): clicking season tabs quickly could
+  // otherwise let a slow season-1 response land after — and overwrite — season 2.
+  const gen = ++epGen;
   el.innerHTML = '<div class="skel" style="height:80px;width:100%"></div>';
   try {
     const d = await tmdb(`/tv/${tid}/season/${sn}`);
+    if (gen !== epGen) return;
     el.innerHTML = (d.episodes || []).map(ep => `<div class="ep-card"><div class="ep-still">${ep.still_path ? `<img src="${IMG}w300${ep.still_path}" alt="" loading="lazy">` : ''}<div class="ep-num">E${ep.episode_number}</div></div><div class="ep-body"><div class="ep-title">${esc(ep.name) || `Episode ${ep.episode_number}`}</div><div class="ep-meta">${ep.air_date ? `<span>${new Date(ep.air_date).toLocaleDateString()}</span>` : ''}${ep.runtime ? `<span>${ep.runtime}m</span>` : ''}${ep.vote_average ? `<span>⭐ ${ep.vote_average.toFixed(1)}</span>` : ''}</div><div class="ep-desc">${esc(ep.overview || '')}</div></div></div>`).join('') || '<p style="color:var(--text3);padding:12px">No episodes yet</p>';
-  } catch (e) { el.innerHTML = '<p style="color:var(--text3);padding:12px">Failed to load</p>'; }
+  } catch (e) {
+    if (gen !== epGen) return;
+    el.innerHTML = '<p style="color:var(--text3);padding:12px">Failed to load</p>';
+  }
 }
 
 export async function openCollection(cid) {

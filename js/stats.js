@@ -1,9 +1,11 @@
 // ===== STATS + TASTE PROFILE =====
 import { genreMap } from './config.js';
 import { state } from './state.js';
-import { $ } from './ui.js';
+import { $, esc } from './ui.js';
 import { registerActions } from './events.js';
 import { observeCountUps } from './effects.js';
+import { buildCtx, badgesHTML, challengesHTML, animateBadgeBars } from './badges.js';
+import { ensureWatchedMeta } from './watched-meta.js';
 
 let statsScope = 'all'; // 'all' | 'movie' | 'tv'
 
@@ -46,10 +48,32 @@ function computeStats(scope) {
   return {
     totalWL, totalRated, totalWatched, avgRating, sortedGenres, favDecade,
     topGenreName: sortedGenres[0] ? sortedGenres[0][0] : '—',
-    movies: state.watchlist.filter(w => w.type === 'movie').length,
-    shows: state.watchlist.filter(w => w.type === 'tv').length,
+    // Read off the already-scoped `watchlist`, not state.watchlist — these tiles
+    // only render in the 'all' scope today, but reading the unscoped list made
+    // them silently wrong the moment they didn't.
+    movies: watchlist.filter(w => w.type === 'movie').length,
+    shows: watchlist.filter(w => w.type === 'tv').length,
     ratingCounts,
   };
+}
+
+// Lifetime watch time + the two "who do you watch" highlights the backfill unlocks.
+// Hours are approximate: a TV show contributes its FULL run (we don't track
+// per-episode viewing), so the number is labelled with a ≈ rather than implied exact.
+function hoursTile(ctx) {
+  if (!ctx.watchedTotal) return '';
+  const pending = ctx.metaCoverage < 1;
+  const days = (ctx.hours / 24).toFixed(1);
+  const cards = [
+    `<div class="stat-big" title="Approximate: TV shows count their full run, since per-episode viewing isn't tracked.">
+      <div class="stat-big-num">${pending ? '<span class="badge-pending">…</span>' : `≈<span data-count="${ctx.hours}">0</span>`}</div>
+      <div class="stat-big-label">Hours Watched</div>
+    </div>`,
+    `<div class="stat-big"><div class="stat-big-num">${pending ? '<span class="badge-pending">…</span>' : `≈${days}`}</div><div class="stat-big-label">Days Watched</div></div>`,
+  ];
+  if (ctx.topDirector) cards.push(`<div class="stat-big"><div class="stat-big-name">${esc(ctx.topDirector.key)}</div><div class="stat-big-label">Top Director · ${ctx.topDirector.n}</div></div>`);
+  if (ctx.topActor) cards.push(`<div class="stat-big"><div class="stat-big-name">${esc(ctx.topActor.name)}</div><div class="stat-big-label">Most Seen Actor · ${ctx.topActor.n}</div></div>`);
+  return `<div class="d-sec-title">Watch Time</div><div class="stats-overview">${cards.join('')}</div>`;
 }
 
 export function renderStats() {
@@ -63,6 +87,10 @@ export function renderStats() {
   const s = computeStats(statsScope);
   const maxGenre = s.sortedGenres[0] ? s.sortedGenres[0][1] : 1;
   const scopeLabel = statsScope === 'movie' ? 'Movies' : statsScope === 'tv' ? 'TV Shows' : 'All';
+  // Badges and challenges are account-wide, so they're computed off the full
+  // context and rendered ABOVE the scope toggle — scoping them to "Movies" would
+  // imply "Movies badges", which isn't a thing.
+  const ctx = buildCtx();
 
   const toggle = `<div class="wl-tabs" style="margin-bottom:20px">
     ${[['all', 'All'], ['movie', 'Movies'], ['tv', 'TV Shows']].map(([f, label]) =>
@@ -76,6 +104,9 @@ export function renderStats() {
     : '';
 
   ct.innerHTML = `
+    ${challengesHTML(ctx)}
+    ${badgesHTML(ctx)}
+    ${hoursTile(ctx)}
     ${toggle}
     <div class="genre-chart" style="background:linear-gradient(135deg,var(--red-soft),rgba(139,92,246,.05));margin-bottom:24px">
       <div class="d-sec-title" style="margin-bottom:12px">🎯 Your ${scopeLabel} Taste Profile</div>
@@ -120,7 +151,12 @@ export function renderStats() {
       const trackHeight = fill.parentElement.clientHeight || 90;
       fill.style.height = pct > 0 ? Math.max(Math.round(trackHeight * pct / 100), 3) + 'px' : '0';
     });
+    animateBadgeBars(ct);
   });
+
+  // Fire-and-forget: fills in runtime/director/cast for hours + loyalty badges.
+  // Never awaited — the page is already painted; cv:meta-backfilled re-renders.
+  ensureWatchedMeta();
 }
 
 export function initStats() {

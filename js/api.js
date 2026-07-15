@@ -3,9 +3,12 @@ import { AK, BASE } from './config.js';
 
 const tmdbCache = new Map();
 
-export async function tmdb(p, params = {}) {
+// `cache:false` skips both the read and the write. Used by the watched-meta
+// backfill: its responses are one-shot enrichment data that nothing re-reads, so
+// caching them would evict the 200-entry UI cache the browsing pages depend on.
+export async function tmdb(p, params = {}, { cache = true } = {}) {
   const key = p + JSON.stringify(params);
-  if (tmdbCache.has(key)) {
+  if (cache && tmdbCache.has(key)) {
     const c = tmdbCache.get(key);
     if (Date.now() - c.ts < 3e5) return c.data;
   }
@@ -26,10 +29,12 @@ export async function tmdb(p, params = {}) {
         throw new Error(r.status);
       }
       const data = await r.json();
-      tmdbCache.set(key, { data, ts: Date.now() });
-      if (tmdbCache.size > 200) {
-        const oldest = [...tmdbCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
-        for (let i = 0; i < 50; i++) tmdbCache.delete(oldest[i][0]);
+      if (cache) {
+        tmdbCache.set(key, { data, ts: Date.now() });
+        if (tmdbCache.size > 200) {
+          const oldest = [...tmdbCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+          for (let i = 0; i < 50; i++) tmdbCache.delete(oldest[i][0]);
+        }
       }
       return data;
     } catch (e) {
@@ -41,3 +46,19 @@ export async function tmdb(p, params = {}) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Bounded-concurrency map. N runners pull from ONE shared iterator, so there's no
+// chunk barrier — a single slow request never stalls the other lanes. Never
+// rejects: a throwing worker is isolated so one failure can't abort the batch
+// (callers that need to know what succeeded should track it inside `worker`).
+export async function pool(items, worker, limit = 6) {
+  const it = items[Symbol.iterator]();
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const n = it.next();
+      if (n.done) return;
+      try { await worker(n.value); } catch (_) { /* isolated */ }
+    }
+  });
+  await Promise.all(runners);
+}
