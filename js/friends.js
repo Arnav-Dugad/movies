@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { esc, toast, $ } from './ui.js';
 import { registerActions } from './events.js';
-import { social, displayCode, sendRequest, acceptRequest, declineRequest, resolveCode, resolveEmail, searchByName, loadFriends } from './social.js';
+import { social, displayCode, sendRequest, acceptRequest, declineRequest, resolveCode, resolveEmail, searchByName } from './social.js';
 
 export function renderFriends() {
   const ct = $('friendsContent');

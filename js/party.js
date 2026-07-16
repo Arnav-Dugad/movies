@@ -5,7 +5,7 @@ import { state } from './state.js';
 import { esc, $ } from './ui.js';
 import { registerActions } from './events.js';
 import { buildCard, skelCards } from './cards.js';
-import { social, loadFriends, getFriendTaste } from './social.js';
+import { social, getFriendTaste } from './social.js';
 import { buildTasteProfile, profileFromShared, blendProfiles, fetchCandidates, rankAndDedupe, matchBadge } from './recommend.js';
 
 const MOVIE_GENRES = new Set(mGenreList.map(g => g.id));

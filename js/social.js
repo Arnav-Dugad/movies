@@ -55,21 +55,44 @@ export async function publishTaste() {
   catch (e) { console.error('publishTaste', e); }
 }
 
-// ----- Friend graph -----
-export async function loadFriends() {
-  if (!state.user) { social.friends = []; social.reqIn = []; social.reqOut = []; return; }
+// ----- Friend graph (LIVE via onSnapshot) -----
+// Three realtime listeners keep social.friends/reqIn/reqOut current with NO manual
+// refresh: a request sent by another user appears the instant it's written, and a
+// remote accept flips "Pending" to a friend on the sender's screen. Each callback
+// dispatches cv:social, which friends.js and party.js already re-render on.
+let unsubs = [];
+
+export function teardownFriends() {
+  unsubs.forEach(u => { try { u(); } catch (_) {} });
+  unsubs = [];
+}
+
+// Subscribe the three queries. All are single-field / single array-contains, so no
+// composite index is needed (the constraint noted at the top of this file).
+export function subscribeFriends() {
+  teardownFriends();                 // never double-subscribe (covers account switch)
+  if (!state.user) return;
   const uid = state.user.uid;
-  try {
-    const [fs, incoming, outgoing] = await Promise.all([
-      db.collection('friendships').where('members', 'array-contains', uid).get(),
-      db.collection('friendRequests').where('to', '==', uid).get(),
-      db.collection('friendRequests').where('from', '==', uid).get(),
-    ]);
-    social.friends = fs.docs.map(d => { const x = d.data(); const other = (x.members || []).find(m => m !== uid); return { uid: other, name: (x.names || {})[other] || 'Friend', pairId: d.id }; }).filter(f => f.uid);
-    social.reqIn = incoming.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.status === 'pending');
-    social.reqOut = outgoing.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.status === 'pending');
-    social.ready = true;
-  } catch (e) { console.error('loadFriends', e); }
+  const emit = () => { social.ready = true; document.dispatchEvent(new Event('cv:social')); };
+  const onErr = (label) => (e) => console.error('subscribeFriends ' + label, e);
+
+  unsubs.push(db.collection('friendships').where('members', 'array-contains', uid)
+    .onSnapshot(snap => {
+      social.friends = snap.docs.map(d => { const x = d.data(); const other = (x.members || []).find(m => m !== uid); return { uid: other, name: (x.names || {})[other] || 'Friend', pairId: d.id }; }).filter(f => f.uid);
+      emit();
+    }, onErr('friendships')));
+
+  unsubs.push(db.collection('friendRequests').where('to', '==', uid)
+    .onSnapshot(snap => {
+      social.reqIn = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.status === 'pending');
+      emit();
+    }, onErr('reqIn')));
+
+  unsubs.push(db.collection('friendRequests').where('from', '==', uid)
+    .onSnapshot(snap => {
+      social.reqOut = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.status === 'pending');
+      emit();
+    }, onErr('reqOut')));
 }
 
 export function isFriend(uid) { return social.friends.some(f => f.uid === uid); }
@@ -84,7 +107,7 @@ export async function sendRequest(toUid, toName) {
       from: state.user.uid, fromName: state.user.displayName || 'You',
       to: toUid, toName: toName || 'Friend', status: 'pending', createdAt: ts(),
     });
-    await loadFriends();
+    // No manual reload — the reqOut listener fires on this write.
     return { ok: true, msg: 'Request sent!' };
   } catch (e) { console.error('sendRequest', e); return { ok: false, msg: 'Could not send request' }; }
 }
@@ -101,16 +124,15 @@ export async function acceptRequest(req) {
   } catch (e) {
     console.error('acceptRequest', e);
     toast('Could not accept request — try again', 'error');
-  } finally {
-    // Always refresh — if the friendship write above succeeded but the status
-    // write failed, this at least reflects the new friendship (and the still-
-    // "pending" request just re-runs this same, idempotent write on a retry).
-    await loadFriends();
   }
+  // No manual reload — the friendships + reqIn listeners fire on these writes. If the
+  // friendship write succeeded but the status write failed, the listeners still
+  // reflect the new friendship, and the still-"pending" request just re-runs this
+  // same idempotent write on a retry.
 }
 
 export async function declineRequest(req) {
-  try { await db.collection('friendRequests').doc(req.id).set({ status: 'declined' }, { merge: true }); await loadFriends(); }
+  try { await db.collection('friendRequests').doc(req.id).set({ status: 'declined' }, { merge: true }); }
   catch (e) { console.error('declineRequest', e); }
 }
 
@@ -148,9 +170,13 @@ export async function getFriendTaste(uid) {
 const republish = debounce(() => publishTaste(), 1500);
 export function initSocial() {
   document.addEventListener('cv:auth', async () => {
+    // cv:auth fires on sign-in AND sign-out. Tear down any live listeners first so an
+    // account switch on one tab never leaks the previous user's subscriptions.
+    teardownFriends();
     if (!state.user) { social.code = ''; social.friends = []; social.reqIn = []; social.reqOut = []; social.ready = false; document.dispatchEvent(new Event('cv:social')); return; }
     await ensurePublicProfile(state.user);
-    await Promise.all([publishTaste(), loadFriends()]);
+    subscribeFriends();                 // live; fires cv:social on each snapshot
+    await publishTaste();
     document.dispatchEvent(new Event('cv:social'));
   });
   document.addEventListener('cv:wl-changed', () => { if (state.user) republish(); });
