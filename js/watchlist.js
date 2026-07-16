@@ -3,8 +3,9 @@ import { auth, db, firebase } from './firebase.js';
 import { state } from './state.js';
 import { IMG, PH } from './config.js';
 import { esc, toast, $ } from './ui.js';
-import { refreshWLBtns, rateBtnHTML } from './cards.js';
+import { refreshWLBtns, rateBtnHTML, caretHTML } from './cards.js';
 import { registerActions, readItem } from './events.js';
+import { addToList, removeFromAllLists, removeFromList, listsArr, listById, createList, renameList, deleteList } from './lists.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
 
@@ -16,32 +17,13 @@ export async function loadWatchlist() {
   } catch (e) { console.error(e); }
 }
 
+// The main card +/✓ button. Quick-add goes to the default Watchlist; ✓ (saved in
+// ≥1 list) removes from every list. Granular per-list membership is the caret's job.
 export async function toggleWL(item, type) {
   if (!state.user) return requireAuth();
-  const id = `${type}_${item.id}`, exists = state.watchlist.find(w => w.id === id);
-  try {
-    const ref = db.collection('users').doc(state.user.uid).collection('watchlist').doc(id);
-    if (exists) {
-      await ref.delete();
-      state.watchlist = state.watchlist.filter(w => w.id !== id);
-      toast('Removed from list', 'info');
-    } else {
-      const d = {
-        tmdbId: item.id, type,
-        title: item.title || item.name || '',
-        poster: item.poster || item.poster_path || '',
-        rating: item.rating || item.vote_average || 0,
-        year: item.year || (item.release_date || item.first_air_date || '').slice(0, 4),
-        added: firebase.firestore.FieldValue.serverTimestamp(),
-        genres: item.genres || item.genre_ids || []
-      };
-      await ref.set(d);
-      state.watchlist.unshift({ id, ...d });
-      toast('Added to list!', 'success');
-    }
-    refreshWLBtns();
-    document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { console.error('toggleWL failed:', e); toast('Error updating list', 'error'); }
+  const exists = state.watchlist.find(w => w.id === `${type}_${item.id}`);
+  if (exists) await removeFromAllLists(item, type);
+  else { await addToList(item, type, 'watchlist'); toast('Added to Watchlist!', 'success'); }
 }
 
 export async function loadWatched() {
@@ -86,34 +68,95 @@ export async function toggleWatched(id, type, title, meta = {}) {
 }
 
 // ===== WATCHLIST PAGE =====
+// Inline list-management state (create/rename input, two-tap delete confirm) — kept
+// out of a modal so managing lists stays on-page.
+let listEdit = null;       // { mode: 'new' | 'rename' }
+let pendingDelete = null;  // listId awaiting a second confirming click
+
+async function saveListEdit() {
+  const name = (($('wlListName') || {}).value || '').trim();
+  if (!name) { listEdit = null; renderWL(); return; }
+  if (listEdit && listEdit.mode === 'rename') await renameList(state.wlList, name);
+  else { const l = await createList(name); if (l) state.wlList = l.id; }
+  listEdit = null; renderWL();
+}
+
 export function setWLFilter(f, el) {
-  state.wlFilter = f;
+  state.wlFilter = f;   // secondary type filter: 'all' | 'movie' | 'tv'
   el.parentElement.querySelectorAll('.wl-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   renderWL();
 }
 
+// Which titles belong to the active list dimension (state.wlList).
+function itemsForActiveList() {
+  if (state.wlList === 'watched') return state.watchlist.filter(w => state.watched[w.id]);
+  if (state.wlList === 'all') return state.watchlist.slice();
+  return state.watchlist.filter(w => listsArr(w).includes(state.wlList));
+}
+
+function payloadFor(w) {
+  return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [] }));
+}
+
 export function renderWL() {
-  const ct = $('wlContent'), cnt = $('wlCount');
+  const ct = $('wlContent'), cnt = $('wlCount'), rail = $('wlLists'), head = $('wlHeadActions');
   if (!ct) return;
-  let items;
-  if (state.wlFilter === 'watched') items = state.watchlist.filter(w => state.watched[w.id]);
-  else items = state.wlFilter === 'all' ? state.watchlist : state.watchlist.filter(w => w.type === state.wlFilter);
-  cnt.textContent = `${items.length} title${items.length !== 1 ? 's' : ''}`;
 
   if (!state.user) {
-    ct.innerHTML = `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg><h3>Sign in to see your list</h3><p>Create an account to save movies and shows</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
+    if (rail) rail.innerHTML = '';
+    if (head) head.innerHTML = '';
+    if (cnt) cnt.textContent = '';
+    ct.innerHTML = `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg><h3>Sign in to see your lists</h3><p>Create an account to save movies and shows</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
+
+  // Guard against a deleted active list.
+  if (state.wlList !== 'all' && state.wlList !== 'watched' && !listById(state.wlList)) state.wlList = 'watchlist';
+
+  // ----- List chip rail -----
+  if (rail) {
+    const chip = (id, label, icon) => `<button class="wl-chip${state.wlList === id ? ' active' : ''}" data-action="wl-list" data-list="${id}">${icon ? `<span class="wl-chip-ico">${icon}</span>` : ''}${esc(label)}</button>`;
+    let html = chip('all', 'All', '🍿');
+    state.lists.forEach(l => { html += chip(l.id, l.name, l.icon); });
+    html += chip('watched', 'Watched', '✓');
+    html += `<button class="wl-chip wl-chip-new" data-action="wl-new-list">＋ New</button>`;
+    rail.innerHTML = html;
+  }
+
+  // ----- Head actions: inline create/rename input, else rename/delete controls -----
+  if (head) {
+    const active = state.wlList !== 'all' && state.wlList !== 'watched' ? listById(state.wlList) : null;
+    if (listEdit) {
+      const val = listEdit.mode === 'rename' && active ? esc(active.name) : '';
+      head.innerHTML = `<div class="wl-editrow"><input id="wlListName" type="text" placeholder="List name…" maxlength="30" value="${val}" autocomplete="off"><button class="btn-primary" data-action="wl-list-save">${listEdit.mode === 'rename' ? 'Save' : 'Create'}</button><button class="btn-glass" data-action="wl-list-cancel">Cancel</button></div>`;
+    } else if (active && active.id !== 'watchlist') {
+      const del = pendingDelete === active.id
+        ? `<button class="btn-glass wl-manage danger" data-action="wl-delete-list">Delete “${esc(active.name)}”?</button>`
+        : `<button class="btn-glass wl-manage danger" data-action="wl-delete-list" data-tip="Delete list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg></button>`;
+      head.innerHTML = `<button class="btn-glass wl-manage" data-action="wl-rename-list" data-tip="Rename list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>${del}`;
+    } else head.innerHTML = '';
+    const inp = $('wlListName'); if (inp) inp.focus();
+  }
+
+  // ----- Grid -----
+  let items = itemsForActiveList();
+  if (state.wlFilter === 'movie' || state.wlFilter === 'tv') items = items.filter(w => w.type === state.wlFilter);
+  if (cnt) cnt.textContent = `${items.length} title${items.length !== 1 ? 's' : ''}`;
+
   if (!items.length) {
-    ct.innerHTML = `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><h3>Your list is empty</h3><p>Start adding movies and shows you want to watch</p></div>`;
+    const nm = state.wlList === 'all' ? 'list' : state.wlList === 'watched' ? 'watched list' : (listById(state.wlList)?.name || 'list');
+    ct.innerHTML = `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><h3>${esc(nm[0].toUpperCase() + nm.slice(1))} is empty</h3><p>Add movies and shows with the + on any poster</p></div>`;
     return;
   }
+
   ct.innerHTML = `<div class="wl-grid">${items.map(w => {
     const poster = w.poster ? `${IMG}w342${w.poster}` : PH;
     const wd = state.watched[w.id];
-    const payload = esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [] }));
-    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.tmdbId}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${wd ? '<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' : ''}${wd ? rateBtnHTML(w.tmdbId, w.type, w.title) : ''}<button class="card-wl in wl-remove" data-wl="${w.type}|${w.tmdbId}" data-action="toggle-wl" data-item="${payload}" aria-label="Remove from list" data-tip="Remove from list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
+    const payload = payloadFor(w);
+    // ✕ removes from the ACTIVE list only (so removing from Favorites doesn't nuke
+    // Watchlist); on All/Watched it removes from every list.
+    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.tmdbId}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${wd ? '<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' : ''}${wd ? rateBtnHTML(w.tmdbId, w.type, w.title) : ''}${caretHTML(w.tmdbId, w.type, payload)}<button class="card-wl in wl-remove" data-wl="${w.type}|${w.tmdbId}" data-action="wl-remove-here" data-item="${payload}" aria-label="Remove" data-tip="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
   }).join('')}</div>`;
 }
 
@@ -132,5 +175,29 @@ export function initWatchlist() {
       el.classList.toggle('active', !!state.watched[`${type}_${id}`]);
     },
     'wl-filter': (el) => setWLFilter(el.dataset.filter, el),
+    // ----- List rail + management (My List page) -----
+    'wl-list': (el) => { state.wlList = el.dataset.list; listEdit = null; pendingDelete = null; renderWL(); },
+    'wl-new-list': () => { listEdit = { mode: 'new' }; pendingDelete = null; renderWL(); },
+    'wl-rename-list': () => { listEdit = { mode: 'rename' }; pendingDelete = null; renderWL(); },
+    'wl-list-cancel': () => { listEdit = null; renderWL(); },
+    'wl-list-save': () => saveListEdit(),
+    'wl-delete-list': async (el) => {
+      const id = state.wlList;
+      if (pendingDelete !== id) { pendingDelete = id; renderWL(); return; }  // first click arms, second confirms
+      pendingDelete = null;
+      await deleteList(id);   // resets state.wlList to 'watchlist' inside
+      renderWL();
+    },
+    'wl-remove-here': (el, e) => {
+      e.stopPropagation();
+      const item = readItem(el);
+      // Remove from the active list only; on All/Watched remove from every list.
+      if (state.wlList === 'all' || state.wlList === 'watched') removeFromAllLists(item, item.type).then(renderWL);
+      else removeFromList(item, item.type, state.wlList).then(renderWL);
+    },
   });
+  // Enter submits the inline list-name input.
+  document.addEventListener('keydown', e => { if (e.target && e.target.id === 'wlListName' && e.key === 'Enter') { e.preventDefault(); saveListEdit(); } });
+  // Reset transient edit state when leaving the page or signing out.
+  document.addEventListener('cv:auth', () => { listEdit = null; pendingDelete = null; state.wlList = 'all'; });
 }

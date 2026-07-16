@@ -1,9 +1,9 @@
 /* ===== RESPONSIVE ===== */
 @media(min-width:769px){
-  .card-wl,.card-rate{opacity:0}
-  .card:hover .card-wl,.card:hover .card-rate{opacity:1}
-  /* An existing rating is always worth showing, hover or not. */
-  .card-rate.rated{opacity:1}
+  .card-wl,.card-rate,.card-lists{opacity:0}
+  .card:hover .card-wl,.card:hover .card-rate,.card:hover .card-lists{opacity:1}
+  /* An existing rating / saved state is always worth showing, hover or not. */
+  .card-rate.rated,.card-lists.has{opacity:1}
   /* Breathing room between the poster column and the full-width "next episode"
      countdown that sits directly beneath .detail-top on desktop (mobile stacks
      the layout so the countdown already clears the poster). */
@@ -49,8 +49,9 @@
   .ring-num{font-size:1.25rem}
   .badge-grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
   /* Larger tap targets on touch */
-  .card-wl,.card-rate{width:36px;height:36px}
-  .g-pill,.chip,.s-tab,.wl-tab{padding-top:10px;padding-bottom:10px}
+  .card-wl,.card-rate,.card-lists{width:36px;height:36px}
+  .card-lists{right:50px}   /* clear the wider 36px +/✓ button beside it */
+  .g-pill,.chip,.s-tab,.wl-tab,.wl-chip{padding-top:10px;padding-bottom:10px}
   /* No .rate-star width override here — the row flexes to fit (components.css).
      A fixed width would push 10 stars past the modal and wrap the last one. */
   .rate-modal{padding:32px 20px}
@@ -68,9 +69,9 @@
      clipped at the CARD level, so nothing visible reaches the row's clip line; and
      there's no hover-lift to shave on touch. */
   .row{overflow-y:hidden}
-  /* No hover on touch, so the add-to-list and quick-rate buttons must be
-     permanently visible (their default state is opacity:0, revealed on :hover). */
-  .card-wl,.card-rate{opacity:1;transform:none}
+  /* No hover on touch, so the add-to-list, quick-rate and list-picker buttons must
+     be permanently visible (their default state is opacity:0, revealed on :hover). */
+  .card-wl,.card-rate,.card-lists{opacity:1;transform:none}
   /* Hover-only heavy effects. */
   .tilt{transform:none !important}
 }

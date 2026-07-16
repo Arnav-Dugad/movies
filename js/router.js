@@ -11,6 +11,7 @@ import { openSearch } from './search.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
 import { closeRating, isRatingOpen } from './ratings.js';
+import { closeListPicker, isListPickerOpen } from './lists.js';
 import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen } from './media.js';
 import { closeAuth, isAuthOpen, closeDelete, isDeleteOpen } from './auth.js';
 import { renderFriends } from './friends.js';
@@ -81,6 +82,7 @@ function closeAllModals() {
   if (isTrailerOpen()) closeTrailer();
   if (isLightboxOpen()) closeLightbox();
   if (isRatingOpen()) closeRating();
+  if (isListPickerOpen()) closeListPicker();
   if (isDeleteOpen()) closeDelete();
   if (isAuthOpen()) closeAuth();
   const dd = $('profileDD'); if (dd) dd.classList.remove('active');
@@ -142,6 +144,7 @@ function handleEscape() {
   if (isLightboxOpen()) return closeLightbox();
   if (isTrailerOpen()) return closeTrailer();
   if (isRatingOpen()) return closeRating();
+  if (isListPickerOpen()) return closeListPicker();
   if (isDeleteOpen()) return closeDelete();
   if (isAuthOpen()) return closeAuth();
   const dd = $('profileDD'); if (dd && dd.classList.contains('active')) dd.classList.remove('active');

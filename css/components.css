@@ -152,6 +152,12 @@
 .card-wl.in{color:var(--red);border-color:rgba(229,9,20,.3)}
 .card-wl:hover{background:var(--red);color:#fff;border-color:var(--red)}
 .card-wl svg{width:16px;height:16px}
+/* List-picker caret — sits immediately left of .card-wl (bottom-right stack). */
+.card-lists{position:absolute;bottom:8px;right:44px;width:32px;height:32px;background:rgba(6,6,11,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:2;opacity:0;transform:translateY(8px);transition:all .3s var(--ease);border:1px solid rgba(255,255,255,.1);color:#fff}
+.card:hover .card-lists,.card-lists.has{opacity:1;transform:translateY(0)}
+.card-lists.has{color:var(--gold);border-color:var(--gold-glow)}
+.card-lists:hover{background:var(--purple);color:#fff;border-color:var(--purple)}
+.card-lists svg{width:15px;height:15px}
 /* Quick-rate, bottom-LEFT (mirrors .card-wl bottom-right). z-index:3 puts it above
    the .watched-badge full-bleed tint (z-index:2) it always sits on top of. */
 .card-rate{position:absolute;bottom:8px;left:8px;width:32px;height:32px;background:rgba(6,6,11,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:3;opacity:0;transform:translateY(8px);transition:opacity .3s var(--ease-out),transform .3s var(--ease-out),background .3s var(--ease-out),color .3s var(--ease-out),border-color .3s var(--ease-out);font-size:13px;font-weight:800;font-family:var(--font-mono);color:var(--text2);border:1px solid rgba(255,255,255,.1)}
@@ -461,6 +467,42 @@
 /* Shown in place of the watched/rate buttons until a title is actually out. */
 .unreleased-note{display:inline-flex;align-items:center;padding:9px 16px;border-radius:50px;font-size:.76rem;font-weight:600;color:var(--text3);background:var(--bg3);border:1px dashed var(--glass-border);white-space:nowrap}
 
+/* ===== LIST PICKER MODAL ===== */
+.list-modal{width:min(400px,100%);text-align:left}
+.list-modal .rate-title{text-align:left}
+.list-rows{display:flex;flex-direction:column;gap:2px;max-height:min(50vh,340px);overflow-y:auto;margin:14px 0;scrollbar-width:none}
+.list-rows::-webkit-scrollbar{display:none}
+.list-row{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:var(--radius);cursor:pointer;transition:background .2s var(--ease)}
+.list-row:hover{background:var(--glass)}
+.list-row input{width:20px;height:20px;flex-shrink:0;accent-color:var(--red);cursor:pointer}
+.list-ico{font-size:1.1rem}
+.list-nm{font-weight:600;font-size:.92rem}
+.list-create{border-top:1px solid var(--glass-border);padding-top:14px}
+.list-new-btn{width:100%;padding:11px;border-radius:var(--radius);background:var(--bg3);border:1px dashed var(--glass-border);color:var(--text2);font-weight:700;font-size:.88rem;transition:all .25s var(--ease)}
+.list-new-btn:hover{background:var(--bg4);color:var(--text);border-color:rgba(255,255,255,.15)}
+.list-create-row{display:flex;gap:8px}
+.list-create-row input{flex:1;padding:10px 12px;background:var(--bg);border:2px solid var(--bg4);border-radius:var(--radius);font-size:.9rem}
+.list-create-row input:focus{border-color:var(--red)}
+
+/* ===== MY LIST — chip rail + sub-bar + inline editor ===== */
+.wl-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.wl-head-actions{display:flex;align-items:center;gap:8px}
+.wl-manage{padding:9px 12px}
+.wl-manage svg{width:16px;height:16px}
+.wl-manage.danger:hover{background:var(--red);border-color:var(--red);color:#fff}
+.wl-editrow{display:flex;gap:8px;align-items:center}
+.wl-editrow input{padding:9px 12px;background:var(--bg);border:2px solid var(--bg4);border-radius:var(--radius);font-size:.9rem;min-width:180px}
+.wl-editrow input:focus{border-color:var(--red)}
+.wl-lists{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.wl-lists::-webkit-scrollbar{display:none}
+.wl-chip{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:50px;font-size:.85rem;font-weight:600;background:var(--bg3);border:1px solid var(--glass-border);color:var(--text2);white-space:nowrap;flex-shrink:0;cursor:pointer;transition:all .25s var(--ease)}
+.wl-chip:hover{background:var(--bg4);color:var(--text)}
+.wl-chip.active{background:var(--red);border-color:var(--red);color:#fff}
+.wl-chip-ico{font-size:1rem}
+.wl-chip-new{border-style:dashed;color:var(--text3)}
+.wl-subbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.wl-typefilter{margin:0}
+
 /* ===== DELETE ACCOUNT CONFIRMATION ===== */
 .del-modal{width:min(420px,100%)}
 .del-icon{width:48px;height:48px;margin:0 auto 14px;border-radius:50%;background:rgba(229,9,20,.12);border:1px solid rgba(229,9,20,.3);color:var(--red2);display:flex;align-items:center;justify-content:center}
@@ -496,10 +538,10 @@
    keep it — the generic [data-tip] rule above would otherwise clobber it back to
    relative (equal specificity, later source order) and drop them into normal flow. */
 .btt[data-tip],.page-back[data-tip]{position:fixed}
-/* .card-wl and .card-rate carry data-tip too — keep them absolutely positioned
-   over the poster instead of collapsing into flow (which was adding a gap under
-   every card). */
-.card-wl[data-tip],.card-rate[data-tip]{position:absolute}
+/* .card-wl, .card-rate and .card-lists carry data-tip too — keep them absolutely
+   positioned over the poster instead of collapsing into flow (which was adding a
+   gap under every card). */
+.card-wl[data-tip],.card-rate[data-tip],.card-lists[data-tip]{position:absolute}
 [data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);padding:5px 10px;background:var(--bg2);border:1px solid var(--glass-border);border-radius:6px;font-size:.7rem;white-space:nowrap;color:var(--text);z-index:999;pointer-events:none;animation:fadeUp .2s var(--ease)}
 
 /* ===== WATCHED BADGE ===== */

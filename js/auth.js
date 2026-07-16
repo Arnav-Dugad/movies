@@ -5,6 +5,7 @@ import { toast, $, trapFocus, lockScroll, unlockScroll } from './ui.js';
 import { registerActions } from './events.js';
 import { loadWatchlist, loadWatched } from './watchlist.js';
 import { loadRatings } from './ratings.js';
+import { loadLists } from './lists.js';
 import { applyAvatar } from './avatar.js';
 
 let authMode = 'login';
@@ -26,12 +27,12 @@ export function initAuth() {
     state.user = u;
     updateAuthUI();
     if (u) {
-      await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadProfile()]);
+      await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadProfile()]);
       updateAuthUI();   // re-render now that the avatar has loaded
       try { state.searchHistory = JSON.parse(localStorage.getItem('cv_history_' + u.uid) || '[]'); } catch (e) { state.searchHistory = []; }
     } else {
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
-      state.profile = { avatar: null, created: null };
+      state.lists = []; state.profile = { avatar: null, created: null };
     }
     loadRecentlyViewed();
     document.dispatchEvent(new Event('cv:auth'));
@@ -223,6 +224,7 @@ async function purgeUserData(uid, email) {
     deleteSub(uid, 'watchlist'),
     deleteSub(uid, 'watched'),
     deleteSub(uid, 'ratings'),
+    deleteSub(uid, 'lists'),
     deleteSub(uid, 'shared'),
     db.collection('publicProfiles').doc(uid).delete(),
     (async () => {

@@ -5,6 +5,7 @@ import { initImageFallback } from './cards.js';
 import { loadPrefs } from './prefs.js';
 import { initAuth } from './auth.js';
 import { initWatchlist } from './watchlist.js';
+import { initLists } from './lists.js';
 import { initWatched } from './watched.js';
 import { initRatings } from './ratings.js';
 import { initMedia } from './media.js';
@@ -38,6 +39,7 @@ async function init() {
   initImageFallback();
   initAuth();
   initWatchlist();
+  initLists();
   initWatched();
   initRatings();
   initMedia();

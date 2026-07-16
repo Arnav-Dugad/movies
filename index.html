@@ -194,6 +194,17 @@
   </div>
 </div>
 
+<!-- LIST PICKER -->
+<div class="rate-overlay" id="listOv">
+  <div class="rate-modal list-modal" role="dialog" aria-modal="true" aria-labelledby="listTitle">
+    <div class="rate-title" id="listTitle">Add to lists</div>
+    <div class="rate-subtitle" id="listSub"></div>
+    <div class="list-rows" id="listRows"></div>
+    <div class="list-create" id="listCreate"></div>
+    <div class="rate-actions"><button class="rate-submit" data-action="close-list-picker">Done</button></div>
+  </div>
+</div>
+
 <!-- DELETE ACCOUNT CONFIRMATION -->
 <div class="rate-overlay" id="delOv">
   <div class="rate-modal del-modal" role="dialog" aria-modal="true" aria-labelledby="delTitle">
@@ -259,13 +270,15 @@
 
 <!-- WATCHLIST -->
 <div class="wl-page page-container" id="wlPage">
-  <div class="wl-head"><h1>My List</h1></div>
-  <div class="wl-count" id="wlCount">0 titles</div>
-  <div class="wl-tabs">
-    <div class="wl-tab active" role="button" tabindex="0" data-action="wl-filter" data-filter="all">All</div>
-    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="movie">Movies</div>
-    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="tv">TV Shows</div>
-    <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="watched">Watched ✓</div>
+  <div class="wl-head"><h1>My Lists</h1><div class="wl-head-actions" id="wlHeadActions"></div></div>
+  <div class="wl-lists" id="wlLists"></div>
+  <div class="wl-subbar">
+    <div class="wl-count" id="wlCount">0 titles</div>
+    <div class="wl-tabs wl-typefilter">
+      <div class="wl-tab active" role="button" tabindex="0" data-action="wl-filter" data-filter="all">All</div>
+      <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="movie">Movies</div>
+      <div class="wl-tab" role="button" tabindex="0" data-action="wl-filter" data-filter="tv">TV</div>
+    </div>
   </div>
   <div id="wlContent"></div>
 </div>
