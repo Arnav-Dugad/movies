@@ -15,6 +15,8 @@ import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen } from './me
 import { closeAuth, isAuthOpen, closeDelete, isDeleteOpen } from './auth.js';
 import { renderFriends } from './friends.js';
 import { renderParty } from './party.js';
+import { renderProfile } from './profile.js';
+import { renderSettings } from './settings.js';
 
 // Set when the watchlist/ratings change while we're NOT on home, so home can
 // re-render its personal rows lazily on arrival instead of every list toggle
@@ -34,6 +36,8 @@ const ROUTES = [
   { test: /^\/search\/?$/, page: 'searchPage', render: (p, query) => openSearch(query.get('q') || '') },
   { test: /^\/friends\/?$/, page: 'friendsPage', render: () => renderFriends() },
   { test: /^\/party\/?$/, page: 'partyPage', render: () => renderParty() },
+  { test: /^\/profile\/?$/, page: 'profilePage', render: () => renderProfile() },
+  { test: /^\/settings\/?$/, page: 'settingsPage', render: () => renderSettings() },
   { test: /^\/movie\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'movie') },
   { test: /^\/tv\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'tv') },
   { test: /^\/person\/(\d+)\/?$/, page: 'personPage', render: (p) => openPerson(+p[0]) },
@@ -51,11 +55,13 @@ const TITLES = {
   searchPage: 'Search — CineVerse',
   friendsPage: 'Friends — CineVerse',
   partyPage: 'Watch Party — CineVerse',
+  profilePage: 'Profile — CineVerse',
+  settingsPage: 'Settings — CineVerse',
   detailPage: 'CineVerse',
   personPage: 'CineVerse',
 };
 
-const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', stats: '/stats', search: '/search', friends: '/friends', party: '/party' };
+const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
 
 let currentPath = null;
 
@@ -162,6 +168,8 @@ export function initRouter() {
     else if (currentPath === '/stats') renderStats();
     else if (currentPath === '/friends') renderFriends();
     else if (currentPath === '/party') renderParty();
+    else if (currentPath === '/profile') renderProfile();
+    else if (currentPath === '/settings') renderSettings();
     // Only rebuild the home rows when they're actually on screen; otherwise flag
     // them so home's own render picks it up on arrival. Home's route render is a
     // no-op by design, which is why this can't simply be dropped.

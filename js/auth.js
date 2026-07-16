@@ -5,19 +5,33 @@ import { toast, $, trapFocus, lockScroll, unlockScroll } from './ui.js';
 import { registerActions } from './events.js';
 import { loadWatchlist, loadWatched } from './watchlist.js';
 import { loadRatings } from './ratings.js';
+import { applyAvatar } from './avatar.js';
 
 let authMode = 'login';
 let delRelease = null;
+
+// Read the profile doc (avatar + created) into state so the Profile page and the
+// nav/dropdown avatars can render. Non-fatal — falls back to the initial avatar.
+async function loadProfile() {
+  state.profile = { avatar: null, created: null };
+  if (!state.user) return;
+  try {
+    const d = await db.collection('users').doc(state.user.uid).get();
+    if (d.exists) { const x = d.data(); state.profile = { avatar: x.avatar || null, created: x.created || null }; }
+  } catch (e) { console.error('loadProfile', e); }
+}
 
 export function initAuth() {
   auth.onAuthStateChanged(async u => {
     state.user = u;
     updateAuthUI();
     if (u) {
-      await Promise.all([loadWatchlist(), loadRatings(), loadWatched()]);
+      await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadProfile()]);
+      updateAuthUI();   // re-render now that the avatar has loaded
       try { state.searchHistory = JSON.parse(localStorage.getItem('cv_history_' + u.uid) || '[]'); } catch (e) { state.searchHistory = []; }
     } else {
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
+      state.profile = { avatar: null, created: null };
     }
     loadRecentlyViewed();
     document.dispatchEvent(new Event('cv:auth'));
@@ -41,7 +55,7 @@ export function initAuth() {
     'toggle-profile': () => toggleProfile(),
     'reset-password': (el, e) => resetPassword(e),
     'sign-out': () => { auth.signOut(); toggleProfile(); toast('Signed out', 'info'); },
-    'open-delete': () => { toggleProfile(); openDelete(); },
+    'open-delete': () => openDelete(),
     'close-delete': () => closeDelete(),
     'confirm-delete': () => confirmDelete(),
   });
@@ -50,11 +64,12 @@ export function initAuth() {
   if (dov) dov.addEventListener('click', e => { if (e.target === dov) closeDelete(); });
 }
 
-function updateAuthUI() {
+export function updateAuthUI() {
   const u = state.user;
-  const i = u ? (u.displayName || u.email || '?')[0].toUpperCase() : '?';
-  $('navAv').textContent = i;
-  $('ddAv').textContent = i;
+  const name = u ? (u.displayName || u.email || '?') : '?';
+  const av = u ? state.profile.avatar : null;
+  applyAvatar($('navAv'), av, name);
+  applyAvatar($('ddAv'), av, name);
   $('ddName').textContent = u ? (u.displayName || 'User') : 'Guest';
   $('ddEmail').textContent = u ? u.email : 'Sign in to continue';
   // When signed in, the top item is hidden and the dedicated ddSignOut item at
@@ -62,8 +77,27 @@ function updateAuthUI() {
   const da = $('ddAuth');
   da.style.display = u ? 'none' : 'flex';
   $('ddSignOut').style.display = u ? 'flex' : 'none';
-  const dd = $('ddDelete');
-  if (dd) dd.style.display = u ? 'flex' : 'none';
+  // Profile / Settings entries are only meaningful when signed in.
+  ['ddProfile', 'ddSettings'].forEach(id => { const el = $(id); if (el) el.style.display = u ? 'flex' : 'none'; });
+}
+
+// Save name + avatar from the Profile page. Updates Firebase Auth, the profile doc,
+// and the public profile (so friends see the new name/avatar), then refreshes the UI.
+export async function saveProfile({ name, avatar }) {
+  const u = state.user;
+  if (!u) return { ok: false, msg: 'Sign in first' };
+  const nm = (name || '').trim();
+  if (!nm) return { ok: false, msg: 'Name cannot be empty' };
+  try {
+    if (nm !== u.displayName) await u.updateProfile({ displayName: nm });
+    await db.collection('users').doc(u.uid).set({ name: nm, avatar: avatar || null }, { merge: true });
+    // Mirror to the friend-visible public profile (best-effort).
+    db.collection('publicProfiles').doc(u.uid).set({ name: nm, nameLower: nm.toLowerCase(), avatar: avatar || null }, { merge: true }).catch(() => {});
+    state.profile = { ...state.profile, avatar: avatar || null };
+    updateAuthUI();
+    document.dispatchEvent(new Event('cv:auth'));   // re-render profile + friends
+    return { ok: true, msg: 'Profile saved!' };
+  } catch (e) { console.error('saveProfile', e); return { ok: false, msg: 'Could not save — try again' }; }
 }
 
 export function openAuth() { $('authOverlay').classList.add('active'); }

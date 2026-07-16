@@ -48,3 +48,25 @@ export const moods=[
 ];
 
 export const REGIONS=[['IN','🇮🇳 India'],['US','🇺🇸 US'],['GB','🇬🇧 UK'],['SA','🇸🇦 Saudi Arabia'],['AU','🇦🇺 Australia']];
+
+// Preset avatars — an emoji on a named gradient. Stored on the user doc as
+// {emoji, grad} (self-contained, so re-ordering this list never remaps anyone).
+// `grad` keys map to a CSS gradient in AVATAR_GRADS; null avatar = colored initial.
+export const AVATAR_GRADS = {
+  red:    'linear-gradient(135deg,#e50914,#ff2030)',
+  purple: 'linear-gradient(135deg,#8b5cf6,#ec4899)',
+  cyan:   'linear-gradient(135deg,#06b6d4,#22d3ee)',
+  green:  'linear-gradient(135deg,#10b981,#34d399)',
+  gold:   'linear-gradient(135deg,#f59e0b,#fbbf24)',
+  ocean:  'linear-gradient(135deg,#2563eb,#06b6d4)',
+  sunset: 'linear-gradient(135deg,#f97316,#ec4899)',
+  slate:  'linear-gradient(135deg,#475569,#94a3b8)',
+};
+export const AVATARS = [
+  { emoji: '🎬', grad: 'red' },   { emoji: '🍿', grad: 'gold' },   { emoji: '🎭', grad: 'purple' },
+  { emoji: '🎥', grad: 'slate' }, { emoji: '⭐', grad: 'gold' },   { emoji: '🚀', grad: 'ocean' },
+  { emoji: '👽', grad: 'green' }, { emoji: '🦇', grad: 'slate' },  { emoji: '🔥', grad: 'sunset' },
+  { emoji: '💀', grad: 'slate' }, { emoji: '🧙', grad: 'purple' }, { emoji: '🐉', grad: 'green' },
+  { emoji: '🌌', grad: 'ocean' },{ emoji: '❤️', grad: 'red' },     { emoji: '🎃', grad: 'sunset' },
+  { emoji: '🤖', grad: 'cyan' },  { emoji: '👑', grad: 'gold' },   { emoji: '🕵️', grad: 'slate' },
+];

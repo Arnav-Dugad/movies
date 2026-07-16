@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { esc, toast, $ } from './ui.js';
 import { registerActions } from './events.js';
 import { social, displayCode, sendRequest, acceptRequest, declineRequest, resolveCode, resolveEmail, searchByName } from './social.js';
+import { avatarInner } from './avatar.js';
 
 export function renderFriends() {
   const ct = $('friendsContent');
@@ -12,13 +13,13 @@ export function renderFriends() {
     return;
   }
 
-  const reqIn = social.reqIn.map(r => `<div class="friend-row"><div class="friend-av">${esc((r.fromName || '?')[0].toUpperCase())}</div><div class="friend-meta"><div class="friend-name">${esc(r.fromName || 'Someone')}</div><div class="friend-sub">wants to connect</div></div><div class="friend-actions"><button class="btn-primary" style="height:36px;padding:0 16px;font-size:.8rem" data-action="accept-req" data-id="${r.id}">Accept</button><button class="dbtn-icon" data-action="decline-req" data-id="${r.id}" data-tip="Decline" style="width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div></div>`).join('');
+  const reqIn = social.reqIn.map(r => `<div class="friend-row">${avatarInner(null, r.fromName)}<div class="friend-meta"><div class="friend-name">${esc(r.fromName || 'Someone')}</div><div class="friend-sub">wants to connect</div></div><div class="friend-actions"><button class="btn-primary" style="height:36px;padding:0 16px;font-size:.8rem" data-action="accept-req" data-id="${r.id}">Accept</button><button class="dbtn-icon" data-action="decline-req" data-id="${r.id}" data-tip="Decline" style="width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div></div>`).join('');
 
   const friends = social.friends.length
-    ? social.friends.map(f => `<div class="friend-row"><div class="friend-av">${esc((f.name || '?')[0].toUpperCase())}</div><div class="friend-meta"><div class="friend-name">${esc(f.name)}</div><div class="friend-sub">Friend</div></div></div>`).join('')
+    ? social.friends.map(f => `<div class="friend-row">${avatarInner(null, f.name)}<div class="friend-meta"><div class="friend-name">${esc(f.name)}</div><div class="friend-sub">Friend</div></div></div>`).join('')
     : `<p style="color:var(--text3);font-size:.88rem">No friends yet — share your code or add one above.</p>`;
 
-  const out = social.reqOut.length ? `<div class="d-sec-title" style="margin-top:24px">Pending</div>${social.reqOut.map(r => `<div class="friend-row"><div class="friend-av">${esc((r.toName || '?')[0].toUpperCase())}</div><div class="friend-meta"><div class="friend-name">${esc(r.toName || 'Friend')}</div><div class="friend-sub">Request sent</div></div></div>`).join('')}` : '';
+  const out = social.reqOut.length ? `<div class="d-sec-title" style="margin-top:24px">Pending</div>${social.reqOut.map(r => `<div class="friend-row">${avatarInner(null, r.toName)}<div class="friend-meta"><div class="friend-name">${esc(r.toName || 'Friend')}</div><div class="friend-sub">Request sent</div></div></div>`).join('')}` : '';
 
   ct.innerHTML = `
     <div class="friend-code-card">
@@ -66,7 +67,7 @@ async function doAdd() {
   // Name search
   const matches = await searchByName(val);
   if (!matches.length) { results.innerHTML = '<p style="color:var(--text3);font-size:.85rem;padding:8px 0">No one found. Try their exact friend code.</p>'; return; }
-  results.innerHTML = matches.map(m => `<div class="friend-row"><div class="friend-av">${esc((m.name || '?')[0].toUpperCase())}</div><div class="friend-meta"><div class="friend-name">${esc(m.name)}</div><div class="friend-sub">CINE-${esc(m.code || '')}</div></div><div class="friend-actions"><button class="btn-glass" style="padding:8px 16px;font-size:.8rem" data-action="friend-request" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}">Add</button></div></div>`).join('');
+  results.innerHTML = matches.map(m => `<div class="friend-row">${avatarInner(m.avatar || null, m.name)}<div class="friend-meta"><div class="friend-name">${esc(m.name)}</div><div class="friend-sub">CINE-${esc(m.code || '')}</div></div><div class="friend-actions"><button class="btn-glass" style="padding:8px 16px;font-size:.8rem" data-action="friend-request" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}">Add</button></div></div>`).join('');
 }
 
 export function initFriends() {

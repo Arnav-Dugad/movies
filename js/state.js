@@ -17,6 +17,10 @@ export const state = {
   searchHistory: [],
   recentlyViewed: [],
   region: 'IN',
+  // Loaded from users/{uid} on sign-in: { avatar: {emoji,grad}|null, created }.
+  profile: { avatar: null, created: null },
+  lists: [],          // custom lists metadata (loaded by lists.js)
+  wlList: 'watchlist',// active list on the My List page
 };
 
 // ===== LOOKUP HELPERS =====
