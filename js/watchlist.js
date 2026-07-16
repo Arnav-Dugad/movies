@@ -3,9 +3,9 @@ import { auth, db, firebase } from './firebase.js';
 import { state } from './state.js';
 import { IMG, PH } from './config.js';
 import { esc, toast, $ } from './ui.js';
-import { refreshWLBtns, rateBtnHTML, caretHTML } from './cards.js';
+import { refreshWLBtns, rateBtnHTML } from './cards.js';
 import { registerActions, readItem } from './events.js';
-import { addToList, removeFromAllLists, removeFromList, listsArr, listById, createList, renameList, deleteList } from './lists.js';
+import { removeFromAllLists, removeFromList, listsArr, listById, createList, renameList, deleteList } from './lists.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
 
@@ -15,15 +15,6 @@ export async function loadWatchlist() {
     const s = await db.collection('users').doc(state.user.uid).collection('watchlist').orderBy('added', 'desc').get();
     state.watchlist = s.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (e) { console.error(e); }
-}
-
-// The main card +/✓ button. Quick-add goes to the default Watchlist; ✓ (saved in
-// ≥1 list) removes from every list. Granular per-list membership is the caret's job.
-export async function toggleWL(item, type) {
-  if (!state.user) return requireAuth();
-  const exists = state.watchlist.find(w => w.id === `${type}_${item.id}`);
-  if (exists) await removeFromAllLists(item, type);
-  else { await addToList(item, type, 'watchlist'); toast('Added to Watchlist!', 'success'); }
 }
 
 export async function loadWatched() {
@@ -156,13 +147,12 @@ export function renderWL() {
     const payload = payloadFor(w);
     // ✕ removes from the ACTIVE list only (so removing from Favorites doesn't nuke
     // Watchlist); on All/Watched it removes from every list.
-    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.tmdbId}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${wd ? '<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' : ''}${wd ? rateBtnHTML(w.tmdbId, w.type, w.title) : ''}${caretHTML(w.tmdbId, w.type, payload)}<button class="card-wl in wl-remove" data-wl="${w.type}|${w.tmdbId}" data-action="wl-remove-here" data-item="${payload}" aria-label="Remove" data-tip="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
+    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.tmdbId}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${wd ? '<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' : ''}${wd ? rateBtnHTML(w.tmdbId, w.type, w.title) : ''}<button class="card-wl in wl-remove" data-wl="${w.type}|${w.tmdbId}" data-action="wl-remove-here" data-item="${payload}" aria-label="Remove" data-tip="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
   }).join('')}</div>`;
 }
 
 export function initWatchlist() {
   registerActions({
-    'toggle-wl': (el, e) => { e.stopPropagation(); toggleWL(readItem(el), readItem(el).type); },
     'toggle-watched': async (el, e) => {
       e.stopPropagation();
       let genres = [];

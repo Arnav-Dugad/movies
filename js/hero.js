@@ -3,8 +3,7 @@ import { tmdb } from './api.js';
 import { IMG, genreMap, pickLogo } from './config.js';
 import { state } from './state.js';
 import { esc, $, prefersReducedMotion, isTouch } from './ui.js';
-import { registerActions, readItem } from './events.js';
-import { toggleWL } from './watchlist.js';
+import { registerActions } from './events.js';
 import { mountAmbientVideo, ambientOK } from './video-bg.js';
 
 const HERO_INTERVAL_MS = 30000;
@@ -109,7 +108,7 @@ export async function initHero() {
           <p class="hero-desc">${esc(item.overview || '')}</p>
           <div class="hero-actions">
             <button class="btn-primary magnetic" data-action="open-detail" data-id="${item.id}" data-type="${item.media_type}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none"/></svg>Watch Now</button>
-            <button class="btn-glass" data-action="hero-wl" data-item="${payload}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>My List</button>
+            <button class="btn-glass" data-action="open-list-picker" data-item="${payload}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>My List</button>
           </div>
         </div>
       </div>`;
@@ -181,6 +180,5 @@ export function initHeroInteractions() {
 
   registerActions({
     'hero-go': (el) => goHero(+el.dataset.idx),
-    'hero-wl': (el, e) => { e.stopPropagation(); const it = readItem(el); toggleWL(it, it.type); },
   });
 }

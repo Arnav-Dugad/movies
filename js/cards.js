@@ -18,20 +18,13 @@ function wlPayload(item, type) {
 }
 
 const STAR_OUTLINE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
-const LIST_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h11M4 12h11M4 18h7M17 15l3 3-3 3M20 18h-9"/></svg>';
 
-// The list-picker caret (opens "add to which lists"). `.has` when the title is saved
-// in ≥1 list. Sits immediately left of the main +/✓ button.
-export function caretHTML(id, type, payload) {
-  const wl = inWL(id, type);
-  return `<button class="card-lists${wl ? ' has' : ''}" data-lc="${type}|${id}" data-action="open-list-picker" data-item="${payload}" aria-label="Add to lists" data-tip="Add to lists…">${LIST_ICON}</button>`;
-}
-
-// The main quick-add button: + adds to the default Watchlist, ✓ (in ≥1 list) removes
-// from all lists. A single boolean, toggling its exact inverse.
+// The single add-to-list button on a poster: shows + when the title is in no list,
+// ✓ when it's saved in ≥1 list, and ALWAYS opens the list picker (which list?).
+// data-wl keeps refreshWLBtns able to flip +/✓ after a change made elsewhere.
 export function wlBtnHTML(id, type, payload) {
   const wl = inWL(id, type);
-  return `<button class="card-wl ${wl ? 'in' : ''}" data-wl="${type}|${id}" data-action="toggle-wl" data-item="${payload}" aria-label="${wl ? 'Remove from list' : 'Add to list'}" data-tip="${wl ? 'Remove from list' : 'Add to list'}">${wl ? '✓' : '+'}</button>`;
+  return `<button class="card-wl ${wl ? 'in' : ''}" data-wl="${type}|${id}" data-action="open-list-picker" data-item="${payload}" aria-label="${wl ? 'Edit lists' : 'Add to a list'}" data-tip="${wl ? 'Edit lists' : 'Add to a list'}">${wl ? '✓' : '+'}</button>`;
 }
 
 // Quick-rate control. Only emitted on WATCHED cards — rating something you
@@ -71,11 +64,9 @@ export function buildCard(item, type, opts = {}) {
   if (rating && !opts.t10) h += `<div class="card-rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rating}</div>`;
   if (wd) h += `<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>`;
   if (wd && !opts.t10) h += rateBtnHTML(item.id, t, title);
-  // List controls live INSIDE .card-img so they overlay the poster (absolute
-  // bottom-right anchors to the poster) — the caret (pick lists) then the main
-  // quick-add +/✓. Keeps the text area clean under the poster.
-  if (!opts.t10) { const pl = wlPayload(item, t); h += caretHTML(item.id, t, pl) + wlBtnHTML(item.id, t, pl); }
-  else h += wlBtnHTML(item.id, t, wlPayload(item, t));
+  // One add-to-list button, overlaying the poster (absolute bottom-right); tapping
+  // it opens the picker to choose which list(s).
+  h += wlBtnHTML(item.id, t, wlPayload(item, t));
   h += `</div>`;
   if (!opts.t10) h += `<div class="card-info"><div class="card-title">${safeTitle}</div><div class="card-sub"><span>${year}</span><span class="dot"></span><span>${t === 'tv' ? 'TV' : 'Movie'}</span></div></div>`;
   h += `</div>`;
@@ -92,8 +83,8 @@ export function skelCards(n = 8, w = 155) {
   return Array(n).fill(`<div class="card" style="width:${w}px"><div class="card-img skel" style="aspect-ratio:2/3"></div></div>`).join('');
 }
 
-// Refresh the +/✓ state of every watchlist button on screen (and the caret's saved
-// indicator), so a change made anywhere reflects everywhere without a re-render.
+// Refresh the +/✓ state of every add-to-list button on screen, so a change made
+// anywhere (the picker, another card) reflects everywhere without a re-render.
 export function refreshWLBtns() {
   document.querySelectorAll('[data-wl]').forEach(b => {
     const [t, i] = b.dataset.wl.split('|');
@@ -102,10 +93,6 @@ export function refreshWLBtns() {
     b.classList.toggle('active', yes);
     // wl-remove buttons use an SVG icon, not the +/✓ glyph — don't clobber it.
     if (b.classList.contains('card-wl') && !b.classList.contains('wl-remove')) b.textContent = yes ? '✓' : '+';
-  });
-  document.querySelectorAll('[data-lc]').forEach(b => {
-    const [t, i] = b.dataset.lc.split('|');
-    b.classList.toggle('has', inWL(parseInt(i), t));
   });
 }
 
