@@ -237,9 +237,16 @@
 .ring-goal{font-size:.8rem;color:var(--text3)}
 .ring-pct{font-size:.66rem;color:var(--text3);font-weight:700;margin-top:2px}
 .challenge-info{min-width:0}
-.challenge-name{font-weight:800;font-size:1.02rem;margin-bottom:3px}
+.challenge-name{font-weight:800;font-size:1.02rem;margin-bottom:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .challenge-sub{font-size:.8rem;color:var(--text2);margin-bottom:8px}
 .challenge-meta{font-size:.72rem;color:var(--text3);font-weight:600}
+.challenge-card.done{opacity:.72}
+.difficulty-pill{font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:50px;border:1px solid transparent}
+.diff-easy{color:var(--green2);background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.3)}
+.diff-medium{color:var(--cyan2);background:rgba(6,182,212,.12);border-color:rgba(6,182,212,.3)}
+.diff-hard{color:var(--gold);background:rgba(251,191,36,.12);border-color:var(--gold-glow)}
+.diff-insane{color:var(--red2);background:rgba(229,9,20,.12);border-color:rgba(229,9,20,.3)}
+.diff-legendary{color:var(--purple2);background:rgba(139,92,246,.14);border-color:rgba(139,92,246,.4)}
 
 /* ===== BADGES ===== */
 .badge-count{font-family:var(--font-mono);font-size:.8rem;color:var(--text3);font-weight:700}

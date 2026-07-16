@@ -9,51 +9,7 @@ import { genreMap } from './config.js';
 import { esc, toast } from './ui.js';
 import { confettiBurst } from './effects.js';
 
-// ===== SEASONS =====
-// The four windows tile all 12 months, so activeSeason() always resolves.
-const SEASONS = [
-  { id: 'winter', name: 'Winter Watch', icon: '❄️', sub: 'Cosy season viewing', startMonth: 12, endMonth: 2, goal: 10, accent: 'cyan' },
-  { id: 'spring', name: 'Spring Awakening', icon: '🌱', sub: 'Fresh picks for a fresh season', startMonth: 3, endMonth: 5, goal: 10, accent: 'green' },
-  { id: 'summer', name: 'Summer Blockbusters', icon: '☀️', sub: 'Popcorn season', startMonth: 6, endMonth: 8, goal: 12, accent: 'gold' },
-  { id: 'fall', name: 'Fall Festival', icon: '🍂', sub: 'Awards season warm-up', startMonth: 9, endMonth: 11, goal: 10, accent: 'red' },
-];
-
-export const YEAR_GOAL = 52;
-
-// Resolve the season window containing `now`. Windows are LOCAL time, and the
-// instance is anchored to the year the window OPENED — so Dec 2026 and Jan 2027
-// both resolve to `winter_2026` with identical bounds instead of splitting the
-// user's progress across the new year.
-export function activeSeason(now = new Date()) {
-  const m = now.getMonth() + 1, y = now.getFullYear();
-  for (const def of SEASONS) {
-    const wraps = def.startMonth > def.endMonth;              // Dec -> Feb
-    const inIt = wraps ? (m >= def.startMonth || m <= def.endMonth)
-                       : (m >= def.startMonth && m <= def.endMonth);
-    if (!inIt) continue;
-    const sy = (wraps && m <= def.endMonth) ? y - 1 : y;
-    return {
-      def, seasonYear: sy, id: `${def.id}_${sy}`,
-      start: new Date(sy, def.startMonth - 1, 1).getTime(),
-      // Exclusive end: the 1st of the month AFTER endMonth. `new Date(y, 2, 1)`
-      // is March 1 (month index 2), which is exactly what winter's endMonth:2 wants.
-      end: new Date(wraps ? sy + 1 : sy, def.endMonth, 1).getTime(),
-    };
-  }
-  return null;
-}
-
 // ===== CONTEXT =====
-// The only timestamp we have. Handles a real Firestore Timestamp, the local
-// {seconds} mirror written by toggleWatched, and the raw sentinel (-> 0, ignored).
-function tsOf(d) {
-  const w = d && d.watchedAt;
-  if (!w) return 0;
-  if (typeof w.seconds === 'number') return w.seconds * 1000;
-  if (typeof w.toMillis === 'function') return w.toMillis();
-  return 0;
-}
-
 function maxEntry(m) {
   let best = null;
   for (const [key, v] of m) if (!best || v.n > best.n) best = { key, ...v };
@@ -62,20 +18,13 @@ function maxEntry(m) {
 
 // One pass over state.watched builds everything every badge needs, so predicates
 // stay O(1) and the whole registry costs one traversal.
-export function buildCtx(now = Date.now()) {
-  const year = new Date(now).getFullYear();
-  const yStart = new Date(year, 0, 1).getTime();
-  const yEnd = new Date(year + 1, 0, 1).getTime();
-  const season = activeSeason(new Date(now));
-
+export function buildCtx() {
   const c = {
-    now, year, season,
     watchedTotal: 0, movies: 0, shows: 0,
     wlTotal: state.watchlist.length,
     ratedTotal: 0, avgRating: 0, perfect: 0,
     minutes: 0, metaKnown: 0,
     genre: new Map(), decade: new Map(), director: new Map(), actor: new Map(),
-    thisYear: 0, seasonCount: 0,
   };
 
   const bump = (m, k, extra) => {
@@ -93,12 +42,6 @@ export function buildCtx(now = Date.now()) {
     if (typeof d.runtime === 'number' && d.runtime > 0) { c.minutes += d.runtime; c.metaKnown++; }
     if (d.director) bump(c.director, d.director, { id: d.directorId || 0 });
     (d.cast || []).forEach(p => { if (p && p.id) bump(c.actor, p.id, { name: p.name || '' }); });
-
-    const ts = tsOf(d);
-    if (ts) {
-      if (ts >= yStart && ts < yEnd) c.thisYear++;
-      if (season && ts >= season.start && ts < season.end) c.seasonCount++;
-    }
   }
 
   let sum = 0;
@@ -153,6 +96,32 @@ export const BADGES = [
 ];
 
 export const earnedIds = ctx => BADGES.filter(b => b.value(ctx) >= b.goal).map(b => b.id);
+
+// ===== LIFETIME CHALLENGES =====
+// Marquee goals, no time window — some easy, some brutal. Each is `{ id, name, sub,
+// icon, difficulty, goal, value(ctx), unit }`; difficulty drives the ring accent + a
+// pill. Rendered as rings on the Stats page, in-progress first.
+const DIFFICULTY = {
+  easy:      { label: 'Easy',      accent: 'green',  order: 0 },
+  medium:    { label: 'Medium',    accent: 'cyan',   order: 1 },
+  hard:      { label: 'Hard',      accent: 'gold',   order: 2 },
+  insane:    { label: 'Insane',    accent: 'red',    order: 3 },
+  legendary: { label: 'Legendary', accent: 'purple', order: 4 },
+};
+
+const CH = (id, name, sub, icon, difficulty, goal, value, unit = '') => ({ id, name, sub, icon, difficulty, goal, value, unit });
+export const CHALLENGES = [
+  CH('c_start', 'Getting Comfortable', 'Watch 5 titles', '🎬', 'easy', 5, c => c.watchedTotal),
+  CH('c_opinions', 'First Opinions', 'Rate 3 titles', '⭐', 'easy', 3, c => c.ratedTotal),
+  CH('c_genres', 'Genre Hopper', 'Watch 8 different genres', '🧭', 'medium', 8, c => c.distinctGenres),
+  CH('c_hours100', 'Time Traveller', 'Watch 100 hours of content', '🕰️', 'medium', 100, c => c.hours, 'h'),
+  CH('c_decades', 'Across the Ages', 'Watch titles from 6 different decades', '📼', 'hard', 6, c => c.distinctDecades),
+  CH('c_cinephile', 'The Cinephile', 'Watch 100 titles', '🎞️', 'hard', 100, c => c.watchedTotal),
+  CH('c_director', "Auteur's Devotee", 'Watch 10 titles by a single director', '🎥', 'hard', 10, c => (c.topDirector ? c.topDirector.n : 0)),
+  CH('c_critic', 'Completionist Critic', 'Rate 200 titles', '🏆', 'insane', 200, c => c.ratedTotal),
+  CH('c_archive', 'Living Archive', 'Watch 500 titles', '🏛️', 'insane', 500, c => c.watchedTotal),
+  CH('c_hours1000', 'A Thousand Hours', 'Watch 1,000 hours of content', '⏳', 'legendary', 1000, c => c.hours, 'h'),
+];
 
 // ===== LEDGER (localStorage) =====
 const LKEY = uid => `cv_badges_${uid}`;
@@ -215,33 +184,28 @@ function ringHTML(percent, accent, centerHTML) {
 }
 
 export function challengesHTML(ctx) {
-  const s = ctx.season;
-  const cards = [];
+  const rows = CHALLENGES.map(ch => {
+    const v = ch.value(ctx);
+    const done = v >= ch.goal;
+    const p = pct(v, ch.goal);
+    const diff = DIFFICULTY[ch.difficulty] || DIFFICULTY.easy;
+    return { ch, v, done, p, diff };
+  });
+  // In-progress first, completed last; within each, easier first.
+  rows.sort((a, b) => (a.done - b.done) || (a.diff.order - b.diff.order));
 
-  if (s) {
-    const p = pct(ctx.seasonCount, s.def.goal);
-    cards.push(`<div class="challenge-card">
-      ${ringHTML(p, s.def.accent, `<div class="ring-num">${ctx.seasonCount}<span class="ring-goal">/${s.def.goal}</span></div><div class="ring-pct">${p}%</div>`)}
-      <div class="challenge-info">
-        <div class="challenge-name">${s.def.icon} ${esc(s.def.name)}</div>
-        <div class="challenge-sub">${esc(s.def.sub)}</div>
-        <div class="challenge-meta">${ctx.seasonCount >= s.def.goal ? '✅ Challenge complete!' : `${s.def.goal - ctx.seasonCount} to go · ends ${new Date(s.end - 1).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}</div>
-      </div>
-    </div>`);
-  }
-
-  const yp = pct(ctx.thisYear, YEAR_GOAL);
-  cards.push(`<div class="challenge-card">
-    ${ringHTML(yp, 'purple', `<div class="ring-num">${ctx.thisYear}<span class="ring-goal">/${YEAR_GOAL}</span></div><div class="ring-pct">${yp}%</div>`)}
+  const done = rows.filter(r => r.done).length;
+  const cards = rows.map(({ ch, v, done, p, diff }) => `<div class="challenge-card${done ? ' done' : ''}">
+    ${ringHTML(p, diff.accent, `<div class="ring-num">${v}${ch.unit}<span class="ring-goal">/${ch.goal}${ch.unit}</span></div><div class="ring-pct">${p}%</div>`)}
     <div class="challenge-info">
-      <div class="challenge-name">🎯 ${ctx.year} Goal</div>
-      <div class="challenge-sub">Watch ${YEAR_GOAL} titles this year</div>
-      <div class="challenge-meta">${ctx.thisYear >= YEAR_GOAL ? '✅ Goal smashed!' : `${YEAR_GOAL - ctx.thisYear} to go`}</div>
+      <div class="challenge-name">${ch.icon} ${esc(ch.name)} <span class="difficulty-pill diff-${ch.difficulty}">${diff.label}</span></div>
+      <div class="challenge-sub">${esc(ch.sub)}</div>
+      <div class="challenge-meta">${done ? '✅ Complete!' : `${(ch.goal - v).toLocaleString()}${ch.unit} to go`}</div>
     </div>
-  </div>`);
+  </div>`).join('');
 
-  return `<div class="d-sec-title">Viewing Challenges</div>
-    <div class="challenge-grid">${cards.join('')}</div>`;
+  return `<div class="d-sec-title">Lifetime Challenges <span class="badge-count">${done}/${CHALLENGES.length}</span></div>
+    <div class="challenge-grid">${cards}</div>`;
 }
 
 export function badgesHTML(ctx) {
