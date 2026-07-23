@@ -63,6 +63,41 @@
   /* No .rate-star width override here — the row flexes to fit (components.css).
      A fixed width would push 10 stars past the modal and wrap the last one. */
   .rate-modal{padding:32px 20px}
+
+  /* ===== Watch Party (previously had NO mobile rules at all) ===== */
+  /* Stack + centre the hero, matching the profile hero's mobile treatment —
+     side-by-side leaves the text column too narrow to read. */
+  .party-hero{flex-direction:column;align-items:center;text-align:center;gap:16px;padding:16px}
+  .party-hero-poster{width:150px}
+  .party-hero-body{min-width:0;width:100%;align-items:center}
+  .party-hero-body .btn-primary{align-self:center}
+  .party-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+  .party-vibe{padding:14px}
+  .party-mood{padding:7px 12px;font-size:.76rem}
+  .party-controls{gap:12px}
+  .party-controls .btn-primary{width:100%;justify-content:center}
+
+  /* ===== Friends (previously had NO mobile rules at all) ===== */
+  /* min-width:220px on the input can't shrink below the viewport on a small
+     phone — let it flex down instead. */
+  .friend-add input{min-width:0}
+  .friend-code-card{padding:16px}
+  .friend-code{font-size:1.15rem;letter-spacing:1px}
+  .friend-row{padding:10px 12px;gap:10px}
+
+  /* Search results matched the desktop card size, giving two fat columns where
+     every other grid gives three. */
+  .search-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+
+  /* ===== Pages added in this pass ===== */
+  .studio-top{flex-direction:column;align-items:center;text-align:center;gap:16px}
+  .studio-logo-lg{width:160px;min-height:80px;padding:14px}
+  .studio-name,.shared-head .studio-name{font-size:1.6rem}
+  .shared-head{gap:14px}
+  .shared-clone{width:100%;justify-content:center}
+  /* Keep the star meter from squeezing the author name onto a sliver of the row. */
+  .review-top{flex-wrap:wrap}
+  .review{padding:14px}
 }
 
 /* Touch devices: drop the horizontal snap so a vertical swipe over a card row
@@ -90,4 +125,10 @@
   .hero-actions{flex-direction:column;width:100%}
   .hero-actions .btn-primary,.hero-actions .btn-glass{width:100%;justify-content:center}
   .challenge-card{flex-direction:column;text-align:center}
+  .search-grid,.party-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
+  .friend-code{font-size:1rem;letter-spacing:.5px}
+  .party-mood{font-size:.72rem;padding:6px 10px}
+  /* The list picker's rows are the only tap targets in that modal — keep them
+     comfortable even on the narrowest phones. */
+  .list-row{padding:12px 10px}
 }
