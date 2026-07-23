@@ -8,7 +8,7 @@ import { state } from './state.js';
 import { IMG, PH, genreMap } from './config.js';
 import { esc, debounce, $ } from './ui.js';
 import { registerActions } from './events.js';
-import { rateBtnHTML, myRatingHTML } from './cards.js';
+import { rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { ensureWatchedMeta } from './watched-meta.js';
 
 let watchedSort = 'recent';   // recent | title | year_desc | year_asc
@@ -79,7 +79,7 @@ function renderGrid() {
 
   ct.innerHTML = `<div class="wl-grid">${items.map(w => {
     const poster = w.poster ? `${IMG}w342${w.poster}` : PH;
-    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.id}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}"><div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>${myRatingHTML(w.id, w.type)}${rateBtnHTML(w.id, w.type, w.title)}</div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
+    return `<div class="card" role="button" tabindex="0" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.id}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${WATCHED_BADGE_HTML}${myRatingHTML(w.id, w.type)}${rateBtnHTML(w.id, w.type, w.title)}</div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
   }).join('')}</div>`;
 }
 

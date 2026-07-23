@@ -1,7 +1,7 @@
 // ===== APP BOOTSTRAP =====
 import { $ } from './ui.js';
 import { initDelegation } from './events.js';
-import { initImageFallback } from './cards.js';
+import { initImageFallback, initCardSync } from './cards.js';
 import { loadPrefs } from './prefs.js';
 import { initAuth } from './auth.js';
 import { initWatchlist } from './watchlist.js';
@@ -40,6 +40,7 @@ async function init() {
   // Wire delegation + all action handlers before any content renders.
   initDelegation();
   initImageFallback();
+  initCardSync();
   initAuth();
   initWatchlist();
   initLists();
