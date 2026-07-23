@@ -93,6 +93,7 @@ export async function addToList(item, type, listId) {
       entry.lists = next;
     }
     refreshWLBtns();
+    toast(`Saved to ${listById(listId)?.name || 'list'}`, 'success');
     document.dispatchEvent(new Event('cv:wl-changed'));
   } catch (e) { console.error('addToList', e); toast('Error updating list', 'error'); }
 }
@@ -114,6 +115,7 @@ export async function removeFromList(item, type, listId) {
       entry.lists = next;
     }
     refreshWLBtns();
+    toast(`Removed from ${listById(listId)?.name || 'list'}`, 'info');
     document.dispatchEvent(new Event('cv:wl-changed'));
   } catch (e) { console.error('removeFromList', e); toast('Error updating list', 'error'); }
 }
@@ -184,7 +186,7 @@ export async function deleteList(id) {
     batch.delete(listCol().doc(id));
     await batch.commit();
     state.lists = state.lists.filter(l => l.id !== id);
-    if (state.wlList === id) state.wlList = 'all';
+    if (state.wlList === id) state.wlList = 'watchlist';
     refreshWLBtns();
     document.dispatchEvent(new Event('cv:wl-changed'));
   } catch (e) { console.error('deleteList', e); toast('Could not delete list', 'error'); }
@@ -264,5 +266,5 @@ export function initLists() {
   });
 
   // Clear per-user list state on sign-out.
-  document.addEventListener('cv:auth', () => { if (!state.user) { state.lists = []; state.wlList = 'all'; } });
+  document.addEventListener('cv:auth', () => { if (!state.user) { state.lists = []; state.wlList = 'watchlist'; } });
 }

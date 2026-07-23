@@ -78,8 +78,10 @@ export function updateAuthUI() {
   const da = $('ddAuth');
   da.style.display = u ? 'none' : 'flex';
   $('ddSignOut').style.display = u ? 'flex' : 'none';
-  // Profile / Settings entries are only meaningful when signed in.
-  ['ddProfile', 'ddSettings'].forEach(id => { const el = $(id); if (el) el.style.display = u ? 'flex' : 'none'; });
+  // Settings entry is only meaningful when signed in. (The profile-head block —
+  // ddHead — doubles as the Profile button; it falls back to opening auth when
+  // signed out, so it stays visible in both states.)
+  ['ddSettings'].forEach(id => { const el = $(id); if (el) el.style.display = u ? 'flex' : 'none'; });
 }
 
 // Save name + avatar from the Profile page. Updates Firebase Auth, the profile doc,

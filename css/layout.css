@@ -22,7 +22,8 @@
 /* Profile Dropdown */
 .profile-dd{position:absolute;top:calc(100% + 12px);right:0;width:280px;background:var(--bg2);border:1px solid var(--glass-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden;opacity:0;visibility:hidden;transform:translateY(-8px) scale(.96);transition:all .3s var(--spring);z-index:6000}
 .profile-dd.active{opacity:1;visibility:visible;transform:translateY(0) scale(1)}
-.profile-dd-head{padding:18px 16px;background:linear-gradient(135deg,var(--red-soft),rgba(139,92,246,.06));border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:12px}
+.profile-dd-head{padding:18px 16px;background:linear-gradient(135deg,var(--red-soft),rgba(139,92,246,.06));border-bottom:1px solid var(--glass-border);display:flex;align-items:center;gap:12px;cursor:pointer;transition:background .2s var(--ease)}
+.profile-dd-head:hover,.profile-dd-head:focus-visible{background:linear-gradient(135deg,var(--red-soft),rgba(139,92,246,.14));outline:none}
 .profile-dd-avatar{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--red),var(--purple));display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;flex-shrink:0}
 .profile-dd-name{font-weight:700;font-size:.95rem}
 .profile-dd-email{font-size:.75rem;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}

@@ -94,6 +94,13 @@ export function renderProfile() {
 
 export function initProfile() {
   registerActions({
+    // The dropdown name/email block is the profile button now (the separate
+    // "Profile" item is gone). Signed out, there's no profile to show — open auth.
+    'open-profile-page': () => {
+      const dd = $('profileDD'); if (dd) dd.classList.remove('active');
+      if (state.user) document.dispatchEvent(new CustomEvent('cv:go', { detail: '/profile' }));
+      else document.dispatchEvent(new Event('cv:open-auth'));
+    },
     'profile-edit': () => { editing = true; draftAvatar = undefined; renderProfile(); const n = $('profileName'); if (n) n.focus(); },
     'profile-cancel': () => { editing = false; draftAvatar = undefined; renderProfile(); },
     'pick-avatar': (el) => {

@@ -109,17 +109,13 @@
       <div style="position:relative">
         <div class="nav-avatar" id="navAv" role="button" tabindex="0" data-action="toggle-profile" aria-label="Profile menu" data-tip="Account">?</div>
         <div class="profile-dd" id="profileDD">
-          <div class="profile-dd-head">
+          <div class="profile-dd-head" id="ddHead" role="button" tabindex="0" data-action="open-profile-page" aria-label="Open your profile">
             <div class="profile-dd-avatar" id="ddAv">?</div>
             <div><div class="profile-dd-name" id="ddName">Guest</div><div class="profile-dd-email" id="ddEmail">Sign in</div></div>
           </div>
           <div class="profile-dd-item" id="ddAuth" data-action="open-auth">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
             <span>Sign In</span>
-          </div>
-          <div class="profile-dd-item" id="ddProfile" data-action="show-page" data-page="profile" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
-            Profile
           </div>
           <div class="profile-dd-item" data-action="show-page" data-page="discover">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>

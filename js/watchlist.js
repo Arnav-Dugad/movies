@@ -82,7 +82,6 @@ export function setWLFilter(f, el) {
 // Which titles belong to the active list dimension (state.wlList).
 function itemsForActiveList() {
   if (state.wlList === 'watched') return state.watchlist.filter(w => state.watched[w.id]);
-  if (state.wlList === 'all') return state.watchlist.slice();
   return state.watchlist.filter(w => listsArr(w).includes(state.wlList));
 }
 
@@ -103,12 +102,12 @@ export function renderWL() {
   }
 
   // Guard against a deleted active list.
-  if (state.wlList !== 'all' && state.wlList !== 'watched' && !listById(state.wlList)) state.wlList = 'watchlist';
+  if (state.wlList !== 'watched' && !listById(state.wlList)) state.wlList = 'watchlist';
 
   // ----- List chip rail -----
   if (rail) {
     const chip = (id, label, icon) => `<button class="wl-chip${state.wlList === id ? ' active' : ''}" data-action="wl-list" data-list="${id}">${icon ? `<span class="wl-chip-ico">${icon}</span>` : ''}${esc(label)}</button>`;
-    let html = chip('all', 'All', '🍿');
+    let html = '';
     state.lists.forEach(l => { html += chip(l.id, l.name, l.icon); });
     html += chip('watched', 'Watched', '✓');
     html += `<button class="wl-chip wl-chip-new" data-action="wl-new-list">＋ New</button>`;
@@ -117,7 +116,7 @@ export function renderWL() {
 
   // ----- Head actions: inline create/rename input, else rename/delete controls -----
   if (head) {
-    const active = state.wlList !== 'all' && state.wlList !== 'watched' ? listById(state.wlList) : null;
+    const active = state.wlList !== 'watched' ? listById(state.wlList) : null;
     if (listEdit) {
       const val = listEdit.mode === 'rename' && active ? esc(active.name) : '';
       head.innerHTML = `<div class="wl-editrow"><input id="wlListName" type="text" placeholder="List name…" maxlength="30" value="${val}" autocomplete="off"><button class="btn-primary" data-action="wl-list-save">${listEdit.mode === 'rename' ? 'Save' : 'Create'}</button><button class="btn-glass" data-action="wl-list-cancel">Cancel</button></div>`;
@@ -136,7 +135,7 @@ export function renderWL() {
   if (cnt) cnt.textContent = `${items.length} title${items.length !== 1 ? 's' : ''}`;
 
   if (!items.length) {
-    const nm = state.wlList === 'all' ? 'list' : state.wlList === 'watched' ? 'watched list' : (listById(state.wlList)?.name || 'list');
+    const nm = state.wlList === 'watched' ? 'watched list' : (listById(state.wlList)?.name || 'list');
     ct.innerHTML = `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><h3>${esc(nm[0].toUpperCase() + nm.slice(1))} is empty</h3><p>Add movies and shows with the + on any poster</p></div>`;
     return;
   }
@@ -182,12 +181,12 @@ export function initWatchlist() {
       e.stopPropagation();
       const item = readItem(el);
       // Remove from the active list only; on All/Watched remove from every list.
-      if (state.wlList === 'all' || state.wlList === 'watched') removeFromAllLists(item, item.type).then(renderWL);
+      if (state.wlList === 'watched') removeFromAllLists(item, item.type).then(renderWL);
       else removeFromList(item, item.type, state.wlList).then(renderWL);
     },
   });
   // Enter submits the inline list-name input.
   document.addEventListener('keydown', e => { if (e.target && e.target.id === 'wlListName' && e.key === 'Enter') { e.preventDefault(); saveListEdit(); } });
   // Reset transient edit state when leaving the page or signing out.
-  document.addEventListener('cv:auth', () => { listEdit = null; pendingDelete = null; state.wlList = 'all'; });
+  document.addEventListener('cv:auth', () => { listEdit = null; pendingDelete = null; state.wlList = 'watchlist'; });
 }
