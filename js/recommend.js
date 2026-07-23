@@ -154,6 +154,18 @@ export function blendProfiles(profiles) {
 // ----- Candidate generation -----
 export function tag(results, type, source) { return (results || []).map(r => ({ ...r, __type: r.media_type || type, __source: source })); }
 
+// A recommendation you can't watch yet isn't a recommendation. Requires a real,
+// past date — a candidate with no date at all is unknown/unreleased, so it goes.
+export function isOut(c) {
+  const raw = c.release_date || c.first_air_date;
+  if (!raw) return false;
+  const d = new Date(raw + 'T00:00:00');
+  return !isNaN(d) && d.getTime() <= Date.now();
+}
+// Obscure titles with a handful of votes are noise, not discoveries.
+const MIN_VOTES = 50;
+const today = () => new Date().toISOString().slice(0, 10);
+
 // `only` restricts candidates to a single media type ('movie' | 'tv'); null
 // keeps the default blended behavior (movies always, TV when not movie-biased).
 // The Watch-Party matcher passes only='movie'/'tv' for its dedicated toggles.
@@ -169,27 +181,37 @@ export async function fetchCandidates(profile, { only = null } = {}) {
   const actors = profile.topActors || [];
   const directors = profile.topDirectors || [];
   const push = (p, type, source) => calls.push(p.then(d => tag(d.results, type, source)).catch(() => []));
+  // Filter unreleased at the source too, so a page isn't half-wasted on titles
+  // the client-side guard would only throw away again.
+  const outM = { 'release_date.lte': today() };
+  const outT = { 'first_air_date.lte': today() };
 
   if (wantMovie && movieG.length) {
     const or = movieG.join('|');
-    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150 }), 'movie', 'genre');
-    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, page: 2 }), 'movie', 'genre');
-    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 500 }), 'movie', 'quality');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, ...outM }), 'movie', 'genre');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, page: 2, ...outM }), 'movie', 'genre');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 500, ...outM }), 'movie', 'quality');
   }
   if (wantMovie && actors.length) {
     // The TOP actor gets its own call so the "Starring X" row is always accurate;
     // the next two only widen the pool.
-    push(tmdb('/discover/movie', { with_cast: String(actors[0].id), sort_by: 'popularity.desc' }), 'movie', 'cast');
+    push(tmdb('/discover/movie', { with_cast: String(actors[0].id), sort_by: 'popularity.desc', ...outM }), 'movie', 'cast');
     const more = actors.slice(1, 3).map(a => a.id);
-    if (more.length) push(tmdb('/discover/movie', { with_cast: more.join('|'), sort_by: 'popularity.desc' }), 'movie', 'castmore');
+    if (more.length) push(tmdb('/discover/movie', { with_cast: more.join('|'), sort_by: 'popularity.desc', ...outM }), 'movie', 'castmore');
   }
   if (wantMovie && directors.length) {
-    push(tmdb('/discover/movie', { with_people: String(directors[0].id), sort_by: 'popularity.desc' }), 'movie', 'director');
+    // NOT discover's `with_people` — that matches ANY cast-or-crew credit, so a
+    // "From Christopher Nolan" row filled up with films he merely produced (Man of
+    // Steel, Batman v Superman, Justice League). His actual filmography comes from
+    // person credits, filtered to the Director job.
+    calls.push(tmdb(`/person/${directors[0].id}/movie_credits`)
+      .then(d => tag((d.crew || []).filter(c => c.job === 'Director'), 'movie', 'director'))
+      .catch(() => []));
   }
   if (wantTV && tvG.length && (only === 'tv' || !profile.movieBias)) {
     const or = tvG.join('|');
-    push(tmdb('/discover/tv', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150 }), 'tv', 'genre');
-    if (only === 'tv') push(tmdb('/discover/tv', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 300 }), 'tv', 'quality');
+    push(tmdb('/discover/tv', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, ...outT }), 'tv', 'genre');
+    if (only === 'tv') push(tmdb('/discover/tv', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 300, ...outT }), 'tv', 'quality');
   }
   (profile.seedIds || []).slice(0, 3).filter(s => !only || s.type === only)
     .forEach(s => push(tmdb(`/${s.type}/${s.id}/recommendations`), s.type, 'rec'));
@@ -225,6 +247,11 @@ export function rankAndDedupe(cands, profile) {
     if (!c || !c.id || !c.poster_path) return;
     const type = c.__type || 'movie';
     if (type === 'person') return;
+    // Shared chokepoint for every recommendation surface (rows AND the watch-party
+    // matcher): never suggest something that isn't out yet, or something so
+    // obscure it's noise rather than a discovery.
+    if (!isOut(c)) return;
+    if ((c.vote_count || 0) < MIN_VOTES) return;
     const key = `${type}_${c.id}`;
     if (profile.seen.has(key)) return;
     const sc = scoreCandidate(c, profile, norms);
@@ -309,12 +336,17 @@ export async function renderRecommendations() {
     return picks.map(c => buildCard(c, c.__type, { badge: matchBadge(c.__score, top) })).join('');
   });
 
-  const rowFrom = async (pred) => {
+  const rowFrom = async (pred, min = 1) => {
     const items = (await pool).filter(pred).slice(0, 20);
-    return items.length ? items.map(c => buildCard(c, c.__type)).join('') : null;
+    return items.length >= min ? items.map(c => buildCard(c, c.__type)).join('') : null;
   };
 
-  if (seed) fillRow('rowSeed', () => rowFrom(c => c.__source === 'rec'));
+  // "Because you liked X" is the one row fed by TMDB's own /recommendations, which
+  // can be wildly off — a seed with thin data returned a wall of unrelated kids'
+  // animation. Require each pick to actually share a genre you like, and drop the
+  // row entirely rather than show a handful of stragglers (fillRow removes it).
+  const likesGenre = (c) => (c.genre_ids || []).some(g => (profile.genreWeights[g] || 0) > 0);
+  if (seed) fillRow('rowSeed', () => rowFrom(c => c.__source === 'rec' && likesGenre(c), 4));
   if (topActor) fillRow('rowActor', () => rowFrom(c => c.__source === 'cast'));
   if (topDirector) fillRow('rowDirector', () => rowFrom(c => c.__source === 'director'));
   if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)));

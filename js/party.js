@@ -113,11 +113,16 @@ async function compute() {
 
   const path = partyMode === 'tv' ? '/discover/tv' : '/discover/movie';
   const gset = partyMode === 'tv' ? TV_GENRES : MOVIE_GENRES;
+  // Tonight's pick has to be watchable tonight, so bound the query to titles
+  // that are already out (rankAndDedupe enforces this too).
+  const outParam = partyMode === 'tv'
+    ? { 'first_air_date.lte': new Date().toISOString().slice(0, 10) }
+    : { 'release_date.lte': new Date().toISOString().slice(0, 10) };
   const g = (blended.topGenres || []).filter(x => gset.has(x)).slice(0, 3);
   if (g.length) {
     // OR-joined for breadth (a comma would demand a title match ALL of them).
     try {
-      const d = await tmdb(path, { with_genres: g.join('|'), sort_by: 'popularity.desc', 'vote_count.gte': 200 });
+      const d = await tmdb(path, { with_genres: g.join('|'), sort_by: 'popularity.desc', 'vote_count.gte': 200, ...outParam });
       cands = cands.concat(tag(d.results, partyMode, 'genre'));
     } catch (e) {}
   }
@@ -136,7 +141,7 @@ async function compute() {
   // titles of the chosen type.
   if (!ranked.length) {
     try {
-      const d = await tmdb(path, { sort_by: 'popularity.desc', 'vote_count.gte': 300 });
+      const d = await tmdb(path, { sort_by: 'popularity.desc', 'vote_count.gte': 300, ...outParam });
       ranked = diversify(rankAndDedupe(tag(d.results, partyMode, 'trending'), blended), 18);
     } catch (e) {}
   }
