@@ -233,7 +233,10 @@
 .ring-red{stroke:var(--red2)}
 .ring-purple{stroke:var(--purple2)}
 .ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
-.ring-num{font-family:var(--font-mono);font-size:1.5rem;font-weight:700;line-height:1}
+.ring-num{font-family:var(--font-mono);font-size:1.5rem;font-weight:700;line-height:1;max-width:82px;display:flex;align-items:baseline;justify-content:center;white-space:nowrap}
+.ring-num-sm{font-size:1.1rem}
+.ring-num-sm .ring-goal{font-size:.62rem}
+.ring-done{font-size:2.4rem;color:var(--green2)}
 .ring-goal{font-size:.8rem;color:var(--text3)}
 .ring-pct{font-size:.66rem;color:var(--text3);font-weight:700;margin-top:2px}
 .challenge-info{min-width:0}

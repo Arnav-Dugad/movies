@@ -69,30 +69,32 @@ const B = (id, name, desc, icon, tier, goal, value, opts = {}) =>
   ({ id, name, desc, icon, tier, goal, value, unit: opts.unit || '', meta: !!opts.meta });
 
 export const BADGES = [
-  // Volume
+  // Volume — tiers climb steeply so the top ones stay a real long-haul goal.
   B('first_watch', 'First Steps', 'Mark your first title as watched', '🎬', 'bronze', 1, c => c.watchedTotal),
-  B('watch_10', 'Getting Started', 'Watch 10 titles', '🍿', 'bronze', 10, c => c.watchedTotal),
-  B('watch_50', 'Cinephile', 'Watch 50 titles', '🎞️', 'silver', 50, c => c.watchedTotal),
-  B('watch_100', 'Centurion', 'Watch 100 titles', '💯', 'gold', 100, c => c.watchedTotal),
-  B('watch_250', 'Living Archive', 'Watch 250 titles', '🏛️', 'platinum', 250, c => c.watchedTotal),
+  B('watch_10', 'Getting Started', 'Watch 25 titles', '🍿', 'bronze', 25, c => c.watchedTotal),
+  B('watch_50', 'Cinephile', 'Watch 100 titles', '🎞️', 'silver', 100, c => c.watchedTotal),
+  B('watch_100', 'Veteran Viewer', 'Watch 300 titles', '💯', 'gold', 300, c => c.watchedTotal),
+  B('watch_250', 'Living Archive', 'Watch 750 titles', '🏛️', 'platinum', 750, c => c.watchedTotal),
   // Hours (needs backfilled runtime)
-  B('hours_24', 'A Full Day', 'Watch 24 hours of content', '⏳', 'bronze', 24, c => c.hours, { unit: 'h', meta: true }),
-  B('hours_100', 'Time Traveller', 'Watch 100 hours of content', '🕰️', 'silver', 100, c => c.hours, { unit: 'h', meta: true }),
-  B('hours_500', 'Marathoner', 'Watch 500 hours of content', '🏃', 'gold', 500, c => c.hours, { unit: 'h', meta: true }),
+  B('hours_24', 'Weekend Binger', 'Watch 50 hours of content', '⏳', 'bronze', 50, c => c.hours, { unit: 'h', meta: true }),
+  B('hours_100', 'Time Traveller', 'Watch 250 hours of content', '🕰️', 'silver', 250, c => c.hours, { unit: 'h', meta: true }),
+  B('hours_500', 'Marathoner', 'Watch 1,000 hours of content', '🏃', 'gold', 1000, c => c.hours, { unit: 'h', meta: true }),
   // Ratings
   B('rate_1', 'Critic in Training', 'Rate your first title', '⭐', 'bronze', 1, c => c.ratedTotal),
-  B('rate_25', 'Sharp Eye', 'Rate 25 titles', '🧐', 'silver', 25, c => c.ratedTotal),
-  B('rate_100', 'Head Critic', 'Rate 100 titles', '🏆', 'gold', 100, c => c.ratedTotal),
+  B('rate_25', 'Sharp Eye', 'Rate 50 titles', '🧐', 'silver', 50, c => c.ratedTotal),
+  B('rate_100', 'Head Critic', 'Rate 250 titles', '🏆', 'gold', 250, c => c.ratedTotal),
+  B('rate_750', 'Master Critic', 'Rate 750 titles', '⚖️', 'platinum', 750, c => c.ratedTotal),
   B('perfect_10', 'Masterpiece', 'Give a title a perfect 10', '🔟', 'silver', 1, c => c.perfect),
   // Breadth
-  B('genre_5', 'Explorer', 'Watch 5 different genres', '🧭', 'bronze', 5, c => c.distinctGenres),
-  B('genre_12', 'Omnivore', 'Watch 12 different genres', '🌐', 'gold', 12, c => c.distinctGenres),
-  B('decade_5', 'Time Capsule', 'Watch titles from 5 different decades', '📼', 'silver', 5, c => c.distinctDecades),
+  B('genre_5', 'Explorer', 'Watch 8 different genres', '🧭', 'bronze', 8, c => c.distinctGenres),
+  B('genre_12', 'Omnivore', 'Watch 15 different genres', '🌐', 'gold', 15, c => c.distinctGenres),
+  B('decade_5', 'Time Capsule', 'Watch titles from 7 different decades', '📼', 'silver', 7, c => c.distinctDecades),
   // Loyalty (needs backfilled director/cast)
-  B('director_5', 'Director Devotee', 'Watch 5 titles by one director', '🎥', 'silver', 5, c => (c.topDirector ? c.topDirector.n : 0), { meta: true }),
-  B('actor_10', 'Fan Club', 'Watch 10 titles with one actor', '🌟', 'gold', 10, c => (c.topActor ? c.topActor.n : 0), { meta: true }),
+  B('director_5', 'Director Devotee', 'Watch 8 titles by one director', '🎥', 'silver', 8, c => (c.topDirector ? c.topDirector.n : 0), { meta: true }),
+  B('director_20', 'Auteur Loyalist', 'Watch 20 titles by one director', '🎬', 'platinum', 20, c => (c.topDirector ? c.topDirector.n : 0), { meta: true }),
+  B('actor_10', 'Fan Club', 'Watch 20 titles with one actor', '🌟', 'gold', 20, c => (c.topActor ? c.topActor.n : 0), { meta: true }),
   // Lists
-  B('wl_25', 'Curator', 'Keep 25 titles in your watchlist', '📋', 'bronze', 25, c => c.wlTotal),
+  B('wl_25', 'Curator', 'Keep 50 titles in your watchlist', '📋', 'bronze', 50, c => c.wlTotal),
 ];
 
 export const earnedIds = ctx => BADGES.filter(b => b.value(ctx) >= b.goal).map(b => b.id);
@@ -113,14 +115,16 @@ const CH = (id, name, sub, icon, difficulty, goal, value, unit = '') => ({ id, n
 export const CHALLENGES = [
   CH('c_start', 'Getting Comfortable', 'Watch 5 titles', '🎬', 'easy', 5, c => c.watchedTotal),
   CH('c_opinions', 'First Opinions', 'Rate 3 titles', '⭐', 'easy', 3, c => c.ratedTotal),
-  CH('c_genres', 'Genre Hopper', 'Watch 8 different genres', '🧭', 'medium', 8, c => c.distinctGenres),
-  CH('c_hours100', 'Time Traveller', 'Watch 100 hours of content', '🕰️', 'medium', 100, c => c.hours, 'h'),
-  CH('c_decades', 'Across the Ages', 'Watch titles from 6 different decades', '📼', 'hard', 6, c => c.distinctDecades),
-  CH('c_cinephile', 'The Cinephile', 'Watch 100 titles', '🎞️', 'hard', 100, c => c.watchedTotal),
-  CH('c_director', "Auteur's Devotee", 'Watch 10 titles by a single director', '🎥', 'hard', 10, c => (c.topDirector ? c.topDirector.n : 0)),
-  CH('c_critic', 'Completionist Critic', 'Rate 200 titles', '🏆', 'insane', 200, c => c.ratedTotal),
-  CH('c_archive', 'Living Archive', 'Watch 500 titles', '🏛️', 'insane', 500, c => c.watchedTotal),
-  CH('c_hours1000', 'A Thousand Hours', 'Watch 1,000 hours of content', '⏳', 'legendary', 1000, c => c.hours, 'h'),
+  CH('c_genres', 'Genre Hopper', 'Watch 12 different genres', '🧭', 'medium', 12, c => c.distinctGenres),
+  CH('c_hours100', 'Time Traveller', 'Watch 250 hours of content', '🕰️', 'medium', 250, c => c.hours, 'h'),
+  CH('c_decades', 'Across the Ages', 'Watch titles from 8 different decades', '📼', 'hard', 8, c => c.distinctDecades),
+  CH('c_cinephile', 'The Cinephile', 'Watch 250 titles', '🎞️', 'hard', 250, c => c.watchedTotal),
+  CH('c_director', "Auteur's Devotee", 'Watch 15 titles by a single director', '🎥', 'hard', 15, c => (c.topDirector ? c.topDirector.n : 0)),
+  CH('c_critic', 'Completionist Critic', 'Rate 500 titles', '🏆', 'insane', 500, c => c.ratedTotal),
+  CH('c_perfectionist', 'The Perfectionist', 'Award 25 perfect 10s', '🔟', 'insane', 25, c => c.perfect),
+  CH('c_archive', 'Living Archive', 'Watch 1,000 titles', '🏛️', 'insane', 1000, c => c.watchedTotal),
+  CH('c_master', 'Master Critic', 'Rate 1,000 titles', '⚖️', 'legendary', 1000, c => c.ratedTotal),
+  CH('c_hours1000', 'Endless Hours', 'Watch 2,500 hours of content', '⏳', 'legendary', 2500, c => c.hours, 'h'),
 ];
 
 // ===== LEDGER (localStorage) =====
@@ -173,6 +177,14 @@ export function syncBadges({ celebrate = false } = {}) {
 const pct = (v, goal) => Math.max(0, Math.min(100, Math.round(v / goal * 100)));
 const RING_C = 326.73;   // 2 * PI * r, r=52
 
+// Compact number for the ring center so big tallies (e.g. 2,500h) never overflow
+// the ~88px inner circle: 1000→"1k", 1847→"1.8k", 12000→"12k".
+const abbrev = n => {
+  if (n < 1000) return String(n);
+  const k = n / 1000;
+  return (k >= 10 ? Math.round(k) : +k.toFixed(1)) + 'k';
+};
+
 function ringHTML(percent, accent, centerHTML) {
   return `<div class="ring-wrap">
     <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
@@ -181,6 +193,18 @@ function ringHTML(percent, accent, centerHTML) {
     </svg>
     <div class="ring-center">${centerHTML}</div>
   </div>`;
+}
+
+// Ring center content. Done → a big check (the raw value can be many times the
+// goal, e.g. 4,352h against 1,000h, which used to spill outside the circle). In
+// progress → abbreviated value/goal, capped so it always fits, with the percent
+// beneath. A long string (both numbers ≥1k) gets a smaller type class.
+function ringCenter(ch, v, done, p) {
+  if (done) return `<div class="ring-num ring-done" aria-label="Complete">✓</div>`;
+  const cur = `${abbrev(v)}${ch.unit}`;
+  const goal = `/${abbrev(ch.goal)}${ch.unit}`;
+  const sm = (cur.length + goal.length) > 7 ? ' ring-num-sm' : '';
+  return `<div class="ring-num${sm}">${cur}<span class="ring-goal">${goal}</span></div><div class="ring-pct">${p}%</div>`;
 }
 
 export function challengesHTML(ctx) {
@@ -196,7 +220,7 @@ export function challengesHTML(ctx) {
 
   const done = rows.filter(r => r.done).length;
   const cards = rows.map(({ ch, v, done, p, diff }) => `<div class="challenge-card${done ? ' done' : ''}">
-    ${ringHTML(p, diff.accent, `<div class="ring-num">${v}${ch.unit}<span class="ring-goal">/${ch.goal}${ch.unit}</span></div><div class="ring-pct">${p}%</div>`)}
+    ${ringHTML(p, diff.accent, ringCenter(ch, v, done, p))}
     <div class="challenge-info">
       <div class="challenge-name">${ch.icon} ${esc(ch.name)} <span class="difficulty-pill diff-${ch.difficulty}">${diff.label}</span></div>
       <div class="challenge-sub">${esc(ch.sub)}</div>
