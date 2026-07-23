@@ -35,7 +35,9 @@ export function initHomeActions() {
 }
 
 // Genre ids: 16 Animation, 27 Horror, 35 Comedy, 878 Sci-Fi, 10751 Family.
-const SECTIONS = [
+// Exported so the curated collection page (js/collection.js) can re-run the exact
+// same endpoint + params behind a row's "See all".
+export const SECTIONS = [
   { id: 'pop_movies', t: 'Popular Movies', p: '/movie/popular', type: 'movie', icon: '🎬', page: 'movies' },
   { id: 'top10', t: 'Top 10 This Week', p: '/trending/movie/week', type: 'movie', t10: true, icon: '🔥', page: 'movies' },
   { id: 'pop_tv', t: 'Popular TV Shows', p: '/tv/popular', type: 'tv', icon: '📺', page: 'tv' },
@@ -59,7 +61,9 @@ function rowError(path, target, s, params) {
 }
 
 function sectionShell(s, w = 155) {
-  const seeAll = s.page ? `<button class="section-see-all" data-action="show-page" data-page="${s.page}">See All<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button>` : '';
+  // See All now opens the EXACT curated set (same endpoint + params), not a coarse
+  // /movies page — so every row, including person rows, gets one.
+  const seeAll = `<button class="section-see-all" data-action="see-all" data-id="${s.id}">See All<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button>`;
   return `<div class="section reveal"><div class="section-head"><h2 class="section-title"><span>${s.icon}</span> ${s.t}</h2>${seeAll}</div><div class="row" id="row_${s.id}">${skelCards(8, w)}</div></div>`;
 }
 

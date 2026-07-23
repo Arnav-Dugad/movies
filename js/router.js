@@ -11,6 +11,7 @@ import { openSearch } from './search.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
 import { openStudio } from './studio.js';
+import { openCollection2 } from './collection.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeListPicker, isListPickerOpen } from './lists.js';
 import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen } from './media.js';
@@ -45,6 +46,9 @@ const ROUTES = [
   { test: /^\/person\/(\d+)\/?$/, page: 'personPage', render: (p) => openPerson(+p[0]) },
   { test: /^\/studio\/(\d+)\/?$/, page: 'studioPage', render: (p) => openStudio(+p[0]) },
   { test: /^\/collection\/(\d+)\/?$/, page: 'detailPage', render: (p) => openCollection(+p[0]) },
+  // Curated home-row collection — a section id (letters, so it never collides with
+  // the numeric TMDB-collection route above).
+  { test: /^\/collection\/([\w-]+)\/?$/, page: 'collectionPage', render: (p) => openCollection2(p[0]) },
 ];
 
 const TITLES = {
@@ -63,6 +67,7 @@ const TITLES = {
   detailPage: 'CineVerse',
   personPage: 'CineVerse',
   studioPage: 'CineVerse',
+  collectionPage: 'CineVerse',
 };
 
 const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };

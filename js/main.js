@@ -11,6 +11,7 @@ import { initRatings } from './ratings.js';
 import { initMedia } from './media.js';
 import { initPerson } from './person.js';
 import { initStudio } from './studio.js';
+import { initCollection } from './collection.js';
 import { initDetail } from './detail.js';
 import { initBrowse, initFilters } from './browse.js';
 import { initDiscoverActions } from './discover.js';
@@ -46,6 +47,7 @@ async function init() {
   initMedia();
   initPerson();
   initStudio();
+  initCollection();
   initDetail();
   initBrowse();
   initDiscoverActions();
