@@ -7,6 +7,7 @@ import { db, firebase } from './firebase.js';
 import { state } from './state.js';
 import { debounce, toast } from './ui.js';
 import { buildTasteProfile } from './recommend.js';
+import { clean, fromKey } from './lists.js';
 
 export const social = { code: '', friends: [], reqIn: [], reqOut: [], ready: false };
 
@@ -45,7 +46,21 @@ async function ensurePublicProfile(u) {
 export async function publishTaste() {
   if (!state.user) return;
   const p = buildTasteProfile(state);
-  const favTitles = (state.watchlist || []).slice(0, 8).map(w => ({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster || '' }));
+  // Same trap as the shared-list snapshot: an older watchlist entry can lack
+  // tmdbId/type, and Firestore throws on undefined — which silently killed the
+  // whole taste publish (and with it the watch-party matcher). Recover both from
+  // the doc key, and drop anything still incomplete.
+  const favTitles = (state.watchlist || []).slice(0, 8)
+    .map(w => {
+      const k = fromKey(w.id);
+      return clean({
+        id: w.tmdbId != null ? w.tmdbId : k.tmdbId,
+        type: w.type || k.type,
+        title: w.title || '',
+        poster: w.poster || '',
+      });
+    })
+    .filter(t => t.id != null && t.type);
   const doc = {
     name: state.user.displayName || (state.user.email || '').split('@')[0] || 'User',
     genreWeights: p.genreWeights, topGenres: p.topGenres, seen: [...p.seen],

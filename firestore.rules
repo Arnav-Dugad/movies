@@ -1,0 +1,78 @@
+rules_version = '2';
+
+// CineVerse Firestore security rules.
+//
+// Publish these in Firebase Console -> Firestore Database -> Rules -> Publish.
+// Sharing a list will NOT work until they are published, because a friend has to
+// be able to read the owner's shared snapshot.
+//
+// The rule that matters: raw user data (watchlist, ratings, watched, lists) is
+// owner-only. The ONLY cross-user readable thing is users/{uid}/shared/{doc} —
+// derived snapshots the owner explicitly publishes: the taste profile used by the
+// watch-party matcher, and any list the owner chose to share.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // ---- Per-user data ----
+    match /users/{uid} {
+      // The user's own profile doc (avatar, created).
+      allow read, write: if isOwner(uid);
+
+      // Derived, deliberately shareable documents:
+      //   shared/taste        -> friend taste profile (js/social.js getFriendTaste)
+      //   shared/list_{listId} -> a shared list snapshot (js/lists.js shareList)
+      // Readable by any signed-in user; only ever written by the owner.
+      match /shared/{docId} {
+        allow read: if signedIn();
+        allow write: if isOwner(uid);
+      }
+
+      // Everything else under a user is private to that user.
+      match /watchlist/{docId} { allow read, write: if isOwner(uid); }
+      match /watched/{docId}   { allow read, write: if isOwner(uid); }
+      match /ratings/{docId}   { allow read, write: if isOwner(uid); }
+      match /lists/{docId}     { allow read, write: if isOwner(uid); }
+    }
+
+    // ---- Friend discovery ----
+    // Name/code/avatar only — this is what "add a friend by code" searches.
+    match /publicProfiles/{uid} {
+      allow read: if signedIn();
+      allow write: if isOwner(uid);
+    }
+
+    // email -> uid lookup, so a friend can be added by email address.
+    match /emailIndex/{emailKey} {
+      allow read: if signedIn();
+      // Only the owner of that uid may claim/point an entry at themselves.
+      allow write: if signedIn() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // ---- Friend graph ----
+    match /friendRequests/{reqId} {
+      // Visible to the two people involved (queries filter on from/to).
+      allow read: if signedIn() &&
+        (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      // You can only send a request as yourself.
+      allow create: if signedIn() && request.resource.data.from == request.auth.uid;
+      // Either party may resolve it (accept/decline/cancel).
+      allow update, delete: if signedIn() &&
+        (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+    }
+
+    match /friendships/{pairId} {
+      // Members only — read (array-contains query), unfriend (delete), and the
+      // accepting user's create.
+      allow read, update, delete: if signedIn() && request.auth.uid in resource.data.members;
+      allow create: if signedIn() && request.auth.uid in request.resource.data.members;
+    }
+  }
+}

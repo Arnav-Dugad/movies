@@ -26,12 +26,31 @@ const ts = () => firebase.firestore.FieldValue.serverTimestamp();
 const listCol = () => db.collection('users').doc(state.user.uid).collection('lists');
 const wlCol = () => db.collection('users').doc(state.user.uid).collection('watchlist');
 const keyOf = (id, type) => `${type}_${id}`;
+// A doc key is `${type}_${id}` — the reliable fallback when an older watchlist
+// entry is missing its own tmdbId/type fields.
+export function fromKey(key) {
+  const i = String(key || '').lastIndexOf('_');
+  if (i < 1) return {};
+  const id = parseInt(String(key).slice(i + 1), 10);
+  return { type: String(key).slice(0, i), tmdbId: Number.isFinite(id) ? id : undefined };
+}
+
+// Firestore THROWS on an undefined field value, which turned one malformed
+// watchlist entry into a blanket "error updating list"/"could not share list".
+// Every write goes through this.
+export const clean = (obj) => {
+  const out = {};
+  Object.entries(obj).forEach(([k, v]) => { if (v !== undefined) out[k] = v; });
+  return out;
+};
+const errCode = (e) => (e && e.code ? ` (${e.code})` : '');
 
 // The union-store doc shape (matches the old toggleWL payload so nothing downstream
 // — stats, taste, badges — sees a different watchlist item).
 function buildItemDoc(item, type) {
-  return {
-    tmdbId: item.id != null ? item.id : item.tmdbId,
+  const id = item.id != null ? item.id : item.tmdbId;
+  return clean({
+    tmdbId: id,
     type,
     title: item.title || item.name || '',
     poster: item.poster || item.poster_path || '',
@@ -39,7 +58,7 @@ function buildItemDoc(item, type) {
     year: item.year || (item.release_date || item.first_air_date || '').slice(0, 4),
     added: ts(),
     genres: item.genres || item.genre_ids || [],
-  };
+  });
 }
 
 // ----- Metadata -----
@@ -96,7 +115,7 @@ export async function addToList(item, type, listId, { silent = false } = {}) {
     // silent: bulk callers (cloning a shared list) show one summary toast instead.
     if (!silent) toast(`Saved to ${listById(listId)?.name || 'list'}`, 'success');
     document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { console.error('addToList', e); toast('Error updating list', 'error'); }
+  } catch (e) { console.error('addToList', e); toast(`Could not add to list${errCode(e)}`, 'error'); }
 }
 
 export async function removeFromList(item, type, listId) {
@@ -118,7 +137,7 @@ export async function removeFromList(item, type, listId) {
     refreshWLBtns();
     toast(`Removed from ${listById(listId)?.name || 'list'}`, 'info');
     document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { console.error('removeFromList', e); toast('Error updating list', 'error'); }
+  } catch (e) { console.error('removeFromList', e); toast(`Could not update list${errCode(e)}`, 'error'); }
 }
 
 // The main card ✓ tap — remove from every list (delete the doc).
@@ -135,7 +154,7 @@ export async function removeFromAllLists(item, type) {
     refreshWLBtns();
     toast(n > 1 ? `Removed from ${n} lists` : 'Removed from list', 'info');
     document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { console.error('removeFromAllLists', e); toast('Error updating list', 'error'); }
+  } catch (e) { console.error('removeFromAllLists', e); toast(`Could not update list${errCode(e)}`, 'error'); }
 }
 
 // ----- List CRUD -----
@@ -153,11 +172,11 @@ export async function createList(name, { icon = '🎬', color = 'purple' } = {})
   const id = slugId(nm);
   const order = state.lists.reduce((m, l) => Math.max(m, l.order || 0), 0) + 1;
   try {
-    await listCol().doc(id).set({ name: nm, icon, color, order, created: ts() });
+    await listCol().doc(id).set(clean({ name: nm, icon, color, order, created: ts() }));
     const list = { id, name: nm, icon, color, order };
     state.lists.push(list);
     return list;
-  } catch (e) { console.error('createList', e); toast('Could not create list', 'error'); return null; }
+  } catch (e) { console.error('createList', e); toast(`Could not create list${errCode(e)}`, 'error'); return null; }
 }
 
 export async function renameList(id, name) {
@@ -190,7 +209,7 @@ export async function deleteList(id) {
     if (state.wlList === id) state.wlList = 'watchlist';
     refreshWLBtns();
     document.dispatchEvent(new Event('cv:wl-changed'));
-  } catch (e) { console.error('deleteList', e); toast('Could not delete list', 'error'); }
+  } catch (e) { console.error('deleteList', e); toast(`Could not delete list${errCode(e)}`, 'error'); }
 }
 
 // ----- Share a list -----
@@ -202,17 +221,27 @@ const sharedListRef = (uid, listId) => db.collection('users').doc(uid).collectio
 function itemsInList(listId) {
   return state.watchlist
     .filter(w => listsArr(w).includes(listId))
-    .map(w => ({ id: w.tmdbId, type: w.type, title: w.title || '', poster: w.poster || '', year: w.year || '', rating: w.rating || 0 }));
+    .map(w => {
+      // Older entries can lack tmdbId/type; the doc key always has both. Without
+      // this, `id: undefined` reached Firestore and threw, failing the whole share.
+      const k = fromKey(w.id);
+      return clean({
+        id: w.tmdbId != null ? w.tmdbId : k.tmdbId,
+        type: w.type || k.type,
+        title: w.title || '', poster: w.poster || '', year: w.year || '', rating: w.rating || 0,
+      });
+    })
+    .filter(it => it.id != null && it.type);
 }
 
 async function writeSharedList(list) {
   const items = itemsInList(list.id);
-  await sharedListRef(state.user.uid, list.id).set({
+  await sharedListRef(state.user.uid, list.id).set(clean({
     kind: 'list', listId: list.id, name: list.name || 'List', icon: list.icon || '📁',
     owner: state.user.uid,
     ownerName: state.user.displayName || (state.user.email || '').split('@')[0] || 'A friend',
     items, count: items.length, updatedAt: ts(),
-  });
+  }));
 }
 
 export async function shareList(listId) {
@@ -226,7 +255,7 @@ export async function shareList(listId) {
     let copied = false;
     if (navigator.clipboard) { try { await navigator.clipboard.writeText(link); copied = true; } catch (_) {} }
     toast(copied ? `“${list.name}” shared — link copied!` : `Shared! ${link}`, copied ? 'success' : 'info');
-  } catch (e) { console.error('shareList', e); toast('Could not share list', 'error'); }
+  } catch (e) { console.error('shareList', e); toast(`Could not share list${errCode(e)}`, 'error'); }
 }
 
 // Keep already-shared lists' snapshots fresh when the watchlist changes.
