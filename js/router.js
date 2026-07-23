@@ -10,6 +10,7 @@ import { renderPersonalRows } from './home.js';
 import { openSearch } from './search.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
+import { openStudio } from './studio.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeListPicker, isListPickerOpen } from './lists.js';
 import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen } from './media.js';
@@ -42,6 +43,7 @@ const ROUTES = [
   { test: /^\/movie\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'movie') },
   { test: /^\/tv\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'tv') },
   { test: /^\/person\/(\d+)\/?$/, page: 'personPage', render: (p) => openPerson(+p[0]) },
+  { test: /^\/studio\/(\d+)\/?$/, page: 'studioPage', render: (p) => openStudio(+p[0]) },
   { test: /^\/collection\/(\d+)\/?$/, page: 'detailPage', render: (p) => openCollection(+p[0]) },
 ];
 
@@ -60,6 +62,7 @@ const TITLES = {
   settingsPage: 'Settings — CineVerse',
   detailPage: 'CineVerse',
   personPage: 'CineVerse',
+  studioPage: 'CineVerse',
 };
 
 const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };

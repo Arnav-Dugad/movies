@@ -10,6 +10,7 @@ import { initWatched } from './watched.js';
 import { initRatings } from './ratings.js';
 import { initMedia } from './media.js';
 import { initPerson } from './person.js';
+import { initStudio } from './studio.js';
 import { initDetail } from './detail.js';
 import { initBrowse, initFilters } from './browse.js';
 import { initDiscoverActions } from './discover.js';
@@ -44,6 +45,7 @@ async function init() {
   initRatings();
   initMedia();
   initPerson();
+  initStudio();
   initDetail();
   initBrowse();
   initDiscoverActions();

@@ -49,6 +49,36 @@ export const moods=[
 
 export const REGIONS=[['IN','🇮🇳 India'],['US','🇺🇸 US'],['GB','🇬🇧 UK'],['SA','🇸🇦 Saudi Arabia'],['AU','🇦🇺 Australia']];
 
+// Best-effort deep link to a provider's OWN search for a title. TMDB only gives a
+// region-level JustWatch `link` (no per-provider deep link), so map known
+// providers to their on-site search; fall back to that JustWatch link, then a web
+// search. Matched case-insensitively against the provider_name substring.
+const PROVIDER_SEARCH = [
+  [/netflix/i,               q => `https://www.netflix.com/search?q=${q}`],
+  [/prime video|amazon/i,    q => `https://www.primevideo.com/search/?phrase=${q}`],
+  [/jiohotstar|hotstar/i,    q => `https://www.hotstar.com/in/explore?search_query=${q}`],
+  [/jiocinema/i,             q => `https://www.jiocinema.com/search/${q}`],
+  [/disney/i,                q => `https://www.disneyplus.com/search?q=${q}`],
+  [/apple tv|itunes/i,       q => `https://tv.apple.com/search?term=${q}`],
+  [/hulu/i,                  q => `https://www.hulu.com/search?q=${q}`],
+  [/hbo|max\b/i,             q => `https://www.max.com/search?q=${q}`],
+  [/paramount/i,             q => `https://www.paramountplus.com/search/?query=${q}`],
+  [/peacock/i,               q => `https://www.peacocktv.com/search?q=${q}`],
+  [/zee5/i,                  q => `https://www.zee5.com/search?q=${q}`],
+  [/sonyliv/i,               q => `https://www.sonyliv.com/search?searchTerm=${q}`],
+  [/mubi/i,                  q => `https://mubi.com/en/search/films?query=${q}`],
+  [/youtube/i,               q => `https://www.youtube.com/results?search_query=${q}`],
+  [/google play/i,           q => `https://play.google.com/store/search?q=${q}&c=movies`],
+];
+
+export function providerUrl(providerName, title, regionLink) {
+  const q = encodeURIComponent(title || '');
+  const hit = PROVIDER_SEARCH.find(([re]) => re.test(providerName || ''));
+  if (hit) return hit[1](q);
+  if (regionLink) return regionLink;   // TMDB's region-level JustWatch page
+  return `https://www.google.com/search?q=${encodeURIComponent(`watch ${title || ''} on ${providerName || ''}`)}`;
+}
+
 // Preset avatars — an emoji on a named gradient. Stored on the user doc as
 // {emoji, grad} (self-contained, so re-ordering this list never remaps anyone).
 // `grad` keys map to a CSS gradient in AVATAR_GRADS; null avatar = colored initial.

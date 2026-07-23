@@ -362,9 +362,19 @@
 .review-av{width:36px;height:36px;border-radius:50%;background:var(--bg5);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;flex-shrink:0}
 .review-author{font-weight:600;font-size:.88rem}
 .review-date{font-size:.72rem;color:var(--text3)}
-.review-score{margin-left:auto;color:var(--gold);font-weight:700;font-size:.85rem;display:flex;align-items:center;gap:4px;background:var(--gold-glow);padding:4px 10px;border-radius:50px}
+.review-who{min-width:0}
+.review-score{margin-left:auto;display:flex;align-items:center;gap:7px;flex-shrink:0}
 .review-score svg{width:13px;height:13px}
-.review-body{font-size:.84rem;color:var(--text2);line-height:1.65;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+/* 5-star meter: a gold fill clipped to the 0–10 score over a dim base row. */
+.rev-stars{position:relative;display:inline-block;font-size:.9rem;line-height:1;letter-spacing:1px;white-space:nowrap}
+.rev-stars-bg{color:var(--bg5)}
+.rev-stars-fill{position:absolute;top:0;left:0;overflow:hidden;color:var(--gold);white-space:nowrap}
+.rev-score-num{font-size:.78rem;font-weight:700;color:var(--gold)}
+.review-body{font-size:.84rem;color:var(--text2);line-height:1.65;display:-webkit-box;-webkit-line-clamp:5;line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.review-body.expanded{-webkit-line-clamp:unset;line-clamp:unset;display:block;overflow:visible}
+.review-toggle,.review-showall{display:inline-block;margin-top:8px;font-size:.78rem;font-weight:700;color:var(--red2);cursor:pointer;background:none;border:none;padding:0}
+.review-showall{margin-top:4px}
+.review-toggle:hover,.review-showall:hover{text-decoration:underline}
 
 .similar-row{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .similar-row::-webkit-scrollbar{display:none}
@@ -391,6 +401,23 @@
 .person-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px}
 .person-stat{font-size:.82rem;color:var(--text3);overflow-wrap:anywhere}
 .person-stat strong{color:var(--text);font-weight:600}
+
+/* ===== STUDIO PAGE ===== (reuses person-page layout + browse-grid) */
+.studio-top{display:flex;gap:28px;align-items:center;margin-bottom:32px}
+.studio-logo-lg{width:200px;min-height:96px;flex-shrink:0;background:#fff;border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;padding:20px;box-shadow:var(--shadow-lg)}
+.studio-logo-lg img{max-width:100%;max-height:80px;object-fit:contain;display:block}
+.studio-mono{font-family:var(--font-display);font-size:2.4rem;font-weight:900;color:var(--bg)}
+.studio-head{flex:1;min-width:0}
+.studio-name{font-family:var(--font-display);font-size:2.2rem;font-weight:900;margin-bottom:8px;overflow-wrap:anywhere}
+.studio-meta{font-size:.86rem;color:var(--text2);margin-bottom:12px}
+/* Clickable studio logo on the detail page. */
+.studio-logo[data-action]{cursor:pointer;transition:transform .2s var(--ease),box-shadow .2s var(--ease)}
+.studio-logo[data-action]:hover,.studio-logo[data-action]:focus-visible{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.35);outline:none}
+.studio-name-link{cursor:pointer;color:var(--cyan);font-weight:600}
+.studio-name-link:hover{text-decoration:underline}
+/* Provider logos link out to the provider's own search now. */
+.provider-logo-link{display:inline-flex;border-radius:8px;transition:transform .2s var(--ease)}
+.provider-logo-link:hover,.provider-logo-link:focus-visible{transform:translateY(-2px);outline:none}
 
 /* ===== RATING MODAL ===== */
 /* transition:all here also animated backdrop-filter — a genuine jank source on a

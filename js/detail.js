@@ -1,6 +1,6 @@
 // ===== DETAIL PAGE =====
 import { tmdb } from './api.js';
-import { IMG, PH, REGIONS, pickLogo } from './config.js';
+import { IMG, PH, REGIONS, pickLogo, providerUrl } from './config.js';
 import { state, pushRecentlyViewed } from './state.js';
 import { esc, fmt, $ } from './ui.js';
 import { buildCard } from './cards.js';
@@ -81,10 +81,23 @@ export async function openDetail(id, type) {
     const studio = det.production_companies?.length ? (det.production_companies.find(c => c.logo_path) || det.production_companies[0]) : null;
     const boHTML = boxOfficeHTML(det);
 
-    let cdHTML = '';
-    if (type === 'tv' && det.next_episode_to_air) { const nd = new Date(det.next_episode_to_air.air_date); if (nd > new Date()) {
-      cdHTML = `<div class="countdown"><div class="countdown-label"><span class="live-dot"></span>Next Episode — S${det.next_episode_to_air.season_number}E${det.next_episode_to_air.episode_number}${det.next_episode_to_air.name ? ` "${esc(det.next_episode_to_air.name)}"` : ''}</div><div class="countdown-grid"><div class="cd-unit"><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">Days</div></div><div class="cd-unit"><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">Hours</div></div><div class="cd-unit"><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">Min</div></div><div class="cd-unit"><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">Sec</div></div></div></div>`;
-    }}
+    // One countdown block, shared markup. For an airing show it counts to the next
+    // episode; for anything not yet out it counts to the release/premiere date.
+    let cdHTML = '', cdDate = null, cdDoneMsg = '';
+    const cdGrid = `<div class="countdown-grid"><div class="cd-unit"><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">Days</div></div><div class="cd-unit"><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">Hours</div></div><div class="cd-unit"><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">Min</div></div><div class="cd-unit"><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">Sec</div></div></div>`;
+    if (type === 'tv' && det.next_episode_to_air && new Date(det.next_episode_to_air.air_date) > new Date()) {
+      const ne = det.next_episode_to_air;
+      cdDate = ne.air_date; cdDoneMsg = '🎉 Now Airing!';
+      cdHTML = `<div class="countdown"><div class="countdown-label"><span class="live-dot"></span>Next Episode — S${ne.season_number}E${ne.episode_number}${ne.name ? ` "${esc(ne.name)}"` : ''}</div>${cdGrid}</div>`;
+    } else if (!out) {
+      const relRaw = type === 'tv' ? det.first_air_date : det.release_date;
+      const rd = relRaw ? new Date(relRaw + 'T00:00:00') : null;
+      if (rd && !isNaN(rd) && rd.getTime() > Date.now()) {
+        cdDate = relRaw; cdDoneMsg = type === 'tv' ? '🎉 Now Airing!' : '🎉 Now Released!';
+        const nice = rd.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+        cdHTML = `<div class="countdown"><div class="countdown-label"><span class="live-dot"></span>${type === 'tv' ? 'Premieres' : 'Releases'} ${esc(nice)}</div>${cdGrid}</div>`;
+      }
+    }
 
     let seasHTML = '';
     if (type === 'tv' && det.seasons?.length) { const vs = det.seasons.filter(s => s.season_number > 0);
@@ -99,8 +112,7 @@ export async function openDetail(id, type) {
     const crewHTML = crewSectionHTML(cred);
     const galHTML = galleryHTML(det);
 
-    const revList = (revs.results || []).slice(0, 4);
-    let revsHTML = ''; if (revList.length) revsHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Reviews</div>${revList.map(r => `<div class="review"><div class="review-top"><div class="review-av">${(r.author || '?')[0].toUpperCase()}</div><div><div class="review-author">${esc(r.author)}</div><div class="review-date">${r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</div></div>${r.author_details?.rating ? `<div class="review-score"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${r.author_details.rating}</div>` : ''}</div><div class="review-body">${esc(r.content || '')}</div></div>`).join('')}</div>`;
+    const revsHTML = reviewsHTML(revs);
 
     const simItems = recs.slice(0, 14);
     let simHTML = ''; if (simItems.length) simHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">More Like This</div><div class="similar-row">${simItems.map(s => buildCard(s, s.media_type || type)).join('')}</div></div>`;
@@ -139,7 +151,7 @@ export async function openDetail(id, type) {
         </div>
         ${cdHTML}${collHTML}
         <p class="detail-overview clamped" id="detOv">${esc(det.overview || 'No overview available.')}</p>
-        ${(det.overview || '').length > 280 ? `<span class="detail-overview-toggle" data-action="toggle-overview">Read more</span>` : ''}
+        <span class="detail-overview-toggle" id="detOvToggle" data-action="toggle-overview" hidden>Read more</span>
         <div class="stats-grid">
           ${det.status ? `<div class="stat-card"><div class="stat-label">Status</div><div class="stat-val"><span style="color:${det.status === 'Released' || det.status === 'Returning Series' ? 'var(--green2)' : 'var(--text)'}">${det.status === 'Returning Series' ? '<span class="live-dot"></span>' : ''} ${esc(det.status)}</span></div></div>` : ''}
           ${det.original_language ? `<div class="stat-card"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
@@ -149,7 +161,7 @@ export async function openDetail(id, type) {
           ${type === 'tv' && det.number_of_seasons ? `<div class="stat-card"><div class="stat-label">Seasons</div><div class="stat-val" data-count="${det.number_of_seasons}">${det.number_of_seasons}</div></div>` : ''}
           ${type === 'tv' && det.number_of_episodes ? `<div class="stat-card"><div class="stat-label">Episodes</div><div class="stat-val" data-count="${det.number_of_episodes}">${det.number_of_episodes}</div></div>` : ''}
           ${type === 'tv' && det.networks?.length ? `<div class="stat-card"><div class="stat-label">Network</div><div class="stat-val">${det.networks.map(n => esc(n.name)).join(', ')}</div></div>` : ''}
-          ${studio ? `<div class="stat-card"><div class="stat-label">Studio</div>${studio.logo_path ? `<div class="studio-logo"><img src="${IMG}w185${studio.logo_path}" alt="${esc(studio.name)}" title="${esc(studio.name)}" loading="lazy"></div>` : `<div class="stat-val">${esc(studio.name)}</div>`}</div>` : ''}
+          ${studio ? `<div class="stat-card"><div class="stat-label">Studio</div>${studio.logo_path ? `<div class="studio-logo" role="button" tabindex="0" data-action="open-studio" data-id="${studio.id}" data-tip="See ${esc(studio.name)} titles"><img src="${IMG}w185${studio.logo_path}" alt="${esc(studio.name)}" title="${esc(studio.name)}" loading="lazy"></div>` : `<div class="stat-val"><span class="studio-name-link" role="button" tabindex="0" data-action="open-studio" data-id="${studio.id}">${esc(studio.name)}</span></div>`}</div>` : ''}
           ${det.homepage ? `<div class="stat-card"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit →</a></div></div>` : ''}
           ${linksHTML(det)}
           <div id="providerBlock">${providerHTML(det, state.region)}</div>
@@ -157,12 +169,19 @@ export async function openDetail(id, type) {
         ${kwHTML}${vidsHTML}${castHTML}${crewHTML}${galHTML}${seasHTML}${revsHTML}${simHTML}
       </div>`;
 
-    if (type === 'tv' && det.next_episode_to_air) startCD(id, det.next_episode_to_air.air_date);
+    if (cdDate) startCD(id, cdDate, cdDoneMsg);
     if (type === 'tv' && det.seasons?.length) { const fs = det.seasons.find(s => s.season_number > 0); if (fs) loadEps(id, fs.season_number); }
     observeReveals(ct); observeCountUps(ct);
-    // Animate the Box Office bar widths after paint (horizontal %-widths resolve
-    // against the definite-width card).
-    requestAnimationFrame(() => ct.querySelectorAll('.bo-fill').forEach(f => { f.style.width = (+f.dataset.w || 0) + '%'; }));
+    requestAnimationFrame(() => {
+      // Animate the Box Office bar widths after paint (horizontal %-widths resolve
+      // against the definite-width card).
+      ct.querySelectorAll('.bo-fill').forEach(f => { f.style.width = (+f.dataset.w || 0) + '%'; });
+      // Reveal a "Read more" ONLY where the text actually overflows its clamp —
+      // a char-count heuristic mismatched the line-clamp (button with nothing to
+      // expand, or overflow with no button). Measured, so it's always right.
+      syncClampToggle($('detOv'), $('detOvToggle'));
+      ct.querySelectorAll('.review-body').forEach(b => syncClampToggle(b, ct.querySelector(`.review-toggle[data-target="${b.id}"]`)));
+    });
     // Video-forward: fade a muted looping trailer in behind the backdrop (desktop + motion only).
     if (back && trailer?.key) { const backEl = ct.querySelector('.detail-back'); if (backEl) ambientTeardown = mountAmbientVideo(backEl, trailer.key); }
   } catch (e) {
@@ -278,13 +297,54 @@ function galleryHTML(det) {
 function providerHTML(det, region) {
   const results = det['watch/providers']?.results || {};
   const prov = results[region] || {};
+  const title = det.title || det.name || '';
+  const regionLink = prov.link || '';   // TMDB's region-level JustWatch page (fallback)
   const options = REGIONS.map(([code, label]) => `<option value="${code}" ${code === region ? 'selected' : ''}>${label}</option>`).join('');
-  const groups = [['Stream', prov.flatrate], ['Ads', prov.ads]]
+  // Each logo is now a link to that provider's OWN search for the title (or the
+  // JustWatch page / web search as a fallback). Rent + Buy are surfaced too.
+  const logoLink = p => {
+    const url = providerUrl(p.provider_name, title, regionLink);
+    return `<a class="provider-logo-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="Search ${esc(p.provider_name)}"><img class="provider-logo" src="${IMG}w92${p.logo_path}" alt="${esc(p.provider_name)}" loading="lazy"></a>`;
+  };
+  const groups = [['Stream', prov.flatrate], ['Rent', prov.rent], ['Buy', prov.buy], ['Ads', prov.ads]]
     .filter(([, list]) => list && list.length);
   const inner = groups.length
-    ? groups.map(([label, list]) => `<div class="provider-group"><div class="provider-group-label">${label}</div><div class="provider-icons">${list.slice(0, 6).map(p => `<img class="provider-logo" src="${IMG}w92${p.logo_path}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}" loading="lazy">`).join('')}</div></div>`).join('')
+    ? groups.map(([label, list]) => `<div class="provider-group"><div class="provider-group-label">${label}</div><div class="provider-icons">${list.slice(0, 6).map(logoLink).join('')}</div></div>`).join('')
     : '<span style="font-size:.78rem;color:var(--text3)">Not available in your region</span>';
   return `<div class="stat-card"><div class="stat-label" style="display:flex;align-items:center">Where to Watch<select class="region-select" data-action="region-change">${options}</select></div><div class="stat-val providers">${inner}</div></div>`;
+}
+
+// ===== REVIEWS =====
+// A 0–10 rating rendered as a 5-star meter (a gold fill clipped to the score) plus
+// the raw number; long bodies get a per-review "Read more"; the first 6 show, the
+// rest reveal behind "Show all".
+function starMeter(score10) {
+  const pct = Math.max(0, Math.min(100, score10 * 10));
+  const stars = '★★★★★';
+  return `<span class="rev-stars" aria-label="${score10} out of 10"><span class="rev-stars-bg">${stars}</span><span class="rev-stars-fill" style="width:${pct}%">${stars}</span></span><span class="rev-score-num">${score10}/10</span>`;
+}
+
+function reviewCard(r, i) {
+  const rating = r.author_details?.rating;
+  const date = r.created_at ? new Date(r.created_at).toLocaleDateString() : '';
+  return `<div class="review"><div class="review-top"><div class="review-av">${esc((r.author || '?')[0].toUpperCase())}</div><div class="review-who"><div class="review-author">${esc(r.author)}</div><div class="review-date">${date}</div></div>${rating != null ? `<div class="review-score">${starMeter(rating)}</div>` : ''}</div><div class="review-body" id="rev_body_${i}">${esc(r.content || '')}</div><span class="review-toggle" data-action="toggle-review" data-target="rev_body_${i}" hidden>Read more</span></div>`;
+}
+
+function reviewsHTML(revs) {
+  const all = revs.results || [];
+  if (!all.length) return '';
+  const first = all.slice(0, 6).map(reviewCard).join('');
+  const rest = all.slice(6);
+  const more = rest.length
+    ? `<div id="revMore" hidden>${rest.map((r, i) => reviewCard(r, i + 6)).join('')}</div><button class="review-showall" data-action="show-all-reviews">Show all ${all.length} reviews</button>`
+    : '';
+  return `<div style="margin-bottom:32px"><div class="d-sec-title">Reviews</div>${first}${more}</div>`;
+}
+
+// Reveal a clamp toggle only when the body actually overflows its line-clamp.
+function syncClampToggle(body, toggle) {
+  if (!body || !toggle) return;
+  toggle.hidden = !(body.scrollHeight > body.clientHeight + 2);
 }
 
 // Combined Budget / Revenue / Profit "Box Office" graph card (spans the grid).
@@ -314,11 +374,11 @@ function getCert(d, t) {
   return d.content_ratings?.results?.find(r => r.iso_3166_1 === 'US')?.rating || '';
 }
 
-function startCD(id, ds) {
+function startCD(id, ds, doneMsg = '🎉 Now Airing!') {
   const tg = new Date(ds).getTime();
   function up() {
     const df = tg - Date.now();
-    if (df <= 0) { const e = $(`cd_d_${id}`); if (e) e.parentElement.parentElement.innerHTML = '<div style="color:var(--green2);font-size:1rem;font-weight:700">🎉 Now Airing!</div>'; return; }
+    if (df <= 0) { const e = $(`cd_d_${id}`); if (e) e.parentElement.parentElement.innerHTML = `<div style="color:var(--green2);font-size:1rem;font-weight:700">${doneMsg}</div>`; return; }
     const d = Math.floor(df / 864e5), h = Math.floor(df % 864e5 / 36e5), m = Math.floor(df % 36e5 / 6e4), s = Math.floor(df % 6e4 / 1e3);
     const de = $(`cd_d_${id}`), he = $(`cd_h_${id}`), me = $(`cd_m_${id}`), se = $(`cd_s_${id}`);
     if (de) de.textContent = String(d).padStart(2, '0'); if (he) he.textContent = String(h).padStart(2, '0'); if (me) me.textContent = String(m).padStart(2, '0'); if (se) se.textContent = String(s).padStart(2, '0');
@@ -386,6 +446,23 @@ export function initDetail() {
       const ov = $('detOv'); if (!ov) return;
       ov.classList.toggle('clamped');
       el.textContent = ov.classList.contains('clamped') ? 'Read more' : 'Show less';
+    },
+    'toggle-review': (el) => {
+      const body = $(el.dataset.target); if (!body) return;
+      const expanded = body.classList.toggle('expanded');
+      el.textContent = expanded ? 'Show less' : 'Read more';
+    },
+    'show-all-reviews': (el) => {
+      const more = $('revMore');
+      if (more) {
+        more.hidden = false;
+        // Reveal Read-more on the newly shown bodies that overflow.
+        more.querySelectorAll('.review-body').forEach(b => {
+          const t = more.querySelector(`.review-toggle[data-target="${b.id}"]`);
+          if (t) t.hidden = !(b.scrollHeight > b.clientHeight + 2);
+        });
+      }
+      el.remove();
     },
     'load-season': (el) => loadSeason(+el.dataset.tid, +el.dataset.sn, el),
     'go-collection': (el) => document.dispatchEvent(new CustomEvent('cv:go', { detail: `/collection/${el.dataset.cid}` })),
