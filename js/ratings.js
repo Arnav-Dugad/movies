@@ -5,7 +5,7 @@ import { state } from './state.js';
 import { toast, $, trapFocus, lockScroll, unlockScroll } from './ui.js';
 import { registerActions } from './events.js';
 import { confettiBurst } from './effects.js';
-import { refreshRateBtns } from './cards.js';
+import { refreshRateBtns, refreshMyRatings } from './cards.js';
 
 let rateTarget = null;
 let releaseFocus = null;
@@ -100,6 +100,7 @@ export async function submitRating() {
     confettiBurst();
     closeRating();
     refreshRateBtns();
+    refreshMyRatings();
     document.dispatchEvent(new Event('cv:wl-changed'));
   } catch (e) { console.error('submitRating failed:', e); toast('Error saving rating', 'error'); }
 }
@@ -113,6 +114,7 @@ export async function clearRating() {
     toast('Rating removed', 'info');
     closeRating();
     refreshRateBtns();
+    refreshMyRatings();
     document.dispatchEvent(new Event('cv:wl-changed'));
   } catch (e) { console.error('clearRating failed:', e); toast('Error', 'error'); }
 }

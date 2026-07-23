@@ -39,6 +39,17 @@ export function rateBtnHTML(id, type, title) {
   return `<button class="card-rate${score ? ' rated' : ''}" data-rate="${type}|${id}" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${esc(title)}" aria-label="${score ? `Rated ${score} of 10` : 'Rate this'}" data-tip="${tip}">${score || STAR_OUTLINE}</button>`;
 }
 
+// A passive "my rating" badge (distinct from the TMDB score pill): a SOLID gold
+// star+number in the top-LEFT corner, shown only when you've rated the title.
+// The TMDB score stays translucent top-right, so both are visible at once.
+// data-myr lets refreshMyRatings() insert/update/remove it live after a rating
+// change made anywhere, without a full re-render.
+export function myRatingHTML(id, type) {
+  const score = state.ratings[`${type}_${id}`];
+  if (!score) return '';
+  return `<div class="card-myrating" data-myr="${type}|${id}" data-tip="Your rating: ${score}/10" aria-label="Your rating: ${score} of 10"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${score}</div>`;
+}
+
 export function buildCard(item, type, opts = {}) {
   const t = type || item.media_type || 'movie';
   if (t === 'person') return personCard(item);
@@ -63,6 +74,7 @@ export function buildCard(item, type, opts = {}) {
   if (opts.badge) h += `<div class="card-badge">${esc(opts.badge)}</div>`;
   if (rating && !opts.t10) h += `<div class="card-rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rating}</div>`;
   if (wd) h += `<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>`;
+  h += myRatingHTML(item.id, t);
   if (wd && !opts.t10) h += rateBtnHTML(item.id, t, title);
   // One add-to-list button, overlaying the poster (absolute bottom-right); tapping
   // it opens the picker to choose which list(s).
@@ -107,6 +119,25 @@ export function refreshRateBtns() {
     const tip = score ? `Your rating: ${score}/10` : 'Rate this';
     b.dataset.tip = tip;
     b.setAttribute('aria-label', score ? `Rated ${score} of 10` : 'Rate this');
+  });
+}
+
+// Sync the passive my-rating badge on every visible card after a rating changes
+// anywhere — inserting, updating, or removing it without a full re-render. Unlike
+// the quick-rate button (always present on watched cards), this badge exists in
+// the DOM only when a score exists, so it reads the card root's data-id/data-type
+// and injects into the card image.
+export function refreshMyRatings() {
+  document.querySelectorAll('.card[data-id][data-type]').forEach(card => {
+    const { id, type } = card.dataset;
+    const img = card.querySelector('.card-img');
+    if (!img) return;
+    const score = state.ratings[`${type}_${id}`];
+    const badge = img.querySelector('.card-myrating');
+    if (score) {
+      if (badge) { badge.lastChild.textContent = score; badge.dataset.tip = `Your rating: ${score}/10`; badge.setAttribute('aria-label', `Your rating: ${score} of 10`); }
+      else img.insertAdjacentHTML('afterbegin', myRatingHTML(id, type));
+    } else if (badge) badge.remove();
   });
 }
 

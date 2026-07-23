@@ -1,10 +1,11 @@
 // ===== PROFILE PAGE (/profile) =====
-import { state } from './state.js';
+import { state, isWatched } from './state.js';
 import { $, esc, toast } from './ui.js';
 import { registerActions } from './events.js';
 import { AVATARS } from './config.js';
 import { avatarBg, avatarGlyph } from './avatar.js';
 import { buildCtx } from './badges.js';
+import { myRatingHTML } from './cards.js';
 import { social, displayCode } from './social.js';
 import { saveProfile } from './auth.js';
 
@@ -84,7 +85,8 @@ export function renderProfile() {
     <div class="d-sec-title" style="margin-top:28px">Recently viewed</div>
     <div class="row">${rv.map(r => {
       const poster = r.poster ? `https://image.tmdb.org/t/p/w342${r.poster}` : '';
-      return `<div class="card" role="button" tabindex="0" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img">${poster ? `<img src="${poster}" alt="${esc(r.title)}" loading="lazy">` : ''}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div></div></div>`;
+      const wd = isWatched(r.id, r.type);
+      return `<div class="card" role="button" tabindex="0" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img">${poster ? `<img src="${poster}" alt="${esc(r.title)}" loading="lazy">` : ''}${wd ? '<div class="watched-badge show"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>' : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div></div></div>`;
     }).join('')}</div>` : '';
 
   ct.innerHTML = header + editForm + codeCard + snapshot + recent;
