@@ -225,6 +225,20 @@ export async function fetchCandidates(profile, { only = null } = {}) {
 // title you rated 9 is a better bet than a broad popularity sweep.
 const SOURCE_BONUS = { rec: 1.4, cast: 1.2, castmore: 1.15, director: 1.1, quality: 0.7, genre: 0.6, trending: 0.4 };
 
+// Genres that DEFINE a title's audience rather than just flavour it. Sharing a
+// broad bucket like Comedy or Adventure means little — an animated kids' film and
+// an adult road-trip dramedy both carry those tags. But a title tagged with one of
+// these, when you've shown zero interest in that genre, is almost never a real
+// match. This is what filled "Because you liked Zindagi Na Milegi Dobara" with
+// SpongeBob, Ice Age and Hotel Transylvania.
+const DEFINING_GENRES = new Set([16, 99, 10751, 10762, 10770, 10764, 10763, 10767]); // Animation, Documentary, Family, Kids, TV Movie, Reality, News, Talk
+
+// Count a candidate's defining genres you've never engaged with (weight not > 0).
+export function offTasteCount(c, profile) {
+  const gw = profile.genreWeights || {};
+  return (c.genre_ids || []).filter(g => DEFINING_GENRES.has(+g) && !(gw[g] > 0)).length;
+}
+
 export function scoreCandidate(c, profile, norms = {}) {
   const gw = profile.genreWeights || {};
   const maxG = norms.maxG || 1, maxDec = norms.maxDec || 1;
@@ -234,7 +248,9 @@ export function scoreCandidate(c, profile, norms = {}) {
   const quality = (c.vote_average || 0) / 10 * 0.5 + Math.min((c.popularity || 0) / 500, 1) * 0.3;
   const y = yearOf(c);
   const decadeScore = y ? ((profile.decadeWeights || {})[decadeOf(y)] || 0) / maxDec * 0.4 : 0;
-  return genreScore + sourceBonus + quality + decadeScore;
+  // Sink off-taste "defining genre" titles everywhere, not just the seed row.
+  const offPenalty = offTasteCount(c, profile) * 0.6;
+  return genreScore + sourceBonus + quality + decadeScore - offPenalty;
 }
 
 export function rankAndDedupe(cands, profile) {
@@ -343,10 +359,12 @@ export async function renderRecommendations() {
 
   // "Because you liked X" is the one row fed by TMDB's own /recommendations, which
   // can be wildly off — a seed with thin data returned a wall of unrelated kids'
-  // animation. Require each pick to actually share a genre you like, and drop the
-  // row entirely rather than show a handful of stragglers (fillRow removes it).
+  // animation. A pick must share a genre you like AND not be defined by a genre
+  // you've never touched (Animation/Family/…). Drop the row rather than show a
+  // handful of stragglers (fillRow removes it).
   const likesGenre = (c) => (c.genre_ids || []).some(g => (profile.genreWeights[g] || 0) > 0);
-  if (seed) fillRow('rowSeed', () => rowFrom(c => c.__source === 'rec' && likesGenre(c), 4));
+  const onTaste = (c) => likesGenre(c) && offTasteCount(c, profile) === 0;
+  if (seed) fillRow('rowSeed', () => rowFrom(c => c.__source === 'rec' && onTaste(c), 4));
   if (topActor) fillRow('rowActor', () => rowFrom(c => c.__source === 'cast'));
   if (topDirector) fillRow('rowDirector', () => rowFrom(c => c.__source === 'director'));
   if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)));
