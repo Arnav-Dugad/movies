@@ -12,6 +12,7 @@ import { initMedia } from './media.js';
 import { initPerson } from './person.js';
 import { initStudio } from './studio.js';
 import { initCollection } from './collection.js';
+import { initSharedList } from './shared-list.js';
 import { initDetail } from './detail.js';
 import { initBrowse, initFilters } from './browse.js';
 import { initDiscoverActions } from './discover.js';
@@ -48,6 +49,7 @@ async function init() {
   initPerson();
   initStudio();
   initCollection();
+  initSharedList();
   initDetail();
   initBrowse();
   initDiscoverActions();

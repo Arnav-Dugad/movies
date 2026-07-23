@@ -5,7 +5,7 @@ import { IMG, PH } from './config.js';
 import { esc, toast, $ } from './ui.js';
 import { refreshWLBtns, rateBtnHTML, myRatingHTML } from './cards.js';
 import { registerActions, readItem } from './events.js';
-import { removeFromAllLists, removeFromList, listsArr, listById, createList, renameList, deleteList } from './lists.js';
+import { removeFromAllLists, removeFromList, listsArr, listById, createList, renameList, deleteList, shareList } from './lists.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
 
@@ -120,11 +120,18 @@ export function renderWL() {
     if (listEdit) {
       const val = listEdit.mode === 'rename' && active ? esc(active.name) : '';
       head.innerHTML = `<div class="wl-editrow"><input id="wlListName" type="text" placeholder="List name…" maxlength="30" value="${val}" autocomplete="off"><button class="btn-primary" data-action="wl-list-save">${listEdit.mode === 'rename' ? 'Save' : 'Create'}</button><button class="btn-glass" data-action="wl-list-cancel">Cancel</button></div>`;
-    } else if (active && active.id !== 'watchlist') {
-      const del = pendingDelete === active.id
-        ? `<button class="btn-glass wl-manage danger" data-action="wl-delete-list">Delete “${esc(active.name)}”?</button>`
-        : `<button class="btn-glass wl-manage danger" data-action="wl-delete-list" data-tip="Delete list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg></button>`;
-      head.innerHTML = `<button class="btn-glass wl-manage" data-action="wl-rename-list" data-tip="Rename list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>${del}`;
+    } else if (active) {
+      // Any real list can be shared; only non-default lists can be renamed/deleted.
+      const shared = active.shared ? ' shared' : '';
+      const share = `<button class="btn-glass wl-manage${shared}" data-action="share-list" data-list="${esc(active.id)}" data-tip="${active.shared ? 'Re-share list' : 'Share list'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>`;
+      let manage = '';
+      if (active.id !== 'watchlist') {
+        const del = pendingDelete === active.id
+          ? `<button class="btn-glass wl-manage danger" data-action="wl-delete-list">Delete “${esc(active.name)}”?</button>`
+          : `<button class="btn-glass wl-manage danger" data-action="wl-delete-list" data-tip="Delete list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg></button>`;
+        manage = `<button class="btn-glass wl-manage" data-action="wl-rename-list" data-tip="Rename list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>${del}`;
+      }
+      head.innerHTML = share + manage;
     } else head.innerHTML = '';
     const inp = $('wlListName'); if (inp) inp.focus();
   }
@@ -170,6 +177,7 @@ export function initWatchlist() {
     'wl-rename-list': () => { listEdit = { mode: 'rename' }; pendingDelete = null; renderWL(); },
     'wl-list-cancel': () => { listEdit = null; renderWL(); },
     'wl-list-save': () => saveListEdit(),
+    'share-list': async (el) => { await shareList(el.dataset.list); renderWL(); },
     'wl-delete-list': async (el) => {
       const id = state.wlList;
       if (pendingDelete !== id) { pendingDelete = id; renderWL(); return; }  // first click arms, second confirms

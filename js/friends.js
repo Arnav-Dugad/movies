@@ -2,8 +2,10 @@
 import { state } from './state.js';
 import { esc, toast, $ } from './ui.js';
 import { registerActions } from './events.js';
-import { social, displayCode, sendRequest, acceptRequest, declineRequest, resolveCode, resolveEmail, searchByName } from './social.js';
+import { social, displayCode, sendRequest, acceptRequest, declineRequest, removeFriend, resolveCode, resolveEmail, searchByName } from './social.js';
 import { avatarInner } from './avatar.js';
+
+let pendingRemove = null;   // pairId awaiting a second confirming click
 
 export function renderFriends() {
   const ct = $('friendsContent');
@@ -16,7 +18,13 @@ export function renderFriends() {
   const reqIn = social.reqIn.map(r => `<div class="friend-row">${avatarInner(null, r.fromName)}<div class="friend-meta"><div class="friend-name">${esc(r.fromName || 'Someone')}</div><div class="friend-sub">wants to connect</div></div><div class="friend-actions"><button class="btn-primary" style="height:36px;padding:0 16px;font-size:.8rem" data-action="accept-req" data-id="${r.id}">Accept</button><button class="dbtn-icon" data-action="decline-req" data-id="${r.id}" data-tip="Decline" style="width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div></div>`).join('');
 
   const friends = social.friends.length
-    ? social.friends.map(f => `<div class="friend-row">${avatarInner(null, f.name)}<div class="friend-meta"><div class="friend-name">${esc(f.name)}</div><div class="friend-sub">Friend</div></div></div>`).join('')
+    ? social.friends.map(f => {
+        const armed = pendingRemove === f.pairId;
+        const remBtn = armed
+          ? `<button class="btn-glass danger" style="padding:8px 14px;font-size:.78rem" data-action="remove-friend" data-pair="${esc(f.pairId)}">Remove?</button>`
+          : `<button class="dbtn-icon" data-action="remove-friend" data-pair="${esc(f.pairId)}" data-tip="Remove friend" style="width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2"/><circle cx="11" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="8"/></svg></button>`;
+        return `<div class="friend-row">${avatarInner(null, f.name)}<div class="friend-meta"><div class="friend-name">${esc(f.name)}</div><div class="friend-sub">Friend</div></div><div class="friend-actions">${remBtn}</div></div>`;
+      }).join('')
     : `<p style="color:var(--text3);font-size:.88rem">No friends yet — share your code or add one above.</p>`;
 
   const out = social.reqOut.length ? `<div class="d-sec-title" style="margin-top:24px">Pending</div>${social.reqOut.map(r => `<div class="friend-row">${avatarInner(null, r.toName)}<div class="friend-meta"><div class="friend-name">${esc(r.toName || 'Friend')}</div><div class="friend-sub">Request sent</div></div></div>`).join('')}` : '';
@@ -84,5 +92,14 @@ export function initFriends() {
     'friend-request': async (el) => { const r = await sendRequest(el.dataset.uid, el.dataset.name); toast(r.msg, r.ok ? 'success' : 'error'); if (r.ok) { $('friendSearchResults').innerHTML = ''; renderFriends(); } },
     'accept-req': async (el) => { const req = social.reqIn.find(r => r.id === el.dataset.id); if (req) { await acceptRequest(req); toast('Friend added!', 'success'); renderFriends(); } },
     'decline-req': async (el) => { const req = social.reqIn.find(r => r.id === el.dataset.id); if (req) { await declineRequest(req); renderFriends(); } },
+    // Two-tap: the first click arms (button becomes "Remove?"), the second confirms.
+    'remove-friend': async (el) => {
+      const pair = el.dataset.pair;
+      if (pendingRemove !== pair) { pendingRemove = pair; renderFriends(); return; }
+      pendingRemove = null;
+      const r = await removeFriend(pair);
+      if (r.ok) toast('Friend removed', 'info');
+      renderFriends();   // the live listener also re-renders both sides
+    },
   });
 }

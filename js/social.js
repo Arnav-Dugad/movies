@@ -136,6 +136,17 @@ export async function declineRequest(req) {
   catch (e) { console.error('declineRequest', e); }
 }
 
+// Unfriend: deleting the single friendship doc updates BOTH users in realtime —
+// each holds a where('members','array-contains',uid) listener on it, so the row
+// vanishes on both screens with no manual refresh.
+export async function removeFriend(pairId) {
+  if (!state.user || !pairId) return { ok: false };
+  try {
+    await db.collection('friendships').doc(pairId).delete();
+    return { ok: true };
+  } catch (e) { console.error('removeFriend', e); toast('Could not remove friend', 'error'); return { ok: false }; }
+}
+
 // ----- Lookups -----
 export async function resolveCode(codeInput) {
   const code = normCode(codeInput);

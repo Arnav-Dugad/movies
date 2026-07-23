@@ -419,6 +419,14 @@
 .provider-logo-link{display:inline-flex;border-radius:8px;transition:transform .2s var(--ease)}
 .provider-logo-link:hover,.provider-logo-link:focus-visible{transform:translateY(-2px);outline:none}
 
+/* ===== SHARED LIST VIEW ===== */
+.shared-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:24px}
+.shared-owner{display:flex;align-items:center;gap:8px;font-size:.86rem;color:var(--text2);margin-bottom:8px}
+.shared-owner .friend-av{width:28px;height:28px;font-size:.8rem}
+.shared-clone{flex-shrink:0}
+/* A shared list's Share button glows so you can tell it's already public. */
+.wl-manage.shared{color:var(--green2);border-color:rgba(16,185,129,.35)}
+
 /* ===== RATING MODAL ===== */
 /* transition:all here also animated backdrop-filter — a genuine jank source on a
    full-viewport blur. Only opacity needs to move. */

@@ -73,7 +73,7 @@ export function inList(id, type, listId) {
 }
 
 // ----- Membership mutations (read-modify-write) -----
-export async function addToList(item, type, listId) {
+export async function addToList(item, type, listId, { silent = false } = {}) {
   if (!state.user) return document.dispatchEvent(new Event('cv:open-auth'));
   const id = item.id != null ? item.id : item.tmdbId;
   const key = keyOf(id, type);
@@ -93,7 +93,8 @@ export async function addToList(item, type, listId) {
       entry.lists = next;
     }
     refreshWLBtns();
-    toast(`Saved to ${listById(listId)?.name || 'list'}`, 'success');
+    // silent: bulk callers (cloning a shared list) show one summary toast instead.
+    if (!silent) toast(`Saved to ${listById(listId)?.name || 'list'}`, 'success');
     document.dispatchEvent(new Event('cv:wl-changed'));
   } catch (e) { console.error('addToList', e); toast('Error updating list', 'error'); }
 }
@@ -192,6 +193,50 @@ export async function deleteList(id) {
   } catch (e) { console.error('deleteList', e); toast('Could not delete list', 'error'); }
 }
 
+// ----- Share a list -----
+// Publishes a DERIVED snapshot to users/{uid}/shared/list_{listId}. This lives
+// under the same `shared` subcollection as the friend-readable taste doc, so it
+// inherits that cross-user read posture — the raw watchlist stays owner-only.
+const sharedListRef = (uid, listId) => db.collection('users').doc(uid).collection('shared').doc(`list_${listId}`);
+
+function itemsInList(listId) {
+  return state.watchlist
+    .filter(w => listsArr(w).includes(listId))
+    .map(w => ({ id: w.tmdbId, type: w.type, title: w.title || '', poster: w.poster || '', year: w.year || '', rating: w.rating || 0 }));
+}
+
+async function writeSharedList(list) {
+  const items = itemsInList(list.id);
+  await sharedListRef(state.user.uid, list.id).set({
+    kind: 'list', listId: list.id, name: list.name || 'List', icon: list.icon || '📁',
+    owner: state.user.uid,
+    ownerName: state.user.displayName || (state.user.email || '').split('@')[0] || 'A friend',
+    items, count: items.length, updatedAt: ts(),
+  });
+}
+
+export async function shareList(listId) {
+  if (!state.user) return document.dispatchEvent(new Event('cv:open-auth'));
+  const list = listById(listId);
+  if (!list) return;
+  try {
+    await writeSharedList(list);
+    if (!list.shared) { list.shared = true; await listCol().doc(listId).set({ shared: true }, { merge: true }); }
+    const link = `${location.origin}/shared-list/${state.user.uid}/${listId}`;
+    let copied = false;
+    if (navigator.clipboard) { try { await navigator.clipboard.writeText(link); copied = true; } catch (_) {} }
+    toast(copied ? `“${list.name}” shared — link copied!` : `Shared! ${link}`, copied ? 'success' : 'info');
+  } catch (e) { console.error('shareList', e); toast('Could not share list', 'error'); }
+}
+
+// Keep already-shared lists' snapshots fresh when the watchlist changes.
+export async function republishSharedLists() {
+  if (!state.user) return;
+  for (const l of state.lists.filter(l => l.shared)) {
+    try { await writeSharedList(l); } catch (e) { console.error('republishSharedLists', e); }
+  }
+}
+
 // ----- Picker modal -----
 let pickerTarget = null;   // { item, type, id }
 let pickerRelease = null;
@@ -267,4 +312,11 @@ export function initLists() {
 
   // Clear per-user list state on sign-out.
   document.addEventListener('cv:auth', () => { if (!state.user) { state.lists = []; state.wlList = 'watchlist'; } });
+  // Keep any shared list snapshots current as the watchlist changes.
+  let republishTimer = null;
+  document.addEventListener('cv:wl-changed', () => {
+    if (!state.user || !state.lists.some(l => l.shared)) return;
+    clearTimeout(republishTimer);
+    republishTimer = setTimeout(() => republishSharedLists(), 1500);
+  });
 }
