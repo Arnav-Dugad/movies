@@ -1,7 +1,12 @@
 // ===== ADVANCED RECOMMENDER =====
-// Builds a taste profile from every available signal (watchlist genres, ratings,
-// recently-viewed), generates candidates from multiple TMDB sources, scores &
-// ranks them, excludes anything already seen, and renders blended rows.
+// Builds a taste profile from every available signal — watchlist, WATCHED history
+// (with its backfilled cast/director/runtime/decade metadata), ratings, and
+// recently-viewed — generates candidates from several TMDB sources, scores and
+// ranks them once, drops anything already seen, and renders diversified rows.
+//
+// Key TMDB constraint: /discover results carry NO cast/crew. So actor and director
+// affinity enters through `with_cast`/`with_people` QUERY params plus a per-source
+// bonus — never a per-candidate /credits fetch (that would be 20+ extra requests).
 import { tmdb } from './api.js';
 import { genreMap, mGenreList, tGenreList } from './config.js';
 import { state } from './state.js';
@@ -21,6 +26,21 @@ function titleForKey(type, id) {
   return r ? r.title : null;
 }
 
+// A rating recentres on 5: a 10 adds +5, a 3 subtracts 2. Unrated contributes 0,
+// so an unrated title still counts via its base weight.
+const ratingW = (s) => (s ? s - 5 : 0);
+const decadeOf = (year) => Math.floor(year / 10) * 10;
+const yearOf = (c) => parseInt((c.release_date || c.first_air_date || '').slice(0, 4)) || 0;
+
+// Sort a {key: weight} map into [{id, name, w}], strongest first, keeping only
+// signals strong enough to be a real preference rather than a single watch.
+function topOf(weights, names, min = 1.5) {
+  return Object.entries(weights)
+    .filter(([, w]) => w >= min)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, w]) => ({ id: +id, name: names[id] || '', w }));
+}
+
 // ----- Taste profile -----
 // Parameterized so it can build a profile for the signed-in user (default),
 // or for any explicit {watchlist, ratings, watched, recentlyViewed} set (used
@@ -31,19 +51,33 @@ export function buildTasteProfile(sources = state) {
   const watched = sources.watched || {};
   const recentlyViewed = sources.recentlyViewed || [];
 
-  const genreWeights = {};
-  const add = (genres, w) => (genres || []).forEach(g => { genreWeights[g] = (genreWeights[g] || 0) + w; });
+  const genreWeights = {}, actorWeights = {}, directorWeights = {}, decadeWeights = {};
+  const actorNames = {}, directorNames = {};
+  const addG = (genres, w) => (genres || []).forEach(g => { if (g == null) return; genreWeights[g] = (genreWeights[g] || 0) + w; });
+  const bump = (map, key, w) => { if (key == null || key === '') return; map[key] = (map[key] || 0) + w; };
 
-  watchlist.forEach(w => {
-    add(w.genres, 2);
-    const score = ratings[`${w.type}_${w.tmdbId}`];
-    if (score) add(w.genres, score - 5); // ratings signal: liked → boost, disliked → penalize
+  // Watchlist — an explicit "I want to see this": the strongest genre signal.
+  watchlist.forEach(w => addG(w.genres, 2 + ratingW(ratings[`${w.type}_${w.tmdbId}`])));
+
+  // Watched — what you actually consumed. This is where the cast/director/decade
+  // signal lives (watched-meta.js backfills it), and it was previously used only
+  // to EXCLUDE titles, never to inform taste.
+  Object.entries(watched).forEach(([key, d]) => {
+    if (!d) return;
+    const rw = ratingW(ratings[key]);
+    addG(d.genres, 1.5 + rw);          // a poorly-rated genre can go negative
+    const y = parseInt(d.year);
+    if (y) bump(decadeWeights, decadeOf(y), 1 + 0.3 * rw);
+    if (d.directorId) { bump(directorWeights, d.directorId, 1 + 0.5 * rw); if (d.director) directorNames[d.directorId] = d.director; }
+    (d.cast || []).slice(0, 5).forEach(p => { if (p && p.id) { bump(actorWeights, p.id, 1 + 0.5 * rw); if (p.name) actorNames[p.id] = p.name; } });
   });
-  recentlyViewed.forEach(r => add(r.genres, 1));
+
+  recentlyViewed.forEach(r => addG(r.genres, 1));
 
   let movie = 0, tv = 0;
   watchlist.forEach(w => (w.type === 'tv' ? tv++ : movie++));
   recentlyViewed.forEach(r => (r.type === 'tv' ? tv++ : movie++));
+  Object.values(watched).forEach(d => { if (d) (d.type === 'tv' ? tv++ : movie++); });
 
   // Seeds for /recommendations: highly-rated titles first, then most-recent.
   const seedIds = [];
@@ -61,15 +95,30 @@ export function buildTasteProfile(sources = state) {
   recentlyViewed.forEach(r => seen.add(`${r.type}_${r.id}`));
 
   const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
-  return { genreWeights, topGenres, seedIds, seen, movieBias: movie >= tv, hasSignal: topGenres.length > 0 || seedIds.length > 0 };
+  const topActors = topOf(actorWeights, actorNames);
+  const topDirectors = topOf(directorWeights, directorNames);
+  const topDecade = Object.entries(decadeWeights).sort((a, b) => b[1] - a[1]).map(([d]) => +d)[0] || null;
+
+  return {
+    genreWeights, topGenres, seedIds, seen, movieBias: movie >= tv,
+    actorWeights, actorNames, topActors,
+    directorWeights, directorNames, topDirectors,
+    decadeWeights, topDecade,
+    hasSignal: topGenres.length > 0 || seedIds.length > 0 || topActors.length > 0,
+  };
 }
 
+// Every profile-shaped object carries these, so scoreCandidate/fetchCandidates can
+// read them without guards no matter which builder produced the profile.
+const EMPTY_PEOPLE = { actorWeights: {}, actorNames: {}, topActors: [], directorWeights: {}, directorNames: {}, topDirectors: [], decadeWeights: {}, topDecade: null };
+
 // Build a profile-shape from a friend's stored "shared taste" doc (see social.js).
+// That doc is genre-level only, so the people/decade maps stay empty.
 export function profileFromShared(shared) {
   const genreWeights = shared?.genreWeights || {};
   const topGenres = (shared?.topGenres || []).map(Number);
   const seen = new Set(shared?.seen || []);
-  return { genreWeights, topGenres, seedIds: [], seen, movieBias: shared?.movieBias !== false, hasSignal: topGenres.length > 0 };
+  return { ...EMPTY_PEOPLE, genreWeights, topGenres, seedIds: [], seen, movieBias: shared?.movieBias !== false, hasSignal: topGenres.length > 0 };
 }
 
 // Blend N profiles into one group profile. Genres liked by MORE members rank
@@ -79,6 +128,7 @@ export function blendProfiles(profiles) {
   const list = (profiles || []).filter(Boolean);
   const n = list.length || 1;
   const genreWeights = {};
+  const decadeWeights = {};
   const seen = new Set();
   let movie = 0, tv = 0;
   const genreMembers = {}; // genre id -> # members with positive weight
@@ -87,6 +137,7 @@ export function blendProfiles(profiles) {
       genreWeights[g] = (genreWeights[g] || 0) + w;
       if (w > 0) genreMembers[g] = (genreMembers[g] || 0) + 1;
     });
+    Object.entries(p.decadeWeights || {}).forEach(([d, w]) => { decadeWeights[d] = (decadeWeights[d] || 0) + w; });
     (p.seen || new Set()).forEach(k => seen.add(k));
     p.movieBias ? movie++ : tv++;
   });
@@ -97,38 +148,78 @@ export function blendProfiles(profiles) {
   // Seeds: pool everyone's liked seeds so /recommendations pulls broadly-loved titles.
   const seedIds = [];
   list.forEach(p => (p.seedIds || []).forEach(s => { if (s.score >= 8 && !seedIds.some(x => x.id === s.id && x.type === s.type)) seedIds.push(s); }));
-  return { genreWeights, topGenres, seedIds: seedIds.slice(0, 3), seen, movieBias: movie >= tv, hasSignal: topGenres.length > 0, genreMembers, members: n };
+  return { ...EMPTY_PEOPLE, genreWeights, decadeWeights, topGenres, seedIds: seedIds.slice(0, 3), seen, movieBias: movie >= tv, hasSignal: topGenres.length > 0, genreMembers, members: n };
 }
 
 // ----- Candidate generation -----
-function tag(results, type, source) { return (results || []).map(r => ({ ...r, __type: r.media_type || type, __source: source })); }
+export function tag(results, type, source) { return (results || []).map(r => ({ ...r, __type: r.media_type || type, __source: source })); }
 
 // `only` restricts candidates to a single media type ('movie' | 'tv'); null
 // keeps the default blended behavior (movies always, TV when not movie-biased).
 // The Watch-Party matcher passes only='movie'/'tv' for its dedicated toggles.
+//
+// Genres are OR-joined ('|'), not comma-joined: a comma means AND in TMDB, which
+// demanded a title match ALL your top genres and starved the candidate pool.
 export async function fetchCandidates(profile, { only = null } = {}) {
   const calls = [];
   const wantMovie = only !== 'tv', wantTV = only !== 'movie';
-  const movieG = profile.topGenres.filter(g => MOVIE_GENRES.has(g)).slice(0, 3);
-  const tvG = profile.topGenres.filter(g => TV_GENRES.has(g)).slice(0, 3);
-  if (wantMovie && movieG.length) calls.push(tmdb('/discover/movie', { with_genres: movieG.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 150 }).then(d => tag(d.results, 'movie', 'discover')).catch(() => []));
-  if (wantTV && tvG.length && (only === 'tv' || !profile.movieBias)) calls.push(tmdb('/discover/tv', { with_genres: tvG.join(','), sort_by: 'popularity.desc', 'vote_count.gte': 150 }).then(d => tag(d.results, 'tv', 'discover')).catch(() => []));
-  profile.seedIds.slice(0, 3).filter(s => !only || s.type === only).forEach(s => calls.push(tmdb(`/${s.type}/${s.id}/recommendations`).then(d => tag(d.results, s.type, 'rec')).catch(() => [])));
+  const topGenres = profile.topGenres || [];
+  const movieG = topGenres.filter(g => MOVIE_GENRES.has(g)).slice(0, 3);
+  const tvG = topGenres.filter(g => TV_GENRES.has(g)).slice(0, 3);
+  const actors = profile.topActors || [];
+  const directors = profile.topDirectors || [];
+  const push = (p, type, source) => calls.push(p.then(d => tag(d.results, type, source)).catch(() => []));
+
+  if (wantMovie && movieG.length) {
+    const or = movieG.join('|');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150 }), 'movie', 'genre');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, page: 2 }), 'movie', 'genre');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 500 }), 'movie', 'quality');
+  }
+  if (wantMovie && actors.length) {
+    // The TOP actor gets its own call so the "Starring X" row is always accurate;
+    // the next two only widen the pool.
+    push(tmdb('/discover/movie', { with_cast: String(actors[0].id), sort_by: 'popularity.desc' }), 'movie', 'cast');
+    const more = actors.slice(1, 3).map(a => a.id);
+    if (more.length) push(tmdb('/discover/movie', { with_cast: more.join('|'), sort_by: 'popularity.desc' }), 'movie', 'castmore');
+  }
+  if (wantMovie && directors.length) {
+    push(tmdb('/discover/movie', { with_people: String(directors[0].id), sort_by: 'popularity.desc' }), 'movie', 'director');
+  }
+  if (wantTV && tvG.length && (only === 'tv' || !profile.movieBias)) {
+    const or = tvG.join('|');
+    push(tmdb('/discover/tv', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150 }), 'tv', 'genre');
+    if (only === 'tv') push(tmdb('/discover/tv', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 300 }), 'tv', 'quality');
+  }
+  (profile.seedIds || []).slice(0, 3).filter(s => !only || s.type === only)
+    .forEach(s => push(tmdb(`/${s.type}/${s.id}/recommendations`), s.type, 'rec'));
+
   const groups = await Promise.all(calls);
   return groups.flat();
 }
 
 // ----- Scoring & ranking -----
-function scoreCandidate(c, profile, maxW) {
-  let g = 0; (c.genre_ids || []).forEach(id => { g += (profile.genreWeights[id] || 0); });
-  const genreScore = maxW > 0 ? g / maxW : 0;
-  const sourceBonus = c.__source === 'rec' ? 1.2 : 0.6;
+// Where a candidate CAME FROM is itself evidence: a TMDB "more like this" off a
+// title you rated 9 is a better bet than a broad popularity sweep.
+const SOURCE_BONUS = { rec: 1.4, cast: 1.2, castmore: 1.15, director: 1.1, quality: 0.7, genre: 0.6, trending: 0.4 };
+
+export function scoreCandidate(c, profile, norms = {}) {
+  const gw = profile.genreWeights || {};
+  const maxG = norms.maxG || 1, maxDec = norms.maxDec || 1;
+  let g = 0; (c.genre_ids || []).forEach(id => { g += (gw[id] || 0); });
+  const genreScore = g / maxG;                                    // can be NEGATIVE for disliked genres
+  const sourceBonus = SOURCE_BONUS[c.__source] != null ? SOURCE_BONUS[c.__source] : 0.6;
   const quality = (c.vote_average || 0) / 10 * 0.5 + Math.min((c.popularity || 0) / 500, 1) * 0.3;
-  return genreScore + sourceBonus + quality;
+  const y = yearOf(c);
+  const decadeScore = y ? ((profile.decadeWeights || {})[decadeOf(y)] || 0) / maxDec * 0.4 : 0;
+  return genreScore + sourceBonus + quality + decadeScore;
 }
 
 export function rankAndDedupe(cands, profile) {
-  const maxW = Math.max(1, ...Object.values(profile.genreWeights).map(Math.abs));
+  const norms = {
+    maxG: Math.max(1, ...Object.values(profile.genreWeights || {}).map(Math.abs)),
+    maxDec: Math.max(1, ...Object.values(profile.decadeWeights || {}).map(Math.abs)),
+  };
   const byId = new Map();
   cands.forEach(c => {
     if (!c || !c.id || !c.poster_path) return;
@@ -136,11 +227,32 @@ export function rankAndDedupe(cands, profile) {
     if (type === 'person') return;
     const key = `${type}_${c.id}`;
     if (profile.seen.has(key)) return;
-    const sc = scoreCandidate(c, profile, maxW);
+    const sc = scoreCandidate(c, profile, norms);
     const existing = byId.get(key);
     if (!existing || sc > existing.__score) byId.set(key, { ...c, __type: type, __score: sc });
   });
   return [...byId.values()].sort((a, b) => b.__score - a.__score);
+}
+
+// Greedy MMR: pick the best remaining candidate after penalising genres already
+// represented, so a row isn't twenty variations of the same thing.
+export function diversify(ranked, n = 20, lambda = 0.35) {
+  const pool = ranked.slice();
+  const out = [];
+  const used = {};
+  while (out.length < n && pool.length) {
+    let bestI = 0, bestV = -Infinity;
+    for (let i = 0; i < pool.length; i++) {
+      const gs = pool[i].genre_ids || [];
+      const pen = gs.length ? gs.reduce((s, g) => s + (used[g] || 0), 0) / gs.length : 0;
+      const v = (pool[i].__score || 0) - lambda * pen;
+      if (v > bestV) { bestV = v; bestI = i; }
+    }
+    const [pick] = pool.splice(bestI, 1);
+    (pick.genre_ids || []).forEach(g => { used[g] = (used[g] || 0) + 1; });
+    out.push(pick);
+  }
+  return out;
 }
 
 export function matchBadge(score, top) { const pct = Math.max(60, Math.min(99, Math.round((score / (top || 1)) * 100))); return `${pct}% match`; }
@@ -172,31 +284,38 @@ export async function renderRecommendations() {
   const profile = buildTasteProfile();
   if (!profile.hasSignal) { wrap.innerHTML = ''; return; }
 
-  const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You' }];
   const seed = pickLabeledSeed(profile);
-  if (seed) descriptors.push({ id: 'rowSeed', icon: seed.reason === 'liked' ? '⭐' : '🍿', title: `Because you ${seed.reason} ${seed.title}` });
+  const topActor = (profile.topActors || []).find(a => a.name);
+  const topDirector = (profile.topDirectors || []).find(d => d.name);
   const genreId = profile.topGenres.find(g => MOVIE_GENRES.has(g));
+
+  const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You' }];
+  if (seed) descriptors.push({ id: 'rowSeed', icon: seed.reason === 'liked' ? '⭐' : '🍿', title: `Because you ${seed.reason} ${seed.title}` });
+  if (topActor) descriptors.push({ id: 'rowActor', icon: '🌟', title: `Starring ${topActor.name}` });
+  if (topDirector) descriptors.push({ id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}` });
   if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
 
   wrap.innerHTML = descriptors.map(shell).join('');
   observeReveals(wrap);
 
+  // ONE pool fetch + ONE ranking pass, shared by every row. The old code refetched
+  // (and re-ranked) per row, which was both slower and inconsistent between rows.
+  const pool = fetchCandidates(profile).then(c => rankAndDedupe(c, profile)).catch(() => []);
+
   fillRow('rowTopPicks', async () => {
-    const ranked = rankAndDedupe(await fetchCandidates(profile), profile).slice(0, 20);
-    if (!ranked.length) return null;
-    const top = ranked[0].__score || 1;
-    return ranked.map(c => buildCard(c, c.__type, { badge: matchBadge(c.__score, top) })).join('');
+    const picks = diversify(await pool, 20);
+    if (!picks.length) return null;
+    const top = picks[0].__score || 1;
+    return picks.map(c => buildCard(c, c.__type, { badge: matchBadge(c.__score, top) })).join('');
   });
 
-  if (seed) fillRow('rowSeed', async () => {
-    const d = await tmdb(`/${seed.type}/${seed.id}/recommendations`);
-    const items = (d.results || []).filter(x => x.poster_path && (x.media_type || seed.type) !== 'person' && !profile.seen.has(`${x.media_type || seed.type}_${x.id}`)).slice(0, 20);
-    return items.length ? items.map(x => buildCard(x, x.media_type || seed.type)).join('') : null;
-  });
+  const rowFrom = async (pred) => {
+    const items = (await pool).filter(pred).slice(0, 20);
+    return items.length ? items.map(c => buildCard(c, c.__type)).join('') : null;
+  };
 
-  if (genreId && genreMap[genreId]) fillRow('rowGenre', async () => {
-    const d = await tmdb('/discover/movie', { with_genres: String(genreId), sort_by: 'vote_average.desc', 'vote_count.gte': 300 });
-    const items = (d.results || []).filter(x => x.poster_path && !profile.seen.has(`movie_${x.id}`)).slice(0, 20);
-    return items.length ? items.map(x => buildCard(x, 'movie')).join('') : null;
-  });
+  if (seed) fillRow('rowSeed', () => rowFrom(c => c.__source === 'rec'));
+  if (topActor) fillRow('rowActor', () => rowFrom(c => c.__source === 'cast'));
+  if (topDirector) fillRow('rowDirector', () => rowFrom(c => c.__source === 'director'));
+  if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)));
 }
