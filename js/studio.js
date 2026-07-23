@@ -9,20 +9,24 @@ import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 
 let reqGen = 0;                 // guards against a slower, stale fetch overwriting a newer one
-let curId = null, mPage = 1, tPage = 1, mMax = 1, tMax = 1;
+let curId = null, curKind = 'company', mPage = 1, tPage = 1, mMax = 1, tMax = 1;
 
-export async function openStudio(id) {
+// `kind` is 'company' (production studio: movies + TV) or 'network' (a TV network,
+// which by definition only has shows). Both render the same page shell.
+export async function openStudio(id, kind = 'company') {
   const gen = ++reqGen;
-  curId = id; mPage = 1; tPage = 1;
+  const isNet = kind === 'network';
+  curId = id; curKind = kind; mPage = 1; tPage = 1;
   const ct = $('studioContent');
   if (!ct) return;
   ct.innerHTML = '<div style="text-align:center;padding:100px"><div class="loader-text">Loading...</div></div>';
   document.title = 'Loading… — CineVerse';
   try {
+    const withParam = isNet ? { with_networks: id } : { with_companies: id };
     const [co, mv, tvr] = await Promise.all([
-      tmdb(`/company/${id}`),
-      tmdb('/discover/movie', { with_companies: id, sort_by: 'popularity.desc', page: 1 }),
-      tmdb('/discover/tv', { with_companies: id, sort_by: 'popularity.desc', page: 1 }),
+      tmdb(`/${isNet ? 'network' : 'company'}/${id}`),
+      isNet ? Promise.resolve({ results: [], total_pages: 0 }) : tmdb('/discover/movie', { with_companies: id, sort_by: 'popularity.desc', page: 1 }),
+      tmdb('/discover/tv', { ...withParam, sort_by: 'popularity.desc', page: 1 }),
     ]);
     if (gen !== reqGen) return;
     document.title = `${co.name} — CineVerse`;
@@ -42,7 +46,7 @@ export async function openStudio(id) {
       </div>
       ${movies.length ? `<div class="d-sec-title">Movies</div><div class="browse-grid" id="studioMovies">${movies.map(m => buildCard(m, 'movie')).join('')}</div>${moreBtn('movies', 'Load more movies', mMax)}` : ''}
       ${shows.length ? `<div class="d-sec-title" style="margin-top:28px">TV Shows</div><div class="browse-grid" id="studioShows">${shows.map(s => buildCard(s, 'tv')).join('')}</div>${moreBtn('tv', 'Load more shows', tMax)}` : ''}
-      ${!movies.length && !shows.length ? '<p style="color:var(--text3);padding:20px 0">No titles found for this studio.</p>' : ''}`;
+      ${!movies.length && !shows.length ? `<p style="color:var(--text3);padding:20px 0">No titles found for this ${isNet ? 'network' : 'studio'}.</p>` : ''}`;
     observeReveals(ct);
   } catch (e) {
     console.error('openStudio', e);
@@ -55,8 +59,10 @@ async function loadMore(kind) {
   const grid = $(gridId); if (!grid) return;
   const page = kind === 'movie' ? ++mPage : ++tPage;
   const path = kind === 'movie' ? '/discover/movie' : '/discover/tv';
+  // A network filters shows with with_networks; a company with with_companies.
+  const withParam = (curKind === 'network' && kind === 'tv') ? { with_networks: curId } : { with_companies: curId };
   try {
-    const d = await tmdb(path, { with_companies: curId, sort_by: 'popularity.desc', page });
+    const d = await tmdb(path, { ...withParam, sort_by: 'popularity.desc', page });
     grid.insertAdjacentHTML('beforeend', (d.results || []).map(x => buildCard(x, kind)).join(''));
     const max = kind === 'movie' ? mMax : tMax;
     if (page >= max) { const btn = document.querySelector(`[data-action="studio-more-${kind === 'movie' ? 'movies' : 'tv'}"]`); if (btn) btn.parentElement.remove(); }
@@ -67,6 +73,7 @@ async function loadMore(kind) {
 export function initStudio() {
   registerActions({
     'open-studio': (el, e) => { if (e) e.stopPropagation(); document.dispatchEvent(new CustomEvent('cv:go', { detail: `/studio/${+el.dataset.id}` })); },
+    'open-network': (el, e) => { if (e) e.stopPropagation(); document.dispatchEvent(new CustomEvent('cv:go', { detail: `/network/${+el.dataset.id}` })); },
     'studio-more-movies': () => loadMore('movie'),
     'studio-more-tv': () => loadMore('tv'),
   });

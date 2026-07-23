@@ -2,7 +2,7 @@
 import { tmdb } from './api.js';
 import { IMG, PH, REGIONS, pickLogo, providerUrl } from './config.js';
 import { state, pushRecentlyViewed } from './state.js';
-import { esc, fmt, $ } from './ui.js';
+import { esc, fmt, debounce, $ } from './ui.js';
 import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals, observeCountUps } from './effects.js';
@@ -12,6 +12,7 @@ let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
 let navHint = null;           // instant-paint hint captured from the clicked card
 let lastVTSource = null;      // element currently holding the shared view-transition-name
+let clampResize = null;       // window resize handler that re-measures the read-more toggles
 let reqGen = 0;                // bumped on every openDetail/openCollection call; guards against a slower, stale fetch overwriting a newer one
 let epGen = 0;                 // same idea, scoped to the season-episode list (season tabs can be clicked faster than they load)
 
@@ -40,7 +41,7 @@ export async function openDetail(id, type) {
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
   try {
     const [det, cred, vids, sim, revs] = await Promise.all([
-      tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,content_ratings,release_dates,watch/providers,keywords,recommendations,images', include_image_language: 'en,null' }),
+      tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,content_ratings,release_dates,watch/providers,keywords,recommendations,images,alternative_titles', include_image_language: 'en,null' }),
       tmdb(`/${type}/${id}/credits`), tmdb(`/${type}/${id}/videos`), tmdb(`/${type}/${id}/similar`), tmdb(`/${type}/${id}/reviews`)
     ]);
     // Bail if a newer openDetail()/openCollection() call has started since — a
@@ -77,8 +78,6 @@ export async function openDetail(id, type) {
     // Watchlist payload
     const wlPayload = esc(JSON.stringify({ id, type, title, poster: det.poster_path || '', rating: det.vote_average || 0, year, genres: (det.genres || []).map(g => g.id) }));
 
-    // Prefer a production company that actually has a logo; else the first.
-    const studio = det.production_companies?.length ? (det.production_companies.find(c => c.logo_path) || det.production_companies[0]) : null;
     const boHTML = boxOfficeHTML(det);
 
     // One countdown block, shared markup. For an airing show it counts to the next
@@ -101,7 +100,15 @@ export async function openDetail(id, type) {
 
     let seasHTML = '';
     if (type === 'tv' && det.seasons?.length) { const vs = det.seasons.filter(s => s.season_number > 0);
-      seasHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Episodes</div><div class="season-tabs">${vs.map((s, i) => `<div class="s-tab ${i === 0 ? 'active' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}">${esc(s.name)}</div>`).join('')}</div><div class="ep-list" id="epList_${id}"><div class="skel" style="height:80px;width:100%"></div></div></div>`; }
+      // Season-at-a-glance strip: poster, episode count and year per season, so
+      // you can size up a long-running show without stepping through the tabs.
+      const seasonCards = vs.map(s => {
+        const yr = (s.air_date || '').slice(0, 4);
+        const poster = s.poster_path ? `<img src="${IMG}w185${s.poster_path}" alt="${esc(s.name)}" loading="lazy">` : '';
+        return `<div class="season-card" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}"><div class="season-poster">${poster}</div><div class="season-nm">${esc(s.name)}</div><div class="season-meta">${s.episode_count ? `${s.episode_count} ep${s.episode_count === 1 ? '' : 's'}` : ''}${yr && s.episode_count ? ' · ' : ''}${yr}</div></div>`;
+      }).join('');
+      seasHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Seasons</div><div class="season-scroll">${seasonCards}</div>`
+        + `<div class="d-sec-title" style="margin-top:24px">Episodes</div><div class="season-tabs">${vs.map((s, i) => `<div class="s-tab ${i === 0 ? 'active' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}">${esc(s.name)}</div>`).join('')}</div><div class="ep-list" id="epList_${id}"><div class="skel" style="height:80px;width:100%"></div></div></div>`; }
 
     const allVids = (vids.results || []).filter(v => v.site === 'YouTube').slice(0, 10);
     let vidsHTML = ''; if (allVids.length) vidsHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Videos & Trailers</div><div class="vid-scroll">${allVids.map(v => `<div class="vid-card" role="button" tabindex="0" data-action="play-trailer" data-key="${v.key}"><div class="vid-thumb"><img src="https://img.youtube.com/vi/${v.key}/mqdefault.jpg" alt="${esc(v.name)}" loading="lazy"><div class="vid-play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div></div><div class="vid-name">${esc(v.name)}</div><div class="vid-type">${esc(v.type) || ''}</div></div>`).join('')}</div></div>`;
@@ -122,7 +129,9 @@ export async function openDetail(id, type) {
 
     let collHTML = '';
     if (det.belongs_to_collection) { const c = det.belongs_to_collection;
-      collHTML = `<div class="coll-banner" role="button" tabindex="0" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div></div></div>`; }
+      // The strip below the banner is filled in after paint (one extra request,
+      // and only when the title actually belongs to a collection).
+      collHTML = `<div class="coll-banner" role="button" tabindex="0" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div></div></div><div id="collStrip_${id}"></div>`; }
 
     ct.innerHTML = `
       ${back ? `<div class="detail-back"><img src="${back}" alt=""><div class="detail-back-grad"></div></div>` : '<div style="height:var(--nav-h)"></div>'}
@@ -150,8 +159,10 @@ export async function openDetail(id, type) {
           </div>
         </div>
         ${cdHTML}${collHTML}
-        <p class="detail-overview clamped" id="detOv">${esc(det.overview || 'No overview available.')}</p>
-        <span class="detail-overview-toggle" id="detOvToggle" data-action="toggle-overview" hidden>Read more</span>
+        <div class="detail-overview-wrap">
+          <p class="detail-overview clamped" id="detOv">${esc(det.overview || 'No overview available.')}</p>
+          <span class="detail-overview-toggle" id="detOvToggle" data-action="toggle-overview" hidden>Read more</span>
+        </div>
         <div class="stats-grid">
           ${det.status ? `<div class="stat-card"><div class="stat-label">Status</div><div class="stat-val"><span style="color:${det.status === 'Released' || det.status === 'Returning Series' ? 'var(--green2)' : 'var(--text)'}">${det.status === 'Returning Series' ? '<span class="live-dot"></span>' : ''} ${esc(det.status)}</span></div></div>` : ''}
           ${det.original_language ? `<div class="stat-card"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
@@ -160,8 +171,12 @@ export async function openDetail(id, type) {
           ${directorCardHTML(dirs, type)}
           ${type === 'tv' && det.number_of_seasons ? `<div class="stat-card"><div class="stat-label">Seasons</div><div class="stat-val" data-count="${det.number_of_seasons}">${det.number_of_seasons}</div></div>` : ''}
           ${type === 'tv' && det.number_of_episodes ? `<div class="stat-card"><div class="stat-label">Episodes</div><div class="stat-val" data-count="${det.number_of_episodes}">${det.number_of_episodes}</div></div>` : ''}
-          ${type === 'tv' && det.networks?.length ? `<div class="stat-card"><div class="stat-label">Network</div><div class="stat-val">${det.networks.map(n => esc(n.name)).join(', ')}</div></div>` : ''}
-          ${studio ? `<div class="stat-card"><div class="stat-label">Studio</div>${studio.logo_path ? `<div class="studio-logo" role="button" tabindex="0" data-action="open-studio" data-id="${studio.id}" data-tip="See ${esc(studio.name)} titles"><img src="${IMG}w185${studio.logo_path}" alt="${esc(studio.name)}" title="${esc(studio.name)}" loading="lazy"></div>` : `<div class="stat-val"><span class="studio-name-link" role="button" tabindex="0" data-action="open-studio" data-id="${studio.id}">${esc(studio.name)}</span></div>`}</div>` : ''}
+          ${networksHTML(det, type)}
+          ${companiesHTML(det)}
+          ${originalTitleHTML(det, type, title)}
+          ${listCardHTML('Countries', (det.production_countries || []).map(c => c.name))}
+          ${listCardHTML('Languages', (det.spoken_languages || []).map(l => l.english_name || l.name))}
+          ${altTitlesHTML(det)}
           ${det.homepage ? `<div class="stat-card"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit →</a></div></div>` : ''}
           ${linksHTML(det)}
           <div id="providerBlock">${providerHTML(det, state.region)}</div>
@@ -172,16 +187,16 @@ export async function openDetail(id, type) {
     if (cdDate) startCD(id, cdDate, cdDoneMsg);
     if (type === 'tv' && det.seasons?.length) { const fs = det.seasons.find(s => s.season_number > 0); if (fs) loadEps(id, fs.season_number); }
     observeReveals(ct); observeCountUps(ct);
-    requestAnimationFrame(() => {
-      // Animate the Box Office bar widths after paint (horizontal %-widths resolve
-      // against the definite-width card).
-      ct.querySelectorAll('.bo-fill').forEach(f => { f.style.width = (+f.dataset.w || 0) + '%'; });
-      // Reveal a "Read more" ONLY where the text actually overflows its clamp —
-      // a char-count heuristic mismatched the line-clamp (button with nothing to
-      // expand, or overflow with no button). Measured, so it's always right.
-      syncClampToggle($('detOv'), $('detOvToggle'));
-      ct.querySelectorAll('.review-body').forEach(b => syncClampToggle(b, ct.querySelector(`.review-toggle[data-target="${b.id}"]`)));
-    });
+    // Animate the Box Office bar widths after paint (horizontal %-widths resolve
+    // against the definite-width card).
+    requestAnimationFrame(() => ct.querySelectorAll('.bo-fill').forEach(f => { f.style.width = (+f.dataset.w || 0) + '%'; }));
+    // Reveal a "Read more" ONLY where the text actually overflows its clamp.
+    if (clampResize) { window.removeEventListener('resize', clampResize); clampResize = null; }
+    const remeasure = syncAllClampToggles(ct);
+    clampResize = debounce(remeasure, 150);
+    window.addEventListener('resize', clampResize);
+    // The rest of the franchise, under the collection banner.
+    if (det.belongs_to_collection) loadCollectionStrip(id, det.belongs_to_collection.id, gen);
     // Video-forward: fade a muted looping trailer in behind the backdrop (desktop + motion only).
     if (back && trailer?.key) { const backEl = ct.querySelector('.detail-back'); if (backEl) ambientTeardown = mountAmbientVideo(backEl, trailer.key); }
   } catch (e) {
@@ -242,6 +257,74 @@ const EXT_LINKS = [
   ['facebook_id', 'Facebook', id => `https://facebook.com/${id}`],
 ];
 
+// The other films in this title's collection, rendered under the banner. Skips
+// the film you're already looking at, and stays silent on failure.
+async function loadCollectionStrip(id, collectionId, gen) {
+  const host = $(`collStrip_${id}`);
+  if (!host) return;
+  try {
+    const d = await tmdb(`/collection/${collectionId}`);
+    if (gen !== reqGen || !$(`collStrip_${id}`)) return;
+    const parts = (d.parts || [])
+      .filter(p => p && p.id !== id && p.poster_path)
+      .sort((a, b) => new Date(a.release_date || '9999') - new Date(b.release_date || '9999'));
+    if (!parts.length) return;
+    host.innerHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">More in ${esc(d.name || 'this collection')}</div><div class="similar-row">${parts.map(p => buildCard(p, 'movie')).join('')}</div></div>`;
+    observeReveals(host);
+  } catch (e) { /* the banner alone is fine */ }
+}
+
+// ===== STUDIOS / NETWORKS =====
+// Every production company, not just the first one with a logo — each opens its
+// own /studio/:id page. Logo-less companies fall back to a text chip.
+function companiesHTML(det) {
+  const cos = (det.production_companies || []).filter(c => c && c.id);
+  if (!cos.length) return '';
+  const one = c => c.logo_path
+    ? `<div class="studio-logo" role="button" tabindex="0" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles"><img src="${IMG}w185${c.logo_path}" alt="${esc(c.name)}" title="${esc(c.name)}" loading="lazy"></div>`
+    : `<span class="studio-name-link" role="button" tabindex="0" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles">${esc(c.name)}</span>`;
+  return `<div class="stat-card"><div class="stat-label">${cos.length > 1 ? 'Studios' : 'Studio'}</div><div class="studio-logos">${cos.map(one).join('')}</div></div>`;
+}
+
+// TV networks get their own page too (/network/:id), since a network's catalogue
+// is a different question from a production company's.
+function networksHTML(det, type) {
+  if (type !== 'tv') return '';
+  const nets = (det.networks || []).filter(n => n && n.id);
+  if (!nets.length) return '';
+  const one = n => n.logo_path
+    ? `<div class="studio-logo" role="button" tabindex="0" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows"><img src="${IMG}w185${n.logo_path}" alt="${esc(n.name)}" title="${esc(n.name)}" loading="lazy"></div>`
+    : `<span class="studio-name-link" role="button" tabindex="0" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows">${esc(n.name)}</span>`;
+  return `<div class="stat-card"><div class="stat-label">${nets.length > 1 ? 'Networks' : 'Network'}</div><div class="studio-logos">${nets.map(one).join('')}</div></div>`;
+}
+
+// A generic comma-list stat card (countries, languages).
+function listCardHTML(label, values) {
+  const vals = (values || []).filter(Boolean);
+  if (!vals.length) return '';
+  return `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-val" style="font-size:.82rem;line-height:1.5">${esc(vals.join(', '))}</div></div>`;
+}
+
+// Only worth showing when it actually differs from the title you're reading.
+function originalTitleHTML(det, type, title) {
+  const orig = type === 'tv' ? det.original_name : det.original_title;
+  if (!orig || orig === title) return '';
+  return `<div class="stat-card"><div class="stat-label">Original Title</div><div class="stat-val" style="font-size:.86rem">${esc(orig)}</div></div>`;
+}
+
+// A few alternative titles, preferring the user's region.
+function altTitlesHTML(det) {
+  const raw = det.alternative_titles || {};
+  const all = raw.titles || raw.results || [];
+  if (!all.length) return '';
+  const region = state.region || 'US';
+  const pick = [...all.filter(t => t.iso_3166_1 === region), ...all.filter(t => t.iso_3166_1 !== region)]
+    .map(t => t.title).filter(Boolean);
+  const seen = [...new Set(pick)].slice(0, 4);
+  if (!seen.length) return '';
+  return `<div class="stat-card"><div class="stat-label">Also Known As</div><div class="stat-val" style="font-size:.8rem;line-height:1.6">${esc(seen.join(' · '))}</div></div>`;
+}
+
 function linksHTML(det) {
   const ext = det.external_ids || {};
   const links = EXT_LINKS
@@ -266,14 +349,29 @@ function crewSectionHTML(cred) {
     if (e) { if (!e.jobs.includes(c.job)) e.jobs.push(c.job); e.rank = Math.min(e.rank, rank); }
     else byPerson.set(c.id, { id: c.id, name: c.name || '', profile_path: c.profile_path, jobs: [c.job], rank });
   });
-  const people = [...byPerson.values()].sort((a, b) => a.rank - b.rank).slice(0, 20);
+  const people = [...byPerson.values()].sort((a, b) => a.rank - b.rank).slice(0, 30);
   if (!people.length) return '';
+
+  // Grouped by department rather than one flat ranked strip, so "who wrote it" and
+  // "who shot it" are answerable at a glance. Department order follows CREW_JOBS.
+  const DEPT_OF = { Director: 'Directing', Creator: 'Directing', Writer: 'Writing', Screenplay: 'Writing', Story: 'Writing', 'Original Music Composer': 'Music', 'Director of Photography': 'Camera', Editor: 'Editing', Producer: 'Production', 'Executive Producer': 'Production' };
+  const groups = new Map();
+  people.forEach(p => {
+    const dept = DEPT_OF[p.jobs[0]] || 'Crew';
+    if (!groups.has(dept)) groups.set(dept, []);
+    groups.get(dept).push(p);
+  });
+
   // Reuses the cast section's markup/CSS wholesale — .cast-char just carries the
   // job list instead of a character name (it ellipsises, hence the title attr).
-  return `<div style="margin-bottom:32px"><div class="d-sec-title">Crew</div><div class="cast-scroll">${people.map(p => {
+  const item = p => {
     const jobs = p.jobs.join(', ');
     return `<div class="cast-item" role="button" tabindex="0" data-action="open-person" data-id="${p.id}"><div class="cast-pic">${p.profile_path ? `<img src="${IMG}w185${p.profile_path}" alt="${esc(p.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(p.name)}</div><div class="cast-char" title="${esc(jobs)}">${esc(jobs)}</div></div>`;
-  }).join('')}</div></div>`;
+  };
+  const blocks = [...groups.entries()]
+    .map(([dept, list]) => `<div class="crew-dept"><div class="crew-dept-label">${esc(dept)}</div><div class="cast-scroll">${list.map(item).join('')}</div></div>`)
+    .join('');
+  return `<div style="margin-bottom:32px"><div class="d-sec-title">Crew</div>${blocks}</div>`;
 }
 
 // ===== MEDIA GALLERY =====
@@ -341,10 +439,30 @@ function reviewsHTML(revs) {
   return `<div style="margin-bottom:32px"><div class="d-sec-title">Reviews</div>${first}${more}</div>`;
 }
 
-// Reveal a clamp toggle only when the body actually overflows its line-clamp.
+// Reveal a clamp toggle ONLY when the text actually overflows its line-clamp.
+//
+// Two things made this misfire and show a dead "Read more" over fully-visible
+// text: measuring before webfonts settled (metrics change underneath you), and a
+// 2px tolerance that sub-pixel line-height rounding can exceed on its own. So:
+// tolerate a few px, and never claim overflow on text that isn't clamped.
 function syncClampToggle(body, toggle) {
   if (!body || !toggle) return;
-  toggle.hidden = !(body.scrollHeight > body.clientHeight + 2);
+  // An expanded body has no clamp to overflow — leave the toggle as the user set it.
+  if (toggle.dataset.expanded === '1') return;
+  toggle.hidden = !(body.scrollHeight - body.clientHeight > 4);
+}
+
+// Measure every clamped block on the page, after fonts are ready and on resize
+// (a narrower window turns 4 lines into 6, and vice versa).
+function syncAllClampToggles(scope) {
+  const run = () => {
+    syncClampToggle($('detOv'), $('detOvToggle'));
+    scope.querySelectorAll('.review-body').forEach(b => syncClampToggle(b, scope.querySelector(`.review-toggle[data-target="${b.id}"]`)));
+  };
+  requestAnimationFrame(run);
+  // Fonts change the metrics, so re-measure once they've loaded.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => requestAnimationFrame(run)).catch(() => {});
+  return run;
 }
 
 // Combined Budget / Revenue / Profit "Box Office" graph card (spans the grid).
@@ -367,6 +485,7 @@ function boxOfficeHTML(det) {
 export function closeDetail() {
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
   if (ambientTeardown) { ambientTeardown(); ambientTeardown = null; }
+  if (clampResize) { window.removeEventListener('resize', clampResize); clampResize = null; }
 }
 
 function getCert(d, t) {
@@ -387,9 +506,19 @@ function startCD(id, ds, doneMsg = '🎉 Now Airing!') {
 }
 
 async function loadSeason(tid, sn, el) {
-  el.parentElement.querySelectorAll('.s-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
+  // Triggered by a season TAB or by a card in the seasons strip, so sync the tab
+  // by season number rather than assuming the clicked element is the tab itself.
+  const ct = $('detailContent');
+  if (ct) {
+    ct.querySelectorAll('.s-tab').forEach(t => t.classList.toggle('active', +t.dataset.sn === sn));
+    ct.querySelectorAll('.season-card').forEach(c => c.classList.toggle('active', +c.dataset.sn === sn));
+  }
   await loadEps(tid, sn);
+  // Coming from the strip, the episode list is further down — bring it into view.
+  if (el && el.classList.contains('season-card')) {
+    const list = $(`epList_${tid}`);
+    if (list && list.scrollIntoView) list.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 async function loadEps(tid, sn) {
   const el = $(`epList_${tid}`); if (!el) return;
@@ -444,13 +573,17 @@ export function initDetail() {
     },
     'toggle-overview': (el) => {
       const ov = $('detOv'); if (!ov) return;
-      ov.classList.toggle('clamped');
-      el.textContent = ov.classList.contains('clamped') ? 'Read more' : 'Show less';
+      const clamped = ov.classList.toggle('clamped');
+      el.textContent = clamped ? 'Read more' : 'Show less';
+      // Expanded text can't overflow, so mark it — otherwise a resize re-measure
+      // would decide there's nothing to expand and hide the "Show less" control.
+      el.dataset.expanded = clamped ? '0' : '1';
     },
     'toggle-review': (el) => {
       const body = $(el.dataset.target); if (!body) return;
       const expanded = body.classList.toggle('expanded');
       el.textContent = expanded ? 'Show less' : 'Read more';
+      el.dataset.expanded = expanded ? '1' : '0';
     },
     'show-all-reviews': (el) => {
       const more = $('revMore');

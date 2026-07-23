@@ -238,9 +238,14 @@
 .dbtn-icon:hover{background:var(--bg4);border-color:rgba(255,255,255,.15);transform:scale(1.1)}
 .dbtn-icon.active{border-color:var(--red);color:var(--red);background:var(--red-soft)}
 .dbtn-icon svg{width:18px;height:18px}
-.detail-overview{font-size:.93rem;line-height:1.75;color:var(--text2);margin-bottom:28px;max-width:700px}
-.detail-overview.clamped{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-.detail-overview-toggle{color:var(--red);font-size:.84rem;font-weight:600;cursor:pointer;margin-top:6px;display:inline-block}
+/* The wrapper owns the spacing so the toggle sits directly under the text — the
+   paragraph's own 28px bottom margin used to push it well clear of the block it
+   belongs to. */
+.detail-overview-wrap{max-width:700px;margin-bottom:28px}
+.detail-overview{font-size:.93rem;line-height:1.75;color:var(--text2);margin:0;max-width:700px}
+.detail-overview.clamped{display:-webkit-box;-webkit-line-clamp:4;line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.detail-overview-toggle{color:var(--red);font-size:.84rem;font-weight:600;cursor:pointer;margin-top:4px;display:inline-block}
+.detail-overview-toggle:hover{text-decoration:underline}
 
 /* Stats Grid */
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:32px}
@@ -410,6 +415,22 @@
 .studio-head{flex:1;min-width:0}
 .studio-name{font-family:var(--font-display);font-size:2.2rem;font-weight:900;margin-bottom:8px;overflow-wrap:anywhere}
 .studio-meta{font-size:.86rem;color:var(--text2);margin-bottom:12px}
+/* Every production company / network is listed, so they wrap in a row. */
+.studio-logos{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+.studio-logos .studio-logo{margin-top:0}
+/* Seasons-at-a-glance strip above the episode tabs. */
+.season-scroll{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.season-scroll::-webkit-scrollbar{display:none}
+.season-card{flex-shrink:0;width:120px;cursor:pointer;transition:transform .2s var(--ease)}
+.season-card:hover,.season-card:focus-visible{transform:translateY(-3px);outline:none}
+.season-poster{width:100%;aspect-ratio:2/3;border-radius:var(--radius);overflow:hidden;background:var(--bg3);border:1px solid var(--glass-border)}
+.season-card.active .season-poster{border-color:var(--red);box-shadow:0 0 0 2px var(--red-glow)}
+.season-poster img{width:100%;height:100%;object-fit:cover;display:block}
+.season-nm{font-size:.78rem;font-weight:600;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.season-meta{font-size:.68rem;color:var(--text3);margin-top:2px}
+/* Crew is grouped by department instead of one flat strip. */
+.crew-dept{margin-bottom:16px}
+.crew-dept-label{font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:8px}
 /* Clickable studio logo on the detail page. */
 .studio-logo[data-action]{cursor:pointer;transition:transform .2s var(--ease),box-shadow .2s var(--ease)}
 .studio-logo[data-action]:hover,.studio-logo[data-action]:focus-visible{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.35);outline:none}

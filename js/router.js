@@ -45,7 +45,8 @@ const ROUTES = [
   { test: /^\/movie\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'movie') },
   { test: /^\/tv\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'tv') },
   { test: /^\/person\/(\d+)\/?$/, page: 'personPage', render: (p) => openPerson(+p[0]) },
-  { test: /^\/studio\/(\d+)\/?$/, page: 'studioPage', render: (p) => openStudio(+p[0]) },
+  { test: /^\/studio\/(\d+)\/?$/, page: 'studioPage', render: (p) => openStudio(+p[0], 'company') },
+  { test: /^\/network\/(\d+)\/?$/, page: 'studioPage', render: (p) => openStudio(+p[0], 'network') },
   { test: /^\/shared-list\/([\w-]+)\/([\w-]+)\/?$/, page: 'sharedListPage', render: (p) => openSharedList(p[0], p[1]) },
   { test: /^\/collection\/(\d+)\/?$/, page: 'detailPage', render: (p) => openCollection(+p[0]) },
   // Curated home-row collection — a section id (letters, so it never collides with
