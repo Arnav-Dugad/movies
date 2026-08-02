@@ -77,7 +77,7 @@ export async function openDetail(id, type) {
     pushRecentlyViewed({ id, type, title, poster: det.poster_path || '', genres: (det.genres || []).map(g => g.id) });
 
     // Watchlist payload
-    const wlPayload = esc(JSON.stringify({ id, type, title, poster: det.poster_path || '', rating: det.vote_average || 0, year, genres: (det.genres || []).map(g => g.id) }));
+    const wlPayload = esc(JSON.stringify({ id, type, title, poster: det.poster_path || '', rating: det.vote_average || 0, year, genres: (det.genres || []).map(g => g.id), runtime: det.runtime || det.episode_run_time?.[0] || 0 }));
 
     const boHTML = boxOfficeHTML(det);
 
@@ -165,9 +165,9 @@ export async function openDetail(id, type) {
           <span class="detail-overview-toggle" id="detOvToggle" data-action="toggle-overview" hidden>Read more</span>
         </div>
         <div class="stats-grid">
+          ${boHTML}
           ${det.status ? `<div class="stat-card"><div class="stat-label">Status</div><div class="stat-val"><span style="color:${det.status === 'Released' || det.status === 'Returning Series' ? 'var(--green2)' : 'var(--text)'}">${det.status === 'Returning Series' ? '<span class="live-dot"></span>' : ''} ${esc(det.status)}</span></div></div>` : ''}
           ${det.original_language ? `<div class="stat-card"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
-          ${boHTML}
           ${det.vote_count ? `<div class="stat-card"><div class="stat-label">Votes</div><div class="stat-val" data-count="${det.vote_count}">${det.vote_count.toLocaleString()}</div></div>` : ''}
           ${directorCardHTML(dirs, type)}
           ${type === 'tv' && det.number_of_seasons ? `<div class="stat-card"><div class="stat-label">Seasons</div><div class="stat-val" data-count="${det.number_of_seasons}">${det.number_of_seasons}</div></div>` : ''}
@@ -286,7 +286,7 @@ function companiesHTML(det) {
   const one = c => c.logo_path
     ? `<a class="studio-logo" href="/studio/${c.id}" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles"><img src="${IMG}w185${c.logo_path}" alt="${esc(c.name)}" title="${esc(c.name)}" loading="lazy"></a>`
     : `<a class="studio-name-link" href="/studio/${c.id}" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles">${esc(c.name)}</a>`;
-  return `<div class="stat-card"><div class="stat-label">${cos.length > 1 ? 'Studios' : 'Studio'}</div><div class="studio-logos">${cos.map(one).join('')}</div></div>`;
+  return `<div class="stat-card stat-media"><div class="stat-label">${cos.length > 1 ? 'Studios' : 'Studio'}</div><div class="studio-logos">${cos.map(one).join('')}</div></div>`;
 }
 
 // TV networks get their own page too (/network/:id), since a network's catalogue
@@ -298,7 +298,7 @@ function networksHTML(det, type) {
   const one = n => n.logo_path
     ? `<a class="studio-logo" href="/network/${n.id}" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows"><img src="${IMG}w185${n.logo_path}" alt="${esc(n.name)}" title="${esc(n.name)}" loading="lazy"></a>`
     : `<a class="studio-name-link" href="/network/${n.id}" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows">${esc(n.name)}</a>`;
-  return `<div class="stat-card"><div class="stat-label">${nets.length > 1 ? 'Networks' : 'Network'}</div><div class="studio-logos">${nets.map(one).join('')}</div></div>`;
+  return `<div class="stat-card stat-media"><div class="stat-label">${nets.length > 1 ? 'Networks' : 'Network'}</div><div class="studio-logos">${nets.map(one).join('')}</div></div>`;
 }
 
 // A generic comma-list stat card (countries, languages).
@@ -354,27 +354,13 @@ function crewSectionHTML(cred) {
   });
   const people = [...byPerson.values()].sort((a, b) => a.rank - b.rank).slice(0, 30);
   if (!people.length) return '';
-
-  // Grouped by department rather than one flat ranked strip, so "who wrote it" and
-  // "who shot it" are answerable at a glance. Department order follows CREW_JOBS.
-  const DEPT_OF = { Director: 'Directing', Creator: 'Directing', Writer: 'Writing', Screenplay: 'Writing', Story: 'Writing', 'Original Music Composer': 'Music', 'Director of Photography': 'Camera', Editor: 'Editing', Producer: 'Production', 'Executive Producer': 'Production' };
-  const groups = new Map();
-  people.forEach(p => {
-    const dept = DEPT_OF[p.jobs[0]] || 'Crew';
-    if (!groups.has(dept)) groups.set(dept, []);
-    groups.get(dept).push(p);
-  });
-
-  // Reuses the cast section's markup/CSS wholesale — .cast-char just carries the
-  // job list instead of a character name (it ellipsises, hence the title attr).
-  const item = p => {
+  // Crew now mirrors Cast: one ranked horizontal strip, with each person's jobs
+  // kept directly below their name instead of splitting the row by department.
+  const items = people.map(p => {
     const jobs = p.jobs.join(', ');
     return `<a class="cast-item" href="/person/${p.id}" data-action="open-person" data-id="${p.id}"><div class="cast-pic">${p.profile_path ? `<img src="${IMG}w185${p.profile_path}" alt="${esc(p.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(p.name)}</div><div class="cast-char" title="${esc(jobs)}">${esc(jobs)}</div></a>`;
-  };
-  const blocks = [...groups.entries()]
-    .map(([dept, list]) => `<div class="crew-dept"><div class="crew-dept-label">${esc(dept)}</div><div class="cast-scroll">${list.map(item).join('')}</div></div>`)
-    .join('');
-  return `<div style="margin-bottom:32px"><div class="d-sec-title">Crew</div>${blocks}</div>`;
+  }).join('');
+  return `<div style="margin-bottom:32px"><div class="d-sec-title">Crew</div><div class="cast-scroll crew-scroll">${items}</div></div>`;
 }
 
 // ===== MEDIA GALLERY =====
@@ -484,20 +470,38 @@ function syncAllClampToggles(scope) {
   return run;
 }
 
-// Combined Budget / Revenue / Profit "Box Office" graph card (spans the grid).
+// Premium financial overview. Revenue minus production budget is labelled as a
+// gross difference—not profit—because marketing and exhibitor shares are absent.
 function boxOfficeHTML(det) {
   const budget = det.budget || 0, revenue = det.revenue || 0;
   if (!budget && !revenue) return '';
   const max = Math.max(budget, revenue, 1);
   const bW = Math.round(budget / max * 100), rW = Math.round(revenue / max * 100);
-  const profit = revenue - budget, hasBoth = budget && revenue, roi = budget ? revenue / budget : 0;
+  const hasBoth = !!(budget && revenue);
+  const difference = revenue - budget;
+  const multiple = budget ? revenue / budget : 0;
+  const recovery = budget ? Math.round(multiple * 100) : 0;
+  const variance = budget ? Math.round(difference / budget * 100) : 0;
+  const ring = Math.min(100, Math.max(0, recovery));
+  const status = !hasBoth ? 'Reported figures' : difference >= 0 ? 'Gross above budget' : 'Gross below budget';
   return `<div class="stat-card boxoffice">
-    <div class="stat-label">💰 Box Office</div>
-    <div class="bo-bars">
-      ${budget ? `<div class="bo-row"><span class="bo-name">Budget</span><div class="bo-track"><div class="bo-fill budget" style="width:0" data-w="${bW}"></div></div><span class="bo-val">$${fmt(budget)}</span></div>` : ''}
-      ${revenue ? `<div class="bo-row"><span class="bo-name">Revenue</span><div class="bo-track"><div class="bo-fill revenue" style="width:0" data-w="${rW}"></div></div><span class="bo-val">$${fmt(revenue)}</span></div>` : ''}
+    <div class="bo-head"><div><span class="bo-eyebrow">Financial performance</span><h3>Box Office</h3></div><span class="bo-status${hasBoth ? difference >= 0 ? ' positive' : ' negative' : ''}">${status}</span></div>
+    <div class="bo-dashboard">
+      <div class="bo-main">
+        <div class="bo-metrics">
+          ${budget ? `<div><span>Production budget</span><strong>$${fmt(budget)}</strong></div>` : ''}
+          ${revenue ? `<div><span>Worldwide gross</span><strong>$${fmt(revenue)}</strong></div>` : ''}
+          ${hasBoth ? `<div class="${difference >= 0 ? 'positive' : 'negative'}"><span>Gross difference</span><strong>${difference >= 0 ? '+' : '−'}$${fmt(Math.abs(difference))}</strong></div>` : ''}
+        </div>
+        <div class="bo-bars" aria-label="Budget and worldwide gross comparison">
+          ${budget ? `<div class="bo-row"><span class="bo-name">Budget</span><div class="bo-track"><div class="bo-fill budget" style="width:0" data-w="${bW}"></div></div><span class="bo-val">$${fmt(budget)}</span></div>` : ''}
+          ${revenue ? `<div class="bo-row"><span class="bo-name">Gross</span><div class="bo-track"><div class="bo-fill revenue" style="width:0" data-w="${rW}"></div></div><span class="bo-val">$${fmt(revenue)}</span></div>` : ''}
+        </div>
+      </div>
+      ${budget && revenue ? `<div class="bo-recovery"><div class="bo-ring" style="--bo-progress:${ring * 3.6}deg"><div><strong>${recovery}%</strong><span>of budget</span></div></div><p>Budget recovery</p></div>` : ''}
     </div>
-    ${hasBoth ? `<div class="bo-summary"><div class="bo-chip ${profit >= 0 ? 'up' : 'down'}"><span class="bo-clabel">${profit >= 0 ? 'Profit' : 'Loss'}</span><span class="bo-cval">${profit >= 0 ? '+' : '−'}$${fmt(Math.abs(profit))}</span></div><div class="bo-chip roi"><span class="bo-clabel">ROI</span><span class="bo-cval">${roi.toFixed(1)}×</span></div></div>` : ''}
+    ${hasBoth ? `<div class="bo-summary"><div class="bo-chip"><span class="bo-clabel">Gross multiple</span><span class="bo-cval">${multiple.toFixed(2)}×</span></div><div class="bo-chip ${variance >= 0 ? 'up' : 'down'}"><span class="bo-clabel">Budget difference</span><span class="bo-cval">${variance >= 0 ? '+' : ''}${variance}%</span></div></div>` : ''}
+    <p class="bo-note">Worldwide gross compared with reported production budget. Marketing, distribution, and cinema shares are not included.</p>
   </div>`;
 }
 

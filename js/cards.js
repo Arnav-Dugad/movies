@@ -13,7 +13,8 @@ function wlPayload(item, type) {
     poster: item.poster_path || '',
     rating: item.vote_average || 0,
     year: (item.release_date || item.first_air_date || '').slice(0, 4),
-    genres: item.genre_ids || (item.genres || []).map(g => g.id) || []
+    genres: item.genre_ids || (item.genres || []).map(g => g.id) || [],
+    runtime: item.runtime || (item.episode_run_time || [])[0] || 0
   }));
 }
 

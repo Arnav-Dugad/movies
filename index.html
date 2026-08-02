@@ -287,6 +287,7 @@
 <div class="wl-page page-container" id="wlPage">
   <div class="wl-head"><h1>My Lists</h1><div class="wl-head-actions" id="wlHeadActions"></div></div>
   <div class="wl-lists" id="wlLists"></div>
+  <section class="wl-showcase" id="wlShowcase" aria-live="polite"></section>
   <div class="wl-subbar">
     <div class="wl-count" id="wlCount">0 titles</div>
     <div class="wl-tabs wl-typefilter">
@@ -348,8 +349,19 @@
     <div class="release-tools">
       <div class="watched-search release-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input id="releaseSearch" type="text" placeholder="Search releases…" aria-label="Search upcoming releases"></div>
       <select class="watched-select" id="releaseRange" data-action="release-range" aria-label="Release date range"><option value="30">Next 30 days</option><option value="90" selected>Next 90 days</option><option value="180">Next 6 months</option></select>
+      <button class="release-pref-btn" id="releasePrefBtn" data-action="toggle-release-preferences" aria-expanded="false" aria-controls="releasePreferences"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 .6 1.51 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.37.36.7.6 1 .3.25.7.4 1.1.4H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.6Z"/></svg><span>Preferences</span></button>
     </div>
   </div>
+  <section class="release-preferences" id="releasePreferences" aria-label="Release reminder preferences" hidden>
+    <div class="release-pref-head"><div><span>Personal calendar</span><h2>Reminder preferences</h2></div><button data-action="toggle-release-preferences" aria-label="Close reminder preferences">×</button></div>
+    <div class="release-pref-grid">
+      <fieldset><legend>Languages</legend><p>Only English and Hindi releases are available.</p><label class="release-switch"><input type="checkbox" data-action="release-preference" data-pref="english" checked><span></span><b>English</b></label><label class="release-switch"><input type="checkbox" data-action="release-preference" data-pref="hindi" checked><span></span><b>Hindi</b></label></fieldset>
+      <fieldset><legend>Release types</legend><p>Choose what appears in your calendar.</p><label class="release-switch"><input type="checkbox" data-action="release-preference" data-pref="movies" checked><span></span><b>Movies</b></label><label class="release-switch"><input type="checkbox" data-action="release-preference" data-pref="premieres" checked><span></span><b>Series premieres</b></label><label class="release-switch"><input type="checkbox" data-action="release-preference" data-pref="episodes" checked><span></span><b>New episodes</b></label></fieldset>
+      <fieldset><legend>Quality &amp; order</legend><p>Keep the calendar focused.</p><label class="release-pref-field"><span>Minimum rating</span><select id="releaseMinRating" class="watched-select" data-action="release-preference" data-pref="minRating"><option value="0">Any rating</option><option value="5">5+ rated</option><option value="6">6+ rated</option><option value="7">7+ rated</option><option value="8">8+ rated</option></select></label><label class="release-pref-field"><span>Sort releases</span><select id="releaseSort" class="watched-select" data-action="release-preference" data-pref="sort"><option value="soonest">Soonest first</option><option value="rating">Highest rated</option></select></label></fieldset>
+      <fieldset><legend>Saved reminders</legend><p>Control the extra details on saved cards.</p><label class="release-switch"><input type="checkbox" data-action="release-preference" data-pref="countdown" checked><span></span><b>Show countdown</b></label><label class="release-switch"><input type="checkbox" data-action="release-preference" data-pref="posters" checked><span></span><b>Only show poster art</b></label></fieldset>
+    </div>
+    <div class="release-pref-foot"><span>Saved on this device</span><button class="filter-reset" data-action="reset-release-preferences">Reset preferences</button></div>
+  </section>
   <div class="release-summary" id="releaseSummary"></div>
   <div class="release-timeline" id="releaseContent"></div>
 </div>

@@ -32,14 +32,25 @@
   .detail-tags{justify-content:center}
   .detail-btns{justify-content:center}
   .detail-overview{text-align:left}
-  .stats-grid{gap:8px}
-  .stat-card{min-width:0;max-width:100%}
+  .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .stat-card{min-width:0;max-width:100%;min-height:88px;padding:14px}
+  .stat-person-multi,.stat-media,#providerBlock,.boxoffice{grid-column:1/-1}
+  .bo-dashboard{grid-template-columns:1fr}
+  .bo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .bo-metrics>div:nth-child(3){grid-column:1/-1}
+  .bo-recovery{display:flex;align-items:center;justify-content:center;gap:14px}
+  .bo-ring{width:92px;height:92px;margin:0}
+  .bo-recovery p{margin:0}
   .cd-num{font-size:1.7rem}
   .ep-still{width:100px}
   .vid-card{width:210px}
   .person-top{flex-direction:column;align-items:center;text-align:center}
   .person-photo{width:150px}
   .browse-grid,.wl-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
+  .wl-showcase{grid-template-columns:1fr}
+  .wl-cover{height:220px}
+  .wl-cover-grid{grid-template-columns:repeat(4,minmax(90px,1fr))}
+  .wl-insights{grid-template-columns:repeat(2,minmax(0,1fr))}
   .toast-zone{bottom:calc(var(--mobile-nav-h) + 14px)}
   .btt{bottom:calc(var(--mobile-nav-h) + 14px);right:12px}
   .mood-grid{grid-template-columns:repeat(2,1fr)}
@@ -94,6 +105,9 @@
   .release-tabs,.release-tools{width:100%}
   .release-tools>*{flex:1}
   .release-search{min-width:0}
+  .release-pref-btn{justify-content:center}
+  .release-preferences{padding:17px 14px;margin-bottom:16px}
+  .release-pref-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .release-day{grid-template-columns:1fr;gap:13px}
   .release-date{position:static}
   .release-day-grid{grid-template-columns:1fr}
@@ -146,6 +160,17 @@
   .search-grid,.party-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
   .friend-code{font-size:1rem;letter-spacing:.5px}
   .party-mood{font-size:.72rem;padding:6px 10px}
+  .wl-cover{height:205px}
+  .wl-cover-grid{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr)}
+  .wl-cover-copy{left:18px;bottom:18px}
+  .wl-insights>div{padding:14px 12px}
+  .bo-head{flex-direction:column;gap:10px}
+  .bo-status{align-self:flex-start}
+  .bo-metrics{grid-template-columns:1fr}
+  .bo-metrics>div:nth-child(3){grid-column:auto}
+  .bo-row{gap:7px}
+  .bo-val{width:66px;font-size:.67rem}
+  .release-pref-grid{grid-template-columns:1fr}
   /* The list picker's rows are the only tap targets in that modal — keep them
      comfortable even on the narrowest phones. */
   .list-row{padding:12px 10px}

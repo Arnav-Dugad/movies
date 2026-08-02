@@ -58,6 +58,7 @@ function buildItemDoc(item, type) {
     year: item.year || (item.release_date || item.first_air_date || '').slice(0, 4),
     added: ts(),
     genres: item.genres || item.genre_ids || [],
+    runtime: item.runtime || (item.episode_run_time || [])[0] || 0,
   });
 }
 

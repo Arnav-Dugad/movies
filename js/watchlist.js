@@ -6,6 +6,7 @@ import { esc, toast, $, debounce } from './ui.js';
 import { refreshWLBtns, rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { registerActions, readItem } from './events.js';
 import { removeFromList, listsArr, listById, createList, renameList, deleteList, shareList } from './lists.js';
+import { tmdb, pool } from './api.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
 
@@ -64,6 +65,85 @@ export async function toggleWatched(id, type, title, meta = {}) {
 let listEdit = null;       // { mode: 'new' | 'rename' }
 let pendingDelete = null;  // listId awaiting a second confirming click
 let wlQuery = '', wlGenre = 'all', wlStatus = 'all', wlRating = 0, wlDecade = 'all', wlSort = 'recent';
+const RUNTIME_CACHE_KEY = 'cv_list_runtime_cache_v1';
+const COVER_OFFSETS_KEY = 'cv_list_cover_offsets_v1';
+const runtimeLoads = new Set();
+
+function readLocalObject(key) {
+  try { const value = JSON.parse(localStorage.getItem(key) || '{}'); return value && typeof value === 'object' ? value : {}; }
+  catch (_) { return {}; }
+}
+
+const runtimeCache = readLocalObject(RUNTIME_CACHE_KEY);
+const coverOffsets = readLocalObject(COVER_OFFSETS_KEY);
+const itemKey = item => item.id || `${item.type}_${item.tmdbId}`;
+
+function saveLocalObject(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+}
+
+function formatMinutes(value) {
+  const minutes = Math.round(value || 0);
+  if (!minutes) return 'Not available';
+  const hours = Math.floor(minutes / 60), rest = minutes % 60;
+  return hours ? `${hours}h ${rest ? `${rest}m` : ''}`.trim() : `${rest}m`;
+}
+
+function runtimeOf(item) {
+  const own = +(item.runtime || 0);
+  return own || +(runtimeCache[itemKey(item)] || 0);
+}
+
+function listShowcaseHTML(items) {
+  const list = listById(state.wlList);
+  if (!list) return '';
+  const posters = items.filter(item => item.poster);
+  const offset = posters.length ? (+coverOffsets[list.id] || 0) % posters.length : 0;
+  const coverItems = posters.length
+    ? Array.from({ length: Math.min(4, posters.length) }, (_, index) => posters[(offset + index) % posters.length])
+    : [];
+  const cover = Array.from({ length: 4 }, (_, index) => {
+    const item = coverItems[index];
+    return item ? `<div><img src="${IMG}w342${item.poster}" alt="" loading="lazy"></div>` : '<div class="empty"><span>✦</span></div>';
+  }).join('');
+
+  const ratings = items.map(item => +(item.rating || 0)).filter(Boolean);
+  const avgRating = ratings.length ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1) : '—';
+  const runtimes = items.map(runtimeOf).filter(Boolean);
+  const allRuntimeChecked = items.every(item => +(item.runtime || 0) || Object.prototype.hasOwnProperty.call(runtimeCache, itemKey(item)));
+  const avgRuntime = runtimes.length ? formatMinutes(runtimes.reduce((sum, value) => sum + value, 0) / runtimes.length) : items.length && !allRuntimeChecked ? 'Calculating…' : '—';
+  const genreCounts = new Map();
+  items.flatMap(item => item.genres || []).forEach(id => { const name = genreMap[id]; if (name) genreCounts.set(name, (genreCounts.get(name) || 0) + 1); });
+  const topGenres = [...genreCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3).map(([name]) => name).join(', ') || '—';
+  const years = items.map(item => +(item.year || 0)).filter(year => year > 1800 && year < 2200).sort((a, b) => a - b);
+  const yearRange = years.length ? (years[0] === years[years.length - 1] ? String(years[0]) : `${years[0]}–${years[years.length - 1]}`) : '—';
+  const movies = items.filter(item => item.type === 'movie').length;
+  const shows = items.filter(item => item.type === 'tv').length;
+
+  return `<div class="wl-cover" aria-label="Automatic poster collage for ${esc(list.name)}"><div class="wl-cover-grid">${cover}</div><div class="wl-cover-shade"></div><div class="wl-cover-copy"><span>Curated collection</span><h2>${esc(list.name)}</h2><p>${items.length} title${items.length === 1 ? '' : 's'} · ${movies} movie${movies === 1 ? '' : 's'} · ${shows} show${shows === 1 ? '' : 's'}</p>${posters.length > 4 ? `<button data-action="shuffle-list-cover" data-list="${esc(list.id)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>Shuffle cover</button>` : ''}</div></div>
+    <div class="wl-insights" aria-label="Statistics for ${esc(list.name)}">
+      <div><span>Average rating</span><strong>${avgRating}${avgRating !== '—' ? '<small>/10</small>' : ''}</strong></div>
+      <div><span>Average runtime</span><strong>${avgRuntime}</strong></div>
+      <div><span>Top genres</span><strong>${esc(topGenres)}</strong></div>
+      <div><span>Release years</span><strong>${yearRange}</strong></div>
+    </div>`;
+}
+
+async function loadListRuntimes(items, listId) {
+  const missing = items.filter(item => item.tmdbId && !item.runtime && !Object.prototype.hasOwnProperty.call(runtimeCache, itemKey(item))).slice(0, 60);
+  if (!missing.length || runtimeLoads.has(listId)) return;
+  runtimeLoads.add(listId);
+  await pool(missing, async item => {
+    const key = itemKey(item);
+    try {
+      const detail = await tmdb(`/${item.type}/${item.tmdbId}`);
+      runtimeCache[key] = +(detail.runtime || detail.episode_run_time?.[0] || 0);
+    } catch (_) { runtimeCache[key] = 0; }
+  }, 5);
+  runtimeLoads.delete(listId);
+  saveLocalObject(RUNTIME_CACHE_KEY, runtimeCache);
+  if (state.user && state.wlList === listId) renderWL();
+}
 
 async function saveListEdit() {
   const name = (($('wlListName') || {}).value || '').trim();
@@ -129,16 +209,17 @@ function syncWLControls(baseItems) {
 }
 
 function payloadFor(w) {
-  return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [] }));
+  return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [], runtime: w.runtime || 0 }));
 }
 
 export function renderWL() {
-  const ct = $('wlContent'), cnt = $('wlCount'), rail = $('wlLists'), head = $('wlHeadActions');
+  const ct = $('wlContent'), cnt = $('wlCount'), rail = $('wlLists'), head = $('wlHeadActions'), showcase = $('wlShowcase');
   if (!ct) return;
 
   if (!state.user) {
     if (rail) rail.innerHTML = '';
     if (head) head.innerHTML = '';
+    if (showcase) showcase.innerHTML = '';
     if (cnt) cnt.textContent = '';
     syncWLControls([]);
     ct.innerHTML = `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg><h3>Sign in to see your lists</h3><p>Create an account to save movies and shows</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
@@ -181,6 +262,8 @@ export function renderWL() {
 
   // ----- Grid -----
   const baseItems = itemsForActiveList();
+  if (showcase) showcase.innerHTML = listShowcaseHTML(baseItems);
+  if (baseItems.length) loadListRuntimes(baseItems, state.wlList);
   syncWLControls(baseItems);
   const items = filteredListItems();
   if (cnt) cnt.textContent = `${items.length} title${items.length !== 1 ? 's' : ''}`;
@@ -231,6 +314,13 @@ export function initWatchlist() {
     },
     // ----- List rail + management (My List page) -----
     'wl-list': (el) => { state.wlList = el.dataset.list; listEdit = null; pendingDelete = null; renderWL(); },
+    'shuffle-list-cover': (el) => {
+      const posters = itemsForActiveList().filter(item => item.poster);
+      if (posters.length < 2) return;
+      coverOffsets[el.dataset.list] = ((+coverOffsets[el.dataset.list] || 0) + 1) % posters.length;
+      saveLocalObject(COVER_OFFSETS_KEY, coverOffsets);
+      renderWL();
+    },
     'wl-new-list': () => { listEdit = { mode: 'new' }; pendingDelete = null; renderWL(); },
     'wl-rename-list': () => { listEdit = { mode: 'rename' }; pendingDelete = null; renderWL(); },
     'wl-list-cancel': () => { listEdit = null; renderWL(); },
