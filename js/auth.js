@@ -7,6 +7,8 @@ import { loadWatchlist, loadWatched } from './watchlist.js';
 import { loadRatings } from './ratings.js';
 import { loadLists } from './lists.js';
 import { applyAvatar } from './avatar.js';
+import { hydratePrefs } from './prefs.js';
+import { REGIONS } from './config.js';
 
 let authMode = 'login';
 let delRelease = null;
@@ -14,7 +16,7 @@ let delRelease = null;
 // Read the profile doc (avatar + created) into state so the Profile page and the
 // nav/dropdown avatars can render. Non-fatal — falls back to the initial avatar.
 async function loadProfile() {
-  state.profile = { avatar: null, created: null };
+  state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', pinnedBadges: [] };
   state.recommendationFeedback = { dismissed: [], history: [] };
   state.statsSnapshot = null;
   if (!state.user) return;
@@ -34,9 +36,20 @@ async function loadProfile() {
   useFeedback(localFeedback);
   try {
     const d = await db.collection('users').doc(state.user.uid).get();
-    if (d.exists) {
-      const x = d.data(), feedback = x.recommendationFeedback || {};
-      state.profile = { avatar: x.avatar || null, created: x.created || null };
+      if (d.exists) {
+        const x = d.data(), feedback = x.recommendationFeedback || {};
+        hydratePrefs(x.experiencePrefs);
+        const cloudRegion = x.experiencePrefs?.region;
+        if (cloudRegion && REGIONS.some(([code]) => code === cloudRegion)) {
+          state.region = cloudRegion;
+          try { localStorage.setItem('cv_region', cloudRegion); } catch (_) {}
+        }
+      state.profile = {
+        avatar: x.avatar || null, created: x.created || null,
+        headline: String(x.headline || '').slice(0, 70), bio: String(x.bio || '').slice(0, 220),
+        location: String(x.location || '').slice(0, 60), favoriteFilm: String(x.favoriteFilm || '').slice(0, 80),
+        pinnedBadges: Array.isArray(x.pinnedBadges) ? x.pinnedBadges.filter(value => typeof value === 'string').slice(0, 3) : [],
+      };
       state.statsSnapshot = x.statsSnapshot || null;
       const localTime = +(localFeedback.clientUpdatedAt || 0), cloudTime = +(feedback.clientUpdatedAt || 0);
       const localIsNewer = hasFeedback(localFeedback) && localTime > cloudTime;
@@ -62,7 +75,7 @@ export function initAuth() {
       try { state.searchHistory = JSON.parse(localStorage.getItem('cv_history_' + u.uid) || '[]'); } catch (e) { state.searchHistory = []; }
     } else {
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
-      state.lists = []; state.profile = { avatar: null, created: null };
+      state.lists = []; state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', pinnedBadges: [] };
       state.recommendationFeedback = { dismissed: [], history: [] };
       state.statsSnapshot = null;
     }
@@ -118,17 +131,22 @@ export function updateAuthUI() {
 
 // Save name + avatar from the Profile page. Updates Firebase Auth, the profile doc,
 // and the public profile (so friends see the new name/avatar), then refreshes the UI.
-export async function saveProfile({ name, avatar }) {
+export async function saveProfile({ name, avatar, headline = '', bio = '', location = '', favoriteFilm = '', pinnedBadges = [] }) {
   const u = state.user;
   if (!u) return { ok: false, msg: 'Sign in first' };
   const nm = (name || '').trim();
   if (!nm) return { ok: false, msg: 'Name cannot be empty' };
+  const extras = {
+    headline: String(headline || '').trim().slice(0, 70), bio: String(bio || '').trim().slice(0, 220),
+    location: String(location || '').trim().slice(0, 60), favoriteFilm: String(favoriteFilm || '').trim().slice(0, 80),
+    pinnedBadges: [...new Set(Array.isArray(pinnedBadges) ? pinnedBadges : [])].filter(value => typeof value === 'string').slice(0, 3),
+  };
   try {
     if (nm !== u.displayName) await u.updateProfile({ displayName: nm });
-    await db.collection('users').doc(u.uid).set({ name: nm, avatar: avatar || null }, { merge: true });
+    await db.collection('users').doc(u.uid).set({ name: nm, avatar: avatar || null, ...extras }, { merge: true });
     // Mirror to the friend-visible public profile (best-effort).
     db.collection('publicProfiles').doc(u.uid).set({ name: nm, nameLower: nm.toLowerCase(), avatar: avatar || null }, { merge: true }).catch(() => {});
-    state.profile = { ...state.profile, avatar: avatar || null };
+    state.profile = { ...state.profile, avatar: avatar || null, ...extras };
     updateAuthUI();
     document.dispatchEvent(new Event('cv:auth'));   // re-render profile + friends
     return { ok: true, msg: 'Profile saved!' };

@@ -3,15 +3,18 @@ import { state, isWatched } from './state.js';
 import { $, esc, toast } from './ui.js';
 import { registerActions } from './events.js';
 import { AVATARS, genreMap, IMG, PH } from './config.js';
-import { avatarBg, avatarGlyph } from './avatar.js';
-import { buildCtx } from './badges.js';
+import { avatarBg, avatarMarkup, avatarPresetId } from './avatar.js';
+import { buildCtx, BADGES } from './badges.js';
 import { myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { social, displayCode } from './social.js';
 import { saveProfile } from './auth.js';
-import { friendQrSvg } from './qrcode.js';
+import { friendQrSvg, tasteMatchQrSvg, tasteMatchUrl } from './qrcode.js';
+import { renderRecommendations } from './recommend.js';
 
 let editing = false;
 let draftAvatar = undefined;   // undefined = untouched; null = cleared to initial
+let draftPinned = undefined;
+let intelligenceOpen = false;
 
 const PROFILE_ICONS = {
   watched: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -73,7 +76,11 @@ export function renderProfile() {
   const code = displayCode(social.code);
   const c = buildCtx();
   const insight = profileInsights(c);
-  const strengthChecks = [!!u.displayName, !!av, !!code, !!state.profile.created, c.watchedTotal > 0, c.ratedTotal > 0];
+  const earnedBadges = BADGES.filter(badge => badge.value(c) >= badge.goal);
+  const earnedIds = new Set(earnedBadges.map(badge => badge.id));
+  const selectedPins = (draftPinned !== undefined ? draftPinned : state.profile.pinnedBadges || []).filter(id => earnedIds.has(id)).slice(0, 3);
+  const pinnedBadges = selectedPins.map(id => BADGES.find(badge => badge.id === id)).filter(Boolean);
+  const strengthChecks = [!!u.displayName, !!av, !!code, !!state.profile.created, !!state.profile.headline, !!state.profile.bio, c.watchedTotal > 0, c.ratedTotal > 0, pinnedBadges.length > 0];
   const strength = Math.round(strengthChecks.filter(Boolean).length / strengthChecks.length * 100);
   const backdropItems = [...insight.watched].filter(item => item.poster).sort((a, b) => (b.watchedAt?.seconds || 0) - (a.watchedAt?.seconds || 0)).slice(0, 4);
   const backdrop = backdropItems.length ? `<div class="profile-cinema-wall">${backdropItems.map(item => `<img src="${IMG}w342${item.poster}" alt="" loading="lazy">`).join('')}</div>` : '';
@@ -81,12 +88,13 @@ export function renderProfile() {
   const header = `
     <section class="profile-premium-hero">${backdrop}<div class="profile-hero-shade"></div>
       <div class="profile-hero-content">
-        <div class="profile-avatar-wrap"><div class="profile-av-lg" style="background:${avatarBg(av)}">${esc(avatarGlyph(av, name))}</div><span>${esc(insight.level)}</span></div>
+        <div class="profile-avatar-wrap"><div class="profile-av-lg${avatarPresetId(av) ? ' has-avatar-image' : ''}" style="background:${avatarBg(av)}">${avatarMarkup(av, name)}</div><span>${esc(insight.level)}</span></div>
         <div class="profile-id">
           <div class="profile-eyebrow"><i></i>Private Cineprint</div>
           <h1 class="profile-nm">${esc(name)}</h1>
-          <div class="profile-email">${esc(u.email || '')}</div>
-          <div class="profile-identity-tags">${since ? `<span>Member since ${esc(since)}</span>` : ''}<span>${esc(insight.topGenre)} taste</span><span>${social.friends.length} friend${social.friends.length === 1 ? '' : 's'}</span></div>
+          <div class="profile-email">${esc(state.profile.headline || u.email || '')}</div>
+          <div class="profile-identity-tags">${since ? `<span>Member since ${esc(since)}</span>` : ''}${state.profile.location ? `<span>${esc(state.profile.location)}</span>` : ''}<span>${esc(insight.topGenre)} taste</span><span>${social.friends.length} friend${social.friends.length === 1 ? '' : 's'}</span></div>
+          ${pinnedBadges.length ? `<div class="profile-pinned" aria-label="Pinned achievements">${pinnedBadges.map(badge => `<span class="profile-pin tier-${badge.tier}" title="${esc(badge.desc)}"><i>${badge.icon}</i><b>${esc(badge.name)}</b></span>`).join('')}</div>` : `<button class="profile-pin-empty" data-action="profile-edit">Pin achievements to your hero</button>`}
         </div>
         <div class="profile-hero-actions"><button class="btn-primary profile-edit-btn" data-action="profile-edit">Edit profile</button><button class="btn-glass" data-action="show-page" data-page="settings">${PROFILE_ICONS.settings}Settings</button></div>
       </div>
@@ -94,14 +102,21 @@ export function renderProfile() {
 
   const editForm = editing ? `
     <div class="profile-editcard profile-panel">
-      <div class="profile-panel-head"><div><span>Personal identity</span><h2>Edit profile</h2></div><b>Private</b></div>
-      <label class="profile-field"><span>Display name</span><input id="profileName" type="text" value="${esc(name)}" maxlength="40" autocomplete="off"></label>
-      <div class="profile-field"><span>Avatar</span>
+      <div class="profile-panel-head"><div><span>Personal identity studio</span><h2>Edit your Cineprint</h2></div><b>Private</b></div>
+      <div class="profile-edit-grid">
+        <label class="profile-field"><span>Display name</span><input id="profileName" type="text" value="${esc(name)}" maxlength="40" autocomplete="off"></label>
+        <label class="profile-field"><span>Cinephile headline</span><input id="profileHeadline" type="text" value="${esc(state.profile.headline || '')}" maxlength="70" placeholder="Midnight movies and impossible worlds"></label>
+        <label class="profile-field"><span>Location</span><input id="profileLocation" type="text" value="${esc(state.profile.location || '')}" maxlength="60" placeholder="Mumbai, India"></label>
+        <label class="profile-field"><span>Favorite film</span><input id="profileFavorite" type="text" value="${esc(state.profile.favoriteFilm || '')}" maxlength="80" placeholder="The title you always return to"></label>
+        <label class="profile-field profile-field-wide"><span>About your taste</span><textarea id="profileBio" maxlength="220" placeholder="What makes a movie unforgettable for you?">${esc(state.profile.bio || '')}</textarea><small>Shown only on your private Profile page.</small></label>
+      </div>
+      <div class="profile-field profile-avatar-studio"><span>Choose a cinematic identity</span>
         <div class="avatar-grid">
           <button class="avatar-opt${av ? '' : ' sel'}" data-action="pick-avatar" data-idx="-1" aria-label="Initial" style="background:linear-gradient(135deg,var(--red),var(--purple))">${esc((name || '?')[0].toUpperCase())}</button>
-          ${AVATARS.map((a, i) => `<button class="avatar-opt${av && av.emoji === a.emoji && av.grad === a.grad ? ' sel' : ''}" data-action="pick-avatar" data-idx="${i}" aria-label="${a.emoji}" style="background:${avatarBg(a)}">${a.emoji}</button>`).join('')}
+          ${AVATARS.map((a, i) => `<button class="avatar-opt has-avatar-image${avatarPresetId(av) === a.id ? ' sel' : ''}" data-action="pick-avatar" data-idx="${i}" aria-label="${esc(a.name)}" title="${esc(a.name)}"><img src="${a.src}" alt=""></button>`).join('')}
         </div>
       </div>
+      <div class="profile-showcase-editor"><div><span>Achievement Showcase</span><h3>Pin up to three earned badges</h3><p>Your selections appear beside your identity in the Profile hero.</p></div><b id="profilePinCount">${selectedPins.length}/3 pinned</b><div class="profile-earned-grid">${earnedBadges.length ? earnedBadges.map(badge => `<button class="tier-${badge.tier}${selectedPins.includes(badge.id) ? ' selected' : ''}" data-action="profile-pin-badge" data-badge="${badge.id}"><i>${badge.icon}</i><span><strong>${esc(badge.name)}</strong><small>${esc(badge.desc)}</small></span><em>✓</em></button>`).join('') : '<p>Earn your first badge to unlock the showcase.</p>'}</div></div>
       <div class="profile-editactions">
         <button class="btn-glass" data-action="profile-cancel">Cancel</button>
         <button class="btn-primary" data-action="profile-save">Save</button>
@@ -109,6 +124,7 @@ export function renderProfile() {
     </div>` : '';
 
   const codeCard = code ? `<section class="profile-connect-card"><div class="profile-connect-copy"><span>Connect instantly</span><h2>Your friend pass</h2><p>Let friends scan the QR code or share your private connect code.</p><div class="profile-code-row"><strong>${esc(code)}</strong><button data-action="copy-code" data-code="${esc(code)}">Copy code</button></div></div><div class="profile-qr" title="Scan to add me">${friendQrSvg(code)}<span>Scan to connect</span></div></section>` : `<section class="profile-connect-card waiting"><div><span>Connect instantly</span><h2>Preparing your friend pass…</h2><p>Your private QR identity will appear here when social sync completes.</p></div></section>`;
+  const tastePass = code ? `<section class="profile-taste-pass"><div><span>Cineprint chemistry</span><h2>Taste Match QR</h2><p>A friend scans once to see your shared genres and instant compatibility score.</p><button data-action="copy-taste-link" data-code="${esc(code)}">Copy Taste Match link</button></div><div class="profile-qr taste">${tasteMatchQrSvg(code)}<span>Scan to compare</span></div></section>` : '';
 
   const snapshot = `
     <section class="profile-panel profile-cineprint"><div class="profile-panel-head"><div><span>Live collection intelligence</span><h2>Your Cineprint</h2></div><button data-action="show-page" data-page="stats">Open full stats →</button></div>
@@ -121,7 +137,10 @@ export function renderProfile() {
 
   const pulse = `<section class="profile-panel profile-pulse"><div class="profile-panel-head"><div><span>Account readiness</span><h2>Collection pulse</h2></div><b>${insight.health || strength}%</b></div><div class="profile-progress-row"><div><span>Collection health</span><strong>${insight.health ? `${insight.health}%` : 'Calculating'}</strong></div><i><em style="width:${insight.health || 0}%"></em></i></div><div class="profile-progress-row"><div><span>Rating coverage</span><strong>${insight.ratingCoverage}%</strong></div><i><em style="width:${insight.ratingCoverage}%"></em></i></div><div class="profile-progress-row"><div><span>Profile setup</span><strong>${strength}%</strong></div><i><em style="width:${strength}%"></em></i></div><button class="profile-repair-link" data-action="show-page" data-page="stats">Review Collection Health →</button></section>`;
 
-  const quick = `<section class="profile-panel profile-quick"><div class="profile-panel-head"><div><span>One-tap navigation</span><h2>Quick launch</h2></div></div><div class="profile-quick-grid">${[[PROFILE_ICONS.calendar, 'Release calendar', 'reminders'], [PROFILE_ICONS.watched, 'Watch history', 'watched'], [PROFILE_ICONS.users, 'Friends & family', 'friends'], [PROFILE_ICONS.chart, 'Cineprint stats', 'stats']].map(([icon, label, page]) => `<button data-action="show-page" data-page="${page}">${icon}<span>${label}</span><b>→</b></button>`).join('')}</div></section>`;
+  const quick = `<section class="profile-panel profile-quick"><div class="profile-panel-head"><div><span>One-tap navigation</span><h2>Quick launch</h2></div></div><div class="profile-quick-grid">${[[PROFILE_ICONS.calendar, 'Release calendar', 'reminders'], [PROFILE_ICONS.watched, 'Watch history', 'watched'], [PROFILE_ICONS.users, 'Friends & family', 'friends'], [PROFILE_ICONS.chart, 'Cineprint stats', 'stats']].map(([icon, label, page]) => `<button data-action="show-page" data-page="${page}">${icon}<span>${label}</span><b>→</b></button>`).join('')}<button class="profile-intelligence-key" data-action="profile-toggle-intelligence">${PROFILE_ICONS.star}<span>Private picks</span><b>${intelligenceOpen ? '×' : '→'}</b></button></div></section>`;
+
+  const about = state.profile.bio || state.profile.favoriteFilm ? `<section class="profile-panel profile-about"><div><span>Personal note</span><h2>${esc(state.profile.bio || 'A collection shaped by curiosity.')}</h2></div>${state.profile.favoriteFilm ? `<p><small>Always returning to</small><strong>${esc(state.profile.favoriteFilm)}</strong></p>` : ''}</section>` : '';
+  const intelligence = intelligenceOpen ? `<section class="profile-intelligence-vault"><div class="profile-intelligence-head"><span>Low-key, private, yours</span><h2>Personalized intelligence</h2><p>Recommendations adapt to your watches, ratings and dismissals. This space stays off the homepage.</p></div><div id="personalRows"></div></section>` : '';
 
   const rv = (state.recentlyViewed || []).slice(0, 12);
   const recent = rv.length ? `
@@ -132,7 +151,8 @@ export function renderProfile() {
       return `<a class="card" href="/${r.type}/${r.id}" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img"><img src="${poster}" alt="${esc(r.title)}" loading="lazy" data-ph="${PH}">${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div><div class="card-sub">${r.type === 'tv' ? 'TV show' : 'Movie'}</div></div></a>`;
     }).join('')}</div></section>` : `<section class="profile-panel profile-recent-empty"><span>Recently viewed</span><h2>Your next discovery will appear here.</h2><button class="btn-glass" data-action="show-page" data-page="discover">Explore titles</button></section>`;
 
-  ct.innerHTML = `<div class="profile-shell">${header}${editForm}<div class="profile-dashboard"><main>${snapshot}${recent}</main><aside>${codeCard}${pulse}${quick}</aside></div></div>`;
+  ct.innerHTML = `<div class="profile-shell">${header}${editForm}<div class="profile-dashboard"><main>${about}${snapshot}${recent}</main><aside>${codeCard}${tastePass}${pulse}${quick}</aside></div>${intelligence}</div>`;
+  if (intelligenceOpen) queueMicrotask(() => renderRecommendations());
 }
 
 export function initProfile() {
@@ -144,25 +164,44 @@ export function initProfile() {
       if (state.user) document.dispatchEvent(new CustomEvent('cv:go', { detail: '/profile' }));
       else document.dispatchEvent(new Event('cv:open-auth'));
     },
-    'profile-edit': () => { editing = true; draftAvatar = undefined; renderProfile(); const n = $('profileName'); if (n) n.focus(); },
-    'profile-cancel': () => { editing = false; draftAvatar = undefined; renderProfile(); },
+    'profile-edit': () => { editing = true; draftAvatar = undefined; draftPinned = [...(state.profile.pinnedBadges || [])]; renderProfile(); const n = $('profileName'); if (n) n.focus(); },
+    'profile-cancel': () => { editing = false; draftAvatar = undefined; draftPinned = undefined; renderProfile(); },
     'pick-avatar': (el) => {
       const idx = +el.dataset.idx;
-      draftAvatar = idx < 0 ? null : AVATARS[idx];
-      // Re-mark selection without losing the typed name.
-      const nameVal = ($('profileName') || {}).value;
-      renderProfile();
-      if (nameVal != null) { const n = $('profileName'); if (n) n.value = nameVal; }
+      draftAvatar = idx < 0 ? null : { id: AVATARS[idx].id };
+      el.closest('.avatar-grid')?.querySelectorAll('.avatar-opt').forEach(option => option.classList.toggle('sel', option === el));
+    },
+    'profile-pin-badge': el => {
+      const id = el.dataset.badge; draftPinned = draftPinned || [];
+      if (draftPinned.includes(id)) draftPinned = draftPinned.filter(value => value !== id);
+      else if (draftPinned.length >= 3) { toast('You can pin up to three achievements', 'info'); return; }
+      else draftPinned = [...draftPinned, id];
+      el.classList.toggle('selected', draftPinned.includes(id));
+      const count = $('profilePinCount'); if (count) count.textContent = `${draftPinned.length}/3 pinned`;
     },
     'profile-save': async (el) => {
       const name = ($('profileName') || {}).value || '';
       const avatar = draftAvatar !== undefined ? draftAvatar : state.profile.avatar;
+      const ctx = buildCtx();
+      const safePins = (draftPinned !== undefined ? draftPinned : state.profile.pinnedBadges || [])
+        .filter(id => BADGES.some(badge => badge.id === id && badge.value(ctx) >= badge.goal)).slice(0, 3);
       el.disabled = true;
-      const r = await saveProfile({ name, avatar });
+      const r = await saveProfile({
+        name, avatar,
+        headline: ($('profileHeadline') || {}).value || '', bio: ($('profileBio') || {}).value || '',
+        location: ($('profileLocation') || {}).value || '', favoriteFilm: ($('profileFavorite') || {}).value || '',
+        pinnedBadges: safePins,
+      });
       toast(r.msg, r.ok ? 'success' : 'error');
-      if (r.ok) { editing = false; draftAvatar = undefined; renderProfile(); }
+      if (r.ok) { editing = false; draftAvatar = undefined; draftPinned = undefined; renderProfile(); }
       else el.disabled = false;
     },
+    'copy-taste-link': el => {
+      const link = tasteMatchUrl(el.dataset.code || social.code);
+      if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => toast('Taste Match link copied', 'success')).catch(() => toast(link, 'info'));
+      else toast(link, 'info');
+    },
+    'profile-toggle-intelligence': () => { intelligenceOpen = !intelligenceOpen; renderProfile(); },
     'profile-clear-recent': () => {
       state.recentlyViewed = [];
       try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {}
@@ -171,5 +210,5 @@ export function initProfile() {
   });
   // Friend code arrives asynchronously (cv:social); refresh if we're on /profile.
   document.addEventListener('cv:social', () => { if (location.pathname === '/profile') renderProfile(); });
-  document.addEventListener('cv:auth', () => { if (!state.user) { editing = false; draftAvatar = undefined; } });
+  document.addEventListener('cv:auth', () => { if (!state.user) { editing = false; draftAvatar = undefined; draftPinned = undefined; intelligenceOpen = false; } });
 }

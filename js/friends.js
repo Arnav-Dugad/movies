@@ -2,13 +2,52 @@
 import { state } from './state.js';
 import { esc, toast, $ } from './ui.js';
 import { registerActions } from './events.js';
-import { social, displayCode, sendRequest, acceptRequest, declineRequest, removeFriend, resolveCode, resolveEmail, searchByName } from './social.js';
+import { social, displayCode, sendRequest, acceptRequest, declineRequest, removeFriend, resolveCode, resolveEmail, searchByName, getFriendTaste } from './social.js';
 import { avatarInner } from './avatar.js';
 import { friendQrSvg } from './qrcode.js';
 import { openScanner, scannerSupported, initScan } from './scan.js';
+import { buildTasteProfile } from './recommend.js';
+import { genreMap } from './config.js';
 
 let pendingRemove = null;   // pairId awaiting a second confirming click
 let pendingAdd = null;      // a ?add= / scanned code waiting for sign-in to resolve
+let pendingTaste = null, tasteResult = null, tasteLoading = false;
+
+export function compareTasteProfiles(mine, theirs) {
+  const a = mine?.genreWeights || {}, b = theirs?.genreWeights || {}, keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let dot = 0, magA = 0, magB = 0;
+  keys.forEach(key => { const av = Math.max(0, +a[key] || 0), bv = Math.max(0, +b[key] || 0); dot += av * bv; magA += av * av; magB += bv * bv; });
+  const genreScore = magA && magB ? dot / Math.sqrt(magA * magB) : 0;
+  const biasScore = mine && theirs ? 1 - Math.min(1, Math.abs((mine.movieBias ? 1 : 0) - (theirs.movieBias ? 1 : 0))) : 0;
+  const score = Math.round(Math.min(99, Math.max(0, genreScore * 90 + biasScore * 10)));
+  const topA = new Set((mine?.topGenres || []).map(Number)), topB = new Set((theirs?.topGenres || []).map(Number));
+  const common = [...topA].filter(id => topB.has(id)).slice(0, 4).map(id => genreMap[id]).filter(Boolean);
+  return { score, common, sharedLean: mine?.movieBias === theirs?.movieBias ? (mine?.movieBias ? 'Both lean toward movies' : 'Both lean toward TV') : 'A balanced movie-and-TV pairing' };
+}
+
+async function processTasteMatch() {
+  if (!pendingTaste || !state.user || tasteLoading) return;
+  tasteLoading = true;
+  try {
+    const profile = await resolveCode(pendingTaste);
+    if (!profile || profile.uid === state.user.uid) throw new Error(profile ? 'This is your own Taste Match code' : 'Taste Match profile was not found');
+    const shared = await getFriendTaste(profile.uid);
+    if (!shared) throw new Error('Their taste profile is still being prepared');
+    const mine = buildTasteProfile(state);
+    if (!mine?.hasSignal) throw new Error('Watch or rate a few titles before comparing tastes');
+    tasteResult = { profile, ...compareTasteProfiles(mine, shared) };
+    pendingTaste = null;
+    if (location.pathname === '/friends') renderFriends();
+  } catch (error) { toast(error.message || 'Could not compare tastes', 'error'); pendingTaste = null; }
+  finally { tasteLoading = false; }
+}
+
+function tasteMatchHTML() {
+  if (tasteLoading) return `<section class="taste-match-result loading"><span>Comparing Cineprints…</span></section>`;
+  if (!tasteResult) return '';
+  const { profile, score, common, sharedLean } = tasteResult, already = social.friends.some(friend => friend.uid === profile.uid);
+  return `<section class="taste-match-result"><button class="taste-match-close" data-action="dismiss-taste-match" aria-label="Close">×</button><div class="taste-match-score" style="--match:${score * 3.6}deg"><strong>${score}%</strong><span>Taste match</span></div><div class="taste-match-copy"><span>Instant Cineprint comparison</span><h2>You + ${esc(profile.name || 'CineVerse friend')}</h2><p>${esc(sharedLean)}</p><div>${common.length ? common.map(name => `<b>${esc(name)}</b>`).join('') : '<b>Fresh perspectives</b>'}</div>${already ? '<small>Already in your circle</small>' : `<button class="btn-primary" data-action="friend-request" data-uid="${esc(profile.uid)}" data-name="${esc(profile.name || 'Friend')}">Connect</button>`}</div></section>`;
+}
 
 // Pull a bare friend code out of whatever the camera read (a full add-URL or a raw
 // code, with or without the CINE- prefix).
@@ -38,18 +77,21 @@ async function addByCode(raw) {
 // link) adds that friend once we're signed in and the friend graph is ready.
 function maybeProcessPending() {
   if (pendingAdd && state.user && social.ready) { const c = pendingAdd; pendingAdd = null; addByCode(c); }
+  if (pendingTaste && state.user && social.ready) processTasteMatch();
 }
 export function initFriendDeepLink() {
   document.addEventListener('cv:social', maybeProcessPending);
   const params = new URLSearchParams(location.search);
   const add = params.get('add');
-  if (!add) return;
+  const taste = params.get('taste');
+  if (!add && !taste) return;
   // Strip ?add= from the URL so a refresh or re-render can't re-add.
   params.delete('add');
+  params.delete('taste');
   const qs = params.toString();
   history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
-  pendingAdd = add;
-  if (!state.user) { toast('Sign in to add this friend', 'info'); document.dispatchEvent(new Event('cv:open-auth')); }
+  pendingAdd = add || null; pendingTaste = taste || null;
+  if (!state.user) { toast(taste ? 'Sign in to compare your Cineprints' : 'Sign in to add this friend', 'info'); document.dispatchEvent(new Event('cv:open-auth')); }
   maybeProcessPending();
 }
 
@@ -76,6 +118,7 @@ export function renderFriends() {
   const out = social.reqOut.length ? `<div class="d-sec-title" style="margin-top:24px">Pending</div>${social.reqOut.map(r => `<div class="friend-row">${avatarInner(null, r.toName)}<div class="friend-meta"><div class="friend-name">${esc(r.toName || 'Friend')}</div><div class="friend-sub">Request sent</div></div></div>`).join('')}` : '';
 
   ct.innerHTML = `
+    ${tasteMatchHTML()}
     <div class="friend-code-card">
       <div class="friend-code-main">
         <div class="stat-label">Your Friend Code</div>
@@ -142,7 +185,8 @@ export function initFriends() {
     },
     'friend-add': () => doAdd(),
     'open-scanner': () => openScanner(addByCode),
-    'friend-request': async (el) => { const r = await sendRequest(el.dataset.uid, el.dataset.name); toast(r.msg, r.ok ? 'success' : 'error'); if (r.ok) { $('friendSearchResults').innerHTML = ''; renderFriends(); } },
+    'friend-request': async (el) => { const r = await sendRequest(el.dataset.uid, el.dataset.name); toast(r.msg, r.ok ? 'success' : 'error'); if (r.ok) { const results = $('friendSearchResults'); if (results) results.innerHTML = ''; renderFriends(); } },
+    'dismiss-taste-match': () => { tasteResult = null; renderFriends(); },
     'accept-req': async (el) => { const req = social.reqIn.find(r => r.id === el.dataset.id); if (req) { await acceptRequest(req); toast('Friend added!', 'success'); renderFriends(); } },
     'decline-req': async (el) => { const req = social.reqIn.find(r => r.id === el.dataset.id); if (req) { await declineRequest(req); renderFriends(); } },
     // Two-tap: the first click arms (button becomes "Remove?"), the second confirms.

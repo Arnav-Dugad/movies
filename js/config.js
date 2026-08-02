@@ -79,9 +79,9 @@ export function providerUrl(providerName, title, regionLink) {
   return `https://www.google.com/search?q=${encodeURIComponent(`watch ${title || ''} on ${providerName || ''}`)}`;
 }
 
-// Preset avatars — an emoji on a named gradient. Stored on the user doc as
-// {emoji, grad} (self-contained, so re-ordering this list never remaps anyone).
-// `grad` keys map to a CSS gradient in AVATAR_GRADS; null avatar = colored initial.
+// Premium portrait presets. New profiles store only the stable {id}; the helper
+// maps legacy emoji/gradient avatars deterministically so nobody loses their
+// identity during the upgrade. Null avatar still means a colored initial.
 export const AVATAR_GRADS = {
   red:    'linear-gradient(135deg,#e50914,#ff2030)',
   purple: 'linear-gradient(135deg,#8b5cf6,#ec4899)',
@@ -93,10 +93,16 @@ export const AVATAR_GRADS = {
   slate:  'linear-gradient(135deg,#475569,#94a3b8)',
 };
 export const AVATARS = [
-  { emoji: '🎬', grad: 'red' },   { emoji: '🍿', grad: 'gold' },   { emoji: '🎭', grad: 'purple' },
-  { emoji: '🎥', grad: 'slate' }, { emoji: '⭐', grad: 'gold' },   { emoji: '🚀', grad: 'ocean' },
-  { emoji: '👽', grad: 'green' }, { emoji: '🦇', grad: 'slate' },  { emoji: '🔥', grad: 'sunset' },
-  { emoji: '💀', grad: 'slate' }, { emoji: '🧙', grad: 'purple' }, { emoji: '🐉', grad: 'green' },
-  { emoji: '🌌', grad: 'ocean' },{ emoji: '❤️', grad: 'red' },     { emoji: '🎃', grad: 'sunset' },
-  { emoji: '🤖', grad: 'cyan' },  { emoji: '👑', grad: 'gold' },   { emoji: '🕵️', grad: 'slate' },
+  { id: 'auteur', name: 'The Auteur', src: '/assets/avatars/auteur.jpg', grad: 'cyan' },
+  { id: 'velvet', name: 'Velvet Critic', src: '/assets/avatars/velvet.jpg', grad: 'red' },
+  { id: 'nova', name: 'Nova Explorer', src: '/assets/avatars/nova.jpg', grad: 'ocean' },
+  { id: 'noir', name: 'Noir Detective', src: '/assets/avatars/noir.jpg', grad: 'slate' },
+  { id: 'spark', name: 'Animation Spark', src: '/assets/avatars/spark.jpg', grad: 'purple' },
+  { id: 'classic', name: 'Classic Curator', src: '/assets/avatars/classic.jpg', grad: 'gold' },
+  { id: 'orbit', name: 'Orbit Pilot', src: '/assets/avatars/orbit.jpg', grad: 'ocean' },
+  { id: 'sage', name: 'Fantasy Sage', src: '/assets/avatars/sage.jpg', grad: 'green' },
+  { id: 'vanguard', name: 'Action Vanguard', src: '/assets/avatars/vanguard.jpg', grad: 'sunset' },
+  { id: 'documentarian', name: 'The Documentarian', src: '/assets/avatars/documentarian.jpg', grad: 'cyan' },
+  { id: 'midnight', name: 'Midnight Connoisseur', src: '/assets/avatars/midnight.jpg', grad: 'purple' },
+  { id: 'global', name: 'Global Curator', src: '/assets/avatars/global.jpg', grad: 'gold' },
 ];

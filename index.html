@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="/css/components.css">
 <link rel="stylesheet" href="/css/animations.css">
 <link rel="stylesheet" href="/css/responsive.css">
+<link rel="stylesheet" href="/css/ultra.css">
 
 <!-- Firebase (compat SDK, classic scripts — must load before the app module) -->
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -256,6 +257,7 @@
 
 <!-- BROWSE: MOVIES -->
 <div class="browse-page page-container" id="moviesPage">
+  <section class="browse-feature-hero" id="movieHero" aria-label="Featured movies"></section>
   <div class="browse-top"><h1>Movies</h1><p>Discover your next favorite film</p></div>
   <div class="browse-filters">
     <select class="browse-select browse-genre-select" id="mGenres" data-action="set-mg" aria-label="Movie genre"></select>
@@ -276,6 +278,7 @@
 
 <!-- BROWSE: TV -->
 <div class="browse-page page-container" id="tvPage">
+  <section class="browse-feature-hero" id="tvHero" aria-label="Featured TV shows"></section>
   <div class="browse-top"><h1>TV Shows</h1><p>Binge-worthy series</p></div>
   <div class="browse-filters">
     <select class="browse-select browse-genre-select" id="tGenres" data-action="set-tg" aria-label="TV genre"></select>
@@ -297,6 +300,7 @@
 <div class="wl-page page-container" id="wlPage">
   <div class="wl-head"><h1>My Lists</h1><div class="wl-head-actions" id="wlHeadActions"></div></div>
   <div class="wl-lists" id="wlLists"></div>
+  <section class="duplicate-finder" id="wlDuplicates" hidden></section>
   <section class="wl-showcase" id="wlShowcase" aria-live="polite"></section>
   <div class="wl-subbar">
     <div class="wl-count" id="wlCount">0 titles</div>
@@ -443,8 +447,8 @@
 
 <!-- SETTINGS -->
 <div class="browse-page page-container" id="settingsPage">
-  <div class="browse-top"><h1>Settings</h1></div>
   <div id="settingsContent"></div>
+  <input id="settingsBackupFile" type="file" accept="application/json,.json" hidden>
 </div>
 
 <!-- SEARCH -->
@@ -452,11 +456,12 @@
   <div class="search-top">
     <div class="search-field">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input id="searchIn" type="text" placeholder="Search movies, TV shows, people..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="searchSuggest">
+      <input id="searchIn" type="text" placeholder="Search titles, people, or try: Hindi thrillers after 2020" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="searchSuggest">
       <button class="search-clear" id="searchClear" data-action="search-clear" aria-label="Clear search" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       <div class="search-suggest" id="searchSuggest" role="listbox"></div>
     </div>
   </div>
+  <div class="search-command-hint" id="searchCommandHint" aria-live="polite"></div>
   <div class="search-chips">
     <button class="chip active" data-f="multi" data-action="set-filter">All</button>
     <button class="chip" data-f="movie" data-action="set-filter">Movies</button>
@@ -478,6 +483,7 @@
   </div>
   <div class="search-body" id="searchBody">
     <div id="searchDefault">
+      <div id="advancedSearchExamples"></div>
       <div id="searchHistoryWrap"></div>
       <div id="trendingSearches"></div>
       <div id="vibeChips"></div>

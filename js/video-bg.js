@@ -8,7 +8,7 @@ import { prefersReducedMotion } from './ui.js';
 // state (see below) — so if muted autoplay is blocked/paused on a device, the
 // iframe stays hidden (opacity 0) behind the static backdrop instead of showing
 // YouTube's paused chrome. Only reduced-motion opts out entirely.
-export function ambientOK() { return !prefersReducedMotion(); }
+export function ambientOK() { return document.documentElement.dataset.autoplay !== 'off' && !prefersReducedMotion(); }
 
 // Mounts an ambient video into `container` (which must be position:relative and
 // already hold the backdrop image + a gradient overlay above it). Returns a

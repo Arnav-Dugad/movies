@@ -64,7 +64,7 @@ function canonicalRows(scope) {
     rows.set(key, {
       key, id: item.tmdbId, type: item.type, title: item.title || '', poster: item.poster || '',
       year: item.year || '', releaseDate: item.releaseDate || '', genres: item.genres || [],
-      language: item.language || '', country: item.country || '', runtime: +(item.runtime || 0),
+      language: item.language || '', country: item.country || '', runtime: +(item.runtime || 0), episodeRuntime: +(item.episodeRuntime || 0), episodeCount: +(item.episodeCount || 0),
       tmdbRating: +(item.rating || 0), saved: true, watched: false, watchedAt: null,
       director: '', directorId: 0, directorProfile: '', cast: [],
     });
@@ -79,7 +79,7 @@ function canonicalRows(scope) {
       year: doc.year || old.year || '', releaseDate: doc.releaseDate || old.releaseDate || '',
       genres: doc.genres?.length ? doc.genres : (old.genres || []),
       language: doc.language || old.language || '', country: doc.country || old.country || '',
-      runtime: +(doc.runtime || old.runtime || 0), tmdbRating: +(doc.tmdbRating || old.tmdbRating || 0),
+      runtime: +(doc.runtime || old.runtime || 0), episodeRuntime: +(doc.episodeRuntime || old.episodeRuntime || 0), episodeCount: +(doc.episodeCount || old.episodeCount || 0), tmdbRating: +(doc.tmdbRating || old.tmdbRating || 0),
       director: doc.director || old.director || '', directorId: doc.directorId || old.directorId || 0,
       directorProfile: doc.directorProfile || old.directorProfile || '',
       cast: doc.cast?.length ? doc.cast : (old.cast || []), watched: true, watchedAt: watchedDate(doc),
@@ -214,6 +214,14 @@ export function computeStats(scope) {
   const bestMonth = bestMonthRaw ? new Date(`${bestMonthRaw.key}-01T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : 'Not enough history';
 
   const runtimes = watched.map(row => row.runtime).filter(value => value > 0);
+  // Total watch time uses a completed show's full runtime, while "average runtime"
+  // compares equivalent viewing units: movie length or episode length. Mixing an
+  // entire 80-episode series with a two-hour film made the old average meaningless.
+  const averageUnits = watched.map(row => row.type === 'tv'
+    ? +(row.episodeRuntime || (row.episodeCount > 0 ? row.runtime / row.episodeCount : 0))
+    : +row.runtime).filter(value => value > 0 && value < 1000);
+  const movieRuntimes = watched.filter(row => row.type === 'movie').map(row => +row.runtime).filter(value => value > 0 && value < 1000);
+  const episodeRuntimes = watched.filter(row => row.type === 'tv').map(row => +(row.episodeRuntime || (row.episodeCount > 0 ? row.runtime / row.episodeCount : 0))).filter(value => value > 0 && value < 1000);
   const enriched = rows.filter(row => row.runtime > 0 && row.language && row.year && row.genres?.length);
   const totalMinutes = runtimes.reduce((sum, value) => sum + value, 0);
   const years = rows.map(row => +(row.year || 0)).filter(year => year > 1800 && year < 2200).sort((a, b) => a - b);
@@ -265,7 +273,9 @@ export function computeStats(scope) {
     scope, rows, watched, saved, totalRated: ratingValues.length, avgRating, avgTmdb,
     ratingCounts, completion, ratingCoverage, positiveRate, highScores,
     genres: genreRows, decades: decadeRows, languages: languageRows, diversityScore,
-    totalMinutes, hours: Math.floor(totalMinutes / 60), avgRuntime: runtimes.length ? Math.round(totalMinutes / runtimes.length) : 0,
+    totalMinutes, hours: Math.floor(totalMinutes / 60), avgRuntime: averageUnits.length ? Math.round(averageUnits.reduce((sum, value) => sum + value, 0) / averageUnits.length) : 0,
+    avgMovieRuntime: movieRuntimes.length ? Math.round(movieRuntimes.reduce((sum, value) => sum + value, 0) / movieRuntimes.length) : 0,
+    avgEpisodeRuntime: episodeRuntimes.length ? Math.round(episodeRuntimes.reduce((sum, value) => sum + value, 0) / episodeRuntimes.length) : 0,
     metaCoverage: rows.length ? enriched.length / rows.length : 1,
     movies: watched.filter(row => row.type === 'movie').length, shows: watched.filter(row => row.type === 'tv').length,
     thisYear: watched.filter(row => row.watchedAt?.getFullYear() === now.getFullYear()).length,
@@ -281,7 +291,7 @@ export function computeStats(scope) {
 
 function snapshotFor(stats) {
   return {
-    schema: 5,
+    schema: 6,
     totals: {
       saved: stats.saved.length, watched: stats.watched.length, rated: stats.totalRated,
       movies: stats.movies, shows: stats.shows, friends: social.friends.length,
@@ -305,7 +315,7 @@ function snapshotFor(stats) {
       weekdays: stats.weekdays,
     },
     collection: {
-      completion: stats.completion, averageRuntime: stats.avgRuntime, releaseSpan: stats.releaseSpan,
+      completion: stats.completion, averageRuntime: stats.avgRuntime, averageMovieRuntime: stats.avgMovieRuntime, averageEpisodeRuntime: stats.avgEpisodeRuntime, releaseSpan: stats.releaseSpan,
       health: { score: stats.health.score, missing: stats.health.missing, checks: stats.health.checks.map(check => ({ key: check.key, coverage: check.coverage, missing: check.missing })) },
       directorLoyalty: latestDirectorLoyalty || state.statsSnapshot?.collection?.directorLoyalty || null,
       topDirector: stats.topDirector ? { name: stats.topDirector.name, id: stats.topDirector.id, profile: stats.topDirector.profile, count: stats.topDirector.count } : null,
@@ -428,10 +438,15 @@ function ratingPanel(stats) {
 }
 
 function collectionPanel(stats) {
-  const formatRuntime = minutes => minutes ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : 'Calculating…';
+  const formatRuntime = minutes => {
+    if (!minutes) return 'Calculating…';
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60), remainder = minutes % 60;
+    return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+  };
   const intelligence = [
     ['Release range', stats.releaseSpan, stats.oldestTitle && stats.newestTitle ? `${stats.oldestTitle.title} to ${stats.newestTitle.title}` : 'Build your timeline'],
-    ['Average runtime', formatRuntime(stats.avgRuntime), 'Across watched titles'],
+    ['Average runtime', formatRuntime(stats.avgRuntime), stats.scope === 'movie' ? 'Average movie length' : stats.scope === 'tv' ? 'Average episode length' : 'Movies and TV episodes, weighted equally'],
     ['Top director', stats.topDirector?.name || 'Discovering…', stats.topDirector ? `${stats.topDirector.count} watched titles` : 'Metadata is being enriched'],
     ['Most seen actor', stats.topActor?.name || 'Discovering…', stats.topActor ? `${stats.topActor.count} watched titles` : 'Metadata is being enriched'],
   ];

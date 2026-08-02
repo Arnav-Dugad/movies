@@ -279,3 +279,12 @@ export function friendAddUrl(code) {
 export function friendQrSvg(code) {
   return qrSvg(friendAddUrl(code), { ecl: 'M', cls: 'qr-svg' });
 }
+
+export function tasteMatchUrl(code) {
+  try { const url = new URL('/friends', location.origin); url.searchParams.set('taste', code); return url.href; }
+  catch (_) { return `${location.origin}/friends?taste=${encodeURIComponent(code)}`; }
+}
+
+export function tasteMatchQrSvg(code) {
+  return qrSvg(tasteMatchUrl(code), { ecl: 'M', cls: 'qr-svg taste-qr-svg' });
+}

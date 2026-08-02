@@ -9,6 +9,7 @@ import { state } from './state.js';
 import { esc, debounce, $ } from './ui.js';
 import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
+import { prefs } from './prefs.js';
 
 // ---- module state ----
 let searchGen = 0;          // bumped on every submitted query/vibe; in-flight stragglers bail
@@ -18,9 +19,106 @@ let page = 0, totalPages = 0, totalResults = 0;
 let curQuery = '';          // active text query
 let mode = 'search';        // 'search' | 'vibe'
 let vibeCtx = null;         // { genres, type, lang, label } for discover mode
+let commandCtx = null;      // parsed natural-language discovery command
 let suggestItems = [], suggestIdx = -1;
 
 const IMGw = (size, path) => path ? `${IMG}${size}${path}` : PH;
+
+const COMMAND_LANGUAGES = {
+  english: 'en', hindi: 'hi', korean: 'ko', japanese: 'ja', spanish: 'es', french: 'fr', german: 'de', italian: 'it', chinese: 'zh',
+  tamil: 'ta', telugu: 'te', malayalam: 'ml', marathi: 'mr', bengali: 'bn', arabic: 'ar', portuguese: 'pt', russian: 'ru', thai: 'th', turkish: 'tr',
+};
+const COMMAND_COUNTRIES = { indian: 'IN', india: 'IN', american: 'US', usa: 'US', british: 'GB', korean: 'KR', japanese: 'JP', french: 'FR', german: 'DE', spanish: 'ES', canadian: 'CA', australian: 'AU' };
+const COMMAND_GENRES = [
+  { re: /\b(action|martial arts)\b/i, name: 'Action', movie: 28, tv: 10759 },
+  { re: /\b(adventure|adventures)\b/i, name: 'Adventure', movie: 12, tv: 10759 },
+  { re: /\b(animated|animation|anime)\b/i, name: 'Animation', movie: 16, tv: 16 },
+  { re: /\b(comedy|comedies|funny)\b/i, name: 'Comedy', movie: 35, tv: 35 },
+  { re: /\b(crime|gangster|mafia)\b/i, name: 'Crime', movie: 80, tv: 80 },
+  { re: /\b(documentary|documentaries|nonfiction|non-fiction)\b/i, name: 'Documentary', movie: 99, tv: 99 },
+  { re: /\b(drama|dramas)\b/i, name: 'Drama', movie: 18, tv: 18 },
+  { re: /\b(family|kids|children)\b/i, name: 'Family', movie: 10751, tv: 10751 },
+  { re: /\b(fantasy|magical)\b/i, name: 'Fantasy', movie: 14, tv: 10765 },
+  { re: /\b(history|historical|period)\b/i, name: 'History', movie: 36, tv: 18 },
+  { re: /\b(horror|scary|supernatural)\b/i, name: 'Horror', movie: 27, tv: 9648 },
+  { re: /\b(music|musical|concert)\b/i, name: 'Music', movie: 10402, tv: 10767 },
+  { re: /\b(mystery|mysteries|whodunnit)\b/i, name: 'Mystery', movie: 9648, tv: 9648 },
+  { re: /\b(romance|romantic|rom-com|romcom)\b/i, name: 'Romance', movie: 10749, tv: 18 },
+  { re: /\b(sci-fi|science fiction|scifi|space)\b/i, name: 'Sci-Fi', movie: 878, tv: 10765 },
+  { re: /\b(thriller|thrillers|suspense)\b/i, name: 'Thriller', movie: 53, tv: 9648 },
+  { re: /\b(war|military)\b/i, name: 'War', movie: 10752, tv: 10768 },
+  { re: /\b(western|westerns)\b/i, name: 'Western', movie: 37, tv: 37 },
+];
+
+export function parseSearchCommand(query, nowYear = new Date().getFullYear()) {
+  const text = String(query || '').trim(), lower = text.toLowerCase();
+  const filters = { type: 'movie', genres: [], language: '', country: '', yearMin: 0, yearMax: 0, rating: 0, ratingMax: 0, minVotes: 0, runtimeMin: 0, runtimeMax: 0, releaseWindow: '', excludeWatched: false, excludeSaved: false, sort: 'popularity.desc' };
+  const chips = [], matched = new Set();
+  const add = (key, label) => { matched.add(key); if (label && !chips.includes(label)) chips.push(label); };
+  const saysMovie = /\b(movie|movies|film|films|cinema)\b/i.test(text), saysTV = /\b(tv|show|shows|series|episodes?)\b/i.test(text);
+  if (saysMovie && saysTV) { filters.type = 'both'; add('type', 'Movies + TV'); }
+  else if (saysTV) { filters.type = 'tv'; add('type', 'TV shows'); }
+  else if (saysMovie) add('type', 'Movies');
+  COMMAND_GENRES.forEach(genre => { if (genre.re.test(text)) { filters.genres.push({ movie: genre.movie, tv: genre.tv }); add(`genre:${genre.name}`, genre.name); } });
+  for (const [name, code] of Object.entries(COMMAND_LANGUAGES)) if (new RegExp(`\\b${name}\\b`, 'i').test(text)) { filters.language = code; add('language', name[0].toUpperCase() + name.slice(1)); break; }
+  for (const [name, code] of Object.entries(COMMAND_COUNTRIES)) if (new RegExp(`\\b${name}\\b`, 'i').test(text)) { filters.country = code; add('country', `${name[0].toUpperCase()}${name.slice(1)} origin`); break; }
+  let hit;
+  if ((hit = lower.match(/\b(?:between|from)\s+(19\d{2}|20\d{2})\s+(?:and|to)\s+(19\d{2}|20\d{2})\b/))) { filters.yearMin = +hit[1]; filters.yearMax = +hit[2]; add('year', `${filters.yearMin}–${filters.yearMax}`); }
+  else if ((hit = lower.match(/\b(?:after|since|newer than)\s+(19\d{2}|20\d{2})\b/))) { filters.yearMin = +hit[1] + (hit[0].startsWith('since') ? 0 : 1); add('year', `${filters.yearMin}+`); }
+  else if ((hit = lower.match(/\b(?:before|older than)\s+(19\d{2}|20\d{2})\b/))) { filters.yearMax = +hit[1] - 1; add('year', `Before ${hit[1]}`); }
+  else if ((hit = lower.match(/\b(?:in|from)\s+(19\d{2}|20\d{2})\b/))) { filters.yearMin = filters.yearMax = +hit[1]; add('year', hit[1]); }
+  else if ((hit = lower.match(/\b(19\d0|20\d0)s\b/))) { filters.yearMin = +hit[1]; filters.yearMax = +hit[1] + 9; add('year', `${hit[1]}s`); }
+  else if ((hit = lower.match(/\blast\s+(\d{1,2})\s+years?\b/))) { filters.yearMin = nowYear - Math.max(1, +hit[1]) + 1; filters.yearMax = nowYear; add('year', `Last ${hit[1]} years`); }
+  else if (/\bthis year\b/.test(lower)) { filters.yearMin = filters.yearMax = nowYear; add('year', `${nowYear}`); }
+  else if (/\blast year\b/.test(lower)) { filters.yearMin = filters.yearMax = nowYear - 1; add('year', `${nowYear - 1}`); }
+  else if (/\bupcoming|coming soon|not yet released\b/.test(lower)) { filters.releaseWindow = 'upcoming'; add('release', 'Upcoming'); }
+  if ((hit = lower.match(/\b(?:rated|rating|score|above|over|at least)\s*(?:above|over|at least)?\s*(\d(?:\.\d)?)\s*(?:\+|\/10)?/))) { filters.rating = Math.min(10, +hit[1]); add('rating', `${filters.rating}+ rating`); }
+  if ((hit = lower.match(/\b(?:rated|rating|score)\s*(?:under|below|less than)\s*(\d(?:\.\d)?)\b/))) { filters.rating = 0; filters.ratingMax = Math.min(10, +hit[1]); add('rating', `Under ${filters.ratingMax} rating`); }
+  if ((hit = lower.match(/\b(?:at least|over|more than)\s+([\d,]+)\s+votes?\b/))) { filters.minVotes = Math.max(1, +hit[1].replaceAll(',', '')); add('votes', `${filters.minVotes.toLocaleString()}+ votes`); }
+  const runtimeRange = lower.match(/\b(?:between|from)\s+(\d{1,3})\s*(minutes?|mins?|hours?|hrs?)\s+(?:and|to)\s+(\d{1,3})\s*(minutes?|mins?|hours?|hrs?)\b/);
+  if (runtimeRange) {
+    filters.runtimeMin = +runtimeRange[1] * (/hour|hr/.test(runtimeRange[2]) ? 60 : 1);
+    filters.runtimeMax = +runtimeRange[3] * (/hour|hr/.test(runtimeRange[4]) ? 60 : 1);
+    add('runtime', `${filters.runtimeMin}–${filters.runtimeMax} min`);
+  } else {
+    const runtime = lower.match(/\b(?:under|below|shorter than|over|above|longer than)\s+(\d{1,3})\s*(minutes?|mins?|hours?|hrs?)\b/);
+    if (runtime) { const minutes = +runtime[1] * (/hour|hr/.test(runtime[2]) ? 60 : 1); if (/under|below|shorter/.test(runtime[0])) filters.runtimeMax = minutes; else filters.runtimeMin = minutes; add('runtime', `${filters.runtimeMax ? 'Under' : 'Over'} ${minutes} min`); }
+  }
+  if (/\b(?:not watched|unwatched|haven't watched|have not watched)\b/.test(lower)) { filters.excludeWatched = true; add('unwatched', 'Not watched'); }
+  if (/\b(?:not saved|not in my list|not on my list|outside my lists)\b/.test(lower)) { filters.excludeSaved = true; add('unsaved', 'Not in my lists'); }
+  if (/\b(highest|best|top) rated\b/.test(lower)) { filters.sort = 'vote_average.desc'; add('sort', 'Highest rated'); }
+  else if (/\bnewest|latest|recent\b/.test(lower)) { filters.sort = 'date.desc'; add('sort', 'Newest first'); }
+  else if (/\boldest|classic first\b/.test(lower)) { filters.sort = 'date.asc'; add('sort', 'Oldest first'); }
+  else if (/\bmost voted\b/.test(lower)) { filters.sort = 'vote_count.desc'; add('sort', 'Most voted'); }
+  else if (/\bpopular|trending\b/.test(lower)) { filters.sort = 'popularity.desc'; add('sort', 'Most popular'); }
+  const structural = [...matched].filter(key => !key.startsWith('sort')).length;
+  return { isCommand: structural >= 2 || (structural >= 1 && (matched.has('year') || matched.has('rating') || matched.has('runtime') || matched.has('sort'))) || matched.has('release') || matched.has('unwatched') || matched.has('unsaved'), query: text, filters, chips };
+}
+
+function commandParams(type, pageNum) {
+  const f = commandCtx.filters, date = type === 'tv' ? 'first_air_date' : 'primary_release_date';
+  const params = { page: pageNum, include_adult: false, sort_by: f.sort === 'date.desc' ? `${date}.desc` : f.sort === 'date.asc' ? `${date}.asc` : f.sort };
+  const genres = f.genres.map(item => item[type]).filter(Boolean); if (genres.length) params.with_genres = genres.join(',');
+  if (f.language) params.with_original_language = f.language;
+  if (f.country) params.with_origin_country = f.country;
+  if (f.yearMin) params[`${date}.gte`] = `${f.yearMin}-01-01`;
+  if (f.yearMax) params[`${date}.lte`] = `${f.yearMax}-12-31`;
+  if (f.releaseWindow === 'upcoming') params[`${date}.gte`] = new Date().toISOString().slice(0, 10);
+  if (f.rating) { params['vote_average.gte'] = f.rating; params['vote_count.gte'] = f.rating >= 8 ? 200 : 80; }
+  else if (f.sort === 'vote_average.desc') params['vote_count.gte'] = 200;
+  if (f.ratingMax) params['vote_average.lte'] = f.ratingMax;
+  if (f.minVotes) params['vote_count.gte'] = Math.max(+(params['vote_count.gte'] || 0), f.minVotes);
+  if (f.runtimeMin) params['with_runtime.gte'] = f.runtimeMin;
+  if (f.runtimeMax) params['with_runtime.lte'] = f.runtimeMax;
+  return params;
+}
+
+function paintCommandHint(command) {
+  const el = $('searchCommandHint'); if (!el) return;
+  if (!command?.isCommand) { el.classList.remove('show'); el.innerHTML = ''; return; }
+  el.innerHTML = `<span>Command understood</span><div>${command.chips.map(chip => `<b>${esc(chip)}</b>`).join('')}<em>Press Enter to explore</em></div>`;
+  el.classList.add('show');
+}
 
 // ---- helpers ----
 function resolveType(r) {
@@ -44,6 +142,15 @@ function highlight(text, q) {
 
 // ---- unified fetcher (search vs discover), page-aware ----
 async function fetchPage(pageNum) {
+  if (mode === 'command') {
+    const types = commandCtx.filters.type === 'both' ? ['movie', 'tv'] : [commandCtx.filters.type];
+    const pages = await Promise.all(types.map(type => tmdb(`/discover/${type}`, commandParams(type, pageNum)).then(data => ({ type, data }))));
+    return {
+      results: pages.flatMap(({ type, data }) => (data.results || []).map(item => ({ ...item, __type: type }))),
+      total_pages: Math.max(...pages.map(({ data }) => data.total_pages || 1)),
+      total_results: pages.reduce((sum, { data }) => sum + +(data.total_results || 0), 0),
+    };
+  }
   if (mode === 'vibe') {
     const dt = vibeCtx.type === 'multi' ? 'movie' : vibeCtx.type;
     const p = { with_genres: vibeCtx.genres, sort_by: 'popularity.desc', 'vote_count.gte': 100, page: pageNum };
@@ -65,6 +172,7 @@ export function openSearch(initialQuery = '') {
   renderVibeChips($('vibeChips'), 'Search by vibe');
   renderSearchHistory();
   renderRecentStrip();
+  renderCommandExamples();
   const input = $('searchIn');
   if (initialQuery) {
     input.value = initialQuery;
@@ -82,7 +190,10 @@ export function openSearch(initialQuery = '') {
 // the full results grid + filters. The typeahead dropdown is a separate flow so the
 // two never overlap (dropdown closes here).
 export async function doSearch(q) {
-  curQuery = q; mode = 'search';
+  curQuery = q;
+  const command = parseSearchCommand(q);
+  mode = command.isCommand ? 'command' : 'search'; commandCtx = command.isCommand ? command : null;
+  paintCommandHint(commandCtx);
   try { history.replaceState(history.state, '', location.pathname + '?q=' + encodeURIComponent(q)); } catch (e) {}
   closeSuggest();
   await runInitial();
@@ -92,6 +203,9 @@ export async function doSearch(q) {
 // is populated on submit (Enter / "see all" / suggestion pick), so it can't cover the
 // filter bar.
 async function liveSuggest(q) {
+  const command = parseSearchCommand(q);
+  paintCommandHint(command);
+  if (command.isCommand) { closeSuggest(); return; }
   curQuery = q; mode = 'search';
   const g = ++suggestGen;
   try {
@@ -153,6 +267,9 @@ function applyFilters(raw) {
       if (f.genre && !((r.genre_ids || []).some(id => genreMap[id] === f.genre))) return;
       if (f.decade) { const y = itemYear(r); if (!y) return; if (f.decade === 'older') { if (y >= 1990) return; } else { const d = +f.decade; if (y < d || y > d + 9) return; } }
       if (f.rating && (r.vote_average || 0) < f.rating) return;
+      if (mode === 'command' && commandCtx?.filters.ratingMax && (r.vote_average || 0) > commandCtx.filters.ratingMax) return;
+      if (mode === 'command' && commandCtx?.filters.excludeWatched && state.watched[`${t}_${r.id}`]) return;
+      if (mode === 'command' && commandCtx?.filters.excludeSaved && state.watchlist.some(item => item.id === `${t}_${r.id}`)) return;
     }
     const k = keyOf(r, t);
     if (seen.has(k)) return; seen.add(k);
@@ -177,7 +294,7 @@ function renderResults() {
   if (!pool.length) { g.innerHTML = ''; head.innerHTML = ''; moreWrap.style.display = 'none'; showEmpty(curQuery); return; }
   empty.style.display = 'none';
   const items = applyFilters(pool);
-  const label = mode === 'vibe' ? `Popular ${esc(vibeCtx.label)}` : `${items.length}${page < totalPages ? '+' : ''} result${items.length !== 1 ? 's' : ''} for “${esc(curQuery)}”`;
+  const label = mode === 'vibe' ? `Popular ${esc(vibeCtx.label)}` : mode === 'command' ? `${items.length}${page < totalPages ? '+' : ''} curated matches for “${esc(curQuery)}”` : `${items.length}${page < totalPages ? '+' : ''} result${items.length !== 1 ? 's' : ''} for “${esc(curQuery)}”`;
   head.innerHTML = `<span class="srh-label">${label}</span>`;
   g.innerHTML = items.length
     ? items.map(({ r, t }) => (t === 'person' ? personCard(r) : buildCard(r, t))).join('')
@@ -269,8 +386,14 @@ function renderVibeChips(wrap, title) {
   wrap.innerHTML = `${title ? `<div class="search-section-title">${esc(title)}</div>` : ''}<div class="chip-row vibe-row">${chips}</div>`;
   wrap.querySelectorAll('.vibe-chip span:last-child').forEach((el, i) => el.textContent = moods[i].name);
 }
+function renderCommandExamples() {
+  const wrap = $('advancedSearchExamples'); if (!wrap) return;
+  const examples = ['Hindi thrillers after 2020', 'Korean TV dramas rated 8+', 'Animated movies under 100 minutes', 'British crime shows from 2010 to 2020', 'Top rated sci-fi movies I have not watched', 'Upcoming Japanese movies not in my list'];
+  wrap.innerHTML = `<div class="search-section-title">Try a smart command</div><div class="command-examples">${examples.map(example => `<button data-action="command-search" data-q="${esc(example)}"><span>⌘</span>${esc(example)}</button>`).join('')}</div>`;
+}
 async function vibeSearch(el) {
   mode = 'vibe';
+  commandCtx = null;
   vibeCtx = { genres: el.dataset.genres, type: el.dataset.type || 'movie', lang: el.dataset.lang || '', label: el.dataset.label || 'Picks' };
   curQuery = '';
   const input = $('searchIn'); if (input) { input.value = ''; toggleClear(); }
@@ -289,7 +412,7 @@ function populateGenreFilter() {
 // ================= recent searches / recently viewed =================
 function toggleClear() { const c = $('searchClear'); if (c) c.style.display = $('searchIn').value ? 'flex' : 'none'; }
 function addToHistory(q) {
-  if (!state.user || !q || q.length < 2) return;
+  if (!state.user || !prefs.rememberSearch || !q || q.length < 2) return;
   state.searchHistory = state.searchHistory.filter(h => h !== q);
   state.searchHistory.unshift(q);
   state.searchHistory = state.searchHistory.slice(0, 8);
@@ -298,7 +421,7 @@ function addToHistory(q) {
 }
 function renderSearchHistory() {
   const w = $('searchHistoryWrap'); if (!w) return;
-  if (!state.searchHistory.length) { w.innerHTML = ''; return; }
+  if (!prefs.rememberSearch || !state.searchHistory.length) { w.innerHTML = ''; return; }
   w.innerHTML = `<div class="search-section-title">Recent Searches</div><div class="search-history">${state.searchHistory.map((h, i) => `<div class="search-history-item" role="button" tabindex="0" data-action="history-search" data-q="${esc(h)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span></span><span class="remove" data-action="history-remove" data-i="${i}">✕</span></div>`).join('')}</div>`;
   w.querySelectorAll('.search-history-item').forEach((el, i) => { el.querySelector('span:not(.remove)').textContent = state.searchHistory[i]; });
 }
@@ -367,12 +490,13 @@ export function initSearch() {
     'set-filter': (el) => setFilter(el.dataset.f),
     'search-filter': () => renderResults(),
     'search-reset': () => { ['fltGenre', 'fltDecade', 'fltRating'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
-    'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; showDefault(); input.focus(); },
+    'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; commandCtx = null; paintCommandHint(null); showDefault(); input.focus(); },
     'load-more-search': () => loadMore(),
     'search-submit': (el) => { const q = el.dataset.q || $('searchIn').value.trim(); if (q.length >= 2) { addToHistory(q); doSearch(q); } },
     'search-retry': () => { if (mode === 'vibe') runInitial(); else if (curQuery) doSearch(curQuery); },
     'vibe-search': (el) => vibeSearch(el),
     'trend-search': (el) => { const q = el.dataset.q || el.textContent.trim(); input.value = q; toggleClear(); addToHistory(q); doSearch(q); input.focus(); },
+    'command-search': (el) => { const q = el.dataset.q || ''; input.value = q; toggleClear(); addToHistory(q); doSearch(q); input.focus(); },
     'history-search': (el) => { const q = el.dataset.q ? decodeEntities(el.dataset.q) : (el.querySelector('span')?.textContent || ''); input.value = q; toggleClear(); doSearch(q); addToHistory(q); },
     'history-remove': (el, e) => { e.stopPropagation(); removeHistory(+el.dataset.i); },
   });

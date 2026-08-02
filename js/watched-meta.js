@@ -13,7 +13,7 @@ import { db } from './firebase.js';
 import { state } from './state.js';
 
 // Bump to re-backfill every doc after a schema change.
-export const META_V = 3;
+export const META_V = 4;
 const REPAIR_V = 1;
 
 let running = false, done = false, repairing = false;
@@ -67,11 +67,14 @@ function watchlistPatch(det, type, old) {
 function watchedPatch(det, type, old) {
   const release = releaseOf(det), genres = (det.genres || []).map(genre => genre.id);
   const people = type === 'tv' ? tvMeta(det) : movieMeta(det);
+  const episodeRuntime = type === 'tv' ? +(det.episode_run_time?.[0] || det.last_episode_to_air?.runtime || 0) : 0;
+  const episodeCount = type === 'tv' ? +(det.number_of_episodes || 0) : 0;
   const cast = (det.credits?.cast || []).slice(0, 5).map(person => ({ id: person.id, name: person.name || '', profile: person.profile_path || '' }));
   return {
     title: det.title || det.name || old.title || '', poster: det.poster_path || old.poster || '',
     year: release.slice(0, 4) || old.year || '', releaseDate: release || old.releaseDate || '',
     genres: genres.length ? genres : (old.genres || []), runtime: typeRuntime(det, type, true) || old.runtime || 0,
+    episodeRuntime: episodeRuntime || old.episodeRuntime || 0, episodeCount: episodeCount || old.episodeCount || 0,
     language: det.original_language || old.language || '',
     country: det.origin_country?.[0] || det.production_countries?.[0]?.iso_3166_1 || old.country || '',
     tmdbRating: +(det.vote_average || old.tmdbRating || 0), voteCount: +(det.vote_count || old.voteCount || 0),
@@ -162,6 +165,10 @@ export async function ensureWatchedMeta() {
       const m = d.type === 'tv' ? tvMeta(det) : movieMeta(det);
       const gs = (det.genres || []).map(g => g.id);
       const cs = (det.credits?.cast || []).slice(0, 5).map(p => ({ id: p.id, name: p.name || '', profile: p.profile_path || '' }));
+      const episodeCount = d.type === 'tv' ? +(det.number_of_episodes || d.episodeCount || 0) : 0;
+      const episodeRuntime = d.type === 'tv'
+        ? +(det.episode_run_time?.[0] || det.last_episode_to_air?.runtime || (episodeCount && m.runtime ? m.runtime / episodeCount : 0) || d.episodeRuntime || 0)
+        : 0;
       const patch = {
         poster: det.poster_path || d.poster || '',
         year: d.year || (det.release_date || det.first_air_date || '').slice(0, 4),
@@ -179,6 +186,7 @@ export async function ensureWatchedMeta() {
         // because a single response came back thin (matters on a metaV bump, when
         // these fields already hold good data from the previous version).
         runtime: m.runtime || d.runtime || 0,
+        episodeRuntime, episodeCount,
         director: m.director || d.director || '',
         directorId: m.directorId || d.directorId || 0,
         directorProfile: m.directorProfile || d.directorProfile || '',

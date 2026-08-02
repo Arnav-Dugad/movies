@@ -33,6 +33,7 @@ import { initBadges } from './badges.js';
 import { initWatchedMeta } from './watched-meta.js';
 import { cleanupServiceWorker } from './pwa.js';
 import { initRecommendations } from './recommend.js';
+import { initBackups } from './backup.js';
 
 function hideLoader() { const l = $('loader'); if (l) l.classList.add('hidden'); }
 
@@ -66,6 +67,7 @@ async function init() {
   initParty();
   initProfile();
   initSettings();
+  initBackups();
   initReleaseReminders();
   initWatchedMeta();
   // initEffects BEFORE initRouter: initRouter ends with a synchronous renderRoute(),

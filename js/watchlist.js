@@ -70,6 +70,7 @@ export async function toggleWatched(id, type, title, meta = {}) {
 // out of a modal so managing lists stays on-page.
 let listEdit = null;       // { mode: 'new' | 'rename' }
 let pendingDelete = null;  // listId awaiting a second confirming click
+let duplicateOpen = false;
 let wlQuery = '', wlGenre = 'all', wlStatus = 'all', wlRating = 0, wlDecade = 'all', wlSort = 'recent';
 const RUNTIME_CACHE_KEY = 'cv_list_runtime_cache_v1';
 const COVER_OFFSETS_KEY = 'cv_list_cover_offsets_v1';
@@ -218,6 +219,21 @@ function payloadFor(w) {
   return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [], runtime: w.runtime || 0, language: w.language || '', country: w.country || '', releaseDate: w.releaseDate || '' }));
 }
 
+export function findListDuplicates(watchlist = state.watchlist, lists = state.lists) {
+  const valid = new Set(lists.filter(list => list.id !== 'watchlist').map(list => list.id));
+  return watchlist.map(item => ({ item, memberships: listsArr(item).filter(id => valid.has(id)) }))
+    .filter(entry => entry.memberships.length > 1)
+    .sort((a, b) => b.memberships.length - a.memberships.length || (a.item.title || '').localeCompare(b.item.title || ''));
+}
+
+function renderDuplicateFinder() {
+  const host = $('wlDuplicates'); if (!host) return;
+  const duplicates = findListDuplicates(); host.hidden = !duplicateOpen;
+  if (!duplicateOpen) { host.innerHTML = ''; return; }
+  const listName = id => listById(id)?.name || id;
+  host.innerHTML = `<div class="duplicate-head"><div><span>Collection quality control</span><h2>Smart Duplicate Finder</h2><p>${duplicates.length ? `${duplicates.length} title${duplicates.length === 1 ? '' : 's'} appear in more than one custom list.` : 'Every title currently has a clean place in your custom lists.'}</p></div><button data-action="toggle-duplicates" aria-label="Close duplicate finder">×</button></div>${duplicates.length ? `<div class="duplicate-grid">${duplicates.map(({ item, memberships }) => `<article><img src="${item.poster ? `${IMG}w185${item.poster}` : PH}" alt="" loading="lazy"><div><span>${item.type === 'tv' ? 'TV show' : 'Movie'} · ${item.year || 'Year unknown'}</span><h3>${esc(item.title || 'Untitled')}</h3><div class="duplicate-lists">${memberships.map(id => `<b>${esc(listName(id))}</b>`).join('')}</div><button class="btn-glass" data-action="open-list-picker" data-item="${payloadFor(item)}">Review memberships</button></div></article>`).join('')}</div>` : `<div class="duplicate-clear"><i>✓</i><div><strong>No repeated titles</strong><span>Your custom lists are clean and intentional.</span></div></div>`}`;
+}
+
 export function renderWL() {
   const ct = $('wlContent'), cnt = $('wlCount'), rail = $('wlLists'), head = $('wlHeadActions'), showcase = $('wlShowcase');
   if (!ct) return;
@@ -231,6 +247,7 @@ export function renderWL() {
     ct.innerHTML = `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg><h3>Sign in to see your lists</h3><p>Create an account to save movies and shows</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
+  renderDuplicateFinder();
 
   // Guard against a deleted active list.
   if (!listById(state.wlList)) state.wlList = 'watchlist';
@@ -261,7 +278,9 @@ export function renderWL() {
           : `<button class="btn-glass wl-manage danger" data-action="wl-delete-list" data-tip="Delete list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg></button>`;
         manage = `<button class="btn-glass wl-manage" data-action="wl-rename-list" data-tip="Rename list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>${del}`;
       }
-      head.innerHTML = share + manage;
+      const duplicateCount = findListDuplicates().length;
+      const duplicateButton = `<button class="btn-glass wl-duplicate-btn${duplicateOpen ? ' active' : ''}" data-action="toggle-duplicates" data-tip="Find repeated titles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="12" height="12" rx="2"/><path d="M8 20h10a2 2 0 0 0 2-2V8"/></svg><span>Duplicates</span>${duplicateCount ? `<b>${duplicateCount}</b>` : ''}</button>`;
+      head.innerHTML = duplicateButton + share + manage;
     } else head.innerHTML = '';
     const inp = $('wlListName'); if (inp) inp.focus();
   }
@@ -332,6 +351,7 @@ export function initWatchlist() {
       saveLocalObject(COVER_OFFSETS_KEY, coverOffsets);
       renderWL();
     },
+    'toggle-duplicates': () => { duplicateOpen = !duplicateOpen; renderWL(); },
     'wl-new-list': () => { listEdit = { mode: 'new' }; pendingDelete = null; renderWL(); },
     'wl-rename-list': () => { listEdit = { mode: 'rename' }; pendingDelete = null; renderWL(); },
     'wl-list-cancel': () => { listEdit = null; renderWL(); },
@@ -355,5 +375,5 @@ export function initWatchlist() {
   const search = $('wlSearch');
   if (search) search.addEventListener('input', debounce(function () { wlQuery = this.value.trim(); renderWL(); }, 180));
   // Reset transient edit state when leaving the page or signing out.
-  document.addEventListener('cv:auth', () => { listEdit = null; pendingDelete = null; state.wlList = 'watchlist'; });
+  document.addEventListener('cv:auth', () => { listEdit = null; pendingDelete = null; duplicateOpen = false; state.wlList = 'watchlist'; });
 }

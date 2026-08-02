@@ -68,7 +68,7 @@ function sectionShell(s, w = 155) {
 }
 
 export async function initHome() {
-  let html = `<div id="personalRows"></div>`;
+  let html = '';
   SECTIONS.forEach(s => { html += sectionShell(s); });
   $('homeRows').innerHTML = html;
   observeReveals();
@@ -82,6 +82,4 @@ export async function initHome() {
       if (el) el.innerHTML = rowError(s.p, el.id, s, s.params || {});
     }
   }));
-
-  renderPersonalRows();
 }

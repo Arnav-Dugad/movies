@@ -3,7 +3,7 @@
 export function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML.replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 export function fmt(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(0)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return String(n);}
 export function debounce(fn,ms){let t;return function(...a){clearTimeout(t);const ctx=this;t=setTimeout(()=>fn.apply(ctx,a),ms);};}
-export const prefersReducedMotion=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+export const prefersReducedMotion=()=>document.documentElement.dataset.motion === 'reduced' || (document.documentElement.dataset.motion !== 'full' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 export const isTouch=()=>window.matchMedia('(hover: none)').matches;
 export const $=(id)=>document.getElementById(id);
 

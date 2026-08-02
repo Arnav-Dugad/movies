@@ -1,59 +1,93 @@
 // ===== SETTINGS PAGE (/settings) =====
 import { state } from './state.js';
-import { $, toast } from './ui.js';
+import { $, toast, esc } from './ui.js';
 import { registerActions } from './events.js';
 import { REGIONS } from './config.js';
+import { prefs, updatePref, resetPrefs, preferencePayload } from './prefs.js';
+import { db } from './firebase.js';
+
+let cloudSyncTimer = null;
+
+function queueCloudSettings() {
+  if (!state.user) return;
+  const uid = state.user.uid;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(async () => {
+    if (!state.user || state.user.uid !== uid) return;
+    try {
+      await db.collection('users').doc(uid).set({ experiencePrefs: preferencePayload({ region: state.region }) }, { merge: true });
+    } catch (error) { console.warn('settings sync', error); }
+  }, 1200);
+}
+
+const ICONS = {
+  palette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4Z"/><circle cx="7.5" cy="10" r="1"/><circle cx="10" cy="6.5" r="1"/><circle cx="15" cy="7" r="1"/></svg>',
+  motion: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 3 14 9-14 9V3Z"/><path d="M9 8v8"/></svg>',
+  discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>',
+  data: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 20 7v5c0 5-3 8-8 10-5-2-8-5-8-10V7l8-4Z"/><path d="m9 12 2 2 4-4"/></svg>',
+};
+
+const toggle = (key, title, sub, checked) => `<label class="settings-switch-row"><span><strong>${title}</strong><small>${sub}</small></span><input type="checkbox" data-action="settings-toggle" data-pref="${key}" ${checked ? 'checked' : ''}><i></i></label>`;
+const select = (key, title, sub, options, value) => `<label class="settings-select-row"><span><strong>${title}</strong><small>${sub}</small></span><select class="watched-select" data-action="settings-pref" data-pref="${key}">${options.map(([v, label]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>`;
 
 export function renderSettings() {
-  const ct = $('settingsContent');
-  if (!ct) return;
+  const ct = $('settingsContent'); if (!ct) return;
   if (!state.user) {
-    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><h3>Sign in to change settings</h3><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
+    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px"><h3>Sign in to change settings</h3><p>Your experience controls and collection vault live here.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
-
-  const regionOpts = REGIONS.map(([code, label]) => `<option value="${code}" ${code === state.region ? 'selected' : ''}>${label}</option>`).join('');
-
-  ct.innerHTML = `
-    <div class="settings-card">
-      <div class="settings-row">
-        <div class="settings-txt"><div class="settings-name">Where to Watch region</div><div class="settings-sub">Streaming availability shown on movie & show pages.</div></div>
-        <select id="settingsRegion" class="watched-select" data-action="settings-region" aria-label="Region">${regionOpts}</select>
-      </div>
+  const regionOpts = REGIONS.map(([code, label]) => `<option value="${code}" ${code === state.region ? 'selected' : ''}>${esc(label)}</option>`).join('');
+  const accent = ['red', 'purple', 'cyan', 'gold'];
+  ct.innerHTML = `<div class="settings-shell">
+    <section class="settings-premium-hero"><div><span>Experience control</span><h2>Make the universe yours.</h2><p>Fine-tune the look, motion, discovery signals and privacy of CineVerse. Changes apply instantly and sync efficiently to your account.</p></div><b>${ICONS.palette}</b></section>
+    <div class="settings-layout">
+      <main>
+        <section class="settings-panel"><div class="settings-panel-head">${ICONS.palette}<div><span>Appearance</span><h2>Cinematic interface</h2></div></div>
+          <div class="settings-choice-row"><span><strong>Signature accent</strong><small>Changes glows, focus rings and premium highlights.</small></span><div class="settings-accent-grid">${accent.map(color => `<button class="accent-${color}${prefs.accent === color ? ' active' : ''}" data-action="settings-accent" data-value="${color}" aria-label="${color} accent"><i></i>${color}</button>`).join('')}</div></div>
+          ${select('density', 'Content density', 'Choose roomy cards or fit more on screen.', [['comfortable', 'Comfortable'], ['compact', 'Compact']], prefs.density)}
+          ${select('textSize', 'Text size', 'Increase interface text without zooming the page.', [['standard', 'Standard'], ['large', 'Large']], prefs.textSize)}
+          ${select('glass', 'Glass effects', 'Control glow and translucent surface intensity.', [['rich', 'Rich cinema glass'], ['quiet', 'Quiet and focused']], prefs.glass)}
+          ${toggle('highContrast', 'High-contrast type', 'Brighten supporting text and borders for easier reading.', prefs.highContrast)}
+          ${toggle('compactNav', 'Compact navigation', 'Use a tighter desktop navigation bar with more breathing room below.', prefs.compactNav)}
+        </section>
+        <section class="settings-panel"><div class="settings-panel-head">${ICONS.motion}<div><span>Motion & playback</span><h2>Atmosphere</h2></div></div>
+          ${select('motion', 'Interface motion', 'Respect your system, force full motion, or reduce it.', [['system', 'Use system setting'], ['full', 'Full cinematic motion'], ['reduced', 'Reduced motion']], prefs.motion)}
+          ${toggle('autoplay', 'Ambient hero previews', 'Play muted trailer backgrounds where available.', prefs.autoplay)}
+          ${toggle('backdropArt', 'Decorative backdrop art', 'Show cinematic artwork behind heroes and profile identity.', prefs.backdropArt)}
+          ${toggle('posterTilt', 'Poster depth effect', 'Let posters respond with a subtle premium hover tilt.', prefs.posterTilt)}
+        </section>
+        <section class="settings-panel"><div class="settings-panel-head">${ICONS.discover}<div><span>Discovery</span><h2>Signals and spoilers</h2></div></div>
+          ${toggle('showRatings', 'Community ratings', 'Show TMDB scores on posters and hero slides.', prefs.showRatings)}
+          ${toggle('showWatched', 'Watched artwork marks', 'Show the green watched treatment on posters.', prefs.showWatched)}
+          ${toggle('spoilerShield', 'Spoiler shield', 'Blur long summaries until you hover or focus them.', prefs.spoilerShield)}
+          ${toggle('rememberSearch', 'Remember searches', 'Keep recent searches only on this device.', prefs.rememberSearch)}
+        </section>
+      </main>
+      <aside>
+        <section class="settings-panel"><div class="settings-panel-head">${ICONS.shield}<div><span>Region</span><h2>Streaming home</h2></div></div><label class="settings-select-row stacked"><span><strong>Where to Watch region</strong><small>Controls provider availability on details pages.</small></span><select id="settingsRegion" class="watched-select" data-action="settings-region">${regionOpts}</select></label></section>
+        <section class="settings-panel settings-vault"><div class="settings-panel-head">${ICONS.data}<div><span>Collection vault</span><h2>Backup & restore</h2></div></div><p>Download lists, memberships, watched history, ratings and profile showcase data in one readable JSON file.</p><div class="settings-vault-actions"><button class="btn-primary" data-action="download-backup">Download backup</button><button class="btn-glass" data-action="choose-backup">Restore backup</button></div><small>Restore safely merges data and never deletes newer cloud records.</small></section>
+        <section class="settings-panel settings-maintenance"><div class="settings-panel-head">${ICONS.data}<div><span>Device data</span><h2>Maintenance</h2></div></div><button data-action="clear-search-history"><span>Clear search history</span><b>Clear</b></button><button data-action="clear-recent-history"><span>Clear recently viewed</span><b>Clear</b></button><button data-action="reset-experience"><span>Reset experience settings</span><b>Reset</b></button><button data-action="sign-out"><span>Sign out on this device</span><b>Sign out</b></button></section>
+        <section class="settings-panel settings-danger"><span>Danger zone</span><h2>Delete account</h2><p>Permanently remove the account and its private collection.</p><button class="del-confirm" data-action="open-delete">Delete account</button></section>
+      </aside>
     </div>
+  </div>`;
+}
 
-    <div class="d-sec-title" style="margin-top:28px">Data</div>
-    <div class="settings-card">
-      <div class="settings-row">
-        <div class="settings-txt"><div class="settings-name">Clear search history</div><div class="settings-sub">Removes your recent searches on this account.</div></div>
-        <button class="btn-glass" data-action="clear-search-history">Clear</button>
-      </div>
-      <div class="settings-row">
-        <div class="settings-txt"><div class="settings-name">Sign out</div><div class="settings-sub">Sign out of CineVerse on this device.</div></div>
-        <button class="btn-glass" data-action="sign-out">Sign out</button>
-      </div>
-    </div>
-
-    <div class="d-sec-title" style="margin-top:28px;color:var(--red2)">Danger zone</div>
-    <div class="settings-card danger-card">
-      <div class="settings-row">
-        <div class="settings-txt"><div class="settings-name">Delete account</div><div class="settings-sub">Permanently deletes your account and all your data. This cannot be undone.</div></div>
-        <button class="del-confirm" style="padding:10px 18px" data-action="open-delete">Delete account</button>
-      </div>
-    </div>`;
+function clearSearchHistory() {
+  state.searchHistory = [];
+  if (state.user) { try { localStorage.removeItem('cv_history_' + state.user.uid); } catch (_) {} }
 }
 
 export function initSettings() {
   registerActions({
-    'settings-region': (el) => {
-      state.region = el.value;
-      try { localStorage.setItem('cv_region', state.region); } catch (e) {}
-      toast('Region updated', 'success');
-    },
-    'clear-search-history': () => {
-      state.searchHistory = [];
-      if (state.user) { try { localStorage.removeItem('cv_history_' + state.user.uid); } catch (e) {} }
-      toast('Search history cleared', 'info');
-    },
+    'settings-region': el => { state.region = el.value; try { localStorage.setItem('cv_region', state.region); } catch (_) {} queueCloudSettings(); toast('Streaming region updated', 'success'); },
+    'settings-toggle': el => { updatePref(el.dataset.pref, !!el.checked); if (el.dataset.pref === 'rememberSearch' && !el.checked) clearSearchHistory(); toast('Preference saved', 'success'); },
+    'settings-pref': el => { updatePref(el.dataset.pref, el.value); toast('Preference saved', 'success'); },
+    'settings-accent': el => { updatePref('accent', el.dataset.value); renderSettings(); toast('Accent updated', 'success'); },
+    'clear-search-history': () => { clearSearchHistory(); toast('Search history cleared', 'info'); },
+    'clear-recent-history': () => { state.recentlyViewed = []; try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {} toast('Recently viewed cleared', 'info'); },
+    'reset-experience': () => { resetPrefs(); renderSettings(); toast('Experience settings reset', 'success'); },
   });
+  document.addEventListener('cv:prefs', event => { if (!event.detail?.cloud) queueCloudSettings(); });
 }
