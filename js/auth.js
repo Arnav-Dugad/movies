@@ -16,6 +16,7 @@ let delRelease = null;
 async function loadProfile() {
   state.profile = { avatar: null, created: null };
   state.recommendationFeedback = { dismissed: [], history: [] };
+  state.statsSnapshot = null;
   if (!state.user) return;
   let localFeedback = {};
   try { localFeedback = JSON.parse(localStorage.getItem(`cv_rec_feedback_${state.user.uid}`) || '{}'); } catch (_) {}
@@ -36,6 +37,7 @@ async function loadProfile() {
     if (d.exists) {
       const x = d.data(), feedback = x.recommendationFeedback || {};
       state.profile = { avatar: x.avatar || null, created: x.created || null };
+      state.statsSnapshot = x.statsSnapshot || null;
       const localTime = +(localFeedback.clientUpdatedAt || 0), cloudTime = +(feedback.clientUpdatedAt || 0);
       const localIsNewer = hasFeedback(localFeedback) && localTime > cloudTime;
       useFeedback(localIsNewer || !hasFeedback(feedback) ? localFeedback : feedback);
@@ -62,6 +64,7 @@ export function initAuth() {
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
       state.lists = []; state.profile = { avatar: null, created: null };
       state.recommendationFeedback = { dismissed: [], history: [] };
+      state.statsSnapshot = null;
     }
     loadRecentlyViewed();
     document.dispatchEvent(new Event('cv:auth'));

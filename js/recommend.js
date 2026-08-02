@@ -457,6 +457,7 @@ async function dismissRecommendation(element, event) {
   }
   toast('Removed from your recommendations', 'success');
   await persistFeedback();
+  document.dispatchEvent(new Event('cv:recommendation-feedback'));
 }
 
 async function restoreRecommendation(key) {
@@ -464,6 +465,7 @@ async function restoreRecommendation(key) {
   feedback.dismissed = feedback.dismissed.filter(value => value !== key);
   feedback.history = feedback.history.filter(item => item.key !== key);
   await persistFeedback();
+  document.dispatchEvent(new Event('cv:recommendation-feedback'));
   toast('Recommendation restored', 'success');
   renderRecommendations();
 }

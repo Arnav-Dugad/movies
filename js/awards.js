@@ -7,7 +7,9 @@ import { esc, $ } from './ui.js';
 const CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 const MAJOR = /academy award|oscar|golden globe|bafta|emmy|cannes|venice|sundance|berlin|critics.? choice|screen actors guild|grammy|palme d'or/i;
 
-function cacheKey(imdbId) { return `cv_awards_${imdbId}`; }
+// v2 adds award-specific Commons artwork. Keeping it in the key invalidates old
+// text-only cache entries without a migration or an extra network request.
+function cacheKey(imdbId) { return `cv_awards_v2_${imdbId}`; }
 function readCache(imdbId) {
   try { const value = JSON.parse(localStorage.getItem(cacheKey(imdbId)) || 'null'); return value && Date.now() - value.ts < CACHE_MS ? value.items : null; }
   catch (_) { return null; }
@@ -25,7 +27,7 @@ const AWARD_ART = {
   medal: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m10 4 6 9 6-9M16 13a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/><path d="m16 17 1.4 2.8 3.1.5-2.2 2.2.5 3-2.8-1.5-2.8 1.5.5-3-2.2-2.2 3.1-.5L16 17Z"/></svg>',
 };
 
-function awardArt(item) {
+function awardKind(item) {
   const label = item.label || '';
   let kind = item.kind === 'win' ? 'trophy' : 'medal';
   if (/academy award|oscar/i.test(label)) kind = 'statue';
@@ -34,6 +36,17 @@ function awardArt(item) {
   else if (/emmy/i.test(label)) kind = 'wing';
   else if (/cannes|palme d'or|venice|sundance|berlin/i.test(label)) kind = 'palm';
   else if (/grammy/i.test(label)) kind = 'music';
+  return kind;
+}
+
+function commonsArt(value) {
+  const url = String(value || '').replace(/^http:\/\//, 'https://');
+  return /^https:\/\/(commons|upload)\.wikimedia\.org\//i.test(url) ? url : '';
+}
+
+function awardArt(item) {
+  const kind = awardKind(item), real = commonsArt(item.art);
+  if (real) return `<span class="award-icon award-icon-${kind} award-icon-real" aria-hidden="true"><span class="award-real-fallback">${AWARD_ART[kind]}</span><img src="${esc(real)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-award-real></span>`;
   return `<span class="award-icon award-icon-${kind}" aria-hidden="true">${AWARD_ART[kind]}</span>`;
 }
 
@@ -41,11 +54,18 @@ async function fetchAwards(imdbId) {
   const query = `PREFIX wdt: <http://www.wikidata.org/prop/direct/>
   PREFIX wikibase: <http://wikiba.se/ontology#>
   PREFIX bd: <http://www.bigdata.com/rdf#>
-  SELECT DISTINCT ?kind ?honor ?honorLabel WHERE {
+  SELECT DISTINCT ?kind ?honor ?honorLabel ?logo ?image ?parentLogo ?parentImage WHERE {
     ?work wdt:P345 "${imdbId}".
     { ?work wdt:P166 ?honor. BIND("win" AS ?kind) }
     UNION
     { ?work wdt:P1411 ?honor. BIND("nomination" AS ?kind) }
+    OPTIONAL { ?honor wdt:P154 ?logo. }
+    OPTIONAL { ?honor wdt:P18 ?image. }
+    OPTIONAL {
+      ?honor wdt:P361 ?parent.
+      OPTIONAL { ?parent wdt:P154 ?parentLogo. }
+      OPTIONAL { ?parent wdt:P18 ?parentImage. }
+    }
     SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
   } LIMIT 80`;
   const url = `https://query.wikidata.org/sparql?format=json&origin=*&query=${encodeURIComponent(query)}`;
@@ -53,7 +73,8 @@ async function fetchAwards(imdbId) {
   if (!response.ok) throw new Error(`Wikidata ${response.status}`);
   const data = await response.json();
   return (data.results?.bindings || []).map(row => ({
-    kind: row.kind?.value || '', label: row.honorLabel?.value || '', url: row.honor?.value || ''
+    kind: row.kind?.value || '', label: row.honorLabel?.value || '', url: row.honor?.value || '',
+    art: row.logo?.value || row.parentLogo?.value || row.image?.value || row.parentImage?.value || '',
   })).filter(item => item.label && item.kind);
 }
 
@@ -74,6 +95,10 @@ function renderAwards(scope, items) {
     <div class="awards-summary"><div><strong>${wins.length}</strong><span>Recorded wins</span></div><div><strong>${nominations.length}</strong><span>Recorded nominations</span></div><div><strong>${featured.filter(x => MAJOR.test(x.label)).length}</strong><span>Major honours</span></div></div>
     <div class="awards-list">${featured.map(awardPill).join('')}</div>
     <p class="awards-source">Free community data from <a href="https://www.wikidata.org/" target="_blank" rel="noopener noreferrer">Wikidata</a>. Records may vary by title.</p>`;
+  // The matching vector fallback is already underneath each remote mark. If a
+  // Commons file ever disappears, remove only the failed image so the card stays
+  // polished and never shows a broken-image glyph.
+  scope.querySelectorAll('img[data-award-real]').forEach(image => image.addEventListener('error', () => image.remove(), { once: true }));
 }
 
 export async function loadAwardsSection(imdbId, scopeId) {

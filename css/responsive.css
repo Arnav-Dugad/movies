@@ -93,8 +93,9 @@
   .stats-section-head{flex-direction:column;gap:10px}
   .rating-foot{flex-wrap:wrap}
   .taste-change-track{display:flex;overflow-x:auto;padding-bottom:5px;scroll-snap-type:x proximity}.taste-change-period{min-width:150px;scroll-snap-align:start}
-  .health-layout{grid-template-columns:1fr;gap:20px}.health-checks{grid-template-columns:1fr}.health-foot{align-items:flex-start;flex-direction:column}
-  .network-canvas{margin:0}
+  .health-layout{grid-template-columns:1fr;gap:20px}.health-checks{grid-template-columns:1fr}.health-foot{align-items:flex-start;flex-direction:column}.health-head-actions{width:100%;align-items:flex-start}.collection-repair-btn{width:100%}
+  .network-overview{grid-template-columns:1fr}.network-canvas{margin:0}.network-legend{flex-wrap:wrap}
+  .loyalty-grid{grid-template-columns:1fr}.loyalty-live,.smart-watch-rule{white-space:normal}
   .rec-controlbar{align-items:flex-start;flex-direction:column;margin-left:12px;margin-right:12px}.rec-controlbar>button{width:100%;justify-content:center}
   .rec-audit{margin-left:12px;margin-right:12px;padding:17px 13px}.rec-audit-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.rec-audit-grid{grid-template-columns:1fr}.audit-ranked article{grid-template-columns:23px 30px minmax(0,1fr)}.audit-ranked img{width:30px;height:43px}.audit-score{grid-column:3;text-align:left;padding-top:3px}.audit-score span{white-space:normal;line-height:1.35}
   .collection-rank-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}.collection-rank-card{padding-left:23px}.collection-rank-num{font-size:4.6rem}

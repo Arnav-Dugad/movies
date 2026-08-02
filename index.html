@@ -257,8 +257,8 @@
 <!-- BROWSE: MOVIES -->
 <div class="browse-page page-container" id="moviesPage">
   <div class="browse-top"><h1>Movies</h1><p>Discover your next favorite film</p></div>
-  <div class="genre-scroll" id="mGenres"></div>
   <div class="browse-filters">
+    <select class="browse-select browse-genre-select" id="mGenres" data-action="set-mg" aria-label="Movie genre"></select>
     <select class="browse-select" id="mSort" data-action="filter-movies" aria-label="Sort movies"><option value="popularity.desc">Most popular</option><option value="vote_average.desc">Top rated</option><option value="vote_count.desc">Most voted</option><option value="primary_release_date.desc">Newest first</option><option value="primary_release_date.asc">Oldest first</option><option value="revenue.desc">Highest grossing</option><option value="original_title.asc">Title A–Z</option></select>
     <select class="browse-select" id="mYear" data-action="filter-movies"></select>
     <select class="browse-select" id="mLang" data-action="filter-movies"><option value="">All Languages</option><option value="en">English</option><option value="hi">Hindi</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="fr">French</option><option value="es">Spanish</option><option value="de">German</option><option value="it">Italian</option><option value="zh">Chinese</option><option value="ta">Tamil</option><option value="te">Telugu</option></select>
@@ -277,8 +277,8 @@
 <!-- BROWSE: TV -->
 <div class="browse-page page-container" id="tvPage">
   <div class="browse-top"><h1>TV Shows</h1><p>Binge-worthy series</p></div>
-  <div class="genre-scroll" id="tGenres"></div>
   <div class="browse-filters">
+    <select class="browse-select browse-genre-select" id="tGenres" data-action="set-tg" aria-label="TV genre"></select>
     <select class="browse-select" id="tSort" data-action="filter-tv" aria-label="Sort TV shows"><option value="popularity.desc">Most popular</option><option value="vote_average.desc">Top rated</option><option value="vote_count.desc">Most voted</option><option value="first_air_date.desc">Newest first</option><option value="first_air_date.asc">Oldest first</option><option value="original_name.asc">Title A–Z</option></select>
     <select class="browse-select" id="tYear" data-action="filter-tv"></select>
     <select class="browse-select" id="tLang" data-action="filter-tv"><option value="">All Languages</option><option value="en">English</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="hi">Hindi</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="zh">Chinese</option><option value="ta">Tamil</option><option value="te">Telugu</option></select>

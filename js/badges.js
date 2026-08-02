@@ -40,7 +40,9 @@ export function buildCtx() {
     const y = parseInt(d.year);
     if (y) bump(c.decade, Math.floor(y / 10) * 10);
     if (typeof d.runtime === 'number' && d.runtime > 0) { c.minutes += d.runtime; c.metaKnown++; }
-    if (d.director) bump(c.director, d.director, { id: d.directorId || 0 });
+    // TV metadata stores the series creator in the legacy `director` field.
+    // Director-specific badges must therefore use movies only.
+    if (d.type === 'movie' && d.director) bump(c.director, d.director, { id: d.directorId || 0 });
     (d.cast || []).forEach(p => { if (p && p.id) bump(c.actor, p.id, { name: p.name || '' }); });
   }
 

@@ -2,21 +2,26 @@
 // Rich analytics are derived from the user's Firestore-backed lists, ratings and
 // watched history. A compact snapshot is mirrored onto users/{uid} only when its
 // content hash changes, keeping it durable without burning free-tier writes.
-import { genreMap, IMG, PH } from './config.js';
+import { genreMap, mGenreList, tGenreList, IMG, PH } from './config.js';
 import { state } from './state.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { registerActions } from './events.js';
-import { observeCountUps } from './effects.js';
+import { observeCountUps, observeReveals } from './effects.js';
 import { buildCtx, badgesHTML, challengesHTML, animateBadgeBars } from './badges.js';
-import { ensureWatchedMeta } from './watched-meta.js';
+import { ensureWatchedMeta, repairCollectionMeta } from './watched-meta.js';
 import { db, firebase } from './firebase.js';
 import { social } from './social.js';
+import { tmdb } from './api.js';
+import { buildCard } from './cards.js';
 
 let statsScope = 'all';
 let latestSnapshot = null;
 let syncState = 'idle';
 let syncMessage = 'Protected Firestore snapshot';
 let checkedUid = '', remoteHash = '', lastQueuedHash = '';
+let repairActive = false, insightGeneration = 0, latestDirectorLoyalty = null;
+const MOVIE_GENRES = new Set(mGenreList.map(genre => genre.id));
+const TV_GENRES = new Set(tGenreList.map(genre => genre.id));
 
 const ICONS = {
   watched: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -212,13 +217,16 @@ export function computeStats(scope) {
   const enriched = rows.filter(row => row.runtime > 0 && row.language && row.year && row.genres?.length);
   const totalMinutes = runtimes.reduce((sum, value) => sum + value, 0);
   const years = rows.map(row => +(row.year || 0)).filter(year => year > 1800 && year < 2200).sort((a, b) => a - b);
-  const directorMap = new Map(), actorMap = new Map();
+  const movieDirectorMap = new Map(), actorMap = new Map();
   watched.forEach(row => {
-    if (row.director) bump(directorMap, String(row.directorId || row.director), 1, { name: row.director, id: row.directorId || 0, profile: row.directorProfile || '' });
+    if (row.type === 'movie' && row.director) {
+      const key = String(row.directorId || row.director), extra = { name: row.director, id: row.directorId || 0, profile: row.directorProfile || '' };
+      bump(movieDirectorMap, key, 1, extra);
+    }
     (row.cast || []).forEach(person => { if (person?.id) bump(actorMap, String(person.id), 1, { name: person.name || '', id: person.id, profile: person.profile || '' }); });
   });
-  const topDirectors = sorted(directorMap, 4), topActors = sorted(actorMap, 7);
-  const topDirector = topDirectors[0] || null;
+  const topMovieDirectors = sorted(movieDirectorMap, 4), topDirectors = topMovieDirectors, topActors = sorted(actorMap, 7);
+  const topDirector = topMovieDirectors[0] || null;
   const topActor = topActors[0] || null;
   const longestTitle = [...watched].filter(row => row.runtime > 0).sort((a, b) => b.runtime - a.runtime)[0] || null;
   const oldestTitle = [...rows].filter(row => +row.year).sort((a, b) => +a.year - +b.year)[0] || null;
@@ -244,9 +252,9 @@ export function computeStats(scope) {
 
   const health = collectionHealth(rows, watched);
   const tasteTimeline = tasteChanges(watched);
-  const networkDirectorIds = new Set(topDirectors.slice(0, 3).map(item => item.id).filter(Boolean));
+  const networkDirectorIds = new Set(topMovieDirectors.slice(0, 3).map(item => item.id).filter(Boolean));
   const networkTitles = watched.filter(row => networkDirectorIds.has(row.directorId) && row.poster)
-    .sort((a, b) => b.userRating - a.userRating || b.tmdbRating - a.tmdbRating).slice(0, 7);
+    .sort((a, b) => b.userRating - a.userRating || b.tmdbRating - a.tmdbRating).slice(0, 6);
   const networkActorMap = new Map();
   networkTitles.forEach(row => (row.cast || []).forEach(person => {
     if (person?.id) bump(networkActorMap, String(person.id), 1, { id: person.id, name: person.name || '', profile: person.profile || '' });
@@ -264,8 +272,8 @@ export function computeStats(scope) {
     last30: watched.filter(row => row.watchedAt && row.watchedAt >= last30Cutoff).length,
     currentStreak: streak.current, longestStreak: streak.longest, bestMonth, peakDay,
     last12Months, heatDays: buildHeatDays(new Map([...activity].map(([key, value]) => [key, value.count]))), weekdays,
-    topDirector, topActor, topDirectors, topActors, longestTitle, oldestTitle, newestTitle,
-    health, tasteTimeline, network: { directors: topDirectors.slice(0, 3), titles: networkTitles, actors: networkActors },
+    topDirector, topActor, topDirectors, topMovieDirectors, topActors, longestTitle, oldestTitle, newestTitle,
+    health, tasteTimeline, network: { directors: topMovieDirectors.slice(0, 3), titles: networkTitles, actors: networkActors },
     releaseSpan: years.length ? (years[0] === years.at(-1) ? String(years[0]) : `${years[0]}–${years.at(-1)}`) : '—',
     level, milestone, personality,
   };
@@ -273,7 +281,7 @@ export function computeStats(scope) {
 
 function snapshotFor(stats) {
   return {
-    schema: 4,
+    schema: 5,
     totals: {
       saved: stats.saved.length, watched: stats.watched.length, rated: stats.totalRated,
       movies: stats.movies, shows: stats.shows, friends: social.friends.length,
@@ -299,6 +307,7 @@ function snapshotFor(stats) {
     collection: {
       completion: stats.completion, averageRuntime: stats.avgRuntime, releaseSpan: stats.releaseSpan,
       health: { score: stats.health.score, missing: stats.health.missing, checks: stats.health.checks.map(check => ({ key: check.key, coverage: check.coverage, missing: check.missing })) },
+      directorLoyalty: latestDirectorLoyalty || state.statsSnapshot?.collection?.directorLoyalty || null,
       topDirector: stats.topDirector ? { name: stats.topDirector.name, id: stats.topDirector.id, profile: stats.topDirector.profile, count: stats.topDirector.count } : null,
       topActor: stats.topActor ? { name: stats.topActor.name, id: stats.topActor.id, profile: stats.topActor.profile, count: stats.topActor.count } : null,
       oldest: stats.oldestTitle ? { id: stats.oldestTitle.id, type: stats.oldestTitle.type, title: stats.oldestTitle.title, year: stats.oldestTitle.year } : null,
@@ -347,6 +356,7 @@ function queueSnapshot(snapshot) {
   if (!state.user) return;
   latestSnapshot = snapshot;
   const hash = hashSnapshot(snapshot);
+  state.statsSnapshot = { ...snapshot, hash };
   if (hash === lastQueuedHash && remoteHash === hash) return;
   lastQueuedHash = hash;
   syncState = 'queued'; syncMessage = 'Preparing secure Firestore snapshot…'; paintSyncState();
@@ -431,10 +441,11 @@ function collectionPanel(stats) {
 function collectionHealthPanel(stats) {
   const health = stats.health;
   const status = health.score === 100 ? 'Pristine collection' : health.score >= 85 ? 'Excellent condition' : health.score >= 65 ? 'Healthy, with a few gaps' : 'Ready for enrichment';
-  return `<section class="stats-panel collection-health"><div class="stats-section-head"><div><span>Library quality control</span><h2>Collection Health</h2><p>Every missing rating, poster, date, credit, and metadata field—clearly accounted for.</p></div><div class="health-status">${esc(status)}</div></div>
+  const repairIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/><path d="m9 12 2 2 4-5"/></svg>';
+  return `<section class="stats-panel collection-health"><div class="stats-section-head"><div><span>Library quality control</span><h2>Collection Health</h2><p>Every missing rating, poster, date, credit, and metadata field—clearly accounted for.</p></div><div class="health-head-actions"><div class="health-status">${esc(status)}</div><button class="collection-repair-btn" data-action="repair-collection"${repairActive ? ' disabled' : ''}>${repairIcon}<span>${repairActive ? 'Repairing…' : 'Repair missing data'}</span></button></div></div>
     <div class="health-layout"><div class="health-orb" style="--health-progress:${health.score * 3.6}deg"><div><strong>${health.score}</strong><span>/100 health</span></div></div>
       <div class="health-checks">${health.checks.map(check => `<article><div><span>${esc(check.label)}</span><strong>${check.missing ? `${check.missing} missing` : 'Complete'}</strong></div><i><em style="--health-width:${check.coverage}%"></em></i><p>${esc(check.hint)}${check.titles.length ? ` <b title="${esc(check.titles.join(', '))}">${esc(check.titles.slice(0, 2).join(' · '))}${check.titles.length > 2 ? '…' : ''}</b>` : ''}</p></article>`).join('')}</div>
-    </div><div class="health-foot"><span>${health.missing} total gaps across ${stats.rows.length} unique titles</span><span>Watched-title metadata repairs automatically when Stats is opened.</span></div></section>`;
+    </div><div class="health-foot"><span>${health.missing} total gaps across ${stats.rows.length} unique titles</span><span>Repair fills metadata, artwork, dates, and credits. Personal ratings always stay yours.</span></div></section>`;
 }
 
 function tasteChangesPanel(stats) {
@@ -448,25 +459,133 @@ function personPicture(person, cls = '') {
   return person.profile ? `<img class="${cls}" src="${IMG}w185${person.profile}" alt="${esc(person.name)}" loading="lazy" data-ph="${PH}">` : `<span class="network-initial">${esc((person.name || '?')[0])}</span>`;
 }
 
-function directorNetworkPanel(stats) {
+export function directorNetworkPanel(stats) {
   const { directors, titles, actors } = stats.network;
   if (!directors.length || !titles.length) return `<section class="stats-panel director-network"><div class="stats-section-head"><div><span>Creative connections</span><h2>Director Network</h2><p>Directors, actors, and titles will connect here as credit metadata is enriched.</p></div></div><div class="network-empty">Add and watch more titles to reveal your creative network.</div></section>`;
-  const width = 1000, height = 500, x = { director: 105, title: 500, actor: 895 };
-  const positions = (items, kind) => new Map(items.map((item, index) => [String(item.id || item.key), { x: x[kind], y: Math.round((index + 1) * height / (items.length + 1)) }]));
+  const width = 1120, nodeCount = Math.max(directors.length, titles.length, actors.length);
+  const height = Math.max(540, nodeCount * 112 + 110), x = { director: 145, title: 560, actor: 975 };
+  const positions = (items, kind) => new Map(items.map((item, index) => {
+    const y = items.length === 1 ? height / 2 : 78 + index * ((height - 156) / (items.length - 1));
+    return [String(item.id || item.key), { x: x[kind], y: Math.round(y) }];
+  }));
   const directorPos = positions(directors, 'director'), titlePos = positions(titles.map(item => ({ ...item, key: item.key, id: item.key })), 'title'), actorPos = positions(actors, 'actor');
   const edges = [];
   titles.forEach(title => {
     const d = directorPos.get(String(title.directorId)), movie = titlePos.get(String(title.key));
-    if (d && movie) edges.push(`<path class="network-edge director-edge" d="M${d.x + 54} ${d.y} C300 ${d.y},330 ${movie.y},${movie.x - 45} ${movie.y}"/>`);
+    if (d && movie) edges.push(`<path class="network-edge director-edge" d="M${d.x + 96} ${d.y} C330 ${d.y},390 ${movie.y},${movie.x - 116} ${movie.y}"/>`);
     (title.cast || []).slice(0, 5).forEach(person => {
       const actor = actorPos.get(String(person.id));
-      if (movie && actor) edges.push(`<path class="network-edge actor-edge" d="M${movie.x + 45} ${movie.y} C670 ${movie.y},700 ${actor.y},${actor.x - 54} ${actor.y}"/>`);
+      if (movie && actor) edges.push(`<path class="network-edge actor-edge" d="M${movie.x + 116} ${movie.y} C735 ${movie.y},790 ${actor.y},${actor.x - 96} ${actor.y}"/>`);
     });
   });
-  const directorNodes = directors.map(person => { const p = directorPos.get(String(person.id || person.key)); return `<a class="network-node network-person director" style="--nx:${p.x}px;--ny:${p.y}px" href="/person/${person.id}" data-action="open-person" data-id="${person.id}"><div>${personPicture(person)}</div><strong>${esc(person.name)}</strong><span>${person.count} watched</span></a>`; }).join('');
-  const titleNodes = titles.map(title => { const p = titlePos.get(String(title.key)); return `<a class="network-node network-title" style="--nx:${p.x}px;--ny:${p.y}px" href="/${title.type}/${title.id}" data-action="open-detail" data-id="${title.id}" data-type="${title.type}"><img src="${IMG}w154${title.poster}" alt="${esc(title.title)}" loading="lazy" data-ph="${PH}"><strong>${esc(title.title)}</strong></a>`; }).join('');
-  const actorNodes = actors.map(person => { const p = actorPos.get(String(person.id)); return `<a class="network-node network-person actor" style="--nx:${p.x}px;--ny:${p.y}px" href="/person/${person.id}" data-action="open-person" data-id="${person.id}"><div>${personPicture(person)}</div><strong>${esc(person.name)}</strong><span>${person.count} appearances</span></a>`; }).join('');
-  return `<section class="stats-panel director-network"><div class="stats-section-head"><div><span>Creative connections</span><h2>Director Network</h2><p>Your most-watched filmmakers connected to their titles and recurring cast.</p></div><div class="network-legend"><span><i></i>Director</span><span><i></i>Actor</span></div></div><div class="network-scroll"><div class="network-canvas"><div class="network-column-label director">Directors</div><div class="network-column-label title">Your movies &amp; shows</div><div class="network-column-label actor">Actors</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">${edges.join('')}</svg>${directorNodes}${titleNodes}${actorNodes}</div></div></section>`;
+  const directorNodes = directors.map(person => { const p = directorPos.get(String(person.id || person.key)); return `<a class="network-node network-person director" style="--nx:${p.x}px;--ny:${p.y}px" href="/person/${person.id}" data-action="open-person" data-id="${person.id}"><div class="network-avatar">${personPicture(person)}</div><div class="network-copy"><strong>${esc(person.name)}</strong><span>${person.count} watched title${person.count === 1 ? '' : 's'}</span></div></a>`; }).join('');
+  const titleNodes = titles.map(title => { const p = titlePos.get(String(title.key)); const score = title.userRating ? `${title.userRating}/10 yours` : title.tmdbRating ? `${title.tmdbRating.toFixed(1)} community` : title.type === 'tv' ? 'TV show' : 'Movie'; return `<a class="network-node network-title" style="--nx:${p.x}px;--ny:${p.y}px" href="/${title.type}/${title.id}" data-action="open-detail" data-id="${title.id}" data-type="${title.type}"><img src="${IMG}w154${title.poster}" alt="${esc(title.title)}" loading="lazy" data-ph="${PH}"><div class="network-copy"><strong>${esc(title.title)}</strong><span>${esc(String(title.year || ''))}${title.year ? ' · ' : ''}${esc(score)}</span></div></a>`; }).join('');
+  const actorNodes = actors.map(person => { const p = actorPos.get(String(person.id)); return `<a class="network-node network-person actor" style="--nx:${p.x}px;--ny:${p.y}px" href="/person/${person.id}" data-action="open-person" data-id="${person.id}"><div class="network-avatar">${personPicture(person)}</div><div class="network-copy"><strong>${esc(person.name)}</strong><span>${person.count} connected title${person.count === 1 ? '' : 's'}</span></div></a>`; }).join('');
+  const recurring = actors[0];
+  return `<section class="stats-panel director-network"><div class="stats-section-head"><div><span>Creative connections</span><h2>Director Network</h2><p>Your most-watched filmmakers connected to their titles and recurring cast.</p></div><div class="network-legend"><span><i></i>Director link</span><span><i></i>Cast link</span></div></div><div class="network-overview"><div><span>Core filmmakers</span><strong>${directors.length}</strong></div><div><span>Visible connections</span><strong>${edges.length}</strong></div><div><span>Recurring collaborator</span><strong>${esc(recurring?.name || 'Discovering')}</strong></div></div><div class="network-scroll"><div class="network-canvas" style="width:${width}px;height:${height}px"><div class="network-column-label director">Directors</div><div class="network-column-label title">Your movies &amp; shows</div><div class="network-column-label actor">Actors</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">${edges.join('')}</svg>${directorNodes}${titleNodes}${actorNodes}</div></div></section>`;
+}
+
+function cachedLoyalty(stats) {
+  const value = latestDirectorLoyalty || state.statsSnapshot?.collection?.directorLoyalty;
+  if (!value?.items?.length) return null;
+  const wanted = stats.topMovieDirectors.map(person => +person.id).filter(Boolean).slice(0, 4);
+  const available = new Set(value.items.map(item => +item.id));
+  return wanted.length && wanted.every(id => available.has(id)) ? value : null;
+}
+
+function directorLoyaltyBody(payload) {
+  if (!payload?.items?.length) return '<div class="insight-loading"><i></i><span>Mapping complete filmographies…</span></div>';
+  return `<div class="loyalty-grid">${payload.items.map(item => `<article class="loyalty-card"><a class="loyalty-person" href="/person/${item.id}" data-action="open-person" data-id="${item.id}"><div>${personPicture(item)}</div><span><strong>${esc(item.name)}</strong><small>${item.completed} of ${item.total} released directing credits</small></span></a><div class="loyalty-progress"><i><em style="width:${item.percent}%"></em></i><strong>${item.percent}%</strong></div>${item.next ? `<a class="loyalty-next" href="/movie/${item.next.id}" data-action="open-detail" data-id="${item.next.id}" data-type="movie"><img src="${IMG}w92${item.next.poster}" alt="" loading="lazy"><span><small>Highly rated unseen</small><strong>${esc(item.next.title)}</strong></span></a>` : '<div class="loyalty-complete">No highly rated unseen film found.</div>'}</article>`).join('')}</div><p class="loyalty-note">Completion uses unique, already-released movie credits where the person is listed as Director on TMDB.</p>`;
+}
+
+function directorLoyaltyPanel(stats) {
+  return `<section class="stats-panel director-loyalty"><div class="stats-section-head"><div><span>Filmmaker completion</span><h2>Director Loyalty</h2><p>How much of each favorite director’s released work you have completed.</p></div><div class="loyalty-live">Live filmography check</div></div><div id="directorLoyaltyBody">${directorLoyaltyBody(cachedLoyalty(stats))}</div></section>`;
+}
+
+function smartWatchPanel() {
+  return `<section class="stats-panel smart-watch"><div class="stats-section-head"><div><span>High-confidence discoveries</span><h2>Smart Watch List</h2><p>Highly rated titles from your strongest genres, with watched and dismissed titles removed.</p></div><div class="smart-watch-rule">7.2+ · 300+ votes</div></div><div class="row smart-watch-row" id="smartWatchRow">${Array(7).fill('<div class="card"><div class="card-img skel" style="aspect-ratio:2/3"></div></div>').join('')}</div><p class="smart-watch-note">Saved titles remain eligible because saving something usually means you still want to watch it.</p></section>`;
+}
+
+const released = (item, now = new Date()) => {
+  const raw = item.release_date || item.first_air_date;
+  if (!raw) return false;
+  const date = new Date(`${raw}T00:00:00`);
+  return !Number.isNaN(date.getTime()) && date <= now;
+};
+
+export function calculateDirectorLoyalty(person, crew = [], watchedMovieIds = [], now = new Date()) {
+  const watched = watchedMovieIds instanceof Set ? watchedMovieIds : new Set(watchedMovieIds);
+  const credits = [...new Map(crew
+    .filter(credit => credit.job === 'Director' && credit.id && released(credit, now))
+    .map(credit => [+credit.id, credit])).values()];
+  const completed = credits.filter(credit => watched.has(+credit.id)).length;
+  const unseen = credits
+    .filter(credit => !watched.has(+credit.id) && credit.poster_path && (credit.vote_count || 0) >= 300)
+    .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0) || (b.vote_count || 0) - (a.vote_count || 0))[0];
+  return {
+    id: +person.id, name: person.name, profile: person.profile || '', completed, total: credits.length,
+    percent: credits.length ? Math.round(completed / credits.length * 100) : 0,
+    next: unseen ? { id: unseen.id, title: unseen.title || unseen.original_title || 'Untitled', poster: unseen.poster_path, rating: unseen.vote_average || 0 } : null,
+  };
+}
+
+export function rankSmartWatchCandidates(candidates = [], options = {}) {
+  const genreIds = (options.genreIds || []).map(Number);
+  const watched = options.watched instanceof Set ? options.watched : new Set(options.watched || []);
+  const dismissed = options.dismissed instanceof Set ? options.dismissed : new Set(options.dismissed || []);
+  const now = options.now || new Date();
+  const unique = new Map();
+  candidates.forEach(source => {
+    const item = { ...source }, key = `${item.__type}_${item.id}`;
+    if (!item.__type || !item.id || !item.poster_path || !released(item, now) || (item.vote_count || 0) < 300 || (item.vote_average || 0) < 7.2 || watched.has(key) || dismissed.has(key)) return;
+    const overlap = (item.genre_ids || []).filter(id => genreIds.includes(+id)).length;
+    item.__smartScore = item.vote_average + Math.min(.7, Math.log10(Math.max(1, item.vote_count)) / 7) + overlap * .08;
+    item.__score = item.__smartScore;
+    item.__source = 'smart-watch';
+    if (!unique.has(key) || item.__smartScore > unique.get(key).__smartScore) unique.set(key, item);
+  });
+  return [...unique.values()]
+    .sort((a, b) => b.__smartScore - a.__smartScore || b.vote_count - a.vote_count)
+    .slice(0, options.limit || 10);
+}
+
+async function loadDirectorLoyalty(stats, generation) {
+  const body = $('directorLoyaltyBody');
+  const directors = stats.topMovieDirectors.filter(person => person.id).slice(0, 4);
+  if (!body || !directors.length) { if (body) body.innerHTML = '<div class="network-empty">Watch more director-tagged films to unlock loyalty tracking.</div>'; return; }
+  const cached = cachedLoyalty(stats);
+  if (cached && Date.now() - +(cached.calculatedAt || 0) < 30 * 86400000) { latestDirectorLoyalty = cached; return; }
+  const watchedMovies = new Set(stats.watched.filter(row => row.type === 'movie').map(row => +row.id));
+  const items = (await Promise.all(directors.map(async person => {
+    try {
+      const data = await tmdb(`/person/${person.id}/movie_credits`);
+      return calculateDirectorLoyalty(person, data.crew || [], watchedMovies);
+    } catch (error) { console.warn('director loyalty', person.id, error); return null; }
+  }))).filter(Boolean);
+  if (generation !== insightGeneration || !state.user) return;
+  latestDirectorLoyalty = { calculatedAt: Date.now(), items };
+  const current = $('directorLoyaltyBody'); if (current) current.innerHTML = directorLoyaltyBody(latestDirectorLoyalty);
+  queueSnapshot(snapshotFor(computeStats('all')));
+}
+
+async function loadSmartWatchList(stats, generation) {
+  const row = $('smartWatchRow'); if (!row) return;
+  const genreIds = stats.genres.map(item => +item.key);
+  const calls = [], movieGenres = genreIds.filter(id => MOVIE_GENRES.has(id)).slice(0, 3), tvGenres = genreIds.filter(id => TV_GENRES.has(id)).slice(0, 3);
+  const today = new Date().toISOString().slice(0, 10);
+  if (stats.scope !== 'tv') calls.push(tmdb(movieGenres.length ? '/discover/movie' : '/movie/top_rated', movieGenres.length ? { with_genres: movieGenres.join('|'), sort_by: 'vote_average.desc', 'vote_average.gte': 7.2, 'vote_count.gte': 300, 'primary_release_date.lte': today } : {}).then(data => (data.results || []).map(item => ({ ...item, __type: 'movie' }))));
+  if (stats.scope !== 'movie') calls.push(tmdb(tvGenres.length ? '/discover/tv' : '/tv/top_rated', tvGenres.length ? { with_genres: tvGenres.join('|'), sort_by: 'vote_average.desc', 'vote_average.gte': 7.2, 'vote_count.gte': 300, 'first_air_date.lte': today } : {}).then(data => (data.results || []).map(item => ({ ...item, __type: 'tv' }))));
+  try {
+    const watched = new Set(Object.keys(state.watched)), dismissed = new Set(state.recommendationFeedback?.dismissed || []);
+    const picks = rankSmartWatchCandidates((await Promise.all(calls)).flat(), { genreIds, watched, dismissed });
+    if (generation !== insightGeneration) return;
+    const current = $('smartWatchRow'); if (!current) return;
+    current.innerHTML = picks.length ? picks.map(item => buildCard(item, item.__type, { dismissible: true, badge: 'Unwatched' })).join('') : '<div class="network-empty">Add more ratings and genres to unlock smart picks.</div>';
+    observeReveals(current);
+  } catch (error) {
+    console.warn('smart watch list', error);
+    const current = $('smartWatchRow'); if (current) current.innerHTML = '<div class="network-empty">Smart picks are temporarily unavailable.</div>';
+  }
 }
 
 function animateStats(scope, stats) {
@@ -508,13 +627,18 @@ export function renderStats() {
     ${collectionHealthPanel(stats)}
     ${activityPanel(stats)}
     <div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>
+    ${directorLoyaltyPanel(fullStats)}
     ${directorNetworkPanel(stats)}
+    ${smartWatchPanel()}
     <section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>
     <p class="stats-footnote">${esc(scopeLabel)} stats · Watch time for TV is approximate because a completed show uses its full available runtime.</p>`;
 
   const snapshot = snapshotFor(fullStats);
   queueSnapshot(snapshot);
   animateStats(container, stats);
+  const generation = ++insightGeneration;
+  loadDirectorLoyalty(fullStats, generation);
+  loadSmartWatchList(stats, generation);
   ensureWatchedMeta();
 }
 
@@ -532,18 +656,44 @@ function queueCurrentSnapshot() {
   queueSnapshot(snapshotFor(computeStats('all')));
 }
 
+async function repairCollection(element) {
+  if (repairActive) return;
+  repairActive = true;
+  element.disabled = true;
+  const label = element.querySelector('span');
+  if (label) label.textContent = 'Checking collection…';
+  const result = await repairCollectionMeta(progress => {
+    if (label && element.isConnected) label.textContent = progress.total ? `Repairing ${progress.completed}/${progress.total}` : 'Checking collection…';
+  });
+  repairActive = false;
+  if (result.busy) toast('Automatic metadata repair is still finishing', 'info');
+  else if (!result.total) toast('Collection metadata is already complete', 'success');
+  else if (result.failed) toast(`Repaired ${result.repaired}; ${result.failed} could not be refreshed`, 'info');
+  else toast(`Repaired ${result.repaired} title${result.repaired === 1 ? '' : 's'}`, 'success');
+  renderStats();
+}
+
 export function initStats() {
   registerActions({
     'stats-filter': element => { statsScope = element.dataset.filter; renderStats(); },
     'export-stats': () => exportStats(),
+    'repair-collection': element => repairCollection(element),
   });
   document.addEventListener('cv:auth', () => {
-    checkedUid = ''; remoteHash = ''; lastQueuedHash = ''; latestSnapshot = null;
+    // auth.js already loaded the owner profile document. Reuse its snapshot hash
+    // instead of paying for a second Firestore read every time the user signs in.
+    checkedUid = state.user?.uid || '';
+    remoteHash = state.user ? state.statsSnapshot?.hash || '' : '';
+    lastQueuedHash = ''; latestSnapshot = null;
+    latestDirectorLoyalty = null; insightGeneration++;
     syncState = 'idle'; syncMessage = 'Protected Firestore snapshot';
     if (state.user) queueCurrentSnapshot();
   });
   document.addEventListener('cv:wl-changed', queueCurrentSnapshot);
   document.addEventListener('cv:meta-backfilled', queueCurrentSnapshot);
+  document.addEventListener('cv:recommendation-feedback', () => {
+    if (location.pathname === '/stats') renderStats();
+  });
   document.addEventListener('cv:social', () => {
     queueCurrentSnapshot();
     if (location.pathname === '/stats') renderStats();

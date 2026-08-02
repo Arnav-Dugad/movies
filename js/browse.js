@@ -18,11 +18,9 @@ export function initFilters() {
     yr.innerHTML += `<option value="${y}">${y}</option>`;
     tyr.innerHTML += `<option value="${y}">${y}</option>`;
   }
-  $('mGenres').innerHTML = `<div class="g-pill active" role="button" tabindex="0" data-action="set-mg" data-id="">All</div>` + mGenreList.map(g => `<div class="g-pill" role="button" tabindex="0" data-action="set-mg" data-id="${g.id}">${g.n}</div>`).join('');
-  $('tGenres').innerHTML = `<div class="g-pill active" role="button" tabindex="0" data-action="set-tg" data-id="">All</div>` + tGenreList.map(g => `<div class="g-pill" role="button" tabindex="0" data-action="set-tg" data-id="${g.id}">${g.n}</div>`).join('');
+  $('mGenres').innerHTML = '<option value="">All movie genres</option>' + mGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
+  $('tGenres').innerHTML = '<option value="">All TV genres</option>' + tGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
 }
-
-function setActivePill(el) { el.parentElement.querySelectorAll('.g-pill').forEach(p => p.classList.remove('active')); el.classList.add('active'); }
 
 const dateISO = d => d.toISOString().slice(0, 10);
 function applyRuntime(params, value, shortMax, mediumMax) {
@@ -33,8 +31,8 @@ function applyRuntime(params, value, shortMax, mediumMax) {
 
 function resetGenre(kind) {
   state[kind === 'movie' ? 'mGenre' : 'tGenre'] = '';
-  const rail = $(kind === 'movie' ? 'mGenres' : 'tGenres');
-  if (rail) rail.querySelectorAll('.g-pill').forEach((p, i) => p.classList.toggle('active', i === 0));
+  const select = $(kind === 'movie' ? 'mGenres' : 'tGenres');
+  if (select) select.value = '';
 }
 
 function paintResults(grid, results, type, append) {
@@ -95,8 +93,8 @@ export function moreTV() { state.tPg++; loadTV(true); }
 
 export function initBrowse() {
   registerActions({
-    'set-mg': (el) => { state.mGenre = el.dataset.id; setActivePill(el); state.mPg = 1; loadMovies(); },
-    'set-tg': (el) => { state.tGenre = el.dataset.id; setActivePill(el); state.tPg = 1; loadTV(); },
+    'set-mg': (el) => { state.mGenre = el.value; state.mPg = 1; loadMovies(); },
+    'set-tg': (el) => { state.tGenre = el.value; state.tPg = 1; loadTV(); },
     'filter-movies': () => loadMovies(),
     'filter-tv': () => loadTV(),
     'reset-movies': () => {

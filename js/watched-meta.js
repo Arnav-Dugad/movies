@@ -14,8 +14,9 @@ import { state } from './state.js';
 
 // Bump to re-backfill every doc after a schema change.
 export const META_V = 3;
+const REPAIR_V = 1;
 
-let running = false, done = false;
+let running = false, done = false, repairing = false;
 
 export function resetWatchedMeta() { running = false; done = false; }
 
@@ -35,6 +36,112 @@ function tvMeta(det) {
     directorId: det.created_by?.[0]?.id || 0,
     directorProfile: det.created_by?.[0]?.profile_path || '',
   };
+}
+
+const releaseOf = det => det.release_date || det.first_air_date || '';
+const typeRuntime = (det, type, completed = false) => {
+  if (type === 'movie') return +(det.runtime || 0);
+  const episode = +(det.episode_run_time?.[0] || det.last_episode_to_air?.runtime || 0);
+  return completed ? episode * +(det.number_of_episodes || 0) : episode;
+};
+const identity = (key, doc = {}) => {
+  const split = String(key || '').lastIndexOf('_');
+  const fallbackType = split > 0 ? String(key).slice(0, split) : '';
+  const fallbackId = split > 0 ? +String(key).slice(split + 1) : 0;
+  return { type: doc.type || fallbackType, id: +(doc.tmdbId || fallbackId || 0) };
+};
+const missingCommon = doc => !doc?.poster || !doc?.year || !doc?.releaseDate || !doc?.language || !doc?.runtime || !(doc?.genres && doc.genres.length);
+
+function watchlistPatch(det, type, old) {
+  const release = releaseOf(det), genres = (det.genres || []).map(genre => genre.id);
+  return {
+    title: det.title || det.name || old.title || '', poster: det.poster_path || old.poster || '',
+    year: release.slice(0, 4) || old.year || '', releaseDate: release || old.releaseDate || '',
+    genres: genres.length ? genres : (old.genres || []), runtime: typeRuntime(det, type) || old.runtime || 0,
+    language: det.original_language || old.language || '',
+    country: det.origin_country?.[0] || det.production_countries?.[0]?.iso_3166_1 || old.country || '',
+    rating: +(det.vote_average || old.rating || 0), voteCount: +(det.vote_count || old.voteCount || 0), repairV: REPAIR_V,
+  };
+}
+
+function watchedPatch(det, type, old) {
+  const release = releaseOf(det), genres = (det.genres || []).map(genre => genre.id);
+  const people = type === 'tv' ? tvMeta(det) : movieMeta(det);
+  const cast = (det.credits?.cast || []).slice(0, 5).map(person => ({ id: person.id, name: person.name || '', profile: person.profile_path || '' }));
+  return {
+    title: det.title || det.name || old.title || '', poster: det.poster_path || old.poster || '',
+    year: release.slice(0, 4) || old.year || '', releaseDate: release || old.releaseDate || '',
+    genres: genres.length ? genres : (old.genres || []), runtime: typeRuntime(det, type, true) || old.runtime || 0,
+    language: det.original_language || old.language || '',
+    country: det.origin_country?.[0] || det.production_countries?.[0]?.iso_3166_1 || old.country || '',
+    tmdbRating: +(det.vote_average || old.tmdbRating || 0), voteCount: +(det.vote_count || old.voteCount || 0),
+    director: people.director || old.director || '', directorId: people.directorId || old.directorId || 0,
+    directorProfile: people.directorProfile || old.directorProfile || '', cast: cast.length ? cast : (old.cast || []),
+    metaV: META_V, repairV: REPAIR_V,
+  };
+}
+
+// Manual, user-triggered repair for the union of every saved and watched title.
+// A title present in both collections is fetched once and updates both documents.
+export async function repairCollectionMeta(onProgress = () => {}) {
+  if (!state.user) return { total: 0, repaired: 0, failed: 0, auth: false };
+  if (running || repairing) return { total: 0, repaired: 0, failed: 0, busy: true };
+  const uid = state.user.uid, jobs = new Map();
+  const ensureJob = (key, type, id) => {
+    if (!jobs.has(key)) jobs.set(key, { key, type, id, watchlist: null, watched: null });
+    return jobs.get(key);
+  };
+  state.watchlist.forEach(doc => {
+    const key = doc.id || `${doc.type}_${doc.tmdbId}`, meta = identity(key, doc);
+    if (meta.id && meta.type) ensureJob(key, meta.type, meta.id).watchlist = doc;
+  });
+  Object.entries(state.watched).forEach(([key, doc]) => {
+    const meta = identity(key, doc);
+    if (meta.id && meta.type) ensureJob(key, meta.type, meta.id).watched = doc;
+  });
+  const pending = [...jobs.values()].filter(job =>
+    (job.watchlist && missingCommon(job.watchlist)) ||
+    (job.watched && (missingCommon(job.watched) || job.watched.metaV !== META_V || ((!job.watched.directorId || !job.watched.cast?.length) && job.watched.repairV !== REPAIR_V)))
+  );
+  if (!pending.length) return { total: 0, repaired: 0, failed: 0 };
+
+  repairing = true;
+  let repaired = 0, failed = 0, completed = 0;
+  onProgress({ completed, total: pending.length, repaired, failed });
+  try {
+    await pool(pending, async job => {
+      try {
+        if (!state.user || state.user.uid !== uid) throw new Error('account changed');
+        const det = await tmdb(`/${job.type}/${job.id}`, { append_to_response: 'credits' }, { cache: false });
+        const writes = []; let savedPatch = null, seenPatch = null;
+        if (job.watchlist) {
+          savedPatch = watchlistPatch(det, job.type, job.watchlist);
+          writes.push(db.collection('users').doc(uid).collection('watchlist').doc(job.key).set(savedPatch, { merge: true }));
+        }
+        if (job.watched) {
+          seenPatch = watchedPatch(det, job.type, job.watched);
+          writes.push(db.collection('users').doc(uid).collection('watched').doc(job.key).set(seenPatch, { merge: true }));
+        }
+        await Promise.all(writes);
+        if (savedPatch) Object.assign(job.watchlist, savedPatch);
+        if (seenPatch) state.watched[job.key] = { ...job.watched, ...seenPatch };
+        repaired++;
+      } catch (error) {
+        console.warn('collection repair item', job.key, error); failed++;
+      } finally {
+        completed++;
+        onProgress({ completed, total: pending.length, repaired, failed });
+      }
+    }, 4);
+  } finally {
+    repairing = false;
+  }
+  if (repaired) {
+    done = Object.values(state.watched).every(doc => doc.metaV === META_V && !missingCommon(doc));
+    document.dispatchEvent(new Event('cv:meta-backfilled'));
+    document.dispatchEvent(new Event('cv:wl-changed'));
+  }
+  return { total: pending.length, repaired, failed };
 }
 
 export async function ensureWatchedMeta() {
@@ -80,8 +187,8 @@ export async function ensureWatchedMeta() {
         cast: cs.length ? cs : (d.cast || []),
         metaV: META_V,
       };
-      if (state.watched[key]) state.watched[key] = { ...state.watched[key], ...patch };
       await db.collection('users').doc(uid).collection('watched').doc(key).set(patch, { merge: true });
+      if (state.watched[key]) state.watched[key] = { ...state.watched[key], ...patch };
       wrote++;
     }, 6);
     // Latch `done` only on a COMPLETE run. A partial run (network blip, TMDB 404)

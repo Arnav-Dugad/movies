@@ -476,8 +476,12 @@
 .award-pill div{min-width:0}
 .award-pill strong{display:block;font-size:.78rem;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .award-pill small{display:block;margin-top:2px;font-size:.62rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em}
-.award-icon{width:42px;height:42px;display:grid;place-items:center;flex-shrink:0;border:1px solid rgba(255,255,255,.07);border-radius:12px;background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.018));color:var(--text3);box-shadow:inset 0 1px rgba(255,255,255,.045)}
+.award-icon{width:44px;height:44px;display:grid;place-items:center;flex-shrink:0;border:1px solid rgba(255,255,255,.07);border-radius:12px;background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.018));color:var(--text3);box-shadow:inset 0 1px rgba(255,255,255,.045);position:relative;overflow:hidden}
 .award-icon svg{width:25px;height:25px;overflow:visible;filter:drop-shadow(0 4px 7px rgba(0,0,0,.3))}
+.award-icon-real{background:linear-gradient(145deg,#fffdf7,#eae7df);border-color:rgba(251,191,36,.25);box-shadow:inset 0 0 0 1px rgba(255,255,255,.8),0 8px 22px rgba(0,0,0,.22)}
+.award-icon-real img{position:absolute;inset:5px;width:34px;height:34px;display:block;object-fit:contain;object-position:center;z-index:2}
+.award-real-fallback{display:grid;place-items:center;width:100%;height:100%;color:#8a6b20}
+.award-real-fallback svg{width:23px;height:23px}
 .award-icon-statue,.award-icon-globe,.award-icon-trophy{color:var(--gold);border-color:rgba(251,191,36,.16);background:linear-gradient(145deg,rgba(251,191,36,.15),rgba(251,191,36,.035))}
 .award-icon-mask,.award-icon-wing{color:var(--purple2);border-color:rgba(167,139,250,.16);background:linear-gradient(145deg,rgba(139,92,246,.15),rgba(139,92,246,.025))}
 .award-icon-palm{color:var(--green2);border-color:rgba(52,211,153,.16);background:linear-gradient(145deg,rgba(16,185,129,.14),rgba(16,185,129,.025))}

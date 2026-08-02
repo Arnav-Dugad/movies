@@ -22,6 +22,9 @@ export const state = {
   // Loaded with the profile root doc, so recommendation controls cost no extra
   // Firestore read. History is capped before every write (recommend.js).
   recommendationFeedback: { dismissed: [], history: [] },
+  // The latest compact stats snapshot is loaded by the same owner-only profile
+  // read. Stats can reuse slower-changing insights without another Firestore read.
+  statsSnapshot: null,
   lists: [],          // custom lists metadata (loaded by lists.js)
   wlList: 'watchlist',   // active chip on the My List page ('watched' | listId; defaults to the Watchlist list)
 };
