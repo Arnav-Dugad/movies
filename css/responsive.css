@@ -86,6 +86,22 @@
   .friend-code{font-size:1.15rem;letter-spacing:1px}
   .friend-row{padding:10px 12px;gap:10px}
 
+  .release-page{padding-left:12px;padding-right:12px}
+  .release-hero{min-height:0;padding:26px 20px}
+  .release-hero-orb{width:74px;height:74px}
+  .release-hero-orb span{font-size:1.5rem}
+  .release-toolbar{align-items:stretch;top:var(--nav-h);padding-top:12px}
+  .release-tabs,.release-tools{width:100%}
+  .release-tools>*{flex:1}
+  .release-search{min-width:0}
+  .release-day{grid-template-columns:1fr;gap:13px}
+  .release-date{position:static}
+  .release-day-grid{grid-template-columns:1fr}
+  .release-summary{padding:0 4px}
+  .release-summary span{display:none}
+  .awards-section{padding:17px 14px}
+  .award-pill{max-width:100%;width:100%}
+
   /* Search results matched the desktop card size, giving two fat columns where
      every other grid gives three. */
   .search-grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px}
@@ -121,6 +137,7 @@
 }
 
 @media(max-width:380px){
+  .mob-item{padding-left:4px;padding-right:4px;min-width:45px;font-size:.56rem}
   .card{width:112px}
   .hero-title{font-size:1.9rem}
   .hero-actions{flex-direction:column;width:100%}

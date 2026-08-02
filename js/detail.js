@@ -7,6 +7,7 @@ import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals, observeCountUps } from './effects.js';
 import { mountAmbientVideo } from './video-bg.js';
+import { loadAwardsSection } from './awards.js';
 
 let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
@@ -121,7 +122,7 @@ export async function openDetail(id, type) {
 
     const revsHTML = reviewsHTML(revs);
 
-    const simItems = recs.slice(0, 14);
+    const simItems = recs.filter(item => !state.watched[`${item.media_type || type}_${item.id}`]).slice(0, 14);
     let simHTML = ''; if (simItems.length) simHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">More Like This</div><div class="similar-row">${simItems.map(s => buildCard(s, s.media_type || type)).join('')}</div></div>`;
 
     const kws = det.keywords?.keywords || det.keywords?.results || [];
@@ -181,6 +182,7 @@ export async function openDetail(id, type) {
           ${linksHTML(det)}
           <div id="providerBlock">${providerHTML(det, state.region)}</div>
         </div>
+        <section class="awards-section" id="awardsSection_${id}" hidden></section>
         ${kwHTML}${vidsHTML}${castHTML}${crewHTML}${galHTML}${seasHTML}${revsHTML}${simHTML}
       </div>`;
 
@@ -195,6 +197,7 @@ export async function openDetail(id, type) {
     const remeasure = syncAllClampToggles(ct);
     clampResize = debounce(remeasure, 150);
     window.addEventListener('resize', clampResize);
+    loadAwardsSection(det.external_ids?.imdb_id || '', `awardsSection_${id}`);
     // The rest of the franchise, under the collection banner.
     if (det.belongs_to_collection) loadCollectionStrip(id, det.belongs_to_collection.id, gen);
     // Video-forward: fade a muted looping trailer in behind the backdrop (desktop + motion only).

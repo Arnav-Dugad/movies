@@ -31,7 +31,7 @@ export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelec
     // 0 on END below) for a clean, chrome-free video. enablejsapi also lets us hold
     // the fade-in until the trailer is actually PLAYING so nothing flashes in.
     const post = (func, args = []) => { try { el.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com'); } catch (_) {} };
-    el.src = `https://www.youtube.com/embed/${ytKey}?autoplay=1&mute=1&controls=0&playsinline=1&modestbranding=1&rel=0&disablekb=1&fs=0&iv_load_policy=3&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+    el.src = `https://www.youtube.com/embed/${ytKey}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
     // Insert just BEFORE the gradient/vignette so paint order is: image → video → overlay.
     const overlay = container.querySelector(overlaySelector);
     if (overlay) container.insertBefore(el, overlay); else container.appendChild(el);
@@ -44,7 +44,7 @@ export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelec
       if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { return; } }
       if (!d || (d.event !== 'onStateChange' && d.event !== 'infoDelivery')) return;
       const st = d.info?.playerState ?? d.info;
-      if (st === 1) reveal();
+      if (st === 1) { post('setOption', ['captions', 'track', {}]); post('unloadModule', ['captions']); reveal(); }
       else if (st === 0) { post('seekTo', [0, true]); post('playVideo'); }
     };
     window.addEventListener('message', onMsg);

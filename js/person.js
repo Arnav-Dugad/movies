@@ -28,7 +28,7 @@ export async function openPerson(id) {
         <div class="person-head">
           <h1 class="person-name">${esc(p.name)}</h1>
           <div class="person-dept">${esc(p.known_for_department) || ''}</div>
-          ${p.biography ? `<p class="person-bio" id="personBio">${esc(p.biography)}</p>${p.biography.length > 500 ? `<span class="detail-overview-toggle" data-action="toggle-bio">Read more</span>` : ''}` : ''}
+          ${p.biography ? `<p class="person-bio" id="personBio">${esc(p.biography)}</p><span class="detail-overview-toggle" id="personBioToggle" data-action="toggle-bio" hidden>Read more</span>` : ''}
           <div class="person-stats">
             ${p.birthday ? `<div class="person-stat"><strong>Born:</strong> ${new Date(p.birthday).toLocaleDateString()}${age ? ' (' + age + ')' : ''}</div>` : ''}
             ${p.place_of_birth ? `<div class="person-stat"><strong>From:</strong> ${esc(p.place_of_birth)}</div>` : ''}
@@ -40,6 +40,12 @@ export async function openPerson(id) {
       ${knownFor.length ? `<div class="d-sec-title">Known For</div><div class="similar-row">${knownFor.map(k => buildCard(k, k.media_type || 'movie')).join('')}</div>` : ''}
       ${directed.length ? `<div class="d-sec-title" style="margin-top:28px">Directed</div><div class="similar-row">${directed.map(k => buildCard(k, k.media_type || 'movie')).join('')}</div>` : ''}`;
     observeReveals(ct);
+    const syncBio = () => {
+      const bio = $('personBio'), toggle = $('personBioToggle'); if (!bio || !toggle) return;
+      toggle.hidden = !(bio.scrollHeight > bio.clientHeight + 4);
+    };
+    requestAnimationFrame(syncBio);
+    if (document.fonts?.ready) document.fonts.ready.then(() => requestAnimationFrame(syncBio)).catch(() => {});
   } catch (e) { ct.innerHTML = '<div style="text-align:center;padding:100px 20px"><p style="color:var(--text3)">Failed to load</p><br><button class="btn-primary" data-action="back">Back</button></div>'; }
 }
 

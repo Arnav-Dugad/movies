@@ -25,6 +25,7 @@ import { initFriends } from './friends.js';
 import { initParty } from './party.js';
 import { initProfile } from './profile.js';
 import { initSettings } from './settings.js';
+import { initReleaseReminders } from './release-reminders.js';
 import { initRouter } from './router.js';
 import { initEffects } from './effects.js';
 import { initHScroll } from './hscroll.js';
@@ -63,6 +64,7 @@ async function init() {
   initParty();
   initProfile();
   initSettings();
+  initReleaseReminders();
   initWatchedMeta();
   // initEffects BEFORE initRouter: initRouter ends with a synchronous renderRoute(),
   // and observeReveals() silently no-ops while its IntersectionObserver is null —

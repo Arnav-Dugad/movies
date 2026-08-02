@@ -21,6 +21,7 @@ import { renderFriends } from './friends.js';
 import { renderParty } from './party.js';
 import { renderProfile } from './profile.js';
 import { renderSettings } from './settings.js';
+import { renderReleaseReminders } from './release-reminders.js';
 
 // Set when the watchlist/ratings change while we're NOT on home, so home can
 // re-render its personal rows lazily on arrival instead of every list toggle
@@ -34,6 +35,7 @@ const ROUTES = [
   { test: /^\/movies\/?$/, page: 'moviesPage', render: () => loadMovies() },
   { test: /^\/tv\/?$/, page: 'tvPage', render: () => loadTV() },
   { test: /^\/discover\/?$/, page: 'discoverPage', render: () => initDiscover() },
+  { test: /^\/reminders\/?$/, page: 'remindersPage', render: () => renderReleaseReminders() },
   { test: /^\/watchlist\/?$/, page: 'wlPage', render: () => renderWL() },
   { test: /^\/watched\/?$/, page: 'watchedPage', render: () => renderWatched() },
   { test: /^\/stats\/?$/, page: 'statsPage', render: () => renderStats() },
@@ -59,6 +61,7 @@ const TITLES = {
   moviesPage: 'Movies — CineVerse',
   tvPage: 'TV Shows — CineVerse',
   discoverPage: 'Discover — CineVerse',
+  remindersPage: 'Release Reminders — CineVerse',
   wlPage: 'My List — CineVerse',
   watchedPage: 'Watched — CineVerse',
   statsPage: 'My Stats — CineVerse',
@@ -74,7 +77,7 @@ const TITLES = {
   sharedListPage: 'Shared List — CineVerse',
 };
 
-const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
+const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
 
 let currentPath = null;
 

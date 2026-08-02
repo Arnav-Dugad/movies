@@ -4,7 +4,8 @@ import { registerActions } from './events.js';
 import { IMG } from './config.js';
 
 export function playTrailer(key) {
-  $('trailerFrame').src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0`;
+  const frame = $('trailerFrame');
+  frame.src = `https://www.youtube.com/embed/${key}?autoplay=1&rel=0&cc_load_policy=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
   $('trailerOv').classList.add('active');
 }
 export function closeTrailer() {
@@ -76,6 +77,19 @@ export function initMedia() {
   // Close when clicking the trailer backdrop (but not the video box).
   const ov = $('trailerOv');
   ov.addEventListener('click', e => { if (e.target === ov) closeTrailer(); });
+  // Ask the IFrame API to unload its captions track after each trailer loads.
+  // cc_load_policy=0 alone can still follow a viewer's saved YouTube preference.
+  const frame = $('trailerFrame');
+  if (frame) frame.addEventListener('load', () => {
+    if (!frame.src) return;
+    const captionsOff = () => {
+      try {
+        frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setOption', args: ['captions', 'track', {}] }), 'https://www.youtube.com');
+        frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unloadModule', args: ['captions'] }), 'https://www.youtube.com');
+      } catch (_) {}
+    };
+    setTimeout(captionsOff, 350); setTimeout(captionsOff, 1000);
+  });
 
   const iov = $('imgOv');
   if (iov) iov.addEventListener('click', e => { if (e.target === iov) closeLightbox(); });

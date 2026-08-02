@@ -10,6 +10,7 @@ img{display:block;max-width:100%}
 button{font-family:var(--font);cursor:pointer;border:none;outline:none;background:none;color:var(--text);-webkit-tap-highlight-color:transparent}
 input,select,textarea{font-family:var(--font);outline:none;border:none;background:none;color:var(--text)}
 a{text-decoration:none;color:inherit}
+[hidden]{display:none!important}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 
 /* Keyboard focus ring (a11y) */

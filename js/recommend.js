@@ -2,7 +2,9 @@
 // Builds a taste profile from every available signal — watchlist, WATCHED history
 // (with its backfilled cast/director/runtime/decade metadata), ratings, and
 // recently-viewed — generates candidates from several TMDB sources, scores and
-// ranks them once, drops anything already seen, and renders diversified rows.
+// ranks them once, drops watched titles, and renders diversified rows. Saved and
+// recently viewed titles remain eligible: a recommendation can still be useful
+// after it has been added to a list; only confirmed watches are excluded.
 //
 // Key TMDB constraint: /discover results carry NO cast/crew. So actor and director
 // affinity enters through `with_cast`/`with_people` QUERY params plus a per-source
@@ -89,10 +91,9 @@ export function buildTasteProfile(sources = state) {
     if (!seedIds.some(s => s.id === r.id && s.type === r.type)) seedIds.push({ id: r.id, type: r.type, score: 0, reason: 'viewed', title: r.title });
   });
 
-  const seen = new Set();
-  watchlist.forEach(w => seen.add(`${w.type}_${w.tmdbId}`));
-  Object.keys(watched).forEach(k => seen.add(k));
-  recentlyViewed.forEach(r => seen.add(`${r.type}_${r.id}`));
+  // "Seen" means actually watched. Being in a list or recently opened should not
+  // hide a strong recommendation; it often means the user is considering it.
+  const seen = new Set(Object.keys(watched));
 
   const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
   const topActors = topOf(actorWeights, actorNames);
