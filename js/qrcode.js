@@ -268,3 +268,14 @@ export function qrSvg(text, { ecl = 'M', margin = 4, cls = '' } = {}) {
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (M[y][x]) path += `M${x + margin} ${y + margin}h1v1h-1z`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dim} ${dim}" shape-rendering="crispEdges"${cls ? ` class="${cls}"` : ''} role="img" aria-label="QR code"><rect width="${dim}" height="${dim}" fill="#fff"/><path d="${path}" fill="#000"/></svg>`;
 }
+
+// Shared by Friends and Profile. The QR opens the app with the friend code in
+// the query string, whatever domain/base path CineVerse is deployed under.
+export function friendAddUrl(code) {
+  try { return new URL('?add=' + encodeURIComponent(code), location.href).href; }
+  catch (_) { return `${location.origin}/?add=${encodeURIComponent(code)}`; }
+}
+
+export function friendQrSvg(code) {
+  return qrSvg(friendAddUrl(code), { ecl: 'M', cls: 'qr-svg' });
+}

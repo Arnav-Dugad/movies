@@ -4,19 +4,12 @@ import { esc, toast, $ } from './ui.js';
 import { registerActions } from './events.js';
 import { social, displayCode, sendRequest, acceptRequest, declineRequest, removeFriend, resolveCode, resolveEmail, searchByName } from './social.js';
 import { avatarInner } from './avatar.js';
-import { qrSvg } from './qrcode.js';
+import { friendQrSvg } from './qrcode.js';
 import { openScanner, scannerSupported, initScan } from './scan.js';
 
 let pendingRemove = null;   // pairId awaiting a second confirming click
 let pendingAdd = null;      // a ?add= / scanned code waiting for sign-in to resolve
 
-// The scannable form of a friend code: a URL back to the app carrying ?add=<code>,
-// so a phone's own camera opens it AND our in-app scanner reads it. Built relative
-// to the current page so it works whatever base path the app is served from.
-function addUrlFor(code) {
-  try { return new URL('?add=' + encodeURIComponent(code), location.href).href; }
-  catch (_) { return location.origin + '/?add=' + encodeURIComponent(code); }
-}
 // Pull a bare friend code out of whatever the camera read (a full add-URL or a raw
 // code, with or without the CINE- prefix).
 function codeFromScan(text) {
@@ -26,7 +19,7 @@ function codeFromScan(text) {
 }
 // A QR for the code's add-URL. Never let a QR failure take down the page.
 function qrCodeSvg(code) {
-  try { return qrSvg(addUrlFor(code), { ecl: 'M', cls: 'qr-svg' }); }
+  try { return friendQrSvg(code); }
   catch (e) { console.error('qr', e); return ''; }
 }
 

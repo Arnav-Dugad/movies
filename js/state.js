@@ -19,6 +19,9 @@ export const state = {
   region: 'IN',
   // Loaded from users/{uid} on sign-in: { avatar: {emoji,grad}|null, created }.
   profile: { avatar: null, created: null },
+  // Loaded with the profile root doc, so recommendation controls cost no extra
+  // Firestore read. History is capped before every write (recommend.js).
+  recommendationFeedback: { dismissed: [], history: [] },
   lists: [],          // custom lists metadata (loaded by lists.js)
   wlList: 'watchlist',   // active chip on the My List page ('watched' | listId; defaults to the Watchlist list)
 };
@@ -32,6 +35,15 @@ export function loadRecentlyViewed() {
   const uid = state.user ? state.user.uid : 'guest';
   try { state.recentlyViewed = JSON.parse(localStorage.getItem('cv_recent_' + uid) || '[]'); }
   catch (e) { state.recentlyViewed = []; }
+  if (!state.user) {
+    try {
+      const saved = JSON.parse(localStorage.getItem('cv_rec_feedback_guest') || '{}');
+      state.recommendationFeedback = {
+        dismissed: Array.isArray(saved.dismissed) ? saved.dismissed : [],
+        history: Array.isArray(saved.history) ? saved.history : [],
+      };
+    } catch (_) { state.recommendationFeedback = { dismissed: [], history: [] }; }
+  }
 }
 export function pushRecentlyViewed(item) {
   if (!item || !item.id) return;

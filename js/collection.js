@@ -12,9 +12,10 @@ import { SECTIONS } from './home.js';
 let reqGen = 0, curSec = null, page = 1, maxPage = 1;
 
 const keep = (s, item) => s.type === 'person' ? item.profile_path : item.poster_path;
-function cardFor(s, item) {
+function cardFor(s, item, index = 0) {
   if (s.type === 'person') return personCard(item);
   const t = s.type === 'multi' ? (item.media_type || 'movie') : s.type;
+  if (s.t10) return `<article class="collection-rank-card"><span class="collection-rank-num">${index + 1}</span>${buildCard(item, t)}</article>`;
   return buildCard(item, t);
 }
 
@@ -26,13 +27,14 @@ export async function openCollection2(id) {
   if (!s) { ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="color:var(--text3)">Unknown collection</p><br><button class="btn-primary" data-action="back">Back</button></div>'; document.title = 'CineVerse'; return; }
   curSec = s; page = 1;
   document.title = `${s.t} — CineVerse`;
-  ct.innerHTML = `<div class="browse-top"><h1>${s.icon} ${s.t}</h1></div><div class="browse-grid" id="collGrid">${skelCards(12)}</div><div class="load-more" id="collMore"></div>`;
+  ct.innerHTML = `<div class="browse-top"><h1>${s.icon} ${s.t}</h1>${s.t10 ? '<p class="collection-kicker">The definitive weekly countdown · ranked 1–10</p>' : ''}</div><div class="browse-grid${s.t10 ? ' collection-rank-grid' : ''}" id="collGrid">${skelCards(s.t10 ? 10 : 12)}</div><div class="load-more" id="collMore"></div>`;
   try {
     const d = await tmdb(s.p, { ...(s.params || {}), page: 1 });
     if (gen !== reqGen) return;
-    maxPage = Math.min(d.total_pages || 1, 500);
+    maxPage = s.t10 ? 1 : Math.min(d.total_pages || 1, 500);
     const grid = $('collGrid');
-    grid.innerHTML = (d.results || []).filter(x => keep(s, x)).map(x => cardFor(s, x)).join('') || '<p style="color:var(--text3);padding:20px 0">Nothing here right now.</p>';
+    const results = (d.results || []).filter(x => keep(s, x)).slice(0, s.t10 ? 10 : 20);
+    grid.innerHTML = results.map((x, index) => cardFor(s, x, index)).join('') || '<p style="color:var(--text3);padding:20px 0">Nothing here right now.</p>';
     renderMore();
     observeReveals(ct);
   } catch (e) {
@@ -52,7 +54,8 @@ async function loadMore() {
   try {
     const d = await tmdb(curSec.p, { ...(curSec.params || {}), page: next });
     const grid = $('collGrid'); if (!grid) return;
-    grid.insertAdjacentHTML('beforeend', (d.results || []).filter(x => keep(curSec, x)).map(x => cardFor(curSec, x)).join(''));
+    const offset = (next - 1) * 20;
+    grid.insertAdjacentHTML('beforeend', (d.results || []).filter(x => keep(curSec, x)).map((x, index) => cardFor(curSec, x, offset + index)).join(''));
     renderMore();
     observeReveals(grid);
   } catch (e) { console.error('collection loadMore', e); }

@@ -8,6 +8,7 @@ import { buildCtx } from './badges.js';
 import { myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { social, displayCode } from './social.js';
 import { saveProfile } from './auth.js';
+import { friendQrSvg } from './qrcode.js';
 
 let editing = false;
 let draftAvatar = undefined;   // undefined = untouched; null = cleared to initial
@@ -62,10 +63,12 @@ export function renderProfile() {
     </div>` : '';
 
   const codeCard = code ? `
-    <div class="friend-code-card" style="margin-top:20px">
-      <div class="stat-label">Your Friend Code</div>
-      <div class="friend-code-row"><span class="friend-code">${esc(code)}</span><button class="btn-glass" style="padding:8px 16px;font-size:.82rem" data-action="copy-code" data-code="${esc(code)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button></div>
-      <p style="color:var(--text3);font-size:.8rem;margin-top:8px">Share this so friends & family can add you.</p>
+    <div class="friend-code-card profile-qr-card" style="margin-top:20px">
+      <div class="friend-code-main"><div class="stat-label">Your Friend Code</div>
+        <div class="friend-code-row"><span class="friend-code">${esc(code)}</span><button class="btn-glass" style="padding:8px 16px;font-size:.82rem" data-action="copy-code" data-code="${esc(code)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button></div>
+        <p style="color:var(--text3);font-size:.8rem;margin-top:8px">Friends can scan this code to open your connect link instantly.</p>
+      </div>
+      <div class="friend-qr" title="Scan to add me">${friendQrSvg(code)}<span class="friend-qr-cap">Scan to add me</span></div>
     </div>` : '';
 
   const snapshot = `

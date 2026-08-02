@@ -5,6 +5,7 @@
   .stats-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .taste-map-layout{grid-template-columns:1fr}
   .stats-duo{grid-template-columns:1fr}
+  .collection-rank-grid{grid-template-columns:repeat(3,minmax(145px,1fr))}
 }
 
 @media(min-width:769px){
@@ -91,6 +92,12 @@
   .stats-panel,.stats-achievements{padding:19px 14px;border-radius:21px}
   .stats-section-head{flex-direction:column;gap:10px}
   .rating-foot{flex-wrap:wrap}
+  .taste-change-track{display:flex;overflow-x:auto;padding-bottom:5px;scroll-snap-type:x proximity}.taste-change-period{min-width:150px;scroll-snap-align:start}
+  .health-layout{grid-template-columns:1fr;gap:20px}.health-checks{grid-template-columns:1fr}.health-foot{align-items:flex-start;flex-direction:column}
+  .network-canvas{margin:0}
+  .rec-controlbar{align-items:flex-start;flex-direction:column;margin-left:12px;margin-right:12px}.rec-controlbar>button{width:100%;justify-content:center}
+  .rec-audit{margin-left:12px;margin-right:12px;padding:17px 13px}.rec-audit-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.rec-audit-grid{grid-template-columns:1fr}.audit-ranked article{grid-template-columns:23px 30px minmax(0,1fr)}.audit-ranked img{width:30px;height:43px}.audit-score{grid-column:3;text-align:left;padding-top:3px}.audit-score span{white-space:normal;line-height:1.35}
+  .collection-rank-grid{grid-template-columns:repeat(2,minmax(120px,1fr))}.collection-rank-card{padding-left:23px}.collection-rank-num{font-size:4.6rem}
   /* Larger tap targets on touch */
   .card-wl,.card-rate{width:36px;height:36px}
   .g-pill,.chip,.s-tab,.wl-tab,.wl-chip{padding-top:10px;padding-bottom:10px}
@@ -168,7 +175,7 @@
   .row{overflow-y:hidden}
   /* No hover on touch, so the add-to-list and quick-rate buttons must be
      permanently visible (their default state is opacity:0, revealed on :hover). */
-  .card-wl,.card-rate{opacity:1;transform:none}
+  .card-wl,.card-rate,.card-dismiss{opacity:1;transform:none}
   /* Hover-only heavy effects. */
   .tilt{transform:none !important}
 }
@@ -206,6 +213,7 @@
   .taste-node{max-width:116px;padding:7px 9px}
   .taste-node.genre{left:2px}.taste-node.era{right:-4px}.taste-node.language{left:0}
   .activity-highlights{grid-template-columns:1fr}
+  .collection-rank-grid{gap:10px}.collection-rank-card{padding-left:18px}.collection-rank-num{font-size:4rem}
   .release-pref-grid{grid-template-columns:1fr}
   /* The list picker's rows are the only tap targets in that modal — keep them
      comfortable even on the narrowest phones. */

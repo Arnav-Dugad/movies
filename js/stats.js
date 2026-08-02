@@ -2,7 +2,7 @@
 // Rich analytics are derived from the user's Firestore-backed lists, ratings and
 // watched history. A compact snapshot is mirrored onto users/{uid} only when its
 // content hash changes, keeping it durable without burning free-tier writes.
-import { genreMap } from './config.js';
+import { genreMap, IMG, PH } from './config.js';
 import { state } from './state.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { registerActions } from './events.js';
@@ -61,7 +61,7 @@ function canonicalRows(scope) {
       year: item.year || '', releaseDate: item.releaseDate || '', genres: item.genres || [],
       language: item.language || '', country: item.country || '', runtime: +(item.runtime || 0),
       tmdbRating: +(item.rating || 0), saved: true, watched: false, watchedAt: null,
-      director: '', directorId: 0, cast: [],
+      director: '', directorId: 0, directorProfile: '', cast: [],
     });
   });
   Object.entries(state.watched).forEach(([key, doc]) => {
@@ -76,6 +76,7 @@ function canonicalRows(scope) {
       language: doc.language || old.language || '', country: doc.country || old.country || '',
       runtime: +(doc.runtime || old.runtime || 0), tmdbRating: +(doc.tmdbRating || old.tmdbRating || 0),
       director: doc.director || old.director || '', directorId: doc.directorId || old.directorId || 0,
+      directorProfile: doc.directorProfile || old.directorProfile || '',
       cast: doc.cast?.length ? doc.cast : (old.cast || []), watched: true, watchedAt: watchedDate(doc),
     });
   });
@@ -132,12 +133,52 @@ function buildHeatDays(activityMap) {
   });
 }
 
-function computeStats(scope) {
+function collectionHealth(rows, watched) {
+  if (!rows.length) return { score: 0, missing: 0, checks: [], perfect: false };
+  const make = (key, label, source, valid, hint) => {
+    const missingRows = source.filter(row => !valid(row));
+    const coverage = source.length ? Math.round((source.length - missingRows.length) / source.length * 100) : 100;
+    return { key, label, missing: missingRows.length, total: source.length, coverage, hint, titles: missingRows.slice(0, 4).map(row => row.title).filter(Boolean) };
+  };
+  const checks = [
+    make('ratings', 'Personal ratings', watched, row => row.userRating > 0, 'Rate watched titles to sharpen recommendations.'),
+    make('metadata', 'Core metadata', rows, row => row.runtime > 0 && row.language && row.genres?.length, 'Runtime, language, and genre information.'),
+    make('posters', 'Poster artwork', rows, row => !!row.poster, 'Missing poster art is automatically refreshed.'),
+    make('dates', 'Release dates', rows, row => !!row.releaseDate, 'Exact release dates power era and reminder insights.'),
+    make('credits', 'People credits', watched, row => !!row.directorId && row.cast?.length, 'Director and cast data power loyalty insights.'),
+  ];
+  const score = Math.round(checks.reduce((sum, check) => sum + check.coverage, 0) / checks.length);
+  return { score, missing: checks.reduce((sum, check) => sum + check.missing, 0), checks, perfect: score === 100 };
+}
+
+function tasteChanges(watched) {
+  const months = new Map();
+  watched.filter(row => row.watchedAt).forEach(row => {
+    const key = monthKey(row.watchedAt);
+    if (!months.has(key)) months.set(key, { key, date: row.watchedAt, total: 0, genres: new Map(), languages: new Map() });
+    const bucket = months.get(key); bucket.total++;
+    (row.genres || []).forEach(id => { if (genreMap[id]) bump(bucket.genres, String(id), 1, { name: genreMap[id] }); });
+    if (row.language) bump(bucket.languages, row.language, 1, { name: languageName(row.language) });
+  });
+  const periods = [...months.values()].sort((a, b) => a.key.localeCompare(b.key)).slice(-6).map(bucket => {
+    const genre = sorted(bucket.genres, 1)[0] || null, language = sorted(bucket.languages, 1)[0] || null;
+    return {
+      key: bucket.key, label: bucket.date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }), total: bucket.total,
+      genre: genre?.name || 'Unknown', genreShare: genre ? Math.round(genre.count / bucket.total * 100) : 0,
+      language: language?.name || 'Unknown', languageCode: language?.key || '', languageShare: language ? Math.round(language.count / bucket.total * 100) : 0,
+    };
+  });
+  const changes = (field) => periods.slice(1).filter((period, index) => period[field] !== periods[index][field]).length;
+  return { periods, genreChanges: changes('genre'), languageChanges: changes('language') };
+}
+
+export function computeStats(scope) {
   const rows = canonicalRows(scope);
   const watched = rows.filter(row => row.watched);
   const saved = rows.filter(row => row.saved);
   const ratingEntries = Object.entries(state.ratings).filter(([key]) => scope === 'all' || key.startsWith(scope + '_'));
   const ratingValues = ratingEntries.map(([, score]) => +score).filter(Boolean);
+  const watchedRated = watched.filter(row => row.userRating > 0).length;
 
   const genres = new Map(), decades = new Map(), languages = new Map();
   rows.forEach(row => {
@@ -168,16 +209,17 @@ function computeStats(scope) {
   const bestMonth = bestMonthRaw ? new Date(`${bestMonthRaw.key}-01T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : 'Not enough history';
 
   const runtimes = watched.map(row => row.runtime).filter(value => value > 0);
-  const enriched = watched.filter(row => row.runtime > 0 && row.language && row.year && row.genres?.length);
+  const enriched = rows.filter(row => row.runtime > 0 && row.language && row.year && row.genres?.length);
   const totalMinutes = runtimes.reduce((sum, value) => sum + value, 0);
   const years = rows.map(row => +(row.year || 0)).filter(year => year > 1800 && year < 2200).sort((a, b) => a - b);
   const directorMap = new Map(), actorMap = new Map();
   watched.forEach(row => {
-    if (row.director) bump(directorMap, row.director, 1, { name: row.director, id: row.directorId || 0 });
-    (row.cast || []).forEach(person => { if (person?.id) bump(actorMap, String(person.id), 1, { name: person.name || '', id: person.id }); });
+    if (row.director) bump(directorMap, String(row.directorId || row.director), 1, { name: row.director, id: row.directorId || 0, profile: row.directorProfile || '' });
+    (row.cast || []).forEach(person => { if (person?.id) bump(actorMap, String(person.id), 1, { name: person.name || '', id: person.id, profile: person.profile || '' }); });
   });
-  const topDirector = sorted(directorMap, 1)[0] || null;
-  const topActor = sorted(actorMap, 1)[0] || null;
+  const topDirectors = sorted(directorMap, 4), topActors = sorted(actorMap, 7);
+  const topDirector = topDirectors[0] || null;
+  const topActor = topActors[0] || null;
   const longestTitle = [...watched].filter(row => row.runtime > 0).sort((a, b) => b.runtime - a.runtime)[0] || null;
   const oldestTitle = [...rows].filter(row => +row.year).sort((a, b) => +a.year - +b.year)[0] || null;
   const newestTitle = [...rows].filter(row => +row.year).sort((a, b) => +b.year - +a.year)[0] || null;
@@ -187,7 +229,10 @@ function computeStats(scope) {
     ? rows.filter(row => row.tmdbRating > 0).reduce((sum, row) => sum + row.tmdbRating, 0) / rows.filter(row => row.tmdbRating > 0).length : 0;
   const ratingCounts = Array.from({ length: 10 }, (_, index) => ratingValues.filter(value => value === index + 1).length);
   const completion = rows.length ? Math.round(watched.length / rows.length * 100) : 0;
-  const ratingCoverage = watched.length ? Math.min(100, Math.round(ratingValues.length / watched.length * 100)) : 0;
+  // The average/distribution represents every personal rating. Coverage has a
+  // narrower promise in the UI ("of watched titles rated"), so its numerator
+  // must be the watched/rated intersection rather than every rating document.
+  const ratingCoverage = watched.length ? Math.round(watchedRated / watched.length * 100) : 0;
   const highScores = ratingValues.filter(value => value >= 8).length;
   const positiveRate = ratingValues.length ? Math.round(highScores / ratingValues.length * 100) : 0;
   const diversityScore = Math.round(Math.min(1, genres.size / 18) * 45 + Math.min(1, decades.size / 8) * 30 + Math.min(1, languages.size / 6) * 25);
@@ -197,18 +242,30 @@ function computeStats(scope) {
   const level = watched.length >= 500 ? 'Master Archivist' : watched.length >= 250 ? 'Cinema Historian' : watched.length >= 100 ? 'Cinephile' : watched.length >= 50 ? 'Curator' : watched.length >= 10 ? 'Explorer' : 'New Voyager';
   const milestone = [10, 25, 50, 100, 250, 500, 1000].find(goal => goal > watched.length) || Math.ceil((watched.length + 1) / 500) * 500;
 
+  const health = collectionHealth(rows, watched);
+  const tasteTimeline = tasteChanges(watched);
+  const networkDirectorIds = new Set(topDirectors.slice(0, 3).map(item => item.id).filter(Boolean));
+  const networkTitles = watched.filter(row => networkDirectorIds.has(row.directorId) && row.poster)
+    .sort((a, b) => b.userRating - a.userRating || b.tmdbRating - a.tmdbRating).slice(0, 7);
+  const networkActorMap = new Map();
+  networkTitles.forEach(row => (row.cast || []).forEach(person => {
+    if (person?.id) bump(networkActorMap, String(person.id), 1, { id: person.id, name: person.name || '', profile: person.profile || '' });
+  }));
+  const networkActors = sorted(networkActorMap, 6);
+
   return {
     scope, rows, watched, saved, totalRated: ratingValues.length, avgRating, avgTmdb,
     ratingCounts, completion, ratingCoverage, positiveRate, highScores,
     genres: genreRows, decades: decadeRows, languages: languageRows, diversityScore,
     totalMinutes, hours: Math.round(totalMinutes / 60), avgRuntime: runtimes.length ? Math.round(totalMinutes / runtimes.length) : 0,
-    metaCoverage: watched.length ? enriched.length / watched.length : 1,
+    metaCoverage: rows.length ? enriched.length / rows.length : 1,
     movies: watched.filter(row => row.type === 'movie').length, shows: watched.filter(row => row.type === 'tv').length,
     thisYear: watched.filter(row => row.watchedAt?.getFullYear() === now.getFullYear()).length,
     last30: watched.filter(row => row.watchedAt && row.watchedAt >= last30Cutoff).length,
     currentStreak: streak.current, longestStreak: streak.longest, bestMonth, peakDay,
     last12Months, heatDays: buildHeatDays(new Map([...activity].map(([key, value]) => [key, value.count]))), weekdays,
-    topDirector, topActor, longestTitle, oldestTitle, newestTitle,
+    topDirector, topActor, topDirectors, topActors, longestTitle, oldestTitle, newestTitle,
+    health, tasteTimeline, network: { directors: topDirectors.slice(0, 3), titles: networkTitles, actors: networkActors },
     releaseSpan: years.length ? (years[0] === years.at(-1) ? String(years[0]) : `${years[0]}–${years.at(-1)}`) : '—',
     level, milestone, personality,
   };
@@ -216,7 +273,7 @@ function computeStats(scope) {
 
 function snapshotFor(stats) {
   return {
-    schema: 3,
+    schema: 4,
     totals: {
       saved: stats.saved.length, watched: stats.watched.length, rated: stats.totalRated,
       movies: stats.movies, shows: stats.shows, friends: social.friends.length,
@@ -231,6 +288,7 @@ function snapshotFor(stats) {
       decades: stats.decades.map(item => ({ decade: +item.key, count: item.count })),
       languages: stats.languages.map(item => ({ code: item.key, name: item.name, count: item.count })),
       diversityScore: stats.diversityScore,
+      changes: stats.tasteTimeline.periods,
     },
     activity: {
       currentStreak: stats.currentStreak, longestStreak: stats.longestStreak,
@@ -240,8 +298,9 @@ function snapshotFor(stats) {
     },
     collection: {
       completion: stats.completion, averageRuntime: stats.avgRuntime, releaseSpan: stats.releaseSpan,
-      topDirector: stats.topDirector ? { name: stats.topDirector.name, id: stats.topDirector.id, count: stats.topDirector.count } : null,
-      topActor: stats.topActor ? { name: stats.topActor.name, id: stats.topActor.id, count: stats.topActor.count } : null,
+      health: { score: stats.health.score, missing: stats.health.missing, checks: stats.health.checks.map(check => ({ key: check.key, coverage: check.coverage, missing: check.missing })) },
+      topDirector: stats.topDirector ? { name: stats.topDirector.name, id: stats.topDirector.id, profile: stats.topDirector.profile, count: stats.topDirector.count } : null,
+      topActor: stats.topActor ? { name: stats.topActor.name, id: stats.topActor.id, profile: stats.topActor.profile, count: stats.topActor.count } : null,
       oldest: stats.oldestTitle ? { id: stats.oldestTitle.id, type: stats.oldestTitle.type, title: stats.oldestTitle.title, year: stats.oldestTitle.year } : null,
       newest: stats.newestTitle ? { id: stats.newestTitle.id, type: stats.newestTitle.type, title: stats.newestTitle.title, year: stats.newestTitle.year } : null,
     },
@@ -369,10 +428,52 @@ function collectionPanel(stats) {
   return `<section class="stats-panel collection-intel"><div class="stats-section-head compact"><div><span>Collection intelligence</span><h2>Library Anatomy</h2></div></div><div class="library-completion"><div class="library-donut" style="--library-progress:${stats.completion * 3.6}deg"><strong>${stats.completion}%</strong></div><div><span>Known collection watched</span><strong>${stats.watched.length} of ${stats.rows.length}</strong><small>${stats.saved.length} titles currently saved</small></div></div><div class="library-facts">${intelligence.map(([label, value, note]) => `<div><span>${label}</span><strong title="${esc(String(value))}">${esc(String(value))}</strong><small>${esc(note)}</small></div>`).join('')}</div></section>`;
 }
 
+function collectionHealthPanel(stats) {
+  const health = stats.health;
+  const status = health.score === 100 ? 'Pristine collection' : health.score >= 85 ? 'Excellent condition' : health.score >= 65 ? 'Healthy, with a few gaps' : 'Ready for enrichment';
+  return `<section class="stats-panel collection-health"><div class="stats-section-head"><div><span>Library quality control</span><h2>Collection Health</h2><p>Every missing rating, poster, date, credit, and metadata field—clearly accounted for.</p></div><div class="health-status">${esc(status)}</div></div>
+    <div class="health-layout"><div class="health-orb" style="--health-progress:${health.score * 3.6}deg"><div><strong>${health.score}</strong><span>/100 health</span></div></div>
+      <div class="health-checks">${health.checks.map(check => `<article><div><span>${esc(check.label)}</span><strong>${check.missing ? `${check.missing} missing` : 'Complete'}</strong></div><i><em style="--health-width:${check.coverage}%"></em></i><p>${esc(check.hint)}${check.titles.length ? ` <b title="${esc(check.titles.join(', '))}">${esc(check.titles.slice(0, 2).join(' · '))}${check.titles.length > 2 ? '…' : ''}</b>` : ''}</p></article>`).join('')}</div>
+    </div><div class="health-foot"><span>${health.missing} total gaps across ${stats.rows.length} unique titles</span><span>Watched-title metadata repairs automatically when Stats is opened.</span></div></section>`;
+}
+
+function tasteChangesPanel(stats) {
+  const timeline = stats.tasteTimeline;
+  return `<section class="stats-panel taste-changes"><div class="stats-section-head"><div><span>Taste evolution</span><h2>Taste Changes</h2><p>Your leading genre and language across your six most recent active months.</p></div><div class="taste-change-summary"><span>${timeline.genreChanges} genre shifts</span><span>${timeline.languageChanges} language shifts</span></div></div>
+    ${timeline.periods.length ? `<div class="taste-change-track">${timeline.periods.map((period, index) => `<article class="taste-change-period"><div class="taste-change-index">${String(index + 1).padStart(2, '0')}</div><span>${esc(period.label)}</span><strong>${esc(period.genre)}</strong><small>${period.genreShare}% of that month</small><div><b>${esc(period.language)}</b><em>${period.languageShare}%</em></div><p>${period.total} watched</p></article>`).join('')}</div>` : '<div class="stats-empty-line taste-change-empty">Watch history with dates will build your taste timeline here.</div>'}
+  </section>`;
+}
+
+function personPicture(person, cls = '') {
+  return person.profile ? `<img class="${cls}" src="${IMG}w185${person.profile}" alt="${esc(person.name)}" loading="lazy" data-ph="${PH}">` : `<span class="network-initial">${esc((person.name || '?')[0])}</span>`;
+}
+
+function directorNetworkPanel(stats) {
+  const { directors, titles, actors } = stats.network;
+  if (!directors.length || !titles.length) return `<section class="stats-panel director-network"><div class="stats-section-head"><div><span>Creative connections</span><h2>Director Network</h2><p>Directors, actors, and titles will connect here as credit metadata is enriched.</p></div></div><div class="network-empty">Add and watch more titles to reveal your creative network.</div></section>`;
+  const width = 1000, height = 500, x = { director: 105, title: 500, actor: 895 };
+  const positions = (items, kind) => new Map(items.map((item, index) => [String(item.id || item.key), { x: x[kind], y: Math.round((index + 1) * height / (items.length + 1)) }]));
+  const directorPos = positions(directors, 'director'), titlePos = positions(titles.map(item => ({ ...item, key: item.key, id: item.key })), 'title'), actorPos = positions(actors, 'actor');
+  const edges = [];
+  titles.forEach(title => {
+    const d = directorPos.get(String(title.directorId)), movie = titlePos.get(String(title.key));
+    if (d && movie) edges.push(`<path class="network-edge director-edge" d="M${d.x + 54} ${d.y} C300 ${d.y},330 ${movie.y},${movie.x - 45} ${movie.y}"/>`);
+    (title.cast || []).slice(0, 5).forEach(person => {
+      const actor = actorPos.get(String(person.id));
+      if (movie && actor) edges.push(`<path class="network-edge actor-edge" d="M${movie.x + 45} ${movie.y} C670 ${movie.y},700 ${actor.y},${actor.x - 54} ${actor.y}"/>`);
+    });
+  });
+  const directorNodes = directors.map(person => { const p = directorPos.get(String(person.id || person.key)); return `<a class="network-node network-person director" style="--nx:${p.x}px;--ny:${p.y}px" href="/person/${person.id}" data-action="open-person" data-id="${person.id}"><div>${personPicture(person)}</div><strong>${esc(person.name)}</strong><span>${person.count} watched</span></a>`; }).join('');
+  const titleNodes = titles.map(title => { const p = titlePos.get(String(title.key)); return `<a class="network-node network-title" style="--nx:${p.x}px;--ny:${p.y}px" href="/${title.type}/${title.id}" data-action="open-detail" data-id="${title.id}" data-type="${title.type}"><img src="${IMG}w154${title.poster}" alt="${esc(title.title)}" loading="lazy" data-ph="${PH}"><strong>${esc(title.title)}</strong></a>`; }).join('');
+  const actorNodes = actors.map(person => { const p = actorPos.get(String(person.id)); return `<a class="network-node network-person actor" style="--nx:${p.x}px;--ny:${p.y}px" href="/person/${person.id}" data-action="open-person" data-id="${person.id}"><div>${personPicture(person)}</div><strong>${esc(person.name)}</strong><span>${person.count} appearances</span></a>`; }).join('');
+  return `<section class="stats-panel director-network"><div class="stats-section-head"><div><span>Creative connections</span><h2>Director Network</h2><p>Your most-watched filmmakers connected to their titles and recurring cast.</p></div><div class="network-legend"><span><i></i>Director</span><span><i></i>Actor</span></div></div><div class="network-scroll"><div class="network-canvas"><div class="network-column-label director">Directors</div><div class="network-column-label title">Your movies &amp; shows</div><div class="network-column-label actor">Actors</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">${edges.join('')}</svg>${directorNodes}${titleNodes}${actorNodes}</div></div></section>`;
+}
+
 function animateStats(scope, stats) {
   observeCountUps(scope);
   requestAnimationFrame(() => {
     scope.querySelectorAll('.taste-bar em').forEach(bar => { bar.style.width = bar.style.getPropertyValue('--taste-width'); });
+    scope.querySelectorAll('.health-checks em').forEach(bar => { bar.style.width = bar.style.getPropertyValue('--health-width'); });
     scope.querySelectorAll('.activity-month i').forEach(bar => { bar.style.height = bar.style.getPropertyValue('--month-height'); });
     scope.querySelectorAll('.rd-fill').forEach(fill => {
       const pct = +fill.dataset.pct || 0, height = fill.parentElement.clientHeight || 90;
@@ -397,14 +498,17 @@ export function renderStats() {
     <div class="stats-kpi-grid">
       ${kpi('watched', 'Watched', stats.watched.length, '', `${stats.movies} movies · ${stats.shows} shows`, 'red')}
       ${kpi('clock', 'Watch time', stats.hours, 'h', stats.metaCoverage < 1 ? 'Still enriching runtimes' : 'Approximate lifetime total', 'gold')}
-      ${kpi('star', 'Average rating', stats.avgRating ? +stats.avgRating.toFixed(1) : 0, '/10', `${stats.totalRated} personal ratings`, 'purple')}
+      ${kpi('star', 'Average rating', stats.avgRating ? +stats.avgRating.toFixed(1) : '—', stats.avgRating ? '/10' : '', `${stats.totalRated} personal ratings`, 'purple')}
       ${kpi('library', 'Collection watched', stats.completion, '%', `${stats.saved.length} currently saved`, 'cyan')}
       ${kpi('fire', 'Longest streak', stats.longestStreak, 'd', `${stats.currentStreak} day current streak`, 'green')}
       ${kpi('compass', 'Taste diversity', stats.diversityScore, '/100', `${stats.genres.length} genres · ${stats.languages.length} languages`, 'pink')}
     </div>
     ${tasteMap(stats)}
+    ${tasteChangesPanel(stats)}
+    ${collectionHealthPanel(stats)}
     ${activityPanel(stats)}
     <div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>
+    ${directorNetworkPanel(stats)}
     <section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>
     <p class="stats-footnote">${esc(scopeLabel)} stats · Watch time for TV is approximate because a completed show uses its full available runtime.</p>`;
 

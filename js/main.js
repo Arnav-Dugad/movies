@@ -32,6 +32,7 @@ import { initHScroll } from './hscroll.js';
 import { initBadges } from './badges.js';
 import { initWatchedMeta } from './watched-meta.js';
 import { cleanupServiceWorker } from './pwa.js';
+import { initRecommendations } from './recommend.js';
 
 function hideLoader() { const l = $('loader'); if (l) l.classList.add('hidden'); }
 
@@ -56,6 +57,7 @@ async function init() {
   initBrowse();
   initDiscoverActions();
   initHomeActions();
+  initRecommendations();
   initHeroInteractions();
   initSearch();
   initStats();

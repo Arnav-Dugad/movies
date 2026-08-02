@@ -13,7 +13,7 @@ import { db } from './firebase.js';
 import { state } from './state.js';
 
 // Bump to re-backfill every doc after a schema change.
-export const META_V = 2;
+export const META_V = 3;
 
 let running = false, done = false;
 
@@ -21,7 +21,7 @@ export function resetWatchedMeta() { running = false; done = false; }
 
 function movieMeta(det) {
   const d = (det.credits?.crew || []).find(c => c.job === 'Director');
-  return { runtime: det.runtime || 0, director: d?.name || '', directorId: d?.id || 0 };
+  return { runtime: det.runtime || 0, director: d?.name || '', directorId: d?.id || 0, directorProfile: d?.profile_path || '' };
 }
 
 function tvMeta(det) {
@@ -33,6 +33,7 @@ function tvMeta(det) {
     runtime: ep * (det.number_of_episodes || 0),
     director: det.created_by?.[0]?.name || '',
     directorId: det.created_by?.[0]?.id || 0,
+    directorProfile: det.created_by?.[0]?.profile_path || '',
   };
 }
 
@@ -53,7 +54,7 @@ export async function ensureWatchedMeta() {
       const det = await tmdb(`/${d.type}/${d.tmdbId}`, { append_to_response: 'credits' }, { cache: false });
       const m = d.type === 'tv' ? tvMeta(det) : movieMeta(det);
       const gs = (det.genres || []).map(g => g.id);
-      const cs = (det.credits?.cast || []).slice(0, 5).map(p => ({ id: p.id, name: p.name || '' }));
+      const cs = (det.credits?.cast || []).slice(0, 5).map(p => ({ id: p.id, name: p.name || '', profile: p.profile_path || '' }));
       const patch = {
         poster: det.poster_path || d.poster || '',
         year: d.year || (det.release_date || det.first_air_date || '').slice(0, 4),
@@ -73,6 +74,7 @@ export async function ensureWatchedMeta() {
         runtime: m.runtime || d.runtime || 0,
         director: m.director || d.director || '',
         directorId: m.directorId || d.directorId || 0,
+        directorProfile: m.directorProfile || d.directorProfile || '',
         // Store names alongside ids so "10 titles with Bryan Cranston" renders
         // without a /person round-trip per actor. Top 5 keeps the doc small.
         cast: cs.length ? cs : (d.cast || []),

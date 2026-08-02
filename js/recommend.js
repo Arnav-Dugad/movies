@@ -10,14 +10,19 @@
 // affinity enters through `with_cast`/`with_people` QUERY params plus a per-source
 // bonus — never a per-candidate /credits fetch (that would be 20+ extra requests).
 import { tmdb } from './api.js';
-import { genreMap, mGenreList, tGenreList } from './config.js';
+import { genreMap, mGenreList, tGenreList, IMG, PH } from './config.js';
 import { state } from './state.js';
-import { esc, $ } from './ui.js';
+import { esc, $, toast } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
+import { db, firebase } from './firebase.js';
+import { registerActions } from './events.js';
 
 const MOVIE_GENRES = new Set(mGenreList.map(g => g.id));
 const TV_GENRES = new Set(tGenreList.map(g => g.id));
+let auditOpen = false;
+let lastAudit = null;
+const HISTORY_LIMIT = 100;
 
 function splitKey(key) { const i = key.lastIndexOf('_'); return [key.slice(0, i), +key.slice(i + 1)]; }
 
@@ -95,7 +100,8 @@ export function buildTasteProfile(sources = state) {
 
   // "Seen" means actually watched. Being in a list or recently opened should not
   // hide a strong recommendation; it often means the user is considering it.
-  const seen = new Set(Object.keys(watched));
+  const dismissed = new Set(sources.recommendationFeedback?.dismissed || []);
+  const seen = new Set([...Object.keys(watched), ...dismissed]);
 
   const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
   const topActors = topOf(actorWeights, actorNames);
@@ -103,7 +109,7 @@ export function buildTasteProfile(sources = state) {
   const topDecade = Object.entries(decadeWeights).sort((a, b) => b[1] - a[1]).map(([d]) => +d)[0] || null;
 
   return {
-    genreWeights, topGenres, seedIds, seen, movieBias: movie >= tv,
+    genreWeights, topGenres, seedIds, seen, dismissed, movieBias: movie >= tv,
     actorWeights, actorNames, topActors,
     directorWeights, directorNames, topDirectors,
     decadeWeights, topDecade,
@@ -265,18 +271,25 @@ export function isRelatedToSeed(candidate, seed) {
   return overlap >= minimum && !genres.some(genre => DEFINING_GENRES.has(genre) && !seedGenres.has(genre));
 }
 
-export function scoreCandidate(c, profile, norms = {}) {
+export function scoreBreakdown(c, profile, norms = {}) {
   const gw = profile.genreWeights || {};
   const maxG = norms.maxG || 1, maxDec = norms.maxDec || 1;
   let g = 0; (c.genre_ids || []).forEach(id => { g += (gw[id] || 0); });
-  const genreScore = g / maxG;                                    // can be NEGATIVE for disliked genres
+  const genreScore = g / maxG;
   const sourceBonus = SOURCE_BONUS[c.__source] != null ? SOURCE_BONUS[c.__source] : 0.6;
   const quality = (c.vote_average || 0) / 10 * 0.5 + Math.min((c.popularity || 0) / 500, 1) * 0.3;
   const y = yearOf(c);
   const decadeScore = y ? ((profile.decadeWeights || {})[decadeOf(y)] || 0) / maxDec * 0.4 : 0;
-  // Sink off-taste "defining genre" titles everywhere, not just the seed row.
   const offPenalty = offTasteCount(c, profile) * 0.6;
-  return genreScore + sourceBonus + quality + decadeScore - offPenalty;
+  return {
+    genre: genreScore, source: sourceBonus, quality, decade: decadeScore,
+    penalty: offPenalty, total: genreScore + sourceBonus + quality + decadeScore - offPenalty,
+    matchedGenres: (c.genre_ids || []).filter(id => (gw[id] || 0) > 0).map(id => genreMap[id]).filter(Boolean),
+  };
+}
+
+export function scoreCandidate(c, profile, norms = {}) {
+  return scoreBreakdown(c, profile, norms).total;
 }
 
 export function rankAndDedupe(cands, profile) {
@@ -285,35 +298,49 @@ export function rankAndDedupe(cands, profile) {
     maxDec: Math.max(1, ...Object.values(profile.decadeWeights || {}).map(Math.abs)),
   };
   const byId = new Map();
+  const audit = { considered: (cands || []).length, accepted: 0, rejected: { invalid: 0, unreleased: 0, lowVotes: 0, seen: 0 }, duplicates: 0, decisions: [] };
+  const decision = (c, result, reason) => audit.decisions.push({
+    title: c?.title || c?.name || 'Untitled', type: c?.__type || c?.media_type || 'movie',
+    id: c?.id || 0, result, reason,
+  });
   cands.forEach(c => {
-    if (!c || !c.id || !c.poster_path) return;
+    if (!c || !c.id || !c.poster_path) { audit.rejected.invalid++; decision(c, 'Filtered', 'Missing poster or card data'); return; }
     const type = c.__type || 'movie';
-    if (type === 'person') return;
+    if (type === 'person') { audit.rejected.invalid++; decision(c, 'Filtered', 'People are not watchable titles'); return; }
     // Shared chokepoint for every recommendation surface (rows AND the watch-party
     // matcher): never suggest something that isn't out yet, or something so
     // obscure it's noise rather than a discovery.
-    if (!isOut(c)) return;
-    if ((c.vote_count || 0) < MIN_VOTES) return;
+    if (!isOut(c)) { audit.rejected.unreleased++; decision(c, 'Filtered', 'Not released or release date unknown'); return; }
+    if ((c.vote_count || 0) < MIN_VOTES) { audit.rejected.lowVotes++; decision(c, 'Filtered', `Only ${c.vote_count || 0} community votes`); return; }
     const key = `${type}_${c.id}`;
-    if (profile.seen.has(key)) return;
-    const sc = scoreCandidate(c, profile, norms);
+    if (profile.seen.has(key)) {
+      audit.rejected.seen++;
+      decision(c, 'Filtered', profile.dismissed?.has(key) ? 'Marked not interested' : 'Already watched');
+      return;
+    }
+    const breakdown = scoreBreakdown(c, profile, norms), sc = breakdown.total;
     const existing = byId.get(key);
     if (!existing) {
       byId.set(key, {
-        ...c, __type: type, __score: sc,
+        ...c, __type: type, __score: sc, __audit: breakdown,
         __sources: [c.__source], __seedKeys: c.__seedKey ? [c.__seedKey] : [],
       });
       return;
     }
+    audit.duplicates++;
+    decision(c, 'Merged', `Duplicate from ${c.__source || 'another source'}`);
     // A title can arrive through several paths. Preserve every origin so a card
     // does not lose its exact seed/actor/director relationship during deduping.
     const sources = [...new Set([...(existing.__sources || [existing.__source]), c.__source].filter(Boolean))];
     const seedKeys = [...new Set([...(existing.__seedKeys || []), c.__seedKey].filter(Boolean))];
     byId.set(key, sc > existing.__score
-      ? { ...c, __type: type, __score: sc, __sources: sources, __seedKeys: seedKeys }
+      ? { ...c, __type: type, __score: sc, __audit: breakdown, __sources: sources, __seedKeys: seedKeys }
       : { ...existing, __sources: sources, __seedKeys: seedKeys });
   });
-  return [...byId.values()].sort((a, b) => b.__score - a.__score);
+  const ranked = [...byId.values()].sort((a, b) => b.__score - a.__score);
+  audit.accepted = ranked.length;
+  Object.defineProperty(ranked, '__auditSummary', { value: audit, enumerable: false });
+  return ranked;
 }
 
 // Greedy MMR: pick the best remaining candidate after penalising genres already
@@ -354,6 +381,97 @@ function shell(d) {
   return `<div class="section reveal"><div class="section-head"><h2 class="section-title"><span>${d.icon}</span> ${esc(d.title)}</h2></div><div class="row" id="${d.id}">${skelCards(8)}</div></div>`;
 }
 
+function feedbackState() {
+  if (!state.recommendationFeedback) state.recommendationFeedback = { dismissed: [], history: [] };
+  return state.recommendationFeedback;
+}
+
+async function persistFeedback() {
+  const uid = state.user?.uid || 'guest';
+  const feedback = feedbackState();
+  // A client timestamp lets loadProfile resolve an offline device write against
+  // an older cloud copy and safely retry it on the next successful profile read.
+  const payload = { dismissed: feedback.dismissed.slice(0, 150), history: feedback.history.slice(0, HISTORY_LIMIT), clientUpdatedAt: Date.now() };
+  try { localStorage.setItem(`cv_rec_feedback_${uid}`, JSON.stringify(payload)); } catch (_) {}
+  if (!state.user) return;
+  try {
+    await db.collection('users').doc(state.user.uid).set({
+      recommendationFeedback: { ...payload, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+    }, { merge: true });
+  } catch (error) {
+    console.error('persist recommendation feedback', error);
+    toast('Saved on this device; cloud sync will retry next time', 'info');
+  }
+}
+
+function auditNumber(value) { return Number(value || 0).toFixed(2); }
+function sourceLabel(source) {
+  return ({ rec: 'Exact title seed', cast: 'Favorite actor', castmore: 'Actor affinity', director: 'Favorite director', quality: 'Quality discovery', genre: 'Genre discovery', trending: 'Trending' })[source] || source || 'Discovery';
+}
+
+function auditHTML(profile, ranked, seed) {
+  const summary = ranked?.__auditSummary || { considered: 0, accepted: 0, duplicates: 0, rejected: {}, decisions: [] };
+  const rejected = summary.rejected || {};
+  const history = feedbackState().history || [];
+  const candidates = ranked || [];
+  return `<div class="rec-audit-head"><div><span>Private diagnostics</span><h3>Recommendation Audit</h3><p>Every score component, source, and filter decision used for this session.</p></div><button data-action="toggle-rec-audit" aria-label="Close recommendation audit">&times;</button></div>
+    <div class="rec-audit-metrics"><div><span>Fetched</span><strong>${summary.considered || 0}</strong></div><div><span>Ranked</span><strong>${summary.accepted || 0}</strong></div><div><span>Duplicates merged</span><strong>${summary.duplicates || 0}</strong></div><div><span>Dismissed</span><strong>${feedbackState().dismissed.length}</strong></div></div>
+    <div class="rec-audit-grid">
+      <section><div class="mini-panel-title"><span>Filter decisions</span><b>before ranking</b></div><div class="audit-filters">
+        ${[['Missing card data', rejected.invalid], ['Not released', rejected.unreleased], ['Too few community votes', rejected.lowVotes], ['Watched or not interested', rejected.seen]].map(([label, count]) => `<div><span>${label}</span><strong>${count || 0}</strong></div>`).join('')}
+      </div><details class="audit-decisions"><summary>Every filter decision <b>${(summary.decisions || []).length}</b></summary><div>${(summary.decisions || []).length ? summary.decisions.map(item => `<p><strong>${esc(item.title)}</strong><span>${esc(item.result)} · ${esc(item.reason)}</span></p>`).join('') : '<p><span>No candidates were filtered or merged.</span></p>'}</div></details><p class="audit-formula">Score = genre affinity + source trust + quality + decade affinity − off-taste penalty.</p>${seed ? `<p class="audit-seed">Title row seed: <strong>${esc(seed.title)}</strong> · requires exact seed provenance and real genre overlap.</p>` : ''}</section>
+      <section><div class="mini-panel-title"><span>Not interested history</span><b>Firestore backed</b></div><div class="audit-history">${history.length ? history.map(item => `<div><img src="${item.poster ? `${IMG}w92${item.poster}` : PH}" alt=""><span><strong>${esc(item.title || 'Untitled')}</strong><small>${new Date(item.dismissedAt || Date.now()).toLocaleDateString()}</small></span><button data-action="restore-recommendation" data-key="${esc(item.key)}">Restore</button></div>`).join('') : '<p>No dismissed recommendations yet.</p>'}</div></section>
+    </div>
+    <div class="mini-panel-title audit-ranked-title"><span>Every ranked candidate</span><b>${candidates.length} scores</b></div>
+    <div class="audit-ranked">${candidates.length ? candidates.map((item, index) => { const a = item.__audit || {}; const title = item.title || item.name || 'Untitled'; return `<article><span class="audit-rank">${index + 1}</span><img src="${item.poster_path ? `${IMG}w92${item.poster_path}` : ''}" alt=""><div class="audit-candidate-copy"><strong>${esc(title)}</strong><small>${(item.__sources || [item.__source]).map(sourceLabel).join(' · ')}</small><em>${(a.matchedGenres || []).join(', ') || 'No positive genre signal'}</em></div><div class="audit-score"><strong>${auditNumber(item.__score)}</strong><span>Genre ${auditNumber(a.genre)} · Source ${auditNumber(a.source)} · Quality ${auditNumber(a.quality)} · Era ${auditNumber(a.decade)} · Penalty −${auditNumber(a.penalty)}</span></div></article>`; }).join('') : '<p class="stats-empty-line">Candidates are still being calculated.</p>'}</div>`;
+}
+
+function paintAudit(profile, ranked, seed) {
+  lastAudit = { profile, ranked, seed };
+  const panel = $('recAudit'); if (!panel) return;
+  panel.classList.toggle('active', auditOpen);
+  panel.setAttribute('aria-hidden', auditOpen ? 'false' : 'true');
+  panel.innerHTML = auditHTML(profile, ranked, seed);
+}
+
+async function dismissRecommendation(element, event) {
+  event?.stopPropagation();
+  const key = `${element.dataset.type}_${element.dataset.id}`;
+  const feedback = feedbackState();
+  const record = {
+    key, id: +element.dataset.id, type: element.dataset.type,
+    title: element.dataset.title || '', poster: element.dataset.poster || '',
+    source: element.dataset.source || '', score: +(element.dataset.score || 0), dismissedAt: Date.now(),
+  };
+  feedback.dismissed = [...new Set([key, ...feedback.dismissed])].slice(0, 150);
+  feedback.history = [record, ...feedback.history.filter(item => item.key !== key)].slice(0, HISTORY_LIMIT);
+  document.querySelectorAll('[data-recommendation-key]').forEach(card => {
+    if (card.dataset.recommendationKey !== key) return;
+    const row = card.closest('.row'); card.remove();
+    if (row && !row.querySelector('[data-recommendation-key]')) row.closest('.section')?.remove();
+  });
+  if (lastAudit) {
+    const next = lastAudit.ranked.filter(item => `${item.__type}_${item.id}` !== key);
+    Object.defineProperty(next, '__auditSummary', { value: lastAudit.ranked.__auditSummary, enumerable: false });
+    paintAudit(lastAudit.profile, next, lastAudit.seed);
+  }
+  toast('Removed from your recommendations', 'success');
+  await persistFeedback();
+}
+
+async function restoreRecommendation(key) {
+  const feedback = feedbackState();
+  feedback.dismissed = feedback.dismissed.filter(value => value !== key);
+  feedback.history = feedback.history.filter(item => item.key !== key);
+  await persistFeedback();
+  toast('Recommendation restored', 'success');
+  renderRecommendations();
+}
+
+function recommendationCard(candidate, opts = {}) {
+  return buildCard(candidate, candidate.__type, { ...opts, dismissible: true });
+}
+
 async function fillRow(id, fn) {
   try {
     const inner = await fn();
@@ -380,23 +498,24 @@ export async function renderRecommendations() {
   if (topDirector) descriptors.push({ id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}` });
   if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
 
-  wrap.innerHTML = descriptors.map(shell).join('');
+  wrap.innerHTML = `<div class="rec-controlbar reveal"><div><span>Personalized intelligence</span><strong>Your recommendations adapt to every watch, rating, and dismissal.</strong></div><button data-action="toggle-rec-audit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M9 7h7M9 11h7"/></svg>Recommendation audit</button></div><aside class="rec-audit${auditOpen ? ' active' : ''}" id="recAudit" aria-hidden="${auditOpen ? 'false' : 'true'}">${auditHTML(profile, null, seed)}</aside>${descriptors.map(shell).join('')}`;
   observeReveals(wrap);
 
   // ONE pool fetch + ONE ranking pass, shared by every row. The old code refetched
   // (and re-ranked) per row, which was both slower and inconsistent between rows.
   const pool = fetchCandidates(profile).then(c => rankAndDedupe(c, profile)).catch(() => []);
+  pool.then(ranked => paintAudit(profile, ranked, seed));
 
   fillRow('rowTopPicks', async () => {
     const picks = diversify(await pool, 20);
     if (!picks.length) return null;
     const top = picks[0].__score || 1;
-    return picks.map(c => buildCard(c, c.__type, { badge: matchBadge(c.__score, top) })).join('');
+    return picks.map(c => recommendationCard(c, { badge: matchBadge(c.__score, top) })).join('');
   });
 
   const rowFrom = async (pred, min = 1) => {
     const items = (await pool).filter(pred).slice(0, 20);
-    return items.length >= min ? items.map(c => buildCard(c, c.__type)).join('') : null;
+    return items.length >= min ? items.map(c => recommendationCard(c)).join('') : null;
   };
 
   // The label and every card now share the exact same recommendation seed.
@@ -406,4 +525,17 @@ export async function renderRecommendations() {
   if (topActor) fillRow('rowActor', () => rowFrom(c => hasCandidateSource(c, 'cast')));
   if (topDirector) fillRow('rowDirector', () => rowFrom(c => hasCandidateSource(c, 'director')));
   if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)));
+}
+
+export function initRecommendations() {
+  registerActions({
+    'dismiss-recommendation': (element, event) => dismissRecommendation(element, event),
+    'toggle-rec-audit': () => {
+      auditOpen = !auditOpen;
+      const panel = $('recAudit');
+      if (panel) { panel.classList.toggle('active', auditOpen); panel.setAttribute('aria-hidden', auditOpen ? 'false' : 'true'); }
+    },
+    'restore-recommendation': element => restoreRecommendation(element.dataset.key),
+  });
+  document.addEventListener('cv:auth', () => { auditOpen = false; lastAudit = null; });
 }

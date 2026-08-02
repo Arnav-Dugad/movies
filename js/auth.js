@@ -15,10 +15,38 @@ let delRelease = null;
 // nav/dropdown avatars can render. Non-fatal — falls back to the initial avatar.
 async function loadProfile() {
   state.profile = { avatar: null, created: null };
+  state.recommendationFeedback = { dismissed: [], history: [] };
   if (!state.user) return;
+  let localFeedback = {};
+  try { localFeedback = JSON.parse(localStorage.getItem(`cv_rec_feedback_${state.user.uid}`) || '{}'); } catch (_) {}
+  const hasFeedback = feedback => Array.isArray(feedback?.dismissed) || Array.isArray(feedback?.history);
+  const useFeedback = (feedback = {}) => {
+    const dismissed = Array.isArray(feedback.dismissed) ? feedback.dismissed : [];
+    const history = Array.isArray(feedback.history) ? feedback.history : [];
+    state.recommendationFeedback = {
+      dismissed: dismissed.filter(value => typeof value === 'string').slice(0, 150),
+      history: history.filter(Boolean).slice(0, 100),
+    };
+  };
+  // Start with the device backup so recommendation history still works offline;
+  // the owner-only Firestore profile replaces it when the cloud read succeeds.
+  useFeedback(localFeedback);
   try {
     const d = await db.collection('users').doc(state.user.uid).get();
-    if (d.exists) { const x = d.data(); state.profile = { avatar: x.avatar || null, created: x.created || null }; }
+    if (d.exists) {
+      const x = d.data(), feedback = x.recommendationFeedback || {};
+      state.profile = { avatar: x.avatar || null, created: x.created || null };
+      const localTime = +(localFeedback.clientUpdatedAt || 0), cloudTime = +(feedback.clientUpdatedAt || 0);
+      const localIsNewer = hasFeedback(localFeedback) && localTime > cloudTime;
+      useFeedback(localIsNewer || !hasFeedback(feedback) ? localFeedback : feedback);
+      if (localIsNewer) {
+        // This is the retry path for a prior offline user action. It happens only
+        // when the device copy proves newer, so normal profile loads never write.
+        db.collection('users').doc(state.user.uid).set({
+          recommendationFeedback: { ...localFeedback, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+        }, { merge: true }).catch(error => console.warn('recommendation feedback retry', error));
+      }
+    }
   } catch (e) { console.error('loadProfile', e); }
 }
 
@@ -33,6 +61,7 @@ export function initAuth() {
     } else {
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
       state.lists = []; state.profile = { avatar: null, created: null };
+      state.recommendationFeedback = { dismissed: [], history: [] };
     }
     loadRecentlyViewed();
     document.dispatchEvent(new Event('cv:auth'));
