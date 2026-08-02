@@ -86,7 +86,7 @@ export function renderProfile() {
     <div class="row">${rv.map(r => {
       const poster = r.poster ? `https://image.tmdb.org/t/p/w342${r.poster}` : '';
       const wd = isWatched(r.id, r.type);
-      return `<div class="card" role="button" tabindex="0" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img">${poster ? `<img src="${poster}" alt="${esc(r.title)}" loading="lazy">` : ''}${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div></div></div>`;
+      return `<a class="card" href="/${r.type}/${r.id}" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img">${poster ? `<img src="${poster}" alt="${esc(r.title)}" loading="lazy">` : ''}${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div></div></a>`;
     }).join('')}</div>` : '';
 
   ct.innerHTML = header + editForm + codeCard + snapshot + recent;

@@ -114,7 +114,7 @@ export async function openDetail(id, type) {
     let vidsHTML = ''; if (allVids.length) vidsHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Videos & Trailers</div><div class="vid-scroll">${allVids.map(v => `<div class="vid-card" role="button" tabindex="0" data-action="play-trailer" data-key="${v.key}"><div class="vid-thumb"><img src="https://img.youtube.com/vi/${v.key}/mqdefault.jpg" alt="${esc(v.name)}" loading="lazy"><div class="vid-play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div></div><div class="vid-name">${esc(v.name)}</div><div class="vid-type">${esc(v.type) || ''}</div></div>`).join('')}</div></div>`;
 
     const cast = (cred.cast || []).slice(0, 20);
-    let castHTML = ''; if (cast.length) castHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Cast</div><div class="cast-scroll">${cast.map(c => `<div class="cast-item" role="button" tabindex="0" data-action="open-person" data-id="${c.id}"><div class="cast-pic">${c.profile_path ? `<img src="${IMG}w185${c.profile_path}" alt="${esc(c.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(c.name)}</div><div class="cast-char">${esc(c.character) || ''}</div></div>`).join('')}</div></div>`;
+    let castHTML = ''; if (cast.length) castHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Cast</div><div class="cast-scroll">${cast.map(c => `<a class="cast-item" href="/person/${c.id}" data-action="open-person" data-id="${c.id}"><div class="cast-pic">${c.profile_path ? `<img src="${IMG}w185${c.profile_path}" alt="${esc(c.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(c.name)}</div><div class="cast-char">${esc(c.character) || ''}</div></a>`).join('')}</div></div>`;
 
     const crewHTML = crewSectionHTML(cred);
     const galHTML = galleryHTML(det);
@@ -131,7 +131,7 @@ export async function openDetail(id, type) {
     if (det.belongs_to_collection) { const c = det.belongs_to_collection;
       // The strip below the banner is filled in after paint (one extra request,
       // and only when the title actually belongs to a collection).
-      collHTML = `<div class="coll-banner" role="button" tabindex="0" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div></div></div><div id="collStrip_${id}"></div>`; }
+      collHTML = `<a class="coll-banner" href="/collection/${c.id}" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div></div></a><div id="collStrip_${id}"></div>`; }
 
     ct.innerHTML = `
       ${back ? `<div class="detail-back"><img src="${back}" alt=""><div class="detail-back-grad"></div></div>` : '<div style="height:var(--nav-h)"></div>'}
@@ -241,7 +241,7 @@ function directorCardHTML(dirs, type) {
   if (!dirs.length) return '';
   const isCreator = type === 'tv' && dirs.some(d => d.__creator);
   const label = dirs.length > 1 ? (isCreator ? 'Creators' : 'Directors') : (isCreator ? 'Creator' : 'Director');
-  const rows = dirs.map(d => `<div class="sp-row" role="button" tabindex="0" data-action="open-person" data-id="${d.id}" data-tip="View ${esc(d.name)}"><div class="sp-pic">${d.profile_path ? `<img src="${IMG}w185${d.profile_path}" alt="${esc(d.name)}" loading="lazy" data-ph="${PH}">` : `<span class="sp-mono">${esc((d.name || '?')[0])}</span>`}</div><div class="sp-name">${esc(d.name)}</div></div>`).join('');
+  const rows = dirs.map(d => `<a class="sp-row" href="/person/${d.id}" data-action="open-person" data-id="${d.id}" data-tip="View ${esc(d.name)}"><div class="sp-pic">${d.profile_path ? `<img src="${IMG}w185${d.profile_path}" alt="${esc(d.name)}" loading="lazy" data-ph="${PH}">` : `<span class="sp-mono">${esc((d.name || '?')[0])}</span>`}</div><div class="sp-name">${esc(d.name)}</div></a>`).join('');
   // Each name is its own link now, so the card itself is no longer the click target.
   return `<div class="stat-card stat-person${dirs.length > 1 ? ' stat-person-multi' : ''}"><div class="stat-label">${label}</div>${rows}</div>`;
 }
@@ -281,8 +281,8 @@ function companiesHTML(det) {
   const cos = (det.production_companies || []).filter(c => c && c.id);
   if (!cos.length) return '';
   const one = c => c.logo_path
-    ? `<div class="studio-logo" role="button" tabindex="0" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles"><img src="${IMG}w185${c.logo_path}" alt="${esc(c.name)}" title="${esc(c.name)}" loading="lazy"></div>`
-    : `<span class="studio-name-link" role="button" tabindex="0" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles">${esc(c.name)}</span>`;
+    ? `<a class="studio-logo" href="/studio/${c.id}" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles"><img src="${IMG}w185${c.logo_path}" alt="${esc(c.name)}" title="${esc(c.name)}" loading="lazy"></a>`
+    : `<a class="studio-name-link" href="/studio/${c.id}" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles">${esc(c.name)}</a>`;
   return `<div class="stat-card"><div class="stat-label">${cos.length > 1 ? 'Studios' : 'Studio'}</div><div class="studio-logos">${cos.map(one).join('')}</div></div>`;
 }
 
@@ -293,8 +293,8 @@ function networksHTML(det, type) {
   const nets = (det.networks || []).filter(n => n && n.id);
   if (!nets.length) return '';
   const one = n => n.logo_path
-    ? `<div class="studio-logo" role="button" tabindex="0" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows"><img src="${IMG}w185${n.logo_path}" alt="${esc(n.name)}" title="${esc(n.name)}" loading="lazy"></div>`
-    : `<span class="studio-name-link" role="button" tabindex="0" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows">${esc(n.name)}</span>`;
+    ? `<a class="studio-logo" href="/network/${n.id}" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows"><img src="${IMG}w185${n.logo_path}" alt="${esc(n.name)}" title="${esc(n.name)}" loading="lazy"></a>`
+    : `<a class="studio-name-link" href="/network/${n.id}" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows">${esc(n.name)}</a>`;
   return `<div class="stat-card"><div class="stat-label">${nets.length > 1 ? 'Networks' : 'Network'}</div><div class="studio-logos">${nets.map(one).join('')}</div></div>`;
 }
 
@@ -366,7 +366,7 @@ function crewSectionHTML(cred) {
   // job list instead of a character name (it ellipsises, hence the title attr).
   const item = p => {
     const jobs = p.jobs.join(', ');
-    return `<div class="cast-item" role="button" tabindex="0" data-action="open-person" data-id="${p.id}"><div class="cast-pic">${p.profile_path ? `<img src="${IMG}w185${p.profile_path}" alt="${esc(p.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(p.name)}</div><div class="cast-char" title="${esc(jobs)}">${esc(jobs)}</div></div>`;
+    return `<a class="cast-item" href="/person/${p.id}" data-action="open-person" data-id="${p.id}"><div class="cast-pic">${p.profile_path ? `<img src="${IMG}w185${p.profile_path}" alt="${esc(p.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(p.name)}</div><div class="cast-char" title="${esc(jobs)}">${esc(jobs)}</div></a>`;
   };
   const blocks = [...groups.entries()]
     .map(([dept, list]) => `<div class="crew-dept"><div class="crew-dept-label">${esc(dept)}</div><div class="cast-scroll">${list.map(item).join('')}</div></div>`)
@@ -441,15 +441,31 @@ function reviewsHTML(revs) {
 
 // Reveal a clamp toggle ONLY when the text actually overflows its line-clamp.
 //
-// Two things made this misfire and show a dead "Read more" over fully-visible
-// text: measuring before webfonts settled (metrics change underneath you), and a
-// 2px tolerance that sub-pixel line-height rounding can exceed on its own. So:
-// tolerate a few px, and never claim overflow on text that isn't clamped.
+// A hidden unclamped copy gives us a reliable full height. Reading scrollHeight
+// directly is inconsistent with CSS line-clamp and can produce false positives.
+function hasClampedOverflow(body) {
+  const width = body.getBoundingClientRect().width;
+  if (!width) return false;
+  const clone = body.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.classList.remove('clamped', 'expanded');
+  Object.assign(clone.style, {
+    position: 'fixed', left: '-10000px', top: '0', visibility: 'hidden',
+    pointerEvents: 'none', width: `${width}px`, maxWidth: 'none', height: 'auto',
+    maxHeight: 'none', overflow: 'visible', display: 'block',
+    WebkitLineClamp: 'unset', lineClamp: 'unset'
+  });
+  body.parentElement.appendChild(clone);
+  const fullHeight = clone.getBoundingClientRect().height;
+  clone.remove();
+  return fullHeight > body.getBoundingClientRect().height + 1;
+}
+
 function syncClampToggle(body, toggle) {
   if (!body || !toggle) return;
   // An expanded body has no clamp to overflow — leave the toggle as the user set it.
   if (toggle.dataset.expanded === '1') return;
-  toggle.hidden = !(body.scrollHeight - body.clientHeight > 4);
+  toggle.hidden = !hasClampedOverflow(body);
 }
 
 // Measure every clamped block on the page, after fonts are ready and on resize
@@ -592,7 +608,7 @@ export function initDetail() {
         // Reveal Read-more on the newly shown bodies that overflow.
         more.querySelectorAll('.review-body').forEach(b => {
           const t = more.querySelector(`.review-toggle[data-target="${b.id}"]`);
-          if (t) t.hidden = !(b.scrollHeight > b.clientHeight + 2);
+          if (t) syncClampToggle(b, t);
         });
       }
       el.remove();

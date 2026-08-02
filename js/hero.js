@@ -107,7 +107,7 @@ export async function initHero() {
           ${genres.length ? `<div class="hero-genres">${genres.map(g => `<span class="hero-genre-tag">${g}</span>`).join('')}</div>` : ''}
           <p class="hero-desc">${esc(item.overview || '')}</p>
           <div class="hero-actions">
-            <button class="btn-primary magnetic" data-action="open-detail" data-id="${item.id}" data-type="${item.media_type}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none"/></svg>Watch Now</button>
+            <a class="btn-primary magnetic" href="/${item.media_type}/${item.id}" data-action="open-detail" data-id="${item.id}" data-type="${item.media_type}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none"/></svg>Watch Now</a>
             <button class="btn-glass" data-action="open-list-picker" data-item="${payload}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>My List</button>
           </div>
         </div>

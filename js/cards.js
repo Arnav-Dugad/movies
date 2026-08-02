@@ -76,7 +76,7 @@ export function buildCard(item, type, opts = {}) {
   if (opts.t10) cls += ' card-t10';
 
   const yt = item.__ytKey ? ` data-yt="${item.__ytKey}"` : '';
-  let h = `<div class="${cls}" role="button" tabindex="0" aria-label="${safeTitle}" data-action="open-detail" data-id="${item.id}" data-type="${t}"${yt}>`;
+  let h = `<a class="${cls}" href="/${t}/${item.id}" aria-label="${safeTitle}" data-action="open-detail" data-id="${item.id}" data-type="${t}"${yt}>`;
   if (opts.t10) h += `<div class="t10-num">${opts.rank}</div>`;
   h += `<div class="card-img"><img src="${poster}" alt="${safeTitle}" loading="lazy" data-ph="${PH}">`;
   if (opts.badge) h += `<div class="card-badge">${esc(opts.badge)}</div>`;
@@ -89,13 +89,13 @@ export function buildCard(item, type, opts = {}) {
   h += wlBtnHTML(item.id, t, wlPayload(item, t));
   h += `</div>`;
   if (!opts.t10) h += `<div class="card-info"><div class="card-title">${safeTitle}</div><div class="card-sub"><span>${year}</span><span class="dot"></span><span>${t === 'tv' ? 'TV' : 'Movie'}</span></div></div>`;
-  h += `</div>`;
+  h += `</a>`;
   return h;
 }
 
 export function personCard(item) {
   const photo = item.profile_path ? `${IMG}w185${item.profile_path}` : PH;
-  return `<div class="card" role="button" tabindex="0" aria-label="${esc(item.name)}" data-action="open-person" data-id="${item.id}"><div class="card-img"><img src="${photo}" alt="${esc(item.name)}" loading="lazy" data-ph="${PH}"></div><div class="card-info"><div class="card-title">${esc(item.name) || ''}</div><div class="card-sub">${esc(item.known_for_department) || ''}</div></div></div>`;
+  return `<a class="card" href="/person/${item.id}" aria-label="${esc(item.name)}" data-action="open-person" data-id="${item.id}"><div class="card-img"><img src="${photo}" alt="${esc(item.name)}" loading="lazy" data-ph="${PH}"></div><div class="card-info"><div class="card-title">${esc(item.name) || ''}</div><div class="card-sub">${esc(item.known_for_department) || ''}</div></div></a>`;
 }
 
 // Skeleton placeholder row content.

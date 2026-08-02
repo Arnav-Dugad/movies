@@ -15,7 +15,7 @@ let reqGen = 0, curDoc = null;
 
 function cardHTML(it) {
   const poster = it.poster ? `${IMG}w342${it.poster}` : PH;
-  return `<div class="card" role="button" tabindex="0" aria-label="${esc(it.title)}" data-action="open-detail" data-id="${it.id}" data-type="${it.type}"><div class="card-img"><img src="${poster}" alt="${esc(it.title)}" loading="lazy" data-ph="${PH}"></div><div class="card-info"><div class="card-title">${esc(it.title) || ''}</div><div class="card-sub"><span>${esc(it.year || '')}</span><span class="dot"></span><span>${it.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></div>`;
+  return `<a class="card" href="/${it.type}/${it.id}" aria-label="${esc(it.title)}" data-action="open-detail" data-id="${it.id}" data-type="${it.type}"><div class="card-img"><img src="${poster}" alt="${esc(it.title)}" loading="lazy" data-ph="${PH}"></div><div class="card-info"><div class="card-title">${esc(it.title) || ''}</div><div class="card-sub"><span>${esc(it.year || '')}</span><span class="dot"></span><span>${it.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></a>`;
 }
 
 export async function openSharedList(uid, listId) {

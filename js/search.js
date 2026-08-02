@@ -202,11 +202,12 @@ function renderSuggest(raw, q) {
     const year = (r.release_date || r.first_air_date || '').slice(0, 4);
     const tl = t === 'tv' ? 'TV' : isP ? 'Person' : 'Movie';
     const rate = (!isP && r.vote_average) ? r.vote_average.toFixed(1) : '';
-    return `<div class="sx-row" role="option" data-i="${i}" data-action="${isP ? 'open-person' : 'open-detail'}" data-id="${r.id}"${isP ? '' : ` data-type="${t}"`}>
+    const href = isP ? `/person/${r.id}` : `/${t}/${r.id}`;
+    return `<a class="sx-row" href="${href}" role="option" data-i="${i}" data-action="${isP ? 'open-person' : 'open-detail'}" data-id="${r.id}"${isP ? '' : ` data-type="${t}"`}>
       <div class="sx-thumb"><img src="${thumb}" alt="" loading="lazy" data-ph="${PH}"></div>
       <div class="sx-info"><div class="sx-title">${highlight(r.title || r.name, q)}</div><div class="sx-sub">${[year, tl].filter(Boolean).join(' • ')}</div></div>
       ${rate ? `<div class="sx-rate"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rate}</div>` : ''}
-    </div>`;
+    </a>`;
   }).join('') + `<button class="sx-all" data-action="search-submit" data-q="${esc(q)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>See all results for “<span></span>”</button>`;
   box.querySelector('.sx-all span').textContent = q;
   box.classList.add('open');

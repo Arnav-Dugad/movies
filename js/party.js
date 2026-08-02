@@ -161,13 +161,13 @@ async function compute() {
 
   res.innerHTML = `
     <div class="party-hero">
-      <div class="party-hero-poster" role="button" tabindex="0" data-action="open-detail" data-id="${top.id}" data-type="${top.__type}">${poster ? `<img src="${poster}" alt="${esc(top.title || top.name || '')}" loading="lazy">` : ''}</div>
+      <a class="party-hero-poster" href="/${top.__type}/${top.id}" data-action="open-detail" data-id="${top.id}" data-type="${top.__type}">${poster ? `<img src="${poster}" alt="${esc(top.title || top.name || '')}" loading="lazy">` : ''}</a>
       <div class="party-hero-body">
         <div class="party-hero-tag">🍿 The one ${partyMode === 'tv' ? 'show' : 'film'} for tonight</div>
         <h2 class="party-hero-title">${esc(top.title || top.name || '')}</h2>
         <div class="party-hero-match">${matchBadge(top.__score, topScore)} for ${esc(memberLine)}</div>
         ${whyLine ? `<p class="party-hero-why">${whyLine}</p>` : ''}
-        <button class="btn-primary" data-action="open-detail" data-id="${top.id}" data-type="${top.__type}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>View</button>
+        <a class="btn-primary" href="/${top.__type}/${top.id}" data-action="open-detail" data-id="${top.id}" data-type="${top.__type}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>View</a>
       </div>
     </div>
     <div class="d-sec-title" style="margin-top:28px">More perfect for your group</div>

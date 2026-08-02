@@ -32,7 +32,8 @@
   .detail-tags{justify-content:center}
   .detail-btns{justify-content:center}
   .detail-overview{text-align:left}
-  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .stats-grid{gap:8px}
+  .stat-card{min-width:0;max-width:100%}
   .cd-num{font-size:1.7rem}
   .ep-still{width:100px}
   .vid-card{width:210px}

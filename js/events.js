@@ -12,6 +12,10 @@ export function registerActions(map) {
 function dispatch(el, e) {
   const action = el.dataset.action;
   const fn = handlers.get(action);
+  // Real links keep the browser's native new-tab/window behaviour. A normal
+  // primary click is still handled by the SPA router for the smooth transition.
+  if (el.tagName === 'A' && el.hasAttribute('href') &&
+      (e.button > 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) return false;
   if (fn) { e.preventDefault(); fn(el, e); return true; }
   return false;
 }
