@@ -1,4 +1,6 @@
-// ===== HERO CAROUSEL =====
+// ===== SHARED PREMIUM HERO CAROUSEL =====
+// Home, Movies and TV all use this one engine so trailers, logos, swipe,
+// progress, timing and reduced-motion behavior can never drift apart.
 import { tmdb } from './api.js';
 import { IMG, genreMap, pickLogo } from './config.js';
 import { state } from './state.js';
@@ -7,178 +9,201 @@ import { registerActions } from './events.js';
 import { mountAmbientVideo, ambientOK } from './video-bg.js';
 
 const HERO_INTERVAL_MS = 30000;
-
-let heroAmbientTeardown = null;
-let heroDescTimer = null;
-let heroVideoGen = 0; // bumped on every mountHeroVideo() call; stale resolutions bail
+const models = {
+  home: { hostId: 'heroWrap', endpoint: '/trending/all/day', mediaType: '', items: [], index: 0, timer: null, paused: false, ambient: null, descTimer: null, videoGen: 0, loading: null },
+  movie: { hostId: 'movieHero', endpoint: '/trending/movie/week', mediaType: 'movie', items: [], index: 0, timer: null, paused: false, ambient: null, descTimer: null, videoGen: 0, loading: null },
+  tv: { hostId: 'tvHero', endpoint: '/trending/tv/week', mediaType: 'tv', items: [], index: 0, timer: null, paused: false, ambient: null, descTimer: null, videoGen: 0, loading: null },
+};
 const heroKeyCache = {};
 const heroLogoCache = {};
 
-// Trending items carry no title-logo art, so fetch it per slide (cached), mirroring
-// getTrailerKey. Returns a logo file_path or null.
-async function getTitleLogo(item) {
-  const ck = `${item.media_type}_${item.id}`;
-  if (ck in heroLogoCache) return heroLogoCache[ck];
+const modelFor = key => models[key] || models.home;
+const hostFor = model => $(model.hostId);
+const mediaTypeFor = (model, item) => item.media_type || model.mediaType;
+
+async function getTitleLogo(model, item) {
+  const type = mediaTypeFor(model, item), cacheKey = `${type}_${item.id}`;
+  if (cacheKey in heroLogoCache) return heroLogoCache[cacheKey];
   try {
-    const d = await tmdb(`/${item.media_type}/${item.id}/images`, { include_image_language: 'en,null' });
-    return (heroLogoCache[ck] = pickLogo(d.logos));
-  } catch (e) { return (heroLogoCache[ck] = null); }
+    const data = await tmdb(`/${type}/${item.id}/images`, { include_image_language: 'en,null' });
+    return (heroLogoCache[cacheKey] = pickLogo(data.logos));
+  } catch (_) { return (heroLogoCache[cacheKey] = null); }
 }
 
-// After the slides render (text titles first, for zero layout shift), swap each
-// slide's title to its official logo art where one exists. Fallback = leave text.
-function mountHeroLogos() {
-  state.heroItems.forEach((item, i) => {
-    getTitleLogo(item).then(path => {
-      if (!path) return;
-      const el = document.querySelector(`.hero-slide[data-idx="${i}"] .hero-title`);
-      if (el) el.innerHTML = `<img class="hero-logo" src="${IMG}w500${path}" alt="${esc(item.title || item.name || '')}">`;
+function mountHeroLogos(key) {
+  const model = modelFor(key), host = hostFor(model);
+  model.items.forEach((item, index) => {
+    getTitleLogo(model, item).then(path => {
+      if (!path || !host?.isConnected) return;
+      const title = host.querySelector(`.hero-slide[data-idx="${index}"] .hero-title`);
+      if (title) title.innerHTML = `<img class="hero-logo" src="${IMG}w500${path}" alt="${esc(item.title || item.name || '')}">`;
     });
   });
 }
 
-// Netflix-style: collapse the meta/genres/description on the active slide a few
-// seconds in, leaving the title + action buttons. Reset whenever the slide changes.
-function scheduleDescCollapse() {
-  clearTimeout(heroDescTimer);
-  document.querySelectorAll('.hero-slide.collapsed').forEach(s => s.classList.remove('collapsed'));
-  if (prefersReducedMotion()) return; // keep full info visible when motion is reduced
-  heroDescTimer = setTimeout(() => {
-    const active = document.querySelector('.hero-slide.active');
-    if (active) active.classList.add('collapsed');
-  }, 3000);
-}
-function expandDesc() {
-  clearTimeout(heroDescTimer);
-  document.querySelectorAll('.hero-slide.collapsed').forEach(s => s.classList.remove('collapsed'));
+function expandDescription(model) {
+  clearTimeout(model.descTimer);
+  hostFor(model)?.querySelectorAll('.hero-slide.collapsed').forEach(slide => slide.classList.remove('collapsed'));
 }
 
-async function getTrailerKey(item) {
-  const ck = `${item.media_type}_${item.id}`;
-  if (ck in heroKeyCache) return heroKeyCache[ck];
+function scheduleDescription(model) {
+  expandDescription(model);
+  if (prefersReducedMotion()) return;
+  model.descTimer = setTimeout(() => hostFor(model)?.querySelector('.hero-slide.active')?.classList.add('collapsed'), 3000);
+}
+
+async function getTrailerKey(model, item) {
+  const type = mediaTypeFor(model, item), cacheKey = `${type}_${item.id}`;
+  if (cacheKey in heroKeyCache) return heroKeyCache[cacheKey];
   try {
-    const d = await tmdb(`/${item.media_type}/${item.id}/videos`);
-    const v = (d.results || []).find(x => x.type === 'Trailer' && x.site === 'YouTube') || (d.results || []).find(x => x.site === 'YouTube');
-    return (heroKeyCache[ck] = v?.key || null);
-  } catch (e) { return (heroKeyCache[ck] = null); }
+    const data = await tmdb(`/${type}/${item.id}/videos`);
+    const video = (data.results || []).find(item => item.type === 'Trailer' && item.site === 'YouTube') || (data.results || []).find(item => item.site === 'YouTube');
+    return (heroKeyCache[cacheKey] = video?.key || null);
+  } catch (_) { return (heroKeyCache[cacheKey] = null); }
 }
 
-async function mountHeroVideo() {
-  // Generation token: any overlapping call (e.g. rapid visibility toggling) that
-  // starts after this one invalidates it, so two in-flight calls for the same
-  // slide can never both mount (the loser would otherwise orphan its iframe/
-  // listener with no teardown reference left).
-  const gen = ++heroVideoGen;
-  if (heroAmbientTeardown) { heroAmbientTeardown(); heroAmbientTeardown = null; }
-  if (!ambientOK()) return;
-  const item = state.heroItems[state.heroIdx];
+function teardownVideo(model) {
+  model.videoGen++;
+  if (model.ambient) { model.ambient(); model.ambient = null; }
+}
+
+async function mountHeroVideo(key) {
+  const model = modelFor(key), host = hostFor(model), generation = ++model.videoGen;
+  if (model.ambient) { model.ambient(); model.ambient = null; }
+  if (!host?.offsetParent || !ambientOK()) return;
+  const item = model.items[model.index], indexAtRequest = model.index;
   if (!item) return;
-  const idxAtRequest = state.heroIdx;
-  const key = await getTrailerKey(item);
-  // Bail if the slide changed, or a newer mountHeroVideo() call has superseded us.
-  if (!key || idxAtRequest !== state.heroIdx || gen !== heroVideoGen) return;
-  const slide = document.querySelector('.hero-slide.active');
-  if (slide) heroAmbientTeardown = mountAmbientVideo(slide, key, { overlaySelector: '.hero-vignette', delay: 900 });
+  const trailerKey = await getTrailerKey(model, item);
+  if (!trailerKey || generation !== model.videoGen || indexAtRequest !== model.index || !host.offsetParent) return;
+  const slide = host.querySelector('.hero-slide.active');
+  if (slide) model.ambient = mountAmbientVideo(slide, trailerKey, { overlaySelector: '.hero-vignette', delay: 900 });
 }
 
-export async function initHero() {
-  try {
-    const d = await tmdb('/trending/all/day');
-    state.heroItems = d.results.filter(r => r.backdrop_path && (r.media_type === 'movie' || r.media_type === 'tv')).slice(0, 6);
-    if (!state.heroItems.length) return;
-    const wrap = $('heroWrap');
-    if (!wrap) return;
-    let slidesHTML = '';
-    state.heroItems.forEach((item, i) => {
-      const title = item.title || item.name; const safeTitle = esc(title);
-      const year = (item.release_date || item.first_air_date || '').slice(0, 4);
-      const rating = item.vote_average ? item.vote_average.toFixed(1) : '';
-      const genres = (item.genre_ids || []).slice(0, 3).map(gid => genreMap[gid] || '').filter(Boolean);
-      const payload = esc(JSON.stringify({ id: item.id, type: item.media_type, title, poster: item.poster_path || '', rating: item.vote_average || 0, year, genres: item.genre_ids || [] }));
-      slidesHTML += `<div class="hero-slide ${i === 0 ? 'active' : ''}" data-idx="${i}">
-        <img src="${IMG}original${item.backdrop_path}" alt="" loading="${i === 0 ? 'eager' : 'lazy'}">
-        <div class="hero-vignette"></div>
-        <div class="hero-content">
-          <div class="hero-badge trending"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Trending #${i + 1}</div>
-          <h1 class="hero-title">${safeTitle}</h1>
-          <div class="hero-meta">
-            ${rating ? `<span class="hero-meta-item rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rating}</span><span class="hero-meta-sep"></span>` : ''}<span class="hero-meta-item">${year}</span><span class="hero-meta-sep"></span><span class="hero-meta-item">${item.media_type === 'tv' ? 'TV Series' : 'Movie'}</span>
-          </div>
-          ${genres.length ? `<div class="hero-genres">${genres.map(g => `<span class="hero-genre-tag">${g}</span>`).join('')}</div>` : ''}
-          <p class="hero-desc">${esc(item.overview || '')}</p>
-          <div class="hero-actions">
-            <a class="btn-primary magnetic" href="/${item.media_type}/${item.id}" data-action="open-detail" data-id="${item.id}" data-type="${item.media_type}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none"/></svg>Watch Now</a>
-            <button class="btn-glass" data-action="open-list-picker" data-item="${payload}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>My List</button>
-          </div>
+function heroPayload(model, item) {
+  const type = mediaTypeFor(model, item), title = item.title || item.name || '';
+  return esc(JSON.stringify({ id: item.id, type, title, poster: item.poster_path || '', rating: item.vote_average || 0, year: (item.release_date || item.first_air_date || '').slice(0, 4), genres: item.genre_ids || [] }));
+}
+
+function renderHero(key) {
+  const model = modelFor(key), host = hostFor(model);
+  if (!host || !model.items.length) return;
+  const slides = model.items.map((item, index) => {
+    const type = mediaTypeFor(model, item), title = item.title || item.name || '';
+    const year = (item.release_date || item.first_air_date || '').slice(0, 4);
+    const rating = item.vote_average ? item.vote_average.toFixed(1) : '';
+    const genres = (item.genre_ids || []).slice(0, 3).map(id => genreMap[id] || '').filter(Boolean);
+    return `<div class="hero-slide ${index === model.index ? 'active' : ''}" data-idx="${index}">
+      <img src="${IMG}original${item.backdrop_path}" alt="" loading="${index === 0 ? 'eager' : 'lazy'}">
+      <div class="hero-vignette"></div>
+      <div class="hero-content">
+        <div class="hero-badge trending"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Trending #${index + 1}</div>
+        <h1 class="hero-title">${esc(title)}</h1>
+        <div class="hero-meta">${rating ? `<span class="hero-meta-item rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rating}</span><span class="hero-meta-sep"></span>` : ''}<span class="hero-meta-item">${year}</span><span class="hero-meta-sep"></span><span class="hero-meta-item">${type === 'tv' ? 'TV Series' : 'Movie'}</span></div>
+        ${genres.length ? `<div class="hero-genres">${genres.map(genre => `<span class="hero-genre-tag">${esc(genre)}</span>`).join('')}</div>` : ''}
+        <p class="hero-desc">${esc(item.overview || '')}</p>
+        <div class="hero-actions">
+          <a class="btn-primary magnetic" href="/${type}/${item.id}" data-action="open-detail" data-id="${item.id}" data-type="${type}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none"/></svg>Watch Now</a>
+          <button class="btn-glass" data-action="open-list-picker" data-item="${heroPayload(model, item)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>My List</button>
         </div>
-      </div>`;
-    });
-    slidesHTML += `<div class="hero-progress">${state.heroItems.map((_, i) => `<div class="hero-prog-item ${i === 0 ? 'active' : ''}" role="button" tabindex="0" aria-label="Go to slide ${i + 1}" data-action="hero-go" data-idx="${i}"><div class="hero-prog-fill" style="animation-duration:${HERO_INTERVAL_MS}ms"></div></div>`).join('')}</div>`;
-    wrap.innerHTML = slidesHTML;
-    startHeroTimer();
-    mountHeroVideo();
-    mountHeroLogos();
-    scheduleDescCollapse();
-  } catch (e) { console.error('Hero error:', e); }
+      </div>
+    </div>`;
+  }).join('');
+  host.innerHTML = `${slides}<div class="hero-progress">${model.items.map((_, index) => `<div class="hero-prog-item ${index === model.index ? 'active' : index < model.index ? 'done' : ''}" role="button" tabindex="0" aria-label="Go to slide ${index + 1}" data-action="hero-go" data-hero-key="${key}" data-idx="${index}"><div class="hero-prog-fill" style="animation-duration:${HERO_INTERVAL_MS}ms"></div></div>`).join('')}</div>`;
+  startHeroTimer(key);
+  mountHeroVideo(key);
+  mountHeroLogos(key);
+  scheduleDescription(model);
 }
 
-export function goHero(i) {
-  // Defend against a stale/out-of-range call (e.g. leftover DOM after a re-render):
-  // without this, an empty heroItems array turns the next timer tick's modulo into
-  // NaN, silently corrupting state.heroIdx forever.
-  if (!state.heroItems.length) return;
-  state.heroIdx = ((i % state.heroItems.length) + state.heroItems.length) % state.heroItems.length;
-  document.querySelectorAll('.hero-slide').forEach((s, idx) => s.classList.toggle('active', idx === state.heroIdx));
-  document.querySelectorAll('.hero-prog-item').forEach((p, idx) => { p.classList.remove('active', 'done'); if (idx < state.heroIdx) p.classList.add('done'); if (idx === state.heroIdx) p.classList.add('active'); });
-  startHeroTimer();
-  mountHeroVideo();
-  scheduleDescCollapse();
+async function loadHero(key) {
+  const model = modelFor(key), host = hostFor(model);
+  if (!host) return;
+  if (model.items.length) { renderHero(key); return; }
+  if (model.loading) return model.loading;
+  model.loading = tmdb(model.endpoint).then(data => {
+    model.items = (data.results || []).map(item => ({ ...item, media_type: item.media_type || model.mediaType })).filter(item => item.backdrop_path && ['movie', 'tv'].includes(item.media_type)).slice(0, 6);
+    model.index = 0;
+    if (key === 'home') { state.heroItems = model.items; state.heroIdx = 0; }
+    if (model.items.length) renderHero(key);
+  }).catch(error => console.error(`${key} hero error:`, error)).finally(() => { model.loading = null; });
+  return model.loading;
 }
 
-export function startHeroTimer() {
-  clearInterval(state.heroTimer);
-  if (state.heroPaused) return;
-  state.heroTimer = setInterval(() => { goHero(state.heroIdx + 1); }, HERO_INTERVAL_MS);
+export function goHero(index, key = 'home') {
+  const model = modelFor(key), host = hostFor(model);
+  if (!model.items.length || !host) return;
+  model.index = ((index % model.items.length) + model.items.length) % model.items.length;
+  if (key === 'home') state.heroIdx = model.index;
+  host.querySelectorAll('.hero-slide').forEach((slide, idx) => slide.classList.toggle('active', idx === model.index));
+  host.querySelectorAll('.hero-prog-item').forEach((progress, idx) => {
+    progress.classList.remove('active', 'done');
+    if (idx < model.index) progress.classList.add('done');
+    if (idx === model.index) progress.classList.add('active');
+  });
+  startHeroTimer(key);
+  mountHeroVideo(key);
+  scheduleDescription(model);
 }
-function pauseHero() { state.heroPaused = true; clearInterval(state.heroTimer); expandDesc(); }
-function resumeHero() { if (!state.heroPaused) return; state.heroPaused = false; startHeroTimer(); scheduleDescCollapse(); }
+
+export function startHeroTimer(key = 'home') {
+  const model = modelFor(key), host = hostFor(model);
+  clearInterval(model.timer);
+  if (!host?.offsetParent || model.paused || prefersReducedMotion() || model.items.length < 2) return;
+  model.timer = setInterval(() => {
+    const host = hostFor(model);
+    if (host?.offsetParent) goHero(model.index + 1, key);
+  }, HERO_INTERVAL_MS);
+  if (key === 'home') state.heroTimer = model.timer;
+}
+
+function pauseHero(key) {
+  const model = modelFor(key); model.paused = true; clearInterval(model.timer); expandDescription(model);
+  if (key === 'home') state.heroPaused = true;
+}
+function resumeHero(key) {
+  const model = modelFor(key); if (!model.paused) return;
+  model.paused = false; if (key === 'home') state.heroPaused = false;
+  startHeroTimer(key); mountHeroVideo(key); scheduleDescription(model);
+}
+
+export function initHero() { return loadHero('home'); }
+export function initBrowseHero(type) { return loadHero(type === 'tv' ? 'tv' : 'movie'); }
 
 export function initHeroInteractions() {
-  const wrap = $('heroWrap');
-  if (!wrap) return;
-  // Swipe
-  let touchStartX = 0, touchStartY = 0;
-  wrap.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }, { passive: true });
-  wrap.addEventListener('touchend', e => {
-    const diffX = touchStartX - e.changedTouches[0].clientX;
-    const diffY = touchStartY - e.changedTouches[0].clientY;
-    // Require horizontal movement to dominate vertical, so a diagonal drag while
-    // scrolling the page doesn't spuriously trigger a slide change.
-    if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY) && state.heroItems.length) {
-      if (diffX > 0) goHero(state.heroIdx + 1);
-      else goHero(state.heroIdx - 1);
+  Object.entries(models).forEach(([key, model]) => {
+    const host = hostFor(model); if (!host) return;
+    let startX = 0, startY = 0;
+    host.addEventListener('touchstart', event => { startX = event.touches[0].clientX; startY = event.touches[0].clientY; }, { passive: true });
+    host.addEventListener('touchend', event => {
+      const dx = startX - event.changedTouches[0].clientX, dy = startY - event.changedTouches[0].clientY;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) && model.items.length) goHero(model.index + (dx > 0 ? 1 : -1), key);
+    }, { passive: true });
+    if (!isTouch()) {
+      host.addEventListener('mouseenter', () => pauseHero(key));
+      host.addEventListener('mouseleave', () => resumeHero(key));
     }
-  }, { passive: true });
-
-  // Pause on hover (desktop only — touch devices can fire a synthetic mouseenter
-  // on tap with no matching mouseleave, which would pause the carousel forever).
-  if (!isTouch()) {
-    wrap.addEventListener('mouseenter', pauseHero);
-    wrap.addEventListener('mouseleave', resumeHero);
-  }
+  });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      clearInterval(state.heroTimer);
-      if (heroAmbientTeardown) { heroAmbientTeardown(); heroAmbientTeardown = null; }
-      // Pair with expandDesc() like every other pause path — a backgrounded tab's
-      // setTimeout still fires (throttled), so without this the description could
-      // silently collapse while hidden and stay collapsed for no visible reason.
-      expandDesc();
-    }
-    else if (!state.heroPaused) { startHeroTimer(); mountHeroVideo(); scheduleDescCollapse(); }
+    Object.entries(models).forEach(([key, model]) => {
+      if (document.hidden) { clearInterval(model.timer); teardownVideo(model); expandDescription(model); }
+      else if (!model.paused && hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); scheduleDescription(model); }
+    });
   });
-
-  registerActions({
-    'hero-go': (el) => goHero(+el.dataset.idx),
-  });
+  // Routed pages stay mounted and only toggle display. Observe those three page
+  // shells so exactly one carousel timer/trailer is alive after every navigation.
+  let visibilityQueued = false;
+  const syncVisibility = () => {
+    if (visibilityQueued) return;
+    visibilityQueued = true;
+    queueMicrotask(() => {
+      visibilityQueued = false;
+      Object.entries(models).forEach(([key, model]) => {
+        if (hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); scheduleDescription(model); }
+        else { clearInterval(model.timer); teardownVideo(model); expandDescription(model); }
+      });
+    });
+  };
+  const routeObserver = new MutationObserver(syncVisibility);
+  ['homePage', 'moviesPage', 'tvPage'].forEach(id => { const page = $(id); if (page) routeObserver.observe(page, { attributes: true, attributeFilter: ['style'] }); });
+  registerActions({ 'hero-go': el => goHero(+el.dataset.idx, el.dataset.heroKey || 'home') });
 }

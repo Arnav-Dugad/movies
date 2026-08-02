@@ -16,7 +16,7 @@ let delRelease = null;
 // Read the profile doc (avatar + created) into state so the Profile page and the
 // nav/dropdown avatars can render. Non-fatal — falls back to the initial avatar.
 async function loadProfile() {
-  state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', pinnedBadges: [] };
+  state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
   state.recommendationFeedback = { dismissed: [], history: [] };
   state.statsSnapshot = null;
   if (!state.user) return;
@@ -48,6 +48,8 @@ async function loadProfile() {
         avatar: x.avatar || null, created: x.created || null,
         headline: String(x.headline || '').slice(0, 70), bio: String(x.bio || '').slice(0, 220),
         location: String(x.location || '').slice(0, 60), favoriteFilm: String(x.favoriteFilm || '').slice(0, 80),
+        favoriteFilmId: Number.isInteger(+x.favoriteFilmId) && +x.favoriteFilmId > 0 ? +x.favoriteFilmId : null,
+        favoriteFilmPoster: /^\/[\w.-]+$/.test(String(x.favoriteFilmPoster || '')) ? String(x.favoriteFilmPoster) : '',
         pinnedBadges: Array.isArray(x.pinnedBadges) ? x.pinnedBadges.filter(value => typeof value === 'string').slice(0, 3) : [],
       };
       state.statsSnapshot = x.statsSnapshot || null;
@@ -75,7 +77,7 @@ export function initAuth() {
       try { state.searchHistory = JSON.parse(localStorage.getItem('cv_history_' + u.uid) || '[]'); } catch (e) { state.searchHistory = []; }
     } else {
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
-      state.lists = []; state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', pinnedBadges: [] };
+      state.lists = []; state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
       state.recommendationFeedback = { dismissed: [], history: [] };
       state.statsSnapshot = null;
     }
@@ -100,7 +102,7 @@ export function initAuth() {
     'profile-auth': () => handleProfileAuth(),
     'toggle-profile': () => toggleProfile(),
     'reset-password': (el, e) => resetPassword(e),
-    'sign-out': () => { auth.signOut(); toggleProfile(); toast('Signed out', 'info'); },
+    'sign-out': () => { auth.signOut(); const dd = $('profileDD'); if (dd) dd.classList.remove('active'); toast('Signed out', 'info'); },
     'open-delete': () => openDelete(),
     'close-delete': () => closeDelete(),
     'confirm-delete': () => confirmDelete(),
@@ -131,7 +133,7 @@ export function updateAuthUI() {
 
 // Save name + avatar from the Profile page. Updates Firebase Auth, the profile doc,
 // and the public profile (so friends see the new name/avatar), then refreshes the UI.
-export async function saveProfile({ name, avatar, headline = '', bio = '', location = '', favoriteFilm = '', pinnedBadges = [] }) {
+export async function saveProfile({ name, avatar, headline = '', bio = '', location = '', favoriteFilm = '', favoriteFilmId = null, favoriteFilmPoster = '', pinnedBadges = [] }) {
   const u = state.user;
   if (!u) return { ok: false, msg: 'Sign in first' };
   const nm = (name || '').trim();
@@ -139,6 +141,8 @@ export async function saveProfile({ name, avatar, headline = '', bio = '', locat
   const extras = {
     headline: String(headline || '').trim().slice(0, 70), bio: String(bio || '').trim().slice(0, 220),
     location: String(location || '').trim().slice(0, 60), favoriteFilm: String(favoriteFilm || '').trim().slice(0, 80),
+    favoriteFilmId: Number.isInteger(+favoriteFilmId) && +favoriteFilmId > 0 ? +favoriteFilmId : null,
+    favoriteFilmPoster: /^\/[\w.-]+$/.test(String(favoriteFilmPoster || '')) ? String(favoriteFilmPoster) : '',
     pinnedBadges: [...new Set(Array.isArray(pinnedBadges) ? pinnedBadges : [])].filter(value => typeof value === 'string').slice(0, 3),
   };
   try {

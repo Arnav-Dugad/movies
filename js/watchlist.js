@@ -279,7 +279,7 @@ export function renderWL() {
         manage = `<button class="btn-glass wl-manage" data-action="wl-rename-list" data-tip="Rename list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>${del}`;
       }
       const duplicateCount = findListDuplicates().length;
-      const duplicateButton = `<button class="btn-glass wl-duplicate-btn${duplicateOpen ? ' active' : ''}" data-action="toggle-duplicates" data-tip="Find repeated titles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="12" height="12" rx="2"/><path d="M8 20h10a2 2 0 0 0 2-2V8"/></svg><span>Duplicates</span>${duplicateCount ? `<b>${duplicateCount}</b>` : ''}</button>`;
+      const duplicateButton = `<button class="btn-glass wl-duplicate-btn${duplicateOpen ? ' active' : ''}" data-action="toggle-duplicates" data-tip="Open Duplicates Finder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="12" height="12" rx="2"/><path d="M8 20h10a2 2 0 0 0 2-2V8"/></svg><span>Duplicates Finder</span>${duplicateCount ? `<b>${duplicateCount}</b>` : ''}</button>`;
       head.innerHTML = duplicateButton + share + manage;
     } else head.innerHTML = '';
     const inp = $('wlListName'); if (inp) inp.focus();

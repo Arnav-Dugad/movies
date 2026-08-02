@@ -409,12 +409,12 @@ function sourceLabel(source) {
   return ({ rec: 'Exact title seed', cast: 'Favorite actor', castmore: 'Actor affinity', director: 'Favorite director', quality: 'Quality discovery', genre: 'Genre discovery', trending: 'Trending' })[source] || source || 'Discovery';
 }
 
-function auditHTML(profile, ranked, seed) {
+function auditHTML(profile, ranked, seed, { closable = true } = {}) {
   const summary = ranked?.__auditSummary || { considered: 0, accepted: 0, duplicates: 0, rejected: {}, decisions: [] };
   const rejected = summary.rejected || {};
   const history = feedbackState().history || [];
   const candidates = ranked || [];
-  return `<div class="rec-audit-head"><div><span>Private diagnostics</span><h3>Recommendation Audit</h3><p>Every score component, source, and filter decision used for this session.</p></div><button data-action="toggle-rec-audit" aria-label="Close recommendation audit">&times;</button></div>
+  return `<div class="rec-audit-head"><div><span>Private diagnostics</span><h3>Recommendation Audit</h3><p>Every score component, source, and filter decision used for this session.</p></div>${closable ? '<button data-action="toggle-rec-audit" aria-label="Close recommendation audit">&times;</button>' : ''}</div>
     <div class="rec-audit-metrics"><div><span>Fetched</span><strong>${summary.considered || 0}</strong></div><div><span>Ranked</span><strong>${summary.accepted || 0}</strong></div><div><span>Duplicates merged</span><strong>${summary.duplicates || 0}</strong></div><div><span>Dismissed</span><strong>${feedbackState().dismissed.length}</strong></div></div>
     <div class="rec-audit-grid">
       <section><div class="mini-panel-title"><span>Filter decisions</span><b>before ranking</b></div><div class="audit-filters">
@@ -468,6 +468,7 @@ async function restoreRecommendation(key) {
   document.dispatchEvent(new Event('cv:recommendation-feedback'));
   toast('Recommendation restored', 'success');
   renderRecommendations();
+  if ($('recommendationProfileInsights')) renderRecommendationInsights();
 }
 
 function recommendationCard(candidate, opts = {}) {
@@ -500,13 +501,14 @@ export async function renderRecommendations() {
   if (topDirector) descriptors.push({ id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}` });
   if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
 
-  wrap.innerHTML = `<div class="rec-controlbar reveal"><div><span>Personalized intelligence</span><strong>Your recommendations adapt to every watch, rating, and dismissal.</strong></div><button data-action="toggle-rec-audit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M9 7h7M9 11h7"/></svg>Recommendation audit</button></div><aside class="rec-audit${auditOpen ? ' active' : ''}" id="recAudit" aria-hidden="${auditOpen ? 'false' : 'true'}">${auditHTML(profile, null, seed)}</aside>${descriptors.map(shell).join('')}`;
+  wrap.innerHTML = `<div class="rec-controlbar reveal"><div><span>Made for your taste</span><strong>Your recommendations adapt to every watch, rating, and dismissal.</strong></div><button data-action="open-recommendation-profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M9 7h7M9 11h7"/></svg>Why these picks?</button></div>${descriptors.map(shell).join('')}`;
   observeReveals(wrap);
 
   // ONE pool fetch + ONE ranking pass, shared by every row. The old code refetched
   // (and re-ranked) per row, which was both slower and inconsistent between rows.
   const pool = fetchCandidates(profile).then(c => rankAndDedupe(c, profile)).catch(() => []);
-  pool.then(ranked => paintAudit(profile, ranked, seed));
+  // The full scoring explanation intentionally lives on Profile. Home stays a
+  // clean discovery surface and only renders the recommendation rails.
 
   fillRow('rowTopPicks', async () => {
     const picks = diversify(await pool, 20);
@@ -527,6 +529,36 @@ export async function renderRecommendations() {
   if (topActor) fillRow('rowActor', () => rowFrom(c => hasCandidateSource(c, 'cast')));
   if (topDirector) fillRow('rowDirector', () => rowFrom(c => hasCandidateSource(c, 'director')));
   if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)));
+}
+
+function signalName(id) { return genreMap[id] || 'Discovering'; }
+
+// Profile-only explanation. It uses the exact same pool and ranking pass as Home,
+// so the audit describes real decisions rather than a simplified marketing copy.
+export async function renderRecommendationInsights() {
+  const host = $('recommendationProfileInsights');
+  if (!host) return;
+  const profile = buildTasteProfile();
+  if (!profile.hasSignal) {
+    host.innerHTML = `<div class="profile-rec-empty"><span>Private recommendation map</span><h3>Your taste is ready to learn.</h3><p>Watch or rate a few titles and this page will explain every recommendation signal.</p><button class="btn-glass" data-action="show-page" data-page="discover">Start discovering</button></div>`;
+    return;
+  }
+  const seed = pickLabeledSeed(profile);
+  const topGenres = profile.topGenres.slice(0, 4).map(signalName);
+  const leadingPeople = [...(profile.topDirectors || []).slice(0, 2).map(person => `${person.name} · director`), ...(profile.topActors || []).slice(0, 2).map(person => `${person.name} · actor`)].filter(name => !name.startsWith(' ·'));
+  host.innerHTML = `<div class="profile-rec-map">
+    <article><span>Strongest genres</span><strong>${topGenres.map(esc).join(' · ') || 'Still learning'}</strong><p>Built from what you watched, saved, opened and rated.</p></article>
+    <article><span>Trusted people</span><strong>${leadingPeople.map(esc).join(' · ') || 'Still learning'}</strong><p>Recurring directors and cast add a focused source bonus.</p></article>
+    <article><span>Title seed</span><strong>${esc(seed?.title || 'Quality discovery')}</strong><p>${seed ? `Real similarity must overlap with this ${seed.reason} title.` : 'High-quality discoveries fill gaps without inventing a link.'}</p></article>
+    <article><span>Privacy rule</span><strong>Watched titles stay out</strong><p>Saved titles can remain useful; watched and dismissed titles are filtered.</p></article>
+  </div><aside class="rec-audit active profile-rec-audit" id="recAudit" aria-hidden="false">${auditHTML(profile, null, seed, { closable: false })}</aside>`;
+  try {
+    const ranked = rankAndDedupe(await fetchCandidates(profile), profile);
+    if (host.isConnected) {
+      const panel = $('recAudit');
+      if (panel && host.contains(panel)) panel.innerHTML = auditHTML(profile, ranked, seed, { closable: false });
+    }
+  } catch (error) { console.warn('recommendation explanation', error); }
 }
 
 export function initRecommendations() {

@@ -9,12 +9,45 @@ import { myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { social, displayCode } from './social.js';
 import { saveProfile } from './auth.js';
 import { friendQrSvg, tasteMatchQrSvg, tasteMatchUrl } from './qrcode.js';
-import { renderRecommendations } from './recommend.js';
+import { renderRecommendationInsights } from './recommend.js';
+import { tmdb } from './api.js';
 
 let editing = false;
 let draftAvatar = undefined;   // undefined = untouched; null = cleared to initial
 let draftPinned = undefined;
 let intelligenceOpen = false;
+let favoritePreview = null;
+let favoritePreviewSource = '';
+let favoriteLookupPending = false;
+
+async function resolveFavoriteFilm(value) {
+  const requested = String(value || '').trim().slice(0, 80);
+  if (!requested) return { favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '' };
+  if (requested.toLocaleLowerCase() === String(state.profile.favoriteFilm || '').toLocaleLowerCase() && state.profile.favoriteFilmPoster) {
+    return { favoriteFilm: state.profile.favoriteFilm, favoriteFilmId: state.profile.favoriteFilmId || null, favoriteFilmPoster: state.profile.favoriteFilmPoster };
+  }
+  try {
+    const data = await tmdb('/search/movie', { query: requested, include_adult: false });
+    const normalized = requested.toLocaleLowerCase();
+    const results = (data.results || []).filter(movie => movie.poster_path);
+    const movie = results.find(item => String(item.title || '').toLocaleLowerCase() === normalized) || results[0];
+    if (movie) return { favoriteFilm: movie.title || requested, favoriteFilmId: +movie.id, favoriteFilmPoster: movie.poster_path || '' };
+  } catch (error) { console.warn('favorite film lookup', error); }
+  return { favoriteFilm: requested, favoriteFilmId: null, favoriteFilmPoster: '' };
+}
+
+function warmFavoriteFilmPoster() {
+  const title = state.profile.favoriteFilm;
+  if (editing || !title || state.profile.favoriteFilmPoster || favoritePreviewSource === title || favoriteLookupPending) return;
+  favoriteLookupPending = true;
+  resolveFavoriteFilm(title).then(result => {
+    if (state.profile.favoriteFilm === title) {
+      favoritePreview = result;
+      favoritePreviewSource = title;
+      if (result.favoriteFilmPoster && location.pathname === '/profile') renderProfile();
+    }
+  }).finally(() => { favoriteLookupPending = false; });
+}
 
 const PROFILE_ICONS = {
   watched: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>',
@@ -70,6 +103,7 @@ export function renderProfile() {
   }
 
   const u = state.user;
+  queueMicrotask(warmFavoriteFilmPoster);
   const name = u.displayName || (u.email || 'User').split('@')[0];
   const av = draftAvatar !== undefined ? draftAvatar : state.profile.avatar;
   const since = memberSince(state.profile.created);
@@ -107,7 +141,7 @@ export function renderProfile() {
         <label class="profile-field"><span>Display name</span><input id="profileName" type="text" value="${esc(name)}" maxlength="40" autocomplete="off"></label>
         <label class="profile-field"><span>Cinephile headline</span><input id="profileHeadline" type="text" value="${esc(state.profile.headline || '')}" maxlength="70" placeholder="Midnight movies and impossible worlds"></label>
         <label class="profile-field"><span>Location</span><input id="profileLocation" type="text" value="${esc(state.profile.location || '')}" maxlength="60" placeholder="Mumbai, India"></label>
-        <label class="profile-field"><span>Favorite film</span><input id="profileFavorite" type="text" value="${esc(state.profile.favoriteFilm || '')}" maxlength="80" placeholder="The title you always return to"></label>
+        <label class="profile-field"><span>Favorite film</span><input id="profileFavorite" type="text" value="${esc(state.profile.favoriteFilm || '')}" maxlength="80" placeholder="The title you always return to"><small>We find the official poster when you save.</small></label>
         <label class="profile-field profile-field-wide"><span>About your taste</span><textarea id="profileBio" maxlength="220" placeholder="What makes a movie unforgettable for you?">${esc(state.profile.bio || '')}</textarea><small>Shown only on your private Profile page.</small></label>
       </div>
       <div class="profile-field profile-avatar-studio"><span>Choose a cinematic identity</span>
@@ -137,10 +171,19 @@ export function renderProfile() {
 
   const pulse = `<section class="profile-panel profile-pulse"><div class="profile-panel-head"><div><span>Account readiness</span><h2>Collection pulse</h2></div><b>${insight.health || strength}%</b></div><div class="profile-progress-row"><div><span>Collection health</span><strong>${insight.health ? `${insight.health}%` : 'Calculating'}</strong></div><i><em style="width:${insight.health || 0}%"></em></i></div><div class="profile-progress-row"><div><span>Rating coverage</span><strong>${insight.ratingCoverage}%</strong></div><i><em style="width:${insight.ratingCoverage}%"></em></i></div><div class="profile-progress-row"><div><span>Profile setup</span><strong>${strength}%</strong></div><i><em style="width:${strength}%"></em></i></div><button class="profile-repair-link" data-action="show-page" data-page="stats">Review Collection Health →</button></section>`;
 
-  const quick = `<section class="profile-panel profile-quick"><div class="profile-panel-head"><div><span>One-tap navigation</span><h2>Quick launch</h2></div></div><div class="profile-quick-grid">${[[PROFILE_ICONS.calendar, 'Release calendar', 'reminders'], [PROFILE_ICONS.watched, 'Watch history', 'watched'], [PROFILE_ICONS.users, 'Friends & family', 'friends'], [PROFILE_ICONS.chart, 'Cineprint stats', 'stats']].map(([icon, label, page]) => `<button data-action="show-page" data-page="${page}">${icon}<span>${label}</span><b>→</b></button>`).join('')}<button class="profile-intelligence-key" data-action="profile-toggle-intelligence">${PROFILE_ICONS.star}<span>Private picks</span><b>${intelligenceOpen ? '×' : '→'}</b></button></div></section>`;
+  const quick = `<section class="profile-panel profile-quick"><div class="profile-panel-head"><div><span>One-tap navigation</span><h2>Quick launch</h2></div></div><div class="profile-quick-grid">${[[PROFILE_ICONS.calendar, 'Release calendar', 'reminders'], [PROFILE_ICONS.watched, 'Watch history', 'watched'], [PROFILE_ICONS.users, 'Friends & family', 'friends'], [PROFILE_ICONS.chart, 'Cineprint stats', 'stats']].map(([icon, label, page]) => `<button data-action="show-page" data-page="${page}">${icon}<span>${label}</span><b>→</b></button>`).join('')}<button class="profile-intelligence-key" data-action="profile-toggle-intelligence">${PROFILE_ICONS.star}<span>Why these picks?</span><b>${intelligenceOpen ? '×' : '→'}</b></button></div></section>`;
 
-  const about = state.profile.bio || state.profile.favoriteFilm ? `<section class="profile-panel profile-about"><div><span>Personal note</span><h2>${esc(state.profile.bio || 'A collection shaped by curiosity.')}</h2></div>${state.profile.favoriteFilm ? `<p><small>Always returning to</small><strong>${esc(state.profile.favoriteFilm)}</strong></p>` : ''}</section>` : '';
-  const intelligence = intelligenceOpen ? `<section class="profile-intelligence-vault"><div class="profile-intelligence-head"><span>Low-key, private, yours</span><h2>Personalized intelligence</h2><p>Recommendations adapt to your watches, ratings and dismissals. This space stays off the homepage.</p></div><div id="personalRows"></div></section>` : '';
+  const favoriteData = state.profile.favoriteFilmPoster ? state.profile : (favoritePreviewSource === state.profile.favoriteFilm ? favoritePreview : state.profile);
+  const favoritePoster = favoriteData.favoriteFilmPoster ? `${IMG}w342${favoriteData.favoriteFilmPoster}` : PH;
+  const favoriteFilm = favoriteData.favoriteFilm ? `${favoriteData.favoriteFilmId ? `<a class="profile-favorite-film" href="/movie/${favoriteData.favoriteFilmId}" data-action="open-detail" data-id="${favoriteData.favoriteFilmId}" data-type="movie">` : '<article class="profile-favorite-film">'}<img src="${esc(favoritePoster)}" alt="${esc(favoriteData.favoriteFilm)} poster" loading="lazy" data-ph="${PH}"><span><small>Favorite film</small><strong>${esc(favoriteData.favoriteFilm)}</strong><em>Always returning to this one</em></span>${favoriteData.favoriteFilmId ? '</a>' : '</article>'}` : '';
+  const about = state.profile.bio || favoriteFilm ? `<section class="profile-panel profile-about"><div><span>Personal note</span><h2>${esc(state.profile.bio || 'A collection shaped by curiosity.')}</h2></div>${favoriteFilm}</section>` : '';
+  const intelligence = intelligenceOpen ? `<section class="profile-intelligence-vault"><div class="profile-intelligence-head"><span>Low-key, private, yours</span><h2>Why you got these recommendations</h2><p>The same live engine used on Home shows its strongest signals, filters and every score here.</p></div><div id="recommendationProfileInsights"></div></section>` : '';
+
+  const privacy = `<section class="profile-panel profile-privacy"><div class="profile-panel-head"><div><span>Data clarity</span><h2>Privacy Dashboard</h2><p>See exactly where each part of your CineVerse experience lives.</p></div><b>Private by default</b></div><div class="profile-privacy-grid">
+    <article class="local"><i>01</i><span>Only on this device</span><h3>Local</h3><p>Recent searches, recently viewed titles and temporary artwork caches.</p><strong>Never shown to friends</strong></article>
+    <article class="private"><i>02</i><span>Your signed-in vault</span><h3>Private</h3><p>Lists, watched history, ratings, settings, profile notes and recommendation decisions.</p><strong>Owner-only Firestore rules</strong></article>
+    <article class="shared"><i>03</i><span>Social layer</span><h3>Friend-visible</h3><p>Name, avatar and friend code are searchable by signed-in people. Only accepted friends can compare derived taste—never raw history.</p><strong>You choose who connects</strong></article>
+  </div><div class="profile-privacy-foot"><span>Raw watch history and ratings are never published to friends.</span><button data-action="show-page" data-page="settings">Open privacy settings →</button></div></section>`;
 
   const rv = (state.recentlyViewed || []).slice(0, 12);
   const recent = rv.length ? `
@@ -151,8 +194,8 @@ export function renderProfile() {
       return `<a class="card" href="/${r.type}/${r.id}" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img"><img src="${poster}" alt="${esc(r.title)}" loading="lazy" data-ph="${PH}">${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div><div class="card-sub">${r.type === 'tv' ? 'TV show' : 'Movie'}</div></div></a>`;
     }).join('')}</div></section>` : `<section class="profile-panel profile-recent-empty"><span>Recently viewed</span><h2>Your next discovery will appear here.</h2><button class="btn-glass" data-action="show-page" data-page="discover">Explore titles</button></section>`;
 
-  ct.innerHTML = `<div class="profile-shell">${header}${editForm}<div class="profile-dashboard"><main>${about}${snapshot}${recent}</main><aside>${codeCard}${tastePass}${pulse}${quick}</aside></div>${intelligence}</div>`;
-  if (intelligenceOpen) queueMicrotask(() => renderRecommendations());
+  ct.innerHTML = `<div class="profile-shell">${header}${editForm}<div class="profile-dashboard"><main>${about}${snapshot}${privacy}${recent}</main><aside>${codeCard}${tastePass}${pulse}${quick}</aside></div>${intelligence}</div>`;
+  if (intelligenceOpen) queueMicrotask(() => renderRecommendationInsights());
 }
 
 export function initProfile() {
@@ -186,15 +229,19 @@ export function initProfile() {
       const safePins = (draftPinned !== undefined ? draftPinned : state.profile.pinnedBadges || [])
         .filter(id => BADGES.some(badge => badge.id === id && badge.value(ctx) >= badge.goal)).slice(0, 3);
       el.disabled = true;
+      const originalLabel = el.textContent;
+      el.textContent = 'Finding film poster…';
+      const favorite = await resolveFavoriteFilm(($('profileFavorite') || {}).value || '');
+      el.textContent = 'Saving…';
       const r = await saveProfile({
         name, avatar,
         headline: ($('profileHeadline') || {}).value || '', bio: ($('profileBio') || {}).value || '',
-        location: ($('profileLocation') || {}).value || '', favoriteFilm: ($('profileFavorite') || {}).value || '',
+        location: ($('profileLocation') || {}).value || '', ...favorite,
         pinnedBadges: safePins,
       });
       toast(r.msg, r.ok ? 'success' : 'error');
       if (r.ok) { editing = false; draftAvatar = undefined; draftPinned = undefined; renderProfile(); }
-      else el.disabled = false;
+      else { el.disabled = false; el.textContent = originalLabel; }
     },
     'copy-taste-link': el => {
       const link = tasteMatchUrl(el.dataset.code || social.code);
@@ -202,6 +249,7 @@ export function initProfile() {
       else toast(link, 'info');
     },
     'profile-toggle-intelligence': () => { intelligenceOpen = !intelligenceOpen; renderProfile(); },
+    'open-recommendation-profile': () => { intelligenceOpen = true; document.dispatchEvent(new CustomEvent('cv:go', { detail: '/profile' })); },
     'profile-clear-recent': () => {
       state.recentlyViewed = [];
       try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {}
@@ -210,5 +258,5 @@ export function initProfile() {
   });
   // Friend code arrives asynchronously (cv:social); refresh if we're on /profile.
   document.addEventListener('cv:social', () => { if (location.pathname === '/profile') renderProfile(); });
-  document.addEventListener('cv:auth', () => { if (!state.user) { editing = false; draftAvatar = undefined; draftPinned = undefined; intelligenceOpen = false; } });
+  document.addEventListener('cv:auth', () => { if (!state.user) { editing = false; draftAvatar = undefined; draftPinned = undefined; intelligenceOpen = false; favoritePreview = null; favoritePreviewSource = ''; favoriteLookupPending = false; } });
 }

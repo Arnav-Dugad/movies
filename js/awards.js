@@ -3,6 +3,7 @@
 // and records both award received (P166) and nominated for (P1411), so no paid
 // API key is needed.
 import { esc, $ } from './ui.js';
+import { registerActions } from './events.js';
 
 const CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 const MAJOR = /academy award|oscar|golden globe|bafta|emmy|cannes|venice|sundance|berlin|critics.? choice|screen actors guild|grammy|palme d'or|tony award|filmfare|national film award|iifa|independent spirit|gotham|c[eé]sar|goya|saturn award|naacp image/i;
@@ -116,10 +117,16 @@ function renderAwards(scope, items) {
   const featured = [...wins, ...nominations].sort((a, b) => Number(MAJOR.test(b.label)) - Number(MAJOR.test(a.label)) || a.label.localeCompare(b.label)).slice(0, 14);
   if (!featured.length) { scope.remove(); return; }
   scope.hidden = false;
-  scope.innerHTML = `<div class="d-sec-title awards-title">${awardArt({ label: 'CineVerse Honours', kind: 'win' })}<span>Awards &amp; Recognition</span></div>
-    <div class="awards-summary"><div><strong>${wins.length}</strong><span>Recorded wins</span></div><div><strong>${nominations.length}</strong><span>Recorded nominations</span></div><div><strong>${featured.filter(x => MAJOR.test(x.label)).length}</strong><span>Major honours</span></div></div>
-    <div class="awards-list">${featured.map(awardPill).join('')}</div>
-    <p class="awards-source">Free community data from <a href="https://www.wikidata.org/" target="_blank" rel="noopener noreferrer">Wikidata</a>. Records may vary by title.</p>`;
+  scope.innerHTML = `<button class="awards-toggle" data-action="toggle-awards" aria-expanded="false">
+      <span class="awards-toggle-art">${awardArt({ label: 'CineVerse Honours', kind: 'win' })}</span>
+      <span class="awards-toggle-copy"><small>Honours archive</small><strong>Awards &amp; Recognition</strong><em>${wins.length} wins · ${nominations.length} nominations · ${featured.filter(x => MAJOR.test(x.label)).length} major</em></span>
+      <span class="awards-toggle-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span>
+    </button>
+    <div class="awards-body" hidden>
+      <div class="awards-summary"><div><strong>${wins.length}</strong><span>Recorded wins</span></div><div><strong>${nominations.length}</strong><span>Recorded nominations</span></div><div><strong>${featured.filter(x => MAJOR.test(x.label)).length}</strong><span>Major honours</span></div></div>
+      <div class="awards-list">${featured.map(awardPill).join('')}</div>
+      <p class="awards-source">Free community data from <a href="https://www.wikidata.org/" target="_blank" rel="noopener noreferrer">Wikidata</a>. Records may vary by title.</p>
+    </div>`;
   // Real marks never share a layer with generated icons. On a remote-image error,
   // replace the image with one clean fallback instead of revealing artwork below it.
   scope.querySelectorAll('img[data-award-real]').forEach(image => image.addEventListener('error', () => {
@@ -140,4 +147,17 @@ export async function loadAwardsSection(imdbId, scopeId) {
     console.warn('Awards unavailable', error);
     if (scope.isConnected) scope.remove();
   }
+}
+
+export function initAwards() {
+  registerActions({
+    'toggle-awards': element => {
+      const section = element.closest('.awards-section'), body = section?.querySelector('.awards-body');
+      if (!section || !body) return;
+      const expanded = element.getAttribute('aria-expanded') !== 'true';
+      element.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      section.classList.toggle('expanded', expanded);
+      body.hidden = !expanded;
+    },
+  });
 }

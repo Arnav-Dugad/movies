@@ -72,6 +72,9 @@ export async function initHome() {
   SECTIONS.forEach(s => { html += sectionShell(s); });
   $('homeRows').innerHTML = html;
   observeReveals();
+  // Personalized rails belong on Home; Profile contains the private explanation
+  // of their signals and scoring instead of duplicating the same cards there.
+  renderRecommendations();
 
   await Promise.allSettled(SECTIONS.map(async s => {
     const el = $('row_' + s.id);

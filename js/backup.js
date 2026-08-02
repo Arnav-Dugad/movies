@@ -27,7 +27,7 @@ export function buildCollectionBackup() {
   const watchlist = state.watchlist.map(item => ({ id: item.id, ...pick(item, ['tmdbId', 'type', 'title', 'poster', 'rating', 'year', 'genres', 'runtime', 'language', 'country', 'releaseDate', 'lists', 'voteCount']), addedAt: timestampISO(item.added) }));
   const watched = Object.entries(state.watched).map(([id, item]) => ({ id, ...pick(item, ['tmdbId', 'type', 'title', 'poster', 'year', 'genres', 'runtime', 'episodeRuntime', 'episodeCount', 'language', 'country', 'releaseDate', 'tmdbRating', 'voteCount', 'director', 'directorId', 'directorProfile', 'cast', 'metaV', 'repairV']), watchedAt: timestampISO(item.watchedAt) }));
   const ratings = Object.entries(state.ratings).map(([id, score]) => ({ id, score: +score })).filter(item => mediaKey(item.id) && item.score >= 1 && item.score <= 10);
-  const profile = pick(state.profile, ['avatar', 'headline', 'bio', 'location', 'favoriteFilm', 'pinnedBadges']);
+  const profile = pick(state.profile, ['avatar', 'headline', 'bio', 'location', 'favoriteFilm', 'favoriteFilmId', 'favoriteFilmPoster', 'pinnedBadges']);
   return { magic: MAGIC, version: VERSION, exportedAt: new Date().toISOString(), counts: { lists: lists.length, saved: watchlist.length, watched: watched.length, ratings: ratings.length }, lists, watchlist, watched, ratings, profile };
 }
 
@@ -74,7 +74,9 @@ export async function restoreCollectionBackup(raw) {
   data.watchlist.filter(item => mediaKey(item.id)).forEach(item => writes.push({ ref: root.collection('watchlist').doc(item.id), data: cleanWatchlist(item) }));
   data.watched.filter(item => mediaKey(item.id)).forEach(item => writes.push({ ref: root.collection('watched').doc(item.id), data: cleanWatched(item) }));
   data.ratings.filter(item => mediaKey(item.id) && +item.score >= 1 && +item.score <= 10).forEach(item => writes.push({ ref: root.collection('ratings').doc(item.id), data: { score: +item.score, updated: firebase.firestore.FieldValue.serverTimestamp() } }));
-  const profile = pick(data.profile || {}, ['avatar', 'headline', 'bio', 'location', 'favoriteFilm', 'pinnedBadges']);
+  const profile = pick(data.profile || {}, ['avatar', 'headline', 'bio', 'location', 'favoriteFilm', 'favoriteFilmId', 'favoriteFilmPoster', 'pinnedBadges']);
+  if (!(Number.isInteger(+profile.favoriteFilmId) && +profile.favoriteFilmId > 0)) profile.favoriteFilmId = null;
+  if (!/^\/[\w.-]+$/.test(String(profile.favoriteFilmPoster || ''))) profile.favoriteFilmPoster = '';
   if (Object.keys(profile).length) writes.push({ ref: root, data: profile });
   await commitWrites(writes);
   await Promise.all([loadWatchlist(), loadWatched(), loadRatings(), loadLists()]);
