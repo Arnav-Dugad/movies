@@ -207,6 +207,16 @@
   </div>
 </div>
 
+<!-- FRIEND QR SCANNER -->
+<div class="rate-overlay scan-overlay" id="scanOv">
+  <div class="scan-modal" role="dialog" aria-modal="true" aria-labelledby="scanTitle">
+    <div class="scan-head"><div><span>Quick connect</span><h2 id="scanTitle">Scan friend QR</h2></div><button data-action="close-scanner" aria-label="Close scanner">&times;</button></div>
+    <div class="scan-camera"><video id="scanVideo" playsinline muted></video><div class="scan-frame"><i></i><i></i><i></i><i></i></div><div class="scan-line"></div></div>
+    <p id="scanStatus">Starting camera…</p>
+    <button class="btn-glass" data-action="close-scanner">Enter code instead</button>
+  </div>
+</div>
+
 <!-- DELETE ACCOUNT CONFIRMATION -->
 <div class="rate-overlay" id="delOv">
   <div class="rate-modal del-modal" role="dialog" aria-modal="true" aria-labelledby="delTitle">
@@ -387,7 +397,6 @@
 
 <!-- STATS -->
 <div class="stats-page page-container" id="statsPage">
-  <h1>My CineVerse Stats</h1>
   <div id="statsContent">
     <div class="wl-empty" style="padding:40px 20px">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>

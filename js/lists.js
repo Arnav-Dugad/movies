@@ -59,6 +59,9 @@ function buildItemDoc(item, type) {
     added: ts(),
     genres: item.genres || item.genre_ids || [],
     runtime: item.runtime || (item.episode_run_time || [])[0] || 0,
+    language: item.language || item.original_language || '',
+    country: item.country || (item.origin_country || [])[0] || '',
+    releaseDate: item.releaseDate || item.release_date || item.first_air_date || '',
   });
 }
 

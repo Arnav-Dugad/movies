@@ -14,7 +14,10 @@ function wlPayload(item, type) {
     rating: item.vote_average || 0,
     year: (item.release_date || item.first_air_date || '').slice(0, 4),
     genres: item.genre_ids || (item.genres || []).map(g => g.id) || [],
-    runtime: item.runtime || (item.episode_run_time || [])[0] || 0
+    runtime: item.runtime || (item.episode_run_time || [])[0] || 0,
+    language: item.original_language || '',
+    country: (item.origin_country || [])[0] || '',
+    releaseDate: item.release_date || item.first_air_date || ''
   }));
 }
 

@@ -50,7 +50,7 @@ function setScore(score) {
 export function openRating(id, type, title) {
   if (!state.user) return document.dispatchEvent(new Event('cv:open-auth'));
   const trigger = document.activeElement;
-  rateTarget = { id, type, key: `${type}_${id}` };
+  rateTarget = { id, type, title: title || '', key: `${type}_${id}` };
   $('rateTitle').textContent = 'Rate this';
   $('rateSub').textContent = title;
 
@@ -91,10 +91,10 @@ export function closeRating() {
 
 export async function submitRating() {
   if (!rateTarget || !rateTarget.score) return;
-  const { key, score, id, type } = rateTarget;
+  const { key, score, id, type, title } = rateTarget;
   try {
     await db.collection('users').doc(state.user.uid).collection('ratings').doc(key)
-      .set({ score, tmdbId: id, type, updated: firebase.firestore.FieldValue.serverTimestamp() });
+      .set({ score, tmdbId: id, type, title, updated: firebase.firestore.FieldValue.serverTimestamp() });
     state.ratings[key] = score;
     toast(`Rated ${score}/10!`, 'success');
     confettiBurst();

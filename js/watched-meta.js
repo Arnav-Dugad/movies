@@ -13,7 +13,7 @@ import { db } from './firebase.js';
 import { state } from './state.js';
 
 // Bump to re-backfill every doc after a schema change.
-export const META_V = 1;
+export const META_V = 2;
 
 let running = false, done = false;
 
@@ -57,6 +57,11 @@ export async function ensureWatchedMeta() {
       const patch = {
         poster: det.poster_path || d.poster || '',
         year: d.year || (det.release_date || det.first_air_date || '').slice(0, 4),
+        releaseDate: d.releaseDate || det.release_date || det.first_air_date || '',
+        language: det.original_language || d.language || '',
+        country: det.origin_country?.[0] || det.production_countries?.[0]?.iso_3166_1 || d.country || '',
+        tmdbRating: +(det.vote_average || d.tmdbRating || 0),
+        voteCount: +(det.vote_count || d.voteCount || 0),
         // Fall back to what we already had, like poster/year above. This pass runs
         // over EVERY doc with a stale metaV — including ones whose genres are
         // already good — so an unconditional overwrite would wipe real data

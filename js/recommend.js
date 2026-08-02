@@ -21,11 +21,13 @@ const TV_GENRES = new Set(tGenreList.map(g => g.id));
 
 function splitKey(key) { const i = key.lastIndexOf('_'); return [key.slice(0, i), +key.slice(i + 1)]; }
 
-function titleForKey(type, id) {
+function seedMetaForKey(type, id) {
   const w = state.watchlist.find(x => x.type === type && String(x.tmdbId) === String(id));
-  if (w) return w.title;
+  if (w) return { title: w.title, genres: w.genres || [] };
+  const watched = state.watched[`${type}_${id}`];
+  if (watched) return { title: watched.title, genres: watched.genres || [] };
   const r = state.recentlyViewed.find(x => x.type === type && String(x.id) === String(id));
-  return r ? r.title : null;
+  return r ? { title: r.title, genres: r.genres || [] } : null;
 }
 
 // A rating recentres on 5: a 10 adds +5, a 3 subtracts 2. Unrated contributes 0,
@@ -153,7 +155,9 @@ export function blendProfiles(profiles) {
 }
 
 // ----- Candidate generation -----
-export function tag(results, type, source) { return (results || []).map(r => ({ ...r, __type: r.media_type || type, __source: source })); }
+export function tag(results, type, source, provenance = {}) {
+  return (results || []).map(r => ({ ...r, ...provenance, __type: r.media_type || type, __source: source }));
+}
 
 // A recommendation you can't watch yet isn't a recommendation. Requires a real,
 // past date — a candidate with no date at all is unknown/unreleased, so it goes.
@@ -215,7 +219,9 @@ export async function fetchCandidates(profile, { only = null } = {}) {
     if (only === 'tv') push(tmdb('/discover/tv', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 300, ...outT }), 'tv', 'quality');
   }
   (profile.seedIds || []).slice(0, 3).filter(s => !only || s.type === only)
-    .forEach(s => push(tmdb(`/${s.type}/${s.id}/recommendations`), s.type, 'rec'));
+    .forEach(s => calls.push(tmdb(`/${s.type}/${s.id}/recommendations`)
+      .then(d => tag(d.results, s.type, 'rec', { __seedKey: `${s.type}_${s.id}` }))
+      .catch(() => [])));
 
   const groups = await Promise.all(calls);
   return groups.flat();
@@ -238,6 +244,25 @@ const DEFINING_GENRES = new Set([16, 99, 10751, 10762, 10770, 10764, 10763, 1076
 export function offTasteCount(c, profile) {
   const gw = profile.genreWeights || {};
   return (c.genre_ids || []).filter(g => DEFINING_GENRES.has(+g) && !(gw[g] > 0)).length;
+}
+
+export function hasCandidateSource(candidate, source) {
+  return (candidate.__sources || [candidate.__source]).includes(source);
+}
+
+// A title-specific row has a much stricter promise than a general taste row:
+// the candidate must come from that exact TMDB seed, substantially overlap its
+// genres, and not suddenly switch to a different defining audience category.
+export function isRelatedToSeed(candidate, seed) {
+  if (!seed || !hasCandidateSource(candidate, 'rec')) return false;
+  const key = `${seed.type}_${seed.id}`;
+  if (!(candidate.__seedKeys || []).includes(key)) return false;
+  const seedGenres = new Set((seed.genres || []).map(Number));
+  if (!seedGenres.size) return true;
+  const genres = (candidate.genre_ids || []).map(Number);
+  const overlap = genres.filter(genre => seedGenres.has(genre)).length;
+  const minimum = seedGenres.size >= 3 ? 2 : 1;
+  return overlap >= minimum && !genres.some(genre => DEFINING_GENRES.has(genre) && !seedGenres.has(genre));
 }
 
 export function scoreCandidate(c, profile, norms = {}) {
@@ -273,7 +298,20 @@ export function rankAndDedupe(cands, profile) {
     if (profile.seen.has(key)) return;
     const sc = scoreCandidate(c, profile, norms);
     const existing = byId.get(key);
-    if (!existing || sc > existing.__score) byId.set(key, { ...c, __type: type, __score: sc });
+    if (!existing) {
+      byId.set(key, {
+        ...c, __type: type, __score: sc,
+        __sources: [c.__source], __seedKeys: c.__seedKey ? [c.__seedKey] : [],
+      });
+      return;
+    }
+    // A title can arrive through several paths. Preserve every origin so a card
+    // does not lose its exact seed/actor/director relationship during deduping.
+    const sources = [...new Set([...(existing.__sources || [existing.__source]), c.__source].filter(Boolean))];
+    const seedKeys = [...new Set([...(existing.__seedKeys || []), c.__seedKey].filter(Boolean))];
+    byId.set(key, sc > existing.__score
+      ? { ...c, __type: type, __score: sc, __sources: sources, __seedKeys: seedKeys }
+      : { ...existing, __sources: sources, __seedKeys: seedKeys });
   });
   return [...byId.values()].sort((a, b) => b.__score - a.__score);
 }
@@ -303,10 +341,13 @@ export function matchBadge(score, top) { const pct = Math.max(60, Math.min(99, M
 
 function pickLabeledSeed(profile) {
   for (const s of profile.seedIds) {
-    if (s.score >= 8) { const title = titleForKey(s.type, s.id); if (title) return { id: s.id, type: s.type, title, reason: 'liked' }; }
+    if (s.score >= 8) {
+      const meta = seedMetaForKey(s.type, s.id);
+      if (meta?.title) return { id: s.id, type: s.type, title: meta.title, genres: meta.genres, reason: 'liked' };
+    }
   }
   const r = state.recentlyViewed[0];
-  return r ? { id: r.id, type: r.type, title: r.title, reason: 'viewed' } : null;
+  return r ? { id: r.id, type: r.type, title: r.title, genres: r.genres || [], reason: 'viewed' } : null;
 }
 
 function shell(d) {
@@ -358,15 +399,11 @@ export async function renderRecommendations() {
     return items.length >= min ? items.map(c => buildCard(c, c.__type)).join('') : null;
   };
 
-  // "Because you liked X" is the one row fed by TMDB's own /recommendations, which
-  // can be wildly off — a seed with thin data returned a wall of unrelated kids'
-  // animation. A pick must share a genre you like AND not be defined by a genre
-  // you've never touched (Animation/Family/…). Drop the row rather than show a
-  // handful of stragglers (fillRow removes it).
-  const likesGenre = (c) => (c.genre_ids || []).some(g => (profile.genreWeights[g] || 0) > 0);
-  const onTaste = (c) => likesGenre(c) && offTasteCount(c, profile) === 0;
-  if (seed) fillRow('rowSeed', () => rowFrom(c => c.__source === 'rec' && onTaste(c), 4));
-  if (topActor) fillRow('rowActor', () => rowFrom(c => c.__source === 'cast'));
-  if (topDirector) fillRow('rowDirector', () => rowFrom(c => c.__source === 'director'));
+  // The label and every card now share the exact same recommendation seed.
+  // Strict similarity removes the row entirely if fewer than four honest matches
+  // remain; a missing row is better than a confident but misleading explanation.
+  if (seed) fillRow('rowSeed', () => rowFrom(c => isRelatedToSeed(c, seed), 4));
+  if (topActor) fillRow('rowActor', () => rowFrom(c => hasCandidateSource(c, 'cast')));
+  if (topDirector) fillRow('rowDirector', () => rowFrom(c => hasCandidateSource(c, 'director')));
   if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)));
 }

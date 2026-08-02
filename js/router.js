@@ -22,6 +22,7 @@ import { renderParty } from './party.js';
 import { renderProfile } from './profile.js';
 import { renderSettings } from './settings.js';
 import { renderReleaseReminders } from './release-reminders.js';
+import { closeScanner, isScannerOpen } from './scan.js';
 
 // Set when the watchlist/ratings change while we're NOT on home, so home can
 // re-render its personal rows lazily on arrival instead of every list toggle
@@ -98,6 +99,7 @@ function closeAllModals() {
   if (isLightboxOpen()) closeLightbox();
   if (isRatingOpen()) closeRating();
   if (isListPickerOpen()) closeListPicker();
+  if (isScannerOpen()) closeScanner();
   if (isDeleteOpen()) closeDelete();
   if (isAuthOpen()) closeAuth();
   const dd = $('profileDD'); if (dd) dd.classList.remove('active');
@@ -157,6 +159,7 @@ function handleEscape() {
   // Innermost-first: the lightbox can be opened from the detail page, so it must
   // be dismissed before anything underneath it.
   if (isLightboxOpen()) return closeLightbox();
+  if (isScannerOpen()) return closeScanner();
   if (isTrailerOpen()) return closeTrailer();
   if (isRatingOpen()) return closeRating();
   if (isListPickerOpen()) return closeListPicker();

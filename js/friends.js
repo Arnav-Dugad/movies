@@ -4,8 +4,61 @@ import { esc, toast, $ } from './ui.js';
 import { registerActions } from './events.js';
 import { social, displayCode, sendRequest, acceptRequest, declineRequest, removeFriend, resolveCode, resolveEmail, searchByName } from './social.js';
 import { avatarInner } from './avatar.js';
+import { qrSvg } from './qrcode.js';
+import { openScanner, scannerSupported, initScan } from './scan.js';
 
 let pendingRemove = null;   // pairId awaiting a second confirming click
+let pendingAdd = null;      // a ?add= / scanned code waiting for sign-in to resolve
+
+// The scannable form of a friend code: a URL back to the app carrying ?add=<code>,
+// so a phone's own camera opens it AND our in-app scanner reads it. Built relative
+// to the current page so it works whatever base path the app is served from.
+function addUrlFor(code) {
+  try { return new URL('?add=' + encodeURIComponent(code), location.href).href; }
+  catch (_) { return location.origin + '/?add=' + encodeURIComponent(code); }
+}
+// Pull a bare friend code out of whatever the camera read (a full add-URL or a raw
+// code, with or without the CINE- prefix).
+function codeFromScan(text) {
+  let v = (text || '').trim();
+  try { const u = new URL(v); if (u.searchParams.get('add')) v = u.searchParams.get('add'); } catch (_) {}
+  return v;
+}
+// A QR for the code's add-URL. Never let a QR failure take down the page.
+function qrCodeSvg(code) {
+  try { return qrSvg(addUrlFor(code), { ecl: 'M', cls: 'qr-svg' }); }
+  catch (e) { console.error('qr', e); return ''; }
+}
+
+// Resolve a scanned/linked code and send a request, with clear feedback.
+async function addByCode(raw) {
+  const code = codeFromScan(raw);
+  if (!code) { toast('No code found', 'error'); return; }
+  const profile = await resolveCode(code);
+  if (!profile) { toast('No CineVerse user found for that code', 'error'); return; }
+  const r = await sendRequest(profile.uid, profile.name);
+  toast(r.ok ? `Request sent to ${profile.name}!` : r.msg, r.ok ? 'success' : 'error');
+  if (location.pathname === '/friends') renderFriends();
+}
+
+// A ?add=<code> link (from a scanned QR opened in the phone's browser, or a shared
+// link) adds that friend once we're signed in and the friend graph is ready.
+function maybeProcessPending() {
+  if (pendingAdd && state.user && social.ready) { const c = pendingAdd; pendingAdd = null; addByCode(c); }
+}
+export function initFriendDeepLink() {
+  document.addEventListener('cv:social', maybeProcessPending);
+  const params = new URLSearchParams(location.search);
+  const add = params.get('add');
+  if (!add) return;
+  // Strip ?add= from the URL so a refresh or re-render can't re-add.
+  params.delete('add');
+  const qs = params.toString();
+  history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+  pendingAdd = add;
+  if (!state.user) { toast('Sign in to add this friend', 'info'); document.dispatchEvent(new Event('cv:open-auth')); }
+  maybeProcessPending();
+}
 
 export function renderFriends() {
   const ct = $('friendsContent');
@@ -31,15 +84,19 @@ export function renderFriends() {
 
   ct.innerHTML = `
     <div class="friend-code-card">
-      <div class="stat-label">Your Friend Code</div>
-      <div class="friend-code-row"><span class="friend-code">${esc(displayCode(social.code) || '…')}</span><button class="btn-glass" style="padding:8px 16px;font-size:.82rem" data-action="copy-code" data-code="${esc(displayCode(social.code))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button></div>
-      <p style="color:var(--text3);font-size:.8rem;margin-top:8px">Share this code with friends & family so they can add you.</p>
+      <div class="friend-code-main">
+        <div class="stat-label">Your Friend Code</div>
+        <div class="friend-code-row"><span class="friend-code">${esc(displayCode(social.code) || '…')}</span><button class="btn-glass" style="padding:8px 16px;font-size:.82rem" data-action="copy-code" data-code="${esc(displayCode(social.code))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button></div>
+        <p style="color:var(--text3);font-size:.8rem;margin-top:8px">Share your code — or let a friend scan the QR — so they can add you.</p>
+      </div>
+      ${social.code ? `<div class="friend-qr" title="Scan to add me">${qrCodeSvg(social.code)}<span class="friend-qr-cap">Scan to add me</span></div>` : ''}
     </div>
 
     <div class="d-sec-title" style="margin-top:28px">Add a Friend</div>
     <div class="friend-add">
       <input id="friendAddInput" type="text" placeholder="Friend code, name, or email…" autocomplete="off">
       <button class="btn-primary" style="height:44px" data-action="friend-add">Add</button>
+      ${scannerSupported() ? `<button class="btn-glass friend-scan-btn" style="height:44px" data-action="open-scanner" data-tip="Scan a friend's QR"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><line x1="7" y1="12" x2="17" y2="12"/></svg>Scan</button>` : ''}
     </div>
     <div id="friendSearchResults"></div>
 
@@ -79,6 +136,8 @@ async function doAdd() {
 }
 
 export function initFriends() {
+  initScan();
+  initFriendDeepLink();
   document.addEventListener('cv:social', () => { if (location.pathname === '/friends') renderFriends(); });
   document.addEventListener('keydown', e => { if (e.target && e.target.id === 'friendAddInput' && e.key === 'Enter') { e.preventDefault(); doAdd(); } });
 
@@ -89,6 +148,7 @@ export function initFriends() {
       else toast(code, 'info');
     },
     'friend-add': () => doAdd(),
+    'open-scanner': () => openScanner(addByCode),
     'friend-request': async (el) => { const r = await sendRequest(el.dataset.uid, el.dataset.name); toast(r.msg, r.ok ? 'success' : 'error'); if (r.ok) { $('friendSearchResults').innerHTML = ''; renderFriends(); } },
     'accept-req': async (el) => { const req = social.reqIn.find(r => r.id === el.dataset.id); if (req) { await acceptRequest(req); toast('Friend added!', 'success'); renderFriends(); } },
     'decline-req': async (el) => { const req = social.reqIn.find(r => r.id === el.dataset.id); if (req) { await declineRequest(req); renderFriends(); } },

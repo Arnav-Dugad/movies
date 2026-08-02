@@ -44,6 +44,12 @@ export async function toggleWatched(id, type, title, meta = {}) {
         poster: meta.poster || wl?.poster || '',
         year: meta.year || wl?.year || '',
         genres: meta.genres || wl?.genres || [],
+        runtime: +(meta.runtime || wl?.runtime || 0),
+        language: meta.language || wl?.language || '',
+        country: meta.country || wl?.country || '',
+        releaseDate: meta.releaseDate || wl?.releaseDate || '',
+        tmdbRating: +(meta.tmdbRating || wl?.rating || 0),
+        voteCount: +(meta.voteCount || 0),
         watchedAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
       await ref.set(d);
@@ -209,7 +215,7 @@ function syncWLControls(baseItems) {
 }
 
 function payloadFor(w) {
-  return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [], runtime: w.runtime || 0 }));
+  return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [], runtime: w.runtime || 0, language: w.language || '', country: w.country || '', releaseDate: w.releaseDate || '' }));
 }
 
 export function renderWL() {
@@ -294,7 +300,12 @@ export function initWatchlist() {
       let genres = [];
       try { genres = el.dataset.genres ? JSON.parse(el.dataset.genres) : []; } catch (_) {}
       const id = +el.dataset.id, type = el.dataset.type;
-      await toggleWatched(id, type, el.dataset.title || '', { poster: el.dataset.poster || '', year: el.dataset.year || '', genres });
+      await toggleWatched(id, type, el.dataset.title || '', {
+        poster: el.dataset.poster || '', year: el.dataset.year || '', genres,
+        runtime: +el.dataset.runtime || 0, language: el.dataset.language || '',
+        country: el.dataset.country || '', releaseDate: el.dataset.releaseDate || '',
+        tmdbRating: +el.dataset.tmdbRating || 0, voteCount: +el.dataset.voteCount || 0,
+      });
       // Sync the button from the actual result rather than toggling blind — on a
       // failed write, toggleWatched leaves state.watched unchanged, so this
       // correctly leaves the button as-is instead of flipping to a wrong state.

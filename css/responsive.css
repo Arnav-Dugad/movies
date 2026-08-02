@@ -1,4 +1,12 @@
 /* ===== RESPONSIVE ===== */
+@media(max-width:1100px){
+  .stats-hero{grid-template-columns:1fr}
+  .stats-identity{width:fit-content;min-width:min(100%,330px)}
+  .stats-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .taste-map-layout{grid-template-columns:1fr}
+  .stats-duo{grid-template-columns:1fr}
+}
+
 @media(min-width:769px){
   .card-wl,.card-rate{opacity:0}
   .card:hover .card-wl,.card:hover .card-rate{opacity:1}
@@ -69,6 +77,20 @@
   .profile-since{margin-top:4px}
   .profile-edit-btn{width:100%}
   .profile-stats{grid-template-columns:repeat(2,1fr)}
+  .stats-hero{min-height:0;padding:28px 20px;border-radius:24px}
+  .stats-hero h1{font-size:clamp(2.25rem,11vw,3.8rem)}
+  .stats-identity{width:100%;min-width:0}
+  .stats-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .stats-kpi{min-height:150px;padding:15px}
+  .taste-map-layout{gap:28px}
+  .taste-orbit{--taste-size:300px}
+  .taste-breakdown{grid-template-columns:1fr}
+  .taste-card:first-child{grid-row:auto}
+  .activity-highlights{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .activity-grid{grid-template-columns:1fr}
+  .stats-panel,.stats-achievements{padding:19px 14px;border-radius:21px}
+  .stats-section-head{flex-direction:column;gap:10px}
+  .rating-foot{flex-wrap:wrap}
   /* Larger tap targets on touch */
   .card-wl,.card-rate{width:36px;height:36px}
   .g-pill,.chip,.s-tab,.wl-tab,.wl-chip{padding-top:10px;padding-bottom:10px}
@@ -93,7 +115,8 @@
   /* min-width:220px on the input can't shrink below the viewport on a small
      phone — let it flex down instead. */
   .friend-add input{min-width:0}
-  .friend-code-card{padding:16px}
+  .friend-code-card{padding:16px;align-items:flex-start}
+  .friend-qr{width:126px}
   .friend-code{font-size:1.15rem;letter-spacing:1px}
   .friend-row{padding:10px 12px;gap:10px}
 
@@ -159,6 +182,8 @@
   .challenge-card{flex-direction:column;text-align:center}
   .search-grid,.party-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px}
   .friend-code{font-size:1rem;letter-spacing:.5px}
+  .friend-code-card{flex-direction:column}
+  .friend-qr{width:154px;align-self:center}
   .party-mood{font-size:.72rem;padding:6px 10px}
   .wl-cover{height:205px}
   .wl-cover-grid{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr)}
@@ -170,6 +195,17 @@
   .bo-metrics>div:nth-child(3){grid-column:auto}
   .bo-row{gap:7px}
   .bo-val{width:66px;font-size:.67rem}
+  .stats-page{padding-left:10px;padding-right:10px}
+  .stats-hero-actions{align-items:stretch;flex-direction:column}
+  .stats-scope{width:100%}
+  .stats-scope button{flex:1;padding-left:8px;padding-right:8px}
+  .stats-export{justify-content:center}
+  .stats-identity{align-items:flex-start;flex-direction:column}
+  .stats-identity-ring{width:96px;height:96px}
+  .taste-orbit{--taste-size:260px}
+  .taste-node{max-width:116px;padding:7px 9px}
+  .taste-node.genre{left:2px}.taste-node.era{right:-4px}.taste-node.language{left:0}
+  .activity-highlights{grid-template-columns:1fr}
   .release-pref-grid{grid-template-columns:1fr}
   /* The list picker's rows are the only tap targets in that modal — keep them
      comfortable even on the narrowest phones. */

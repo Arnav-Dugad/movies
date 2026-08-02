@@ -164,7 +164,10 @@ export async function removeFriend(pairId) {
 
 // ----- Lookups -----
 export async function resolveCode(codeInput) {
-  const code = normCode(codeInput);
+  let code = normCode(codeInput);
+  // The code is shown/shared as "CINE-XXXXXX"; normalising that yields "CINEXXXXXX"
+  // (10 chars). Strip the display prefix so a pasted or SCANNED full code resolves.
+  if (code.length > 6 && code.startsWith('CINE')) code = code.slice(4);
   if (code.length < 4) return null;
   try { const q = await db.collection('publicProfiles').where('code', '==', code).limit(1).get(); return q.empty ? null : q.docs[0].data(); }
   catch (e) { console.error('resolveCode', e); return null; }
