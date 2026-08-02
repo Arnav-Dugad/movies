@@ -265,7 +265,7 @@ export function computeStats(scope) {
     scope, rows, watched, saved, totalRated: ratingValues.length, avgRating, avgTmdb,
     ratingCounts, completion, ratingCoverage, positiveRate, highScores,
     genres: genreRows, decades: decadeRows, languages: languageRows, diversityScore,
-    totalMinutes, hours: Math.round(totalMinutes / 60), avgRuntime: runtimes.length ? Math.round(totalMinutes / runtimes.length) : 0,
+    totalMinutes, hours: Math.floor(totalMinutes / 60), avgRuntime: runtimes.length ? Math.round(totalMinutes / runtimes.length) : 0,
     metaCoverage: rows.length ? enriched.length / rows.length : 1,
     movies: watched.filter(row => row.type === 'movie').length, shows: watched.filter(row => row.type === 'tv').length,
     thisYear: watched.filter(row => row.watchedAt?.getFullYear() === now.getFullYear()).length,

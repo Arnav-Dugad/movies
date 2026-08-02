@@ -216,7 +216,13 @@ export function initRouter() {
 
   // Escape still dismisses the remaining true modals (auth / trailer / rating /
   // profile dropdown) — standard modal UX.
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') handleEscape(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { handleEscape(); return; }
+    const tag = e.target?.tagName, typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
+    const commandSearch = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k';
+    const slashSearch = e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (commandSearch || slashSearch) { e.preventDefault(); navigate('/search'); }
+  });
 
   // Initial load — Vercel serves index.html for deep links (see vercel.json),
   // so location.pathname is already the real route.

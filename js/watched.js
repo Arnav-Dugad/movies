@@ -6,25 +6,29 @@
 // backfill in watched-meta.js on first view.
 import { state } from './state.js';
 import { IMG, PH, genreMap } from './config.js';
-import { esc, debounce, $ } from './ui.js';
+import { esc, debounce, $, toast } from './ui.js';
 import { registerActions } from './events.js';
 import { rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { ensureWatchedMeta } from './watched-meta.js';
 
-let watchedSort = 'recent';   // recent | title | year_desc | year_asc
-let watchedGenre = 'all';     // 'all' | genre id (string)
-let watchedQuery = '';
+let watchedSort = 'recent', watchedGenre = 'all', watchedQuery = '';
+let watchedDecade = 'all', watchedLanguage = 'all', watchedCountry = 'all';
+let watchedCommunity = 0, watchedMine = 'all', watchedRuntime = 'all', watchedWhen = 'all';
+let advancedOpen = false;
 
 // Normalize a watched doc into a renderable item, filling poster/year from the
 // watchlist for entries saved before enrichment existed.
 function toItem(key, d) {
   const wl = state.watchlist.find(w => w.id === key);
   return {
-    id: d.tmdbId, type: d.type,
+    id: d.tmdbId || +(String(key).split('_').pop() || 0), type: d.type || String(key).split('_')[0],
     title: d.title || wl?.title || '',
     poster: d.poster || wl?.poster || '',
     year: d.year || wl?.year || '',
     genres: (d.genres && d.genres.length ? d.genres : wl?.genres) || [],
+    language: d.language || wl?.language || '', country: d.country || wl?.country || '',
+    runtime: +(d.runtime || wl?.runtime || 0), community: +(d.tmdbRating || wl?.rating || 0),
+    userRating: +(state.ratings[key] || 0),
     ts: d.watchedAt?.seconds || 0,
   };
 }
@@ -33,18 +37,56 @@ function allItems() {
   return Object.entries(state.watched).map(([k, d]) => toItem(k, d));
 }
 
-function watchedItems() {
-  let items = allItems();
-  if (state.watchedFilter !== 'all') items = items.filter(i => i.type === state.watchedFilter);
-  if (watchedGenre !== 'all') items = items.filter(i => (i.genres || []).map(String).includes(watchedGenre));
-  if (watchedQuery) { const q = watchedQuery.toLowerCase(); items = items.filter(i => i.title.toLowerCase().includes(q)); }
+export function applyWatchedFilters(source, filters = {}) {
+  let items = [...source];
+  const type = filters.type || 'all', genre = filters.genre || 'all', query = (filters.query || '').trim().toLowerCase();
+  const decade = filters.decade || 'all', language = filters.language || 'all', country = filters.country || 'all';
+  const community = +(filters.community || 0), mine = filters.mine || 'all', runtime = filters.runtime || 'all', when = filters.when || 'all';
+  const sort = filters.sort || 'recent', now = filters.now || new Date(), nowSeconds = now.getTime() / 1000;
+  if (type !== 'all') items = items.filter(i => i.type === type);
+  if (genre !== 'all') items = items.filter(i => (i.genres || []).map(String).includes(String(genre)));
+  if (query) items = items.filter(i => i.title.toLowerCase().includes(query));
+  if (decade !== 'all') items = items.filter(i => Math.floor(+(i.year || 0) / 10) * 10 === +decade);
+  if (language !== 'all') items = items.filter(i => i.language === language);
+  if (country !== 'all') items = items.filter(i => i.country === country);
+  if (community) items = items.filter(i => i.community >= community);
+  if (mine === 'rated') items = items.filter(i => i.userRating > 0);
+  else if (mine === 'unrated') items = items.filter(i => !i.userRating);
+  else if (/^\d+$/.test(mine)) items = items.filter(i => i.userRating >= +mine);
+  if (runtime === 'quick') items = items.filter(i => i.runtime > 0 && i.runtime <= 120);
+  else if (runtime === 'standard') items = items.filter(i => i.runtime > 120 && i.runtime <= 600);
+  else if (runtime === 'long') items = items.filter(i => i.runtime > 600 && i.runtime <= 2400);
+  else if (runtime === 'epic') items = items.filter(i => i.runtime > 2400);
+  else if (runtime === 'unknown') items = items.filter(i => !i.runtime);
+  if (when !== 'all') {
+    if (/^\d+$/.test(when)) items = items.filter(i => i.ts && i.ts >= nowSeconds - +when * 86400 && i.ts <= nowSeconds);
+    else if (when === 'this_year') items = items.filter(i => i.ts && i.ts <= nowSeconds && new Date(i.ts * 1000).getFullYear() === now.getFullYear());
+    else if (when === 'last_year') items = items.filter(i => i.ts && new Date(i.ts * 1000).getFullYear() === now.getFullYear() - 1);
+    else if (when === 'unknown') items = items.filter(i => !i.ts);
+  }
   const sorters = {
     recent: (a, b) => b.ts - a.ts,
-    title: (a, b) => a.title.localeCompare(b.title),
+    watched_asc: (a, b) => (a.ts || Number.MAX_SAFE_INTEGER) - (b.ts || Number.MAX_SAFE_INTEGER),
+    title_asc: (a, b) => a.title.localeCompare(b.title),
+    title_desc: (a, b) => b.title.localeCompare(a.title),
     year_desc: (a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0),
-    year_asc: (a, b) => (parseInt(a.year) || 0) - (parseInt(b.year) || 0),
+    year_asc: (a, b) => (parseInt(a.year) || Number.MAX_SAFE_INTEGER) - (parseInt(b.year) || Number.MAX_SAFE_INTEGER),
+    community_desc: (a, b) => b.community - a.community,
+    community_asc: (a, b) => (a.community || 99) - (b.community || 99),
+    user_desc: (a, b) => b.userRating - a.userRating,
+    user_asc: (a, b) => (a.userRating || 99) - (b.userRating || 99),
+    runtime_desc: (a, b) => b.runtime - a.runtime,
+    runtime_asc: (a, b) => (a.runtime || Number.MAX_SAFE_INTEGER) - (b.runtime || Number.MAX_SAFE_INTEGER),
   };
-  return items.sort(sorters[watchedSort] || sorters.recent);
+  return items.sort(sorters[sort] || sorters.recent);
+}
+
+function watchedItems() {
+  return applyWatchedFilters(allItems(), {
+    type: state.watchedFilter, genre: watchedGenre, query: watchedQuery, decade: watchedDecade,
+    language: watchedLanguage, country: watchedCountry, community: watchedCommunity, mine: watchedMine,
+    runtime: watchedRuntime, when: watchedWhen, sort: watchedSort,
+  });
 }
 
 // Options for the genre <select>, built from the genres present in watched items.
@@ -53,6 +95,35 @@ function genreOptions() {
   allItems().forEach(i => (i.genres || []).forEach(g => { if (genreMap[g]) ids.add(g); }));
   const opts = [...ids].map(id => [String(id), genreMap[id]]).sort((a, b) => a[1].localeCompare(b[1]));
   return `<option value="all">All genres</option>` + opts.map(([v, name]) => `<option value="${v}">${esc(name)}</option>`).join('');
+}
+
+function languageName(code) {
+  try { return new Intl.DisplayNames([navigator.language || 'en'], { type: 'language' }).of(code) || code.toUpperCase(); }
+  catch (_) { return code.toUpperCase(); }
+}
+
+function countryName(code) {
+  try { return new Intl.DisplayNames([navigator.language || 'en'], { type: 'region' }).of(code) || code; }
+  catch (_) { return code; }
+}
+
+function valueOptions(items, field, label, display) {
+  const values = [...new Set(items.map(item => item[field]).filter(Boolean))].sort((a, b) => display(a).localeCompare(display(b)));
+  return `<option value="all">${label}</option>` + values.map(value => `<option value="${esc(value)}">${esc(display(value))}</option>`).join('');
+}
+
+function decadeOptions(items) {
+  const decades = [...new Set(items.map(item => Math.floor(+(item.year || 0) / 10) * 10).filter(value => value >= 1800))].sort((a, b) => b - a);
+  return '<option value="all">Any decade</option>' + decades.map(value => `<option value="${value}">${value}s</option>`).join('');
+}
+
+function activeFilterCount() {
+  return [state.watchedFilter !== 'all', watchedGenre !== 'all', !!watchedQuery, watchedDecade !== 'all', watchedLanguage !== 'all', watchedCountry !== 'all', watchedCommunity > 0, watchedMine !== 'all', watchedRuntime !== 'all', watchedWhen !== 'all'].filter(Boolean).length;
+}
+
+function watchedDateLabel(seconds) {
+  if (!seconds) return '';
+  return new Date(seconds * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: new Date(seconds * 1000).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 }
 
 export function setWatchedFilter(f, el) {
@@ -65,8 +136,11 @@ export function setWatchedFilter(f, el) {
 function renderGrid() {
   const ct = $('watchedContent'), cnt = $('watchedCount');
   if (!ct) return;
-  const items = watchedItems();
-  if (cnt) cnt.textContent = `${items.length} title${items.length !== 1 ? 's' : ''}`;
+  const items = watchedItems(), total = Object.keys(state.watched).length, active = activeFilterCount();
+  if (cnt) cnt.textContent = active ? `${items.length} of ${total} titles` : `${items.length} title${items.length !== 1 ? 's' : ''}`;
+  const status = $('watchedFilterStatus'), badge = $('watchedActiveCount');
+  if (status) status.innerHTML = `<span>${active ? `${active} active filter${active === 1 ? '' : 's'}` : 'Showing your complete watch history'}</span><b>${items.length} result${items.length === 1 ? '' : 's'}</b>`;
+  if (badge) { badge.hidden = !active; badge.textContent = active; }
 
   if (!items.length) {
     const anyWatched = Object.keys(state.watched).length > 0;
@@ -79,7 +153,7 @@ function renderGrid() {
 
   ct.innerHTML = `<div class="wl-grid">${items.map(w => {
     const poster = w.poster ? `${IMG}w342${w.poster}` : PH;
-    return `<a class="card" href="/${w.type}/${w.id}" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.id}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${WATCHED_BADGE_HTML}${myRatingHTML(w.id, w.type)}${rateBtnHTML(w.id, w.type, w.title)}</div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></a>`;
+    return `<a class="card" href="/${w.type}/${w.id}" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.id}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${WATCHED_BADGE_HTML}${myRatingHTML(w.id, w.type)}${rateBtnHTML(w.id, w.type, w.title)}</div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div>${w.ts ? `<div class="watched-card-date">Watched ${esc(watchedDateLabel(w.ts))}</div>` : ''}</div></a>`;
   }).join('')}</div>`;
 }
 
@@ -98,10 +172,18 @@ export function renderWatched() {
   const hasAny = Object.keys(state.watched).length > 0;
   if (controls) {
     controls.style.display = hasAny ? '' : 'none';
+    const items = allItems();
     const gsel = $('watchedGenre');
     if (gsel) { gsel.innerHTML = genreOptions(); gsel.value = watchedGenre; if (gsel.value !== watchedGenre) { watchedGenre = 'all'; gsel.value = 'all'; } }
+    const dsel = $('watchedDecade'); if (dsel) { dsel.innerHTML = decadeOptions(items); dsel.value = watchedDecade; if (dsel.value !== watchedDecade) { watchedDecade = 'all'; dsel.value = 'all'; } }
+    const lsel = $('watchedLanguage'); if (lsel) { lsel.innerHTML = valueOptions(items, 'language', 'Any language', languageName); lsel.value = watchedLanguage; if (lsel.value !== watchedLanguage) { watchedLanguage = 'all'; lsel.value = 'all'; } }
+    const csel = $('watchedCountry'); if (csel) { csel.innerHTML = valueOptions(items, 'country', 'Any country', countryName); csel.value = watchedCountry; if (csel.value !== watchedCountry) { watchedCountry = 'all'; csel.value = 'all'; } }
     const ssel = $('watchedSort'); if (ssel) ssel.value = watchedSort;
+    [['watchedCommunity', String(watchedCommunity)], ['watchedMine', watchedMine], ['watchedRuntime', watchedRuntime], ['watchedWhen', watchedWhen]].forEach(([id, value]) => { const select = $(id); if (select) select.value = value; });
     const sinp = $('watchedSearch'); if (sinp && sinp.value !== watchedQuery) sinp.value = watchedQuery;
+    const advanced = $('watchedAdvanced'), toggle = controls.querySelector('[data-action="toggle-watched-filters"]');
+    if (advanced) advanced.hidden = !advancedOpen;
+    if (toggle) { toggle.classList.toggle('active', advancedOpen); toggle.setAttribute('aria-expanded', String(advancedOpen)); }
   }
 
   renderGrid();
@@ -113,6 +195,26 @@ export function initWatched() {
     'watched-filter': (el) => setWatchedFilter(el.dataset.filter, el),
     'watched-sort': (el) => { watchedSort = el.value; renderGrid(); },
     'watched-genre': (el) => { watchedGenre = el.value; renderGrid(); },
+    'watched-decade': (el) => { watchedDecade = el.value; renderGrid(); },
+    'watched-language': (el) => { watchedLanguage = el.value; renderGrid(); },
+    'watched-country': (el) => { watchedCountry = el.value; renderGrid(); },
+    'watched-community': (el) => { watchedCommunity = +el.value; renderGrid(); },
+    'watched-mine': (el) => { watchedMine = el.value; renderGrid(); },
+    'watched-runtime': (el) => { watchedRuntime = el.value; renderGrid(); },
+    'watched-when': (el) => { watchedWhen = el.value; renderGrid(); },
+    'toggle-watched-filters': () => { advancedOpen = !advancedOpen; renderWatched(); },
+    'watched-random': () => {
+      const items = watchedItems();
+      if (!items.length) { toast('No titles match your filters', 'info'); return; }
+      const item = items[Math.floor(Math.random() * items.length)];
+      document.dispatchEvent(new CustomEvent('cv:go', { detail: `/${item.type}/${item.id}` }));
+    },
+    'watched-reset': () => {
+      watchedSort = 'recent'; watchedGenre = 'all'; watchedQuery = ''; watchedDecade = 'all'; watchedLanguage = 'all'; watchedCountry = 'all'; watchedCommunity = 0; watchedMine = 'all'; watchedRuntime = 'all'; watchedWhen = 'all';
+      state.watchedFilter = 'all';
+      document.querySelectorAll('#watchedPage .wl-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.filter === 'all'));
+      renderWatched();
+    },
   });
   const inp = $('watchedSearch');
   if (inp) inp.addEventListener('input', debounce(function () { watchedQuery = this.value.trim(); renderGrid(); }, 200));

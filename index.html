@@ -104,7 +104,7 @@
       <a class="nav-link" data-page="stats" data-action="show-page" role="button" tabindex="0">Stats</a>
     </div>
     <div class="nav-right">
-      <button class="nav-btn" data-action="show-page" data-page="search" data-tip="Search" aria-label="Search">
+      <button class="nav-btn" data-action="show-page" data-page="search" data-tip="Search · Ctrl K" aria-label="Search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       </button>
       <div style="position:relative">
@@ -327,18 +327,35 @@
     <div class="wl-tab" role="button" tabindex="0" data-action="watched-filter" data-filter="movie">Movies</div>
     <div class="wl-tab" role="button" tabindex="0" data-action="watched-filter" data-filter="tv">TV Shows</div>
   </div>
-  <div class="watched-controls" id="watchedControls">
-    <div class="watched-search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input id="watchedSearch" type="text" placeholder="Search watched…" aria-label="Search watched titles">
+  <div class="watched-toolbox" id="watchedControls">
+    <div class="watched-controls">
+      <div class="watched-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="watchedSearch" type="text" placeholder="Search watched…" aria-label="Search watched titles">
+      </div>
+      <select id="watchedGenre" class="watched-select" data-action="watched-genre" aria-label="Filter by genre"><option value="all">All genres</option></select>
+      <select id="watchedSort" class="watched-select" data-action="watched-sort" aria-label="Sort watched">
+        <option value="recent">Recently watched</option><option value="watched_asc">Oldest watched</option>
+        <option value="title_asc">Title A–Z</option><option value="title_desc">Title Z–A</option>
+        <option value="year_desc">Release year: newest</option><option value="year_asc">Release year: oldest</option>
+        <option value="community_desc">Community rating: high</option><option value="community_asc">Community rating: low</option>
+        <option value="user_desc">My rating: high</option><option value="user_asc">My rating: low</option>
+        <option value="runtime_desc">Runtime: longest</option><option value="runtime_asc">Runtime: shortest</option>
+      </select>
+      <button class="watched-tool-btn" data-action="toggle-watched-filters" aria-expanded="false" aria-controls="watchedAdvanced"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>More filters</span><b id="watchedActiveCount" hidden>0</b></button>
+      <button class="watched-tool-btn accent" data-action="watched-random"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg><span>Surprise me</span></button>
+      <button class="filter-reset" data-action="watched-reset">Reset</button>
     </div>
-    <select id="watchedGenre" class="watched-select" data-action="watched-genre" aria-label="Filter by genre"><option value="all">All genres</option></select>
-    <select id="watchedSort" class="watched-select" data-action="watched-sort" aria-label="Sort watched">
-      <option value="recent">Recently watched</option>
-      <option value="title">Title A–Z</option>
-      <option value="year_desc">Year (newest)</option>
-      <option value="year_asc">Year (oldest)</option>
-    </select>
+    <div class="watched-advanced" id="watchedAdvanced" hidden>
+      <label><span>Release decade</span><select id="watchedDecade" class="watched-select" data-action="watched-decade"><option value="all">Any decade</option></select></label>
+      <label><span>Language</span><select id="watchedLanguage" class="watched-select" data-action="watched-language"><option value="all">Any language</option></select></label>
+      <label><span>Country</span><select id="watchedCountry" class="watched-select" data-action="watched-country"><option value="all">Any country</option></select></label>
+      <label><span>Community score</span><select id="watchedCommunity" class="watched-select" data-action="watched-community"><option value="0">Any score</option><option value="8">8+ rated</option><option value="7">7+ rated</option><option value="6">6+ rated</option><option value="5">5+ rated</option></select></label>
+      <label><span>My rating</span><select id="watchedMine" class="watched-select" data-action="watched-mine"><option value="all">Any rating status</option><option value="rated">Rated by me</option><option value="unrated">Not rated yet</option><option value="10">My 10/10 titles</option><option value="9">My 9+ titles</option><option value="8">My 8+ titles</option><option value="7">My 7+ titles</option></select></label>
+      <label><span>Total runtime</span><select id="watchedRuntime" class="watched-select" data-action="watched-runtime"><option value="all">Any runtime</option><option value="quick">Up to 2 hours</option><option value="standard">2–10 hours</option><option value="long">10–40 hours</option><option value="epic">Over 40 hours</option><option value="unknown">Runtime missing</option></select></label>
+      <label><span>Watched date</span><select id="watchedWhen" class="watched-select" data-action="watched-when"><option value="all">Any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="this_year">This year</option><option value="last_year">Last year</option><option value="unknown">Date missing</option></select></label>
+    </div>
+    <div class="watched-filter-status" id="watchedFilterStatus"></div>
   </div>
   <div id="watchedContent"></div>
 </div>

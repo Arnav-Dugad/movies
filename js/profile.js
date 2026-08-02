@@ -2,7 +2,7 @@
 import { state, isWatched } from './state.js';
 import { $, esc, toast } from './ui.js';
 import { registerActions } from './events.js';
-import { AVATARS } from './config.js';
+import { AVATARS, genreMap, IMG, PH } from './config.js';
 import { avatarBg, avatarGlyph } from './avatar.js';
 import { buildCtx } from './badges.js';
 import { myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
@@ -13,11 +13,49 @@ import { friendQrSvg } from './qrcode.js';
 let editing = false;
 let draftAvatar = undefined;   // undefined = untouched; null = cleared to initial
 
+const PROFILE_ICONS = {
+  watched: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.2L5.8 21 7 14.2 2 9.3l6.9-1Z"/></svg>',
+  saved: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg>',
+  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.1h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3h4a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>',
+};
+
 function memberSince(created) {
   if (!created) return '';
   const ms = created.seconds ? created.seconds * 1000 : (created.__ts || (typeof created.toMillis === 'function' ? created.toMillis() : 0));
   if (!ms) return '';
   return new Date(ms).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function profileInsights(ctx) {
+  const watched = Object.entries(state.watched).map(([key, doc]) => ({ key, ...doc }));
+  const ratings = Object.values(state.ratings).map(Number).filter(Boolean);
+  const genres = new Map(), decades = new Map();
+  watched.forEach(item => {
+    (item.genres || []).forEach(id => { if (genreMap[id]) genres.set(id, (genres.get(id) || 0) + 1); });
+    const year = +(item.year || 0); if (year) { const decade = Math.floor(year / 10) * 10; decades.set(decade, (decades.get(decade) || 0) + 1); }
+  });
+  const top = map => [...map].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))[0];
+  const topGenre = top(genres), topDecade = top(decades), nowYear = new Date().getFullYear();
+  const watchedYear = item => {
+    const ms = item.watchedAt?.seconds ? item.watchedAt.seconds * 1000 : (typeof item.watchedAt?.toMillis === 'function' ? item.watchedAt.toMillis() : 0);
+    return ms && ms <= Date.now() ? new Date(ms).getFullYear() : 0;
+  };
+  const ratedWatched = watched.filter(item => state.ratings[item.key]).length;
+  const snapshot = state.statsSnapshot || {};
+  return {
+    watched,
+    avgRating: ratings.length ? ratings.reduce((sum, value) => sum + value, 0) / ratings.length : 0,
+    topGenre: topGenre ? genreMap[topGenre[0]] : 'Discovering', topDecade: topDecade ? `${topDecade[0]}s` : 'Discovering',
+    ratingCoverage: watched.length ? Math.round(ratedWatched / watched.length * 100) : 0,
+    thisYear: watched.filter(item => watchedYear(item) === nowYear).length,
+    health: +(snapshot.collection?.health?.score || 0), streak: +(snapshot.activity?.currentStreak || 0),
+    level: snapshot.identity?.level || (ctx.watchedTotal >= 100 ? 'Cinephile' : ctx.watchedTotal >= 50 ? 'Curator' : ctx.watchedTotal >= 10 ? 'Explorer' : 'New Voyager'),
+  };
 }
 
 export function renderProfile() {
@@ -34,21 +72,29 @@ export function renderProfile() {
   const since = memberSince(state.profile.created);
   const code = displayCode(social.code);
   const c = buildCtx();
+  const insight = profileInsights(c);
+  const strengthChecks = [!!u.displayName, !!av, !!code, !!state.profile.created, c.watchedTotal > 0, c.ratedTotal > 0];
+  const strength = Math.round(strengthChecks.filter(Boolean).length / strengthChecks.length * 100);
+  const backdropItems = [...insight.watched].filter(item => item.poster).sort((a, b) => (b.watchedAt?.seconds || 0) - (a.watchedAt?.seconds || 0)).slice(0, 4);
+  const backdrop = backdropItems.length ? `<div class="profile-cinema-wall">${backdropItems.map(item => `<img src="${IMG}w342${item.poster}" alt="" loading="lazy">`).join('')}</div>` : '';
 
   const header = `
-    <div class="profile-hero">
-      <div class="profile-av-lg" style="background:${avatarBg(av)}">${esc(avatarGlyph(av, name))}</div>
-      <div class="profile-id">
-        <h1 class="profile-nm">${esc(name)}</h1>
-        <div class="profile-email">${esc(u.email || '')}</div>
-        ${since ? `<div class="profile-since">Member since ${esc(since)}</div>` : ''}
+    <section class="profile-premium-hero">${backdrop}<div class="profile-hero-shade"></div>
+      <div class="profile-hero-content">
+        <div class="profile-avatar-wrap"><div class="profile-av-lg" style="background:${avatarBg(av)}">${esc(avatarGlyph(av, name))}</div><span>${esc(insight.level)}</span></div>
+        <div class="profile-id">
+          <div class="profile-eyebrow"><i></i>Private Cineprint</div>
+          <h1 class="profile-nm">${esc(name)}</h1>
+          <div class="profile-email">${esc(u.email || '')}</div>
+          <div class="profile-identity-tags">${since ? `<span>Member since ${esc(since)}</span>` : ''}<span>${esc(insight.topGenre)} taste</span><span>${social.friends.length} friend${social.friends.length === 1 ? '' : 's'}</span></div>
+        </div>
+        <div class="profile-hero-actions"><button class="btn-primary profile-edit-btn" data-action="profile-edit">Edit profile</button><button class="btn-glass" data-action="show-page" data-page="settings">${PROFILE_ICONS.settings}Settings</button></div>
       </div>
-      <button class="btn-glass profile-edit-btn" data-action="profile-edit">Edit profile</button>
-    </div>`;
+    </section>`;
 
   const editForm = editing ? `
-    <div class="profile-editcard">
-      <div class="d-sec-title">Edit profile</div>
+    <div class="profile-editcard profile-panel">
+      <div class="profile-panel-head"><div><span>Personal identity</span><h2>Edit profile</h2></div><b>Private</b></div>
       <label class="profile-field"><span>Display name</span><input id="profileName" type="text" value="${esc(name)}" maxlength="40" autocomplete="off"></label>
       <div class="profile-field"><span>Avatar</span>
         <div class="avatar-grid">
@@ -62,37 +108,31 @@ export function renderProfile() {
       </div>
     </div>` : '';
 
-  const codeCard = code ? `
-    <div class="friend-code-card profile-qr-card" style="margin-top:20px">
-      <div class="friend-code-main"><div class="stat-label">Your Friend Code</div>
-        <div class="friend-code-row"><span class="friend-code">${esc(code)}</span><button class="btn-glass" style="padding:8px 16px;font-size:.82rem" data-action="copy-code" data-code="${esc(code)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Copy</button></div>
-        <p style="color:var(--text3);font-size:.8rem;margin-top:8px">Friends can scan this code to open your connect link instantly.</p>
-      </div>
-      <div class="friend-qr" title="Scan to add me">${friendQrSvg(code)}<span class="friend-qr-cap">Scan to add me</span></div>
-    </div>` : '';
+  const codeCard = code ? `<section class="profile-connect-card"><div class="profile-connect-copy"><span>Connect instantly</span><h2>Your friend pass</h2><p>Let friends scan the QR code or share your private connect code.</p><div class="profile-code-row"><strong>${esc(code)}</strong><button data-action="copy-code" data-code="${esc(code)}">Copy code</button></div></div><div class="profile-qr" title="Scan to add me">${friendQrSvg(code)}<span>Scan to connect</span></div></section>` : `<section class="profile-connect-card waiting"><div><span>Connect instantly</span><h2>Preparing your friend pass…</h2><p>Your private QR identity will appear here when social sync completes.</p></div></section>`;
 
   const snapshot = `
-    <div class="d-sec-title" style="margin-top:28px">Your CineVerse</div>
-    <div class="profile-stats">
-      ${[['🎬', c.watchedTotal, 'Watched'], ['⏱️', c.hours, 'Hours'], ['⭐', c.ratedTotal, 'Rated'], ['📋', state.watchlist.length, 'Saved']]
-        .map(([ic, n, l]) => `<button class="profile-stat" data-action="show-page" data-page="stats"><div class="ps-ico">${ic}</div><div class="ps-num">${n}</div><div class="ps-lbl">${l}</div></button>`).join('')}
-    </div>
-    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn-glass" data-action="show-page" data-page="stats">View full stats →</button>
-      <button class="btn-glass" data-action="show-page" data-page="watchlist">My lists →</button>
-      <button class="btn-glass" data-action="show-page" data-page="settings">Settings →</button>
-    </div>`;
+    <section class="profile-panel profile-cineprint"><div class="profile-panel-head"><div><span>Live collection intelligence</span><h2>Your Cineprint</h2></div><button data-action="show-page" data-page="stats">Open full stats →</button></div>
+      <div class="profile-stats">
+        ${[[PROFILE_ICONS.watched, c.watchedTotal, 'Watched', 'watched'], [PROFILE_ICONS.clock, c.hours, 'Hours', 'stats'], [PROFILE_ICONS.star, c.ratedTotal, 'Rated', 'stats'], [PROFILE_ICONS.saved, state.watchlist.length, 'Saved', 'watchlist']]
+          .map(([icon, value, label, page]) => `<button class="profile-stat" data-action="show-page" data-page="${page}"><div class="ps-ico">${icon}</div><div><div class="ps-num">${value}</div><div class="ps-lbl">${label}</div></div></button>`).join('')}
+      </div>
+      <div class="profile-insight-grid"><article><span>Your average</span><strong>${insight.avgRating ? insight.avgRating.toFixed(1) : '—'}${insight.avgRating ? '<small>/10</small>' : ''}</strong><p>${insight.ratingCoverage}% of watched titles rated</p></article><article><span>Signature genre</span><strong>${esc(insight.topGenre)}</strong><p>Your most-watched genre</p></article><article><span>Favorite era</span><strong>${esc(insight.topDecade)}</strong><p>Your leading release decade</p></article><article><span>This year</span><strong>${insight.thisYear}</strong><p>${insight.streak ? `${insight.streak}-day current streak` : 'Build your viewing streak'}</p></article></div>
+    </section>`;
+
+  const pulse = `<section class="profile-panel profile-pulse"><div class="profile-panel-head"><div><span>Account readiness</span><h2>Collection pulse</h2></div><b>${insight.health || strength}%</b></div><div class="profile-progress-row"><div><span>Collection health</span><strong>${insight.health ? `${insight.health}%` : 'Calculating'}</strong></div><i><em style="width:${insight.health || 0}%"></em></i></div><div class="profile-progress-row"><div><span>Rating coverage</span><strong>${insight.ratingCoverage}%</strong></div><i><em style="width:${insight.ratingCoverage}%"></em></i></div><div class="profile-progress-row"><div><span>Profile setup</span><strong>${strength}%</strong></div><i><em style="width:${strength}%"></em></i></div><button class="profile-repair-link" data-action="show-page" data-page="stats">Review Collection Health →</button></section>`;
+
+  const quick = `<section class="profile-panel profile-quick"><div class="profile-panel-head"><div><span>One-tap navigation</span><h2>Quick launch</h2></div></div><div class="profile-quick-grid">${[[PROFILE_ICONS.calendar, 'Release calendar', 'reminders'], [PROFILE_ICONS.watched, 'Watch history', 'watched'], [PROFILE_ICONS.users, 'Friends & family', 'friends'], [PROFILE_ICONS.chart, 'Cineprint stats', 'stats']].map(([icon, label, page]) => `<button data-action="show-page" data-page="${page}">${icon}<span>${label}</span><b>→</b></button>`).join('')}</div></section>`;
 
   const rv = (state.recentlyViewed || []).slice(0, 12);
   const recent = rv.length ? `
-    <div class="d-sec-title" style="margin-top:28px">Recently viewed</div>
-    <div class="row">${rv.map(r => {
-      const poster = r.poster ? `https://image.tmdb.org/t/p/w342${r.poster}` : '';
+    <section class="profile-panel profile-recent"><div class="profile-panel-head"><div><span>Pick up where you left off</span><h2>Recently viewed</h2></div><button data-action="profile-clear-recent">Clear</button></div>
+    <div class="profile-recent-row">${rv.map(r => {
+      const poster = r.poster ? `${IMG}w342${r.poster}` : PH;
       const wd = isWatched(r.id, r.type);
-      return `<a class="card" href="/${r.type}/${r.id}" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img">${poster ? `<img src="${poster}" alt="${esc(r.title)}" loading="lazy">` : ''}${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div></div></a>`;
-    }).join('')}</div>` : '';
+      return `<a class="card" href="/${r.type}/${r.id}" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img"><img src="${poster}" alt="${esc(r.title)}" loading="lazy" data-ph="${PH}">${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div><div class="card-sub">${r.type === 'tv' ? 'TV show' : 'Movie'}</div></div></a>`;
+    }).join('')}</div></section>` : `<section class="profile-panel profile-recent-empty"><span>Recently viewed</span><h2>Your next discovery will appear here.</h2><button class="btn-glass" data-action="show-page" data-page="discover">Explore titles</button></section>`;
 
-  ct.innerHTML = header + editForm + codeCard + snapshot + recent;
+  ct.innerHTML = `<div class="profile-shell">${header}${editForm}<div class="profile-dashboard"><main>${snapshot}${recent}</main><aside>${codeCard}${pulse}${quick}</aside></div></div>`;
 }
 
 export function initProfile() {
@@ -122,6 +162,11 @@ export function initProfile() {
       toast(r.msg, r.ok ? 'success' : 'error');
       if (r.ok) { editing = false; draftAvatar = undefined; renderProfile(); }
       else el.disabled = false;
+    },
+    'profile-clear-recent': () => {
+      state.recentlyViewed = [];
+      try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {}
+      toast('Recently viewed cleared', 'success'); renderProfile();
     },
   });
   // Friend code arrives asynchronously (cv:social); refresh if we're on /profile.

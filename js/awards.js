@@ -5,11 +5,10 @@
 import { esc, $ } from './ui.js';
 
 const CACHE_MS = 7 * 24 * 60 * 60 * 1000;
-const MAJOR = /academy award|oscar|golden globe|bafta|emmy|cannes|venice|sundance|berlin|critics.? choice|screen actors guild|grammy|palme d'or/i;
+const MAJOR = /academy award|oscar|golden globe|bafta|emmy|cannes|venice|sundance|berlin|critics.? choice|screen actors guild|grammy|palme d'or|tony award|filmfare|national film award|iifa|independent spirit|gotham|c[eé]sar|goya|saturn award|naacp image/i;
 
-// v2 adds award-specific Commons artwork. Keeping it in the key invalidates old
-// text-only cache entries without a migration or an extra network request.
-function cacheKey(imdbId) { return `cv_awards_v2_${imdbId}`; }
+// v3 expands artwork through the award family and conferring organisation.
+function cacheKey(imdbId) { return `cv_awards_v3_${imdbId}`; }
 function readCache(imdbId) {
   try { const value = JSON.parse(localStorage.getItem(cacheKey(imdbId)) || 'null'); return value && Date.now() - value.ts < CACHE_MS ? value.items : null; }
   catch (_) { return null; }
@@ -25,6 +24,10 @@ const AWARD_ART = {
   music: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 8v15M12 10l11-3v13"/><ellipse cx="8.5" cy="24" rx="3.5" ry="2.5"/><ellipse cx="19.5" cy="21" rx="3.5" ry="2.5"/></svg>',
   trophy: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 5h12v6c0 5-2.5 8-6 8s-6-3-6-8V5Z"/><path d="M10 8H5c0 5 2 7 6 7M22 8h5c0 5-2 7-6 7M16 19v5M11 27h10M13 24h6" stroke-linecap="round"/></svg>',
   medal: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m10 4 6 9 6-9M16 13a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/><path d="m16 17 1.4 2.8 3.1.5-2.2 2.2.5 3-2.8-1.5-2.8 1.5.5-3-2.2-2.2 3.1-.5L16 17Z"/></svg>',
+  laurel: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M13 27C7 24 4 19 5 12M9 24c-2-3-3-5-2-8M8 20c-3-1-4-3-4-5M10 16c-2-2-2-4-1-6M12 12c-1-2 0-4 1-6M19 27c6-3 9-8 8-15M23 24c2-3 3-5 2-8M24 20c3-1 4-3 4-5M22 16c2-2 2-4 1-6M20 12c1-2 0-4-1-6"/><path d="m16 10 1.6 3.2 3.5.5-2.5 2.5.6 3.5-3.2-1.6-3.2 1.6.6-3.5-2.5-2.5 3.5-.5L16 10Z"/></svg>',
+  film: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="7" width="22" height="18" rx="3"/><path d="M10 7v18M22 7v18M5 12h5M5 20h5M22 12h5M22 20h5M13 13l6 3-6 3v-6Z"/></svg>',
+  stage: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 6h22v20H5zM10 6c0 8-2 14-5 17M22 6c0 8 2 14 5 17M10 26c1-5 3-8 6-10 3 2 5 5 6 10"/><path d="M13 11h6M16 8v6"/></svg>',
+  guild: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16 4 27 9v7c0 6-4 10-11 12C9 26 5 22 5 16V9l11-5Z"/><path d="m11 16 3 3 7-7" stroke-width="2.2"/></svg>',
 };
 
 function awardKind(item) {
@@ -36,6 +39,10 @@ function awardKind(item) {
   else if (/emmy/i.test(label)) kind = 'wing';
   else if (/cannes|palme d'or|venice|sundance|berlin/i.test(label)) kind = 'palm';
   else if (/grammy/i.test(label)) kind = 'music';
+  else if (/tony award|theatre|theater/i.test(label)) kind = 'stage';
+  else if (/screen actors guild|directors guild|writers guild|producers guild/i.test(label)) kind = 'guild';
+  else if (/filmfare|iifa|national film award|critics.? choice|independent spirit|gotham|c[eé]sar|goya|saturn award|naacp image/i.test(label)) kind = 'film';
+  else if (/festival|jury|audience award|grand prix/i.test(label)) kind = 'laurel';
   return kind;
 }
 
@@ -46,7 +53,7 @@ function commonsArt(value) {
 
 function awardArt(item) {
   const kind = awardKind(item), real = commonsArt(item.art);
-  if (real) return `<span class="award-icon award-icon-${kind} award-icon-real" aria-hidden="true"><span class="award-real-fallback">${AWARD_ART[kind]}</span><img src="${esc(real)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-award-real></span>`;
+  if (real) return `<span class="award-icon award-icon-${kind} award-icon-real" data-award-kind="${kind}" aria-hidden="true"><img src="${esc(real)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-award-real></span>`;
   return `<span class="award-icon award-icon-${kind}" aria-hidden="true">${AWARD_ART[kind]}</span>`;
 }
 
@@ -54,7 +61,7 @@ async function fetchAwards(imdbId) {
   const query = `PREFIX wdt: <http://www.wikidata.org/prop/direct/>
   PREFIX wikibase: <http://wikiba.se/ontology#>
   PREFIX bd: <http://www.bigdata.com/rdf#>
-  SELECT DISTINCT ?kind ?honor ?honorLabel ?logo ?image ?parentLogo ?parentImage WHERE {
+  SELECT DISTINCT ?kind ?honor ?honorLabel ?logo ?image ?parentLogo ?parentImage ?grandLogo ?grandImage ?issuerLogo ?issuerImage WHERE {
     ?work wdt:P345 "${imdbId}".
     { ?work wdt:P166 ?honor. BIND("win" AS ?kind) }
     UNION
@@ -65,16 +72,26 @@ async function fetchAwards(imdbId) {
       ?honor wdt:P361 ?parent.
       OPTIONAL { ?parent wdt:P154 ?parentLogo. }
       OPTIONAL { ?parent wdt:P18 ?parentImage. }
+      OPTIONAL {
+        ?parent wdt:P361 ?grandParent.
+        OPTIONAL { ?grandParent wdt:P154 ?grandLogo. }
+        OPTIONAL { ?grandParent wdt:P18 ?grandImage. }
+      }
+    }
+    OPTIONAL {
+      ?honor wdt:P1027 ?issuer.
+      OPTIONAL { ?issuer wdt:P154 ?issuerLogo. }
+      OPTIONAL { ?issuer wdt:P18 ?issuerImage. }
     }
     SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-  } LIMIT 80`;
+  } LIMIT 120`;
   const url = `https://query.wikidata.org/sparql?format=json&origin=*&query=${encodeURIComponent(query)}`;
   const response = await fetch(url, { headers: { Accept: 'application/sparql-results+json' } });
   if (!response.ok) throw new Error(`Wikidata ${response.status}`);
   const data = await response.json();
   return (data.results?.bindings || []).map(row => ({
     kind: row.kind?.value || '', label: row.honorLabel?.value || '', url: row.honor?.value || '',
-    art: row.logo?.value || row.parentLogo?.value || row.image?.value || row.parentImage?.value || '',
+    art: row.logo?.value || row.parentLogo?.value || row.grandLogo?.value || row.issuerLogo?.value || row.image?.value || row.parentImage?.value || row.grandImage?.value || row.issuerImage?.value || '',
   })).filter(item => item.label && item.kind);
 }
 
@@ -84,7 +101,12 @@ function awardPill(item) {
 }
 
 function renderAwards(scope, items) {
-  const unique = [...new Map(items.map(item => [`${item.kind}|${item.label}`, item])).values()];
+  const byHonor = new Map();
+  items.forEach(item => {
+    const key = `${item.kind}|${item.label}`, current = byHonor.get(key);
+    if (!current || (!current.art && item.art)) byHonor.set(key, item);
+  });
+  const unique = [...byHonor.values()];
   const wins = unique.filter(x => x.kind === 'win');
   const wonLabels = new Set(wins.map(x => x.label));
   const nominations = unique.filter(x => x.kind === 'nomination' && !wonLabels.has(x.label));
@@ -95,10 +117,13 @@ function renderAwards(scope, items) {
     <div class="awards-summary"><div><strong>${wins.length}</strong><span>Recorded wins</span></div><div><strong>${nominations.length}</strong><span>Recorded nominations</span></div><div><strong>${featured.filter(x => MAJOR.test(x.label)).length}</strong><span>Major honours</span></div></div>
     <div class="awards-list">${featured.map(awardPill).join('')}</div>
     <p class="awards-source">Free community data from <a href="https://www.wikidata.org/" target="_blank" rel="noopener noreferrer">Wikidata</a>. Records may vary by title.</p>`;
-  // The matching vector fallback is already underneath each remote mark. If a
-  // Commons file ever disappears, remove only the failed image so the card stays
-  // polished and never shows a broken-image glyph.
-  scope.querySelectorAll('img[data-award-real]').forEach(image => image.addEventListener('error', () => image.remove(), { once: true }));
+  // Real marks never share a layer with generated icons. On a remote-image error,
+  // replace the image with one clean fallback instead of revealing artwork below it.
+  scope.querySelectorAll('img[data-award-real]').forEach(image => image.addEventListener('error', () => {
+    const host = image.closest('.award-icon'); if (!host) return;
+    const kind = host.dataset.awardKind || 'trophy';
+    host.classList.remove('award-icon-real'); host.innerHTML = AWARD_ART[kind] || AWARD_ART.trophy;
+  }, { once: true }));
 }
 
 export async function loadAwardsSection(imdbId, scopeId) {

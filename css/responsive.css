@@ -6,6 +6,7 @@
   .taste-map-layout{grid-template-columns:1fr}
   .stats-duo{grid-template-columns:1fr}
   .collection-rank-grid{grid-template-columns:repeat(3,minmax(145px,1fr))}
+  .profile-dashboard{grid-template-columns:1fr}.profile-dashboard aside{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}.profile-dashboard aside .profile-connect-card{grid-column:1/-1}
 }
 
 @media(min-width:769px){
@@ -78,6 +79,8 @@
   .profile-since{margin-top:4px}
   .profile-edit-btn{width:100%}
   .profile-stats{grid-template-columns:repeat(2,1fr)}
+  .profile-premium-hero{min-height:430px;align-items:flex-end}.profile-cinema-wall{inset:0;grid-template-columns:repeat(4,minmax(100px,1fr));opacity:.26;transform:scale(1.08)}.profile-hero-shade{background:linear-gradient(0deg,rgba(9,9,15,.99) 0%,rgba(9,9,15,.75) 55%,rgba(9,9,15,.35))}.profile-hero-content{flex-direction:column;align-items:center;text-align:center;padding:26px 18px;gap:12px}.profile-avatar-wrap .profile-av-lg{width:92px;height:92px;font-size:2.25rem}.profile-hero-content .profile-id{width:100%}.profile-eyebrow,.profile-identity-tags{justify-content:center}.profile-hero-actions{width:100%;margin-left:0;padding:4px 0 0}.profile-hero-actions>*{flex:1;justify-content:center}.profile-dashboard aside{grid-template-columns:1fr}.profile-dashboard aside .profile-connect-card{grid-column:auto}.profile-cineprint .profile-stats,.profile-insight-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-connect-card{min-height:0}.profile-quick-grid{grid-template-columns:1fr 1fr}
+  .watched-toolbox{padding:10px}.watched-controls{gap:7px}.watched-search{max-width:none;width:100%;flex-basis:100%}.watched-controls .watched-select{flex:1;min-width:140px}.watched-tool-btn{flex:1}.watched-tool-btn span{white-space:nowrap}.watched-advanced{grid-template-columns:1fr 1fr}.watched-filter-status{align-items:flex-start;flex-direction:column;gap:3px}
   .stats-hero{min-height:0;padding:28px 20px;border-radius:24px}
   .stats-hero h1{font-size:clamp(2.25rem,11vw,3.8rem)}
   .stats-identity{width:100%;min-width:0}
@@ -182,6 +185,7 @@
 }
 
 @media(max-width:380px){
+  .profile-cineprint .profile-stats,.profile-insight-grid,.profile-quick-grid,.watched-advanced{grid-template-columns:1fr}.profile-hero-actions{flex-direction:column}.profile-hero-actions>*{width:100%}.profile-connect-card{align-items:flex-start}.profile-qr{width:96px}.profile-panel{padding:16px}.profile-panel-head{align-items:flex-start;flex-direction:column}.profile-panel-head>button{align-self:flex-start}
   .mob-item{padding-left:4px;padding-right:4px;min-width:45px;font-size:.56rem}
   .card{width:112px}
   .hero-title{font-size:1.9rem}
