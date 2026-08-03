@@ -6,7 +6,7 @@
 import { tmdb } from './api.js';
 import { IMG, PH, genreMap, mGenreList, tGenreList, moods } from './config.js';
 import { state } from './state.js';
-import { esc, debounce, $ } from './ui.js';
+import { esc, debounce, $, toast } from './ui.js';
 import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { prefs } from './prefs.js';
@@ -21,6 +21,7 @@ let mode = 'search';        // 'search' | 'vibe'
 let vibeCtx = null;         // { genres, type, lang, label } for discover mode
 let commandCtx = null;      // parsed natural-language discovery command
 let suggestItems = [], suggestIdx = -1;
+let speechRecognition = null, voiceListening = false;
 
 const IMGw = (size, path) => path ? `${IMG}${size}${path}` : PH;
 
@@ -437,6 +438,46 @@ function removeHistory(i) {
   renderSearchHistory();
 }
 
+function paintVoice(active, message = '') {
+  voiceListening = active;
+  const button = $('searchVoice'), status = $('voiceSearchStatus');
+  if (button) { button.classList.toggle('listening', active); button.setAttribute('aria-pressed', String(active)); button.setAttribute('aria-label', active ? 'Stop voice search' : 'Search by voice'); }
+  if (status) { status.textContent = message; status.classList.toggle('show', !!message); status.classList.toggle('listening', active); }
+}
+
+function startVoiceSearch() {
+  if (voiceListening && speechRecognition) { speechRecognition.stop(); return; }
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) { toast('Voice search is not supported by this browser', 'info'); paintVoice(false, 'Voice search is unavailable in this browser.'); return; }
+  speechRecognition = new Recognition();
+  speechRecognition.lang = navigator.language || 'en-IN';
+  speechRecognition.interimResults = true;
+  speechRecognition.continuous = false;
+  speechRecognition.maxAlternatives = 1;
+  speechRecognition.onstart = () => { paintVoice(true, 'Listening… Try “Hindi thrillers after 2020”.'); try { navigator.vibrate?.(30); } catch (_) {} };
+  speechRecognition.onresult = event => {
+    let transcript = '', final = false;
+    for (let index = event.resultIndex; index < event.results.length; index++) { transcript += event.results[index][0].transcript; final ||= event.results[index].isFinal; }
+    const value = transcript.trim(); if (!value) return;
+    const input = $('searchIn'); input.value = value; toggleClear(); closeSuggest();
+    paintVoice(true, final ? `Searching for “${value}”` : `Hearing “${value}”…`);
+    if (final) { addToHistory(value); doSearch(value); }
+  };
+  speechRecognition.onerror = event => {
+    const messages = { 'not-allowed': 'Microphone access was blocked.', 'audio-capture': 'No microphone was found.', 'no-speech': 'No speech was heard. Try again.' };
+    const message = messages[event.error] || 'Voice search stopped. Please try again.';
+    paintVoice(false, message); if (event.error !== 'no-speech') toast(message, 'info');
+  };
+  speechRecognition.onend = () => { if (voiceListening) paintVoice(false, $('searchIn')?.value ? 'Voice phrase added to search.' : 'Tap the microphone to try again.'); };
+  try { speechRecognition.start(); } catch (_) { paintVoice(false, 'Voice search is already starting.'); }
+}
+
+export function stopVoiceSearch() {
+  if (speechRecognition && voiceListening) { try { speechRecognition.abort(); } catch (_) {} }
+  speechRecognition = null;
+  paintVoice(false, '');
+}
+
 // ================= type chips =================
 function setFilter(f) {
   state.searchFilt = f;
@@ -499,6 +540,7 @@ export function initSearch() {
     'command-search': (el) => { const q = el.dataset.q || ''; input.value = q; toggleClear(); addToHistory(q); doSearch(q); input.focus(); },
     'history-search': (el) => { const q = el.dataset.q ? decodeEntities(el.dataset.q) : (el.querySelector('span')?.textContent || ''); input.value = q; toggleClear(); doSearch(q); addToHistory(q); },
     'history-remove': (el, e) => { e.stopPropagation(); removeHistory(+el.dataset.i); },
+    'voice-search': () => startVoiceSearch(),
   });
 }
 

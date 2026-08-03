@@ -6,6 +6,7 @@ import { toast, $, esc } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
+import { fillProviderSelect, applyProviderFilter } from './provider-catalog.js';
 
 let labPage = 1;
 let labSignature = '';
@@ -27,6 +28,10 @@ function populateGenres() {
   const genres = type === 'tv' ? tGenreList : mGenreList;
   select.innerHTML = '<option value="">Any genre</option>' + genres.map(genre => `<option value="${genre.id}">${esc(genre.n)}</option>`).join('');
   if ([...select.options].some(option => option.value === selected)) select.value = selected;
+}
+
+function populateProviders(preserve = true) {
+  return fillProviderSelect($('discoverProvider'), $('discoverType')?.value === 'tv' ? 'tv' : 'movie', { preserve });
 }
 
 function renderMoodDeck() {
@@ -103,6 +108,7 @@ function labQuery() {
   const bounds = dateBounds($('discoverEra')?.value || '');
   if (bounds) { params[type === 'tv' ? 'first_air_date.gte' : 'primary_release_date.gte'] = bounds.from; params[type === 'tv' ? 'first_air_date.lte' : 'primary_release_date.lte'] = bounds.to; }
   runtimeParams(type, $('discoverRuntime')?.value || '', params);
+  applyProviderFilter(params, $('discoverProvider')?.value || '');
   if ($('discoverStreaming')?.checked) { params.watch_region = state.region; params.with_watch_monetization_types = 'flatrate'; }
   if (activePreset === 'hidden') { params['vote_count.gte'] = 150; params['vote_count.lte'] = 2200; }
   return { type, params };
@@ -140,10 +146,11 @@ async function buildDiscovery({ append = false } = {}) {
 function resetStudio() {
   labRequest++;
   activePreset = '';
-  const defaults = { discoverType: 'movie', discoverGenre: '', discoverEra: '', discoverLanguage: '', discoverRating: '0', discoverRuntime: '', discoverSort: 'popularity.desc' };
+  const defaults = { discoverType: 'movie', discoverGenre: '', discoverEra: '', discoverLanguage: '', discoverRating: '0', discoverRuntime: '', discoverSort: 'popularity.desc', discoverProvider: '' };
   Object.entries(defaults).forEach(([id, value]) => { if ($(id)) $(id).value = value; });
   if ($('discoverStreaming')) $('discoverStreaming').checked = true;
   populateGenres();
+  populateProviders(false);
   const host = $('discoverLabResults'); if (host) host.innerHTML = '';
 }
 
@@ -201,6 +208,7 @@ export async function randomPick(type) {
 export function initDiscover() {
   renderMoodDeck();
   populateGenres();
+  populateProviders();
   if (!$('discoverLabResults')?.children.length) $('discoverLabResults').innerHTML = '<div class="discover-lab-welcome"><i>✦</i><div><strong>Your filters are ready</strong><span>Use one quick start or build a precise collection above.</span></div></div>';
   loadSpotlight();
   loadCollections();
@@ -210,7 +218,7 @@ export function initDiscoverActions() {
   registerActions({
     'pick-mood': element => pickMood(+element.dataset.idx),
     'random-pick': element => randomPick(element.dataset.type === 'tv' ? 'tv' : 'movie'),
-    'discover-type': () => { activePreset = ''; populateGenres(); },
+    'discover-type': () => { activePreset = ''; populateGenres(); populateProviders(false); },
     'discover-build': () => { activePreset = ''; document.querySelectorAll('.discover-presets button').forEach(button => button.classList.remove('active')); buildDiscovery(); },
     'discover-more': () => { labPage++; buildDiscovery({ append: true }); },
     'discover-reset': () => resetStudio(),
@@ -219,5 +227,5 @@ export function initDiscoverActions() {
     'discover-new-spotlight': () => loadSpotlight(true),
     'discover-refresh-collections': () => loadCollections(true),
   });
-  document.addEventListener('cv:region', () => { collectionRegion = ''; if (location.pathname === '/discover') loadCollections(true); });
+  document.addEventListener('cv:region', () => { collectionRegion = ''; populateProviders(false); if (location.pathname === '/discover') loadCollections(true); });
 }

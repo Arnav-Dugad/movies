@@ -8,6 +8,7 @@ import { registerActions } from './events.js';
 import { observeReveals, observeCountUps } from './effects.js';
 import { mountAmbientVideo } from './video-bg.js';
 import { loadAwardsSection } from './awards.js';
+import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
 
 let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
@@ -87,10 +88,10 @@ export async function openDetail(id, type) {
     // episode; for anything not yet out it counts to the release/premiere date.
     let cdHTML = '', cdDate = null, cdDoneMsg = '';
     const cdGrid = `<div class="countdown-grid"><div class="cd-unit"><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">Days</div></div><div class="cd-unit"><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">Hours</div></div><div class="cd-unit"><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">Min</div></div><div class="cd-unit"><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">Sec</div></div></div>`;
-    if (type === 'tv' && det.next_episode_to_air && new Date(det.next_episode_to_air.air_date) > new Date()) {
+    if (type === 'tv' && det.next_episode_to_air && new Date(`${det.next_episode_to_air.air_date}T23:59:59`) > new Date()) {
       const ne = det.next_episode_to_air;
-      cdDate = ne.air_date; cdDoneMsg = '🎉 Now Airing!';
-      cdHTML = `<div class="countdown"><div class="countdown-label"><span class="live-dot"></span>Next Episode — S${ne.season_number}E${ne.episode_number}${ne.name ? ` "${esc(ne.name)}"` : ''}</div>${cdGrid}</div>`;
+      cdDate = `${ne.air_date}T23:59:59`; cdDoneMsg = '🎉 Now Airing!';
+      cdHTML = `<div class="countdown"><div class="countdown-label"><span class="live-dot"></span>Next Episode — S${ne.season_number}E${ne.episode_number}${ne.name ? ` "${esc(ne.name)}"` : ''}</div><div class="detail-local-airtime pending" id="nextAirTime_${id}"><i></i><span>Checking the exact local drop time…</span></div>${cdGrid}</div>`;
     } else if (!out) {
       const relRaw = type === 'tv' ? det.first_air_date : det.release_date;
       const rd = relRaw ? new Date(relRaw + 'T00:00:00') : null;
@@ -189,6 +190,7 @@ export async function openDetail(id, type) {
       </div>`;
 
     if (cdDate) startCD(id, cdDate, cdDoneMsg);
+    if (type === 'tv' && det.next_episode_to_air) hydrateNextEpisodeTime(det, id, gen);
     if (type === 'tv' && det.seasons?.length) { const fs = det.seasons.find(s => s.season_number > 0); if (fs) loadEps(id, fs.season_number); }
     observeReveals(ct); observeCountUps(ct);
     // Animate the Box Office bar widths after paint (horizontal %-widths resolve
@@ -363,6 +365,22 @@ function crewSectionHTML(cred) {
     return `<a class="cast-item" href="/person/${p.id}" data-action="open-person" data-id="${p.id}"><div class="cast-pic">${p.profile_path ? `<img src="${IMG}w185${p.profile_path}" alt="${esc(p.name)}" loading="lazy">` : ''}</div><div class="cast-name">${esc(p.name)}</div><div class="cast-char" title="${esc(jobs)}">${esc(jobs)}</div></a>`;
   }).join('');
   return `<div style="margin-bottom:32px"><div class="d-sec-title">Crew</div><div class="cast-scroll crew-scroll">${items}</div></div>`;
+}
+
+async function hydrateNextEpisodeTime(show, id, gen) {
+  const time = await exactEpisodeTime(show);
+  if (gen !== reqGen) return;
+  const label = $(`nextAirTime_${id}`);
+  if (!label) return;
+  if (!time?.airstamp) {
+    label.className = 'detail-local-airtime';
+    label.innerHTML = '<i></i><span><b>Exact time not announced</b><small>The confirmed episode date is shown above.</small></span>';
+    return;
+  }
+  label.className = 'detail-local-airtime exact';
+  label.innerHTML = `<i></i><span><b>${esc(localEpisodeTime(time.airstamp))}</b><small>Exact drop · converted to ${esc(localTimeZone())} · <a href="https://www.tvmaze.com" target="_blank" rel="noopener">TVmaze</a></small></span>`;
+  state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
+  startCD(id, time.airstamp, '🎉 Now Airing!');
 }
 
 // ===== MEDIA GALLERY =====

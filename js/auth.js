@@ -18,6 +18,7 @@ let delRelease = null;
 async function loadProfile() {
   state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
   state.recommendationFeedback = { dismissed: [], history: [] };
+  state.notificationRead = [];
   state.statsSnapshot = null;
   if (!state.user) return;
   let localFeedback = {};
@@ -55,6 +56,7 @@ async function loadProfile() {
         pinnedBadges: Array.isArray(x.pinnedBadges) ? x.pinnedBadges.filter(value => typeof value === 'string').slice(0, 3) : [],
       };
       state.statsSnapshot = x.statsSnapshot || null;
+      state.notificationRead = Array.isArray(x.notificationRead) ? x.notificationRead.filter(value => typeof value === 'string').slice(-400) : [];
       const localTime = +(localFeedback.clientUpdatedAt || 0), cloudTime = +(feedback.clientUpdatedAt || 0);
       const localIsNewer = hasFeedback(localFeedback) && localTime > cloudTime;
       useFeedback(localIsNewer || !hasFeedback(feedback) ? localFeedback : feedback);
@@ -81,6 +83,7 @@ export function initAuth() {
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
       state.lists = []; state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
       state.recommendationFeedback = { dismissed: [], history: [] };
+      state.notificationRead = [];
       state.statsSnapshot = null;
     }
     loadRecentlyViewed();

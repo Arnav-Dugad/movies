@@ -7,6 +7,7 @@ import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 import { initBrowseHero } from './hero.js';
+import { fillProviderSelect, applyProviderFilter } from './provider-catalog.js';
 
 const gridSkel = (n = 12) => Array(n).fill('<div><div class="card-img skel" style="aspect-ratio:2/3"></div></div>').join('');
 export function initFilters() {
@@ -20,6 +21,8 @@ export function initFilters() {
   }
   $('mGenres').innerHTML = '<option value="">All movie genres</option>' + mGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
   $('tGenres').innerHTML = '<option value="">All TV genres</option>' + tGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
+  fillProviderSelect($('mProvider'), 'movie');
+  fillProviderSelect($('tProvider'), 'tv');
 }
 
 const dateISO = d => d.toISOString().slice(0, 10);
@@ -47,7 +50,7 @@ export async function loadMovies(append = false) {
   if (!append) { state.mPg = 1; $('mGrid').innerHTML = gridSkel(); }
   const sort = $('mSort').value, year = $('mYear').value, lang = $('mLang').value, minRat = $('mRating').value;
   const runtime = $('mRuntime').value, votes = $('mVotes').value, cert = $('mCert').value;
-  const release = $('mRelease').value, country = $('mCountry').value;
+  const release = $('mRelease').value, country = $('mCountry').value, provider = $('mProvider')?.value || '';
   const params = { sort_by: sort, page: state.mPg, include_adult: false };
   if (sort === 'vote_average.desc') params['vote_count.gte'] = Math.max(200, +(votes || 0));
   if (state.mGenre) params.with_genres = state.mGenre;
@@ -57,6 +60,7 @@ export async function loadMovies(append = false) {
   if (votes) params['vote_count.gte'] = Math.max(+(params['vote_count.gte'] || 0), +votes);
   if (country) params.with_origin_country = country;
   if (cert) { params.certification_country = 'US'; params.certification = cert; }
+  applyProviderFilter(params, provider);
   applyRuntime(params, runtime, 89, 120);
   const now = new Date(), currentYear = now.getFullYear(), today = dateISO(now);
   if (release === 'released') params['primary_release_date.lte'] = today;
@@ -75,7 +79,7 @@ export async function loadTV(append = false) {
   if (!append) { state.tPg = 1; $('tGrid').innerHTML = gridSkel(); }
   const sort = $('tSort').value, year = $('tYear').value, lang = $('tLang').value;
   const minRat = $('tRating').value, runtime = $('tRuntime').value, votes = $('tVotes').value;
-  const status = $('tStatus').value, country = $('tCountry').value;
+  const status = $('tStatus').value, country = $('tCountry').value, provider = $('tProvider')?.value || '';
   const params = { sort_by: sort, page: state.tPg };
   if (sort === 'vote_average.desc') params['vote_count.gte'] = Math.max(200, +(votes || 0));
   if (state.tGenre) params.with_genres = state.tGenre;
@@ -85,6 +89,7 @@ export async function loadTV(append = false) {
   if (votes) params['vote_count.gte'] = Math.max(+(params['vote_count.gte'] || 0), +votes);
   if (status !== '') params.with_status = status;
   if (country) params.with_origin_country = country;
+  applyProviderFilter(params, provider);
   applyRuntime(params, runtime, 29, 60);
   try {
     const d = await tmdb('/discover/tv', params);
@@ -100,16 +105,20 @@ export function initBrowse() {
     'filter-movies': () => loadMovies(),
     'filter-tv': () => loadTV(),
     'reset-movies': () => {
-      ['mYear','mLang','mRating','mRuntime','mVotes','mCert','mRelease','mCountry'].forEach(id => { if ($(id)) $(id).value = ''; });
+      ['mYear','mLang','mRating','mRuntime','mVotes','mCert','mRelease','mCountry','mProvider'].forEach(id => { if ($(id)) $(id).value = ''; });
       $('mSort').value = 'popularity.desc'; resetGenre('movie'); loadMovies();
     },
     'reset-tv': () => {
-      ['tYear','tLang','tRating','tRuntime','tVotes','tStatus','tCountry'].forEach(id => { if ($(id)) $(id).value = ''; });
+      ['tYear','tLang','tRating','tRuntime','tVotes','tStatus','tCountry','tProvider'].forEach(id => { if ($(id)) $(id).value = ''; });
       $('tSort').value = 'popularity.desc'; resetGenre('tv'); loadTV();
     },
     'more-movies': () => moreMovies(),
     'more-tv': () => moreTV(),
     'reload-movies': () => loadMovies(),
     'reload-tv': () => loadTV(),
+  });
+  document.addEventListener('cv:region', () => {
+    fillProviderSelect($('mProvider'), 'movie', { preserve: false });
+    fillProviderSelect($('tProvider'), 'tv', { preserve: false });
   });
 }

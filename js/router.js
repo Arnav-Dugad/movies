@@ -7,7 +7,7 @@ import { renderWatched } from './watched.js';
 import { initDiscover } from './discover.js';
 import { renderStats } from './stats.js';
 import { renderPersonalRows } from './home.js';
-import { openSearch } from './search.js';
+import { openSearch, stopVoiceSearch } from './search.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
 import { openStudio } from './studio.js';
@@ -15,7 +15,7 @@ import { openCollection2 } from './collection.js';
 import { openSharedList } from './shared-list.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeListPicker, isListPickerOpen } from './lists.js';
-import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen } from './media.js';
+import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen, closeSpoilerShare, isSpoilerShareOpen } from './media.js';
 import { closeAuth, isAuthOpen, closeDelete, isDeleteOpen } from './auth.js';
 import { renderFriends } from './friends.js';
 import { renderParty } from './party.js';
@@ -23,6 +23,7 @@ import { renderProfile } from './profile.js';
 import { renderSettings } from './settings.js';
 import { renderReleaseReminders } from './release-reminders.js';
 import { closeScanner, isScannerOpen } from './scan.js';
+import { renderNotifications } from './notifications.js';
 
 // Set when the watchlist/ratings change while we're NOT on home, so home can
 // re-render its personal rows lazily on arrival instead of every list toggle
@@ -37,6 +38,7 @@ const ROUTES = [
   { test: /^\/tv\/?$/, page: 'tvPage', render: () => loadTV() },
   { test: /^\/discover\/?$/, page: 'discoverPage', render: () => initDiscover() },
   { test: /^\/reminders\/?$/, page: 'remindersPage', render: () => renderReleaseReminders() },
+  { test: /^\/notifications\/?$/, page: 'notificationsPage', render: () => renderNotifications() },
   { test: /^\/watchlist\/?$/, page: 'wlPage', render: () => renderWL() },
   { test: /^\/watched\/?$/, page: 'watchedPage', render: () => renderWatched() },
   { test: /^\/stats\/?$/, page: 'statsPage', render: () => renderStats() },
@@ -63,6 +65,7 @@ const TITLES = {
   tvPage: 'TV Shows — CineVerse',
   discoverPage: 'Discover — CineVerse',
   remindersPage: 'Release Reminders — CineVerse',
+  notificationsPage: 'Notifications — CineVerse',
   wlPage: 'My List — CineVerse',
   watchedPage: 'Watched — CineVerse',
   statsPage: 'My Stats — CineVerse',
@@ -78,7 +81,7 @@ const TITLES = {
   sharedListPage: 'Shared List — CineVerse',
 };
 
-const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
+const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', notifications: '/notifications', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
 
 let currentPath = null;
 
@@ -97,6 +100,7 @@ function matchRoute(path) {
 function closeAllModals() {
   if (isTrailerOpen()) closeTrailer();
   if (isLightboxOpen()) closeLightbox();
+  if (isSpoilerShareOpen()) closeSpoilerShare();
   if (isRatingOpen()) closeRating();
   if (isListPickerOpen()) closeListPicker();
   if (isScannerOpen()) closeScanner();
@@ -113,6 +117,7 @@ function renderRoute(path, { isPopState = false, scroll = true } = {}) {
 
   closeDetail(); // clears any running countdown intervals
   closeAllModals();
+  if (path !== '/search') stopVoiceSearch();
 
   currentPath = path;
 
@@ -159,6 +164,7 @@ function handleEscape() {
   // Innermost-first: the lightbox can be opened from the detail page, so it must
   // be dismissed before anything underneath it.
   if (isLightboxOpen()) return closeLightbox();
+  if (isSpoilerShareOpen()) return closeSpoilerShare();
   if (isScannerOpen()) return closeScanner();
   if (isTrailerOpen()) return closeTrailer();
   if (isRatingOpen()) return closeRating();
@@ -170,7 +176,7 @@ function handleEscape() {
 
 export function initRouter() {
   registerActions({
-    'show-page': (el) => navigate(pageToPath(el.dataset.page)),
+    'show-page': (el) => { $('profileDD')?.classList.remove('active'); navigate(pageToPath(el.dataset.page)); },
     'go-home': () => navigate('/'),
     'back-to-top': () => window.scrollTo({ top: 0, behavior: 'smooth' }),
     'back': () => { if (history.state && history.length > 1) history.back(); else navigate('/'); },
@@ -191,6 +197,7 @@ export function initRouter() {
     else if (currentPath === '/party') renderParty();
     else if (currentPath === '/profile') renderProfile();
     else if (currentPath === '/settings') renderSettings();
+    else if (currentPath === '/notifications') renderNotifications(true);
     // Only rebuild the home rows when they're actually on screen; otherwise flag
     // them so home's own render picks it up on arrival. Home's route render is a
     // no-op by design, which is why this can't simply be dropped.

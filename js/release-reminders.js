@@ -5,6 +5,7 @@ import { tmdb } from './api.js';
 import { IMG, PH } from './config.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { registerActions } from './events.js';
+import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
 
 const STORE_KEY = 'cv_release_reminders_v1';
 const PREF_KEY = 'cv_release_preferences_v1';
@@ -18,7 +19,7 @@ let allEvents = [], releaseFilter = 'all', releaseRange = 90, releaseQuery = '';
 let loadedRange = 0, reqGen = 0, countdownTimer = null;
 let prefs = readPreferences();
 
-const iso = d => d.toISOString().slice(0, 10);
+const iso = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const parseDate = value => new Date(`${value}T12:00:00`);
 const addDays = (date, days) => { const d = new Date(date); d.setDate(d.getDate() + days); return d; };
 
@@ -98,12 +99,17 @@ async function fetchReleaseEvents(days) {
     .filter(show => show.id && ALLOWED_LANGUAGES.has(show.original_language))
     .map(show => [show.id, show])).values()].slice(0, 16);
   const details = await Promise.all(episodeShows.map(show => tmdb(`/tv/${show.id}`).catch(() => null)));
+  const episodeEvents = await Promise.all(details.filter(Boolean).map(async show => {
+    const event = normalizeEpisode(show); if (!event) return null;
+    const exact = await exactEpisodeTime(show);
+    return exact ? { ...event, airstamp: exact.airstamp, timeSource: exact.source } : event;
+  }));
   const inRange = event => event && event.date >= from && event.date <= to;
   const movieRows = [...(moviesEn1.results || []), ...(moviesEn2.results || []), ...(moviesHi.results || [])];
   const premiereRows = [...(tvEn.results || []), ...(tvHi.results || [])];
   const events = movieRows.filter(movie => movie.release_date).map(normalizeMovie);
   events.push(...premiereRows.filter(show => show.first_air_date).map(normalizePremiere));
-  events.push(...details.map(normalizeEpisode).filter(Boolean));
+  events.push(...episodeEvents.filter(Boolean));
   return [...new Map(events
     .filter(inRange)
     .filter(event => ALLOWED_LANGUAGES.has(eventLanguage(event)))
@@ -129,11 +135,15 @@ function isEpisode(event) { return event.mediaType === 'tv' && event.kind !== 'S
 function releaseCard(event, saved) {
   const payload = esc(JSON.stringify(event));
   const typeLabel = event.mediaType === 'movie' ? 'MOVIE' : event.kind === 'Series premiere' ? 'SERIES' : 'EPISODE';
+  const countdownTarget = event.airstamp || `${event.date}T00:00:00`;
   const countdown = saved && prefs.countdown
-    ? `<div class="release-countdown" data-release-countdown="${esc(event.date)}"><span>Countdown</span><strong>--d --h</strong></div>` : '';
+    ? `<div class="release-countdown" data-release-countdown="${esc(countdownTarget)}"><span>${event.airstamp ? 'Exact countdown' : 'Date countdown'}</span><strong>--d --h</strong></div>` : '';
+  const episodeTime = isEpisode(event) ? (event.airstamp
+    ? `<div class="release-exact-time exact"><i></i><span>Local drop time</span><strong>${esc(localEpisodeTime(event.airstamp))}</strong><small>Converted to ${esc(localTimeZone())} · <a href="https://www.tvmaze.com" target="_blank" rel="noopener">TVmaze</a></small></div>`
+    : '<div class="release-exact-time"><i></i><span>Local drop time</span><strong>Time not announced</strong><small>The confirmed release date is shown above.</small></div>') : '';
   return `<article class="release-card${saved ? ' saved' : ''}">
     <a class="release-poster${event.posterKind === 'still' ? ' landscape' : ''}" href="/${event.mediaType}/${event.id}" data-action="open-detail" data-id="${event.id}" data-type="${event.mediaType}"><img src="${posterURL(event)}" alt="${esc(event.title)}" loading="lazy" data-ph="${PH}"><span class="release-type">${typeLabel}</span></a>
-    <div class="release-card-body"><div class="release-meta-line"><span class="release-kind">${esc(event.kind)}</span><span class="release-language">${languageLabel(event)}</span></div><a class="release-title" href="/${event.mediaType}/${event.id}" data-action="open-detail" data-id="${event.id}" data-type="${event.mediaType}">${esc(event.title)}</a>${event.note ? `<div class="release-note">${esc(event.note)}</div>` : ''}${countdown}
+    <div class="release-card-body"><div class="release-meta-line"><span class="release-kind">${esc(event.kind)}</span><span class="release-language">${languageLabel(event)}</span></div><a class="release-title" href="/${event.mediaType}/${event.id}" data-action="open-detail" data-id="${event.id}" data-type="${event.mediaType}">${esc(event.title)}</a>${event.note ? `<div class="release-note">${esc(event.note)}</div>` : ''}${episodeTime}${countdown}
       <div class="release-card-actions"><button class="reminder-btn${saved ? ' active' : ''}" data-action="toggle-release-reminder" data-key="${esc(eventKey(event))}" data-event="${payload}">${saved ? '✓ Saved' : '＋ Remind me'}</button><button class="calendar-btn" data-action="download-release-calendar" data-event="${payload}" data-tip="Add to calendar" aria-label="Add ${esc(event.title)} to calendar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/><path d="M12 14v4M10 16h4"/></svg></button></div>
     </div>
   </article>`;
@@ -172,7 +182,7 @@ function visibleEvents() {
 
 function updateReleaseCountdowns() {
   document.querySelectorAll('[data-release-countdown]').forEach(node => {
-    const target = new Date(`${node.dataset.releaseCountdown}T00:00:00`).getTime();
+    const target = new Date(node.dataset.releaseCountdown).getTime();
     const difference = target - Date.now();
     const value = node.querySelector('strong');
     if (!value) return;
@@ -195,7 +205,7 @@ function paintReleaseTimeline() {
   const content = $('releaseContent'), summary = $('releaseSummary'); if (!content) return;
   const savedKeys = new Set(savedReminders().map(eventKey));
   const events = visibleEvents();
-  if (summary) summary.innerHTML = `<strong>${events.length}</strong> upcoming event${events.length === 1 ? '' : 's'}<span>English + Hindi · ${savedKeys.size} reminder${savedKeys.size === 1 ? '' : 's'} saved locally</span>`;
+  if (summary) summary.innerHTML = `<strong>${events.length}</strong> upcoming event${events.length === 1 ? '' : 's'}<span>English + Hindi · Times shown in ${esc(localTimeZone())} · ${savedKeys.size} saved</span>`;
   if (!events.length) {
     content.innerHTML = `<div class="release-empty"><div>✦</div><h3>Nothing matches yet</h3><p>Try another filter, a wider date range, or adjust your preferences.</p><button class="btn-glass" data-action="toggle-release-preferences">Open preferences</button></div>`;
     startReleaseCountdowns();
@@ -277,8 +287,10 @@ function togglePreferences(force) {
 
 function icsEscape(value) { return String(value || '').replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n'); }
 function downloadCalendar(event) {
+  const dateStamp = value => new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
   const start = event.date.replace(/-/g, ''), end = iso(addDays(parseDate(event.date), 1)).replace(/-/g, '');
-  const body = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//CineVerse//Release Reminders//EN','BEGIN:VEVENT',`UID:${icsEscape(eventKey(event))}@cineverse`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`,`DTSTART;VALUE=DATE:${start}`,`DTEND;VALUE=DATE:${end}`,`SUMMARY:${icsEscape(`${event.title} — ${event.kind}`)}`,`DESCRIPTION:${icsEscape(event.note || 'CineVerse release reminder')}`,`URL:${location.origin}/${event.mediaType}/${event.id}`,'END:VEVENT','END:VCALENDAR'].join('\r\n');
+  const timing = event.airstamp ? [`DTSTART:${dateStamp(event.airstamp)}`, `DTEND:${dateStamp(new Date(event.airstamp).getTime() + 3600000)}`] : [`DTSTART;VALUE=DATE:${start}`, `DTEND;VALUE=DATE:${end}`];
+  const body = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//CineVerse//Release Reminders//EN','BEGIN:VEVENT',`UID:${icsEscape(eventKey(event))}@cineverse`,`DTSTAMP:${dateStamp(new Date())}`,...timing,`SUMMARY:${icsEscape(`${event.title} — ${event.kind}`)}`,`DESCRIPTION:${icsEscape(event.note || 'CineVerse release reminder')}`,`URL:${location.origin}/${event.mediaType}/${event.id}`,'END:VEVENT','END:VCALENDAR'].join('\r\n');
   const url = URL.createObjectURL(new Blob([body], { type: 'text/calendar;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = `${event.title || 'release'}.ics`.replace(/[^\w.-]+/g, '-'); link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
