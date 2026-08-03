@@ -17,7 +17,7 @@ import { buildCard } from './cards.js';
 let statsScope = 'all';
 let latestSnapshot = null;
 let syncState = 'idle';
-let syncMessage = 'Protected Firestore snapshot';
+let syncMessage = 'Private';
 let checkedUid = '', remoteHash = '', lastQueuedHash = '';
 let repairActive = false, insightGeneration = 0, latestDirectorLoyalty = null;
 const MOVIE_GENRES = new Set(mGenreList.map(genre => genre.id));
@@ -341,7 +341,7 @@ function paintSyncState() {
 
 async function persistSnapshot(job) {
   if (!job?.uid || !state.user || state.user.uid !== job.uid) return;
-  syncState = 'syncing'; syncMessage = 'Checking your Firestore snapshot…'; paintSyncState();
+  syncState = 'syncing'; syncMessage = 'Syncing'; paintSyncState();
   try {
     const ref = db.collection('users').doc(job.uid);
     if (checkedUid !== job.uid) {
@@ -354,10 +354,10 @@ async function persistSnapshot(job) {
       await ref.set({ statsSnapshot: { ...job.snapshot, hash: job.hash, updatedAt: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true });
       remoteHash = job.hash;
     }
-    syncState = 'synced'; syncMessage = 'Synced to Firestore · writes only when stats change'; paintSyncState();
+    syncState = 'synced'; syncMessage = 'Synced'; paintSyncState();
   } catch (error) {
     console.warn('Stats snapshot unavailable', error);
-    syncState = 'offline'; syncMessage = 'Live stats ready · cloud snapshot will retry later'; paintSyncState();
+    syncState = 'offline'; syncMessage = 'Offline'; paintSyncState();
   }
 }
 
@@ -369,7 +369,7 @@ function queueSnapshot(snapshot) {
   state.statsSnapshot = { ...snapshot, hash };
   if (hash === lastQueuedHash && remoteHash === hash) return;
   lastQueuedHash = hash;
-  syncState = 'queued'; syncMessage = 'Preparing secure Firestore snapshot…'; paintSyncState();
+  syncState = 'queued'; syncMessage = 'Queued'; paintSyncState();
   persistSnapshotSoon({ uid: state.user.uid, snapshot, hash });
 }
 
@@ -701,7 +701,7 @@ export function initStats() {
     remoteHash = state.user ? state.statsSnapshot?.hash || '' : '';
     lastQueuedHash = ''; latestSnapshot = null;
     latestDirectorLoyalty = null; insightGeneration++;
-    syncState = 'idle'; syncMessage = 'Protected Firestore snapshot';
+    syncState = 'idle'; syncMessage = 'Private';
     if (state.user) queueCurrentSnapshot();
   });
   document.addEventListener('cv:wl-changed', queueCurrentSnapshot);

@@ -41,8 +41,10 @@ async function loadProfile() {
         hydratePrefs(x.experiencePrefs);
         const cloudRegion = x.experiencePrefs?.region;
         if (cloudRegion && REGIONS.some(([code]) => code === cloudRegion)) {
+          const regionChanged = state.region !== cloudRegion;
           state.region = cloudRegion;
           try { localStorage.setItem('cv_region', cloudRegion); } catch (_) {}
+          if (regionChanged) document.dispatchEvent(new Event('cv:region'));
         }
       state.profile = {
         avatar: x.avatar || null, created: x.created || null,

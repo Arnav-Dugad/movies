@@ -6,9 +6,10 @@ import { REGIONS } from './config.js';
 
 const KEY = 'cv_experience_v2';
 export const DEFAULT_PREFS = Object.freeze({
-  accent: 'red', density: 'comfortable', motion: 'system', autoplay: true,
+  density: 'comfortable', motion: 'system', autoplay: true,
   showRatings: true, showWatched: true, spoilerShield: false,
-  rememberSearch: true, glass: 'rich', textSize: 'standard',
+  rememberSearch: true, rememberViewed: true, discoverable: true, shareTaste: true,
+  glass: 'rich', textSize: 'standard',
   backdropArt: true, posterTilt: true, highContrast: false, compactNav: false,
 });
 
@@ -16,7 +17,6 @@ export let prefs = { ...DEFAULT_PREFS };
 let updatedAt = 0;
 
 const allowed = {
-  accent: new Set(['red', 'purple', 'cyan', 'gold']),
   density: new Set(['comfortable', 'compact']),
   motion: new Set(['system', 'full', 'reduced']),
   glass: new Set(['rich', 'quiet']),
@@ -26,7 +26,7 @@ const allowed = {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   return next;
@@ -34,7 +34,7 @@ function sanitize(raw = {}) {
 
 export function applyPrefs() {
   const root = document.documentElement;
-  root.dataset.accent = prefs.accent;
+  delete root.dataset.accent;
   root.dataset.density = prefs.density;
   root.dataset.motion = prefs.motion;
   root.dataset.autoplay = prefs.autoplay ? 'on' : 'off';
@@ -47,6 +47,7 @@ export function applyPrefs() {
   root.dataset.posterTilt = prefs.posterTilt ? 'on' : 'off';
   root.dataset.contrast = prefs.highContrast ? 'high' : 'standard';
   root.dataset.compactNav = prefs.compactNav ? 'on' : 'off';
+  root.dataset.rememberViewed = prefs.rememberViewed ? 'on' : 'off';
 }
 
 export function updatePref(key, value) {

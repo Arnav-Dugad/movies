@@ -36,7 +36,8 @@ export function isWatched(id, type){return !!state.watched[`${type}_${id}`];}
 // ===== RECENTLY VIEWED (per user, localStorage) =====
 export function loadRecentlyViewed() {
   const uid = state.user ? state.user.uid : 'guest';
-  try { state.recentlyViewed = JSON.parse(localStorage.getItem('cv_recent_' + uid) || '[]'); }
+  if (document.documentElement.dataset.rememberViewed === 'off') state.recentlyViewed = [];
+  else try { state.recentlyViewed = JSON.parse(localStorage.getItem('cv_recent_' + uid) || '[]'); }
   catch (e) { state.recentlyViewed = []; }
   if (!state.user) {
     try {
@@ -50,6 +51,7 @@ export function loadRecentlyViewed() {
 }
 export function pushRecentlyViewed(item) {
   if (!item || !item.id) return;
+  if (document.documentElement.dataset.rememberViewed === 'off') return;
   const uid = state.user ? state.user.uid : 'guest';
   state.recentlyViewed = state.recentlyViewed.filter(r => !(r.id === item.id && r.type === item.type));
   state.recentlyViewed.unshift({

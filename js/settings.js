@@ -38,13 +38,11 @@ export function renderSettings() {
     return;
   }
   const regionOpts = REGIONS.map(([code, label]) => `<option value="${code}" ${code === state.region ? 'selected' : ''}>${esc(label)}</option>`).join('');
-  const accent = ['red', 'purple', 'cyan', 'gold'];
   ct.innerHTML = `<div class="settings-shell">
     <section class="settings-premium-hero"><div><span>Experience control</span><h2>Make the universe yours.</h2><p>Fine-tune the look, motion, discovery signals and privacy of CineVerse. Changes apply instantly and sync efficiently to your account.</p></div><b>${ICONS.palette}</b></section>
     <div class="settings-layout">
       <main>
         <section class="settings-panel"><div class="settings-panel-head">${ICONS.palette}<div><span>Appearance</span><h2>Cinematic interface</h2></div></div>
-          <div class="settings-choice-row"><span><strong>Signature accent</strong><small>Changes glows, focus rings and premium highlights.</small></span><div class="settings-accent-grid">${accent.map(color => `<button class="accent-${color}${prefs.accent === color ? ' active' : ''}" data-action="settings-accent" data-value="${color}" aria-label="${color} accent"><i></i>${color}</button>`).join('')}</div></div>
           ${select('density', 'Content density', 'Choose roomy cards or fit more on screen.', [['comfortable', 'Comfortable'], ['compact', 'Compact']], prefs.density)}
           ${select('textSize', 'Text size', 'Increase interface text without zooming the page.', [['standard', 'Standard'], ['large', 'Large']], prefs.textSize)}
           ${select('glass', 'Glass effects', 'Control glow and translucent surface intensity.', [['rich', 'Rich cinema glass'], ['quiet', 'Quiet and focused']], prefs.glass)}
@@ -61,7 +59,13 @@ export function renderSettings() {
           ${toggle('showRatings', 'Community ratings', 'Show TMDB scores on posters and hero slides.', prefs.showRatings)}
           ${toggle('showWatched', 'Watched artwork marks', 'Show the green watched treatment on posters.', prefs.showWatched)}
           ${toggle('spoilerShield', 'Spoiler shield', 'Blur long summaries until you hover or focus them.', prefs.spoilerShield)}
+        </section>
+        <section class="settings-panel settings-privacy"><div class="settings-panel-head">${ICONS.shield}<div><span>Privacy</span><h2>Your visibility, your choice</h2></div></div>
           ${toggle('rememberSearch', 'Remember searches', 'Keep recent searches only on this device.', prefs.rememberSearch)}
+          ${toggle('rememberViewed', 'Remember recently viewed', 'Save recently opened titles only on this device.', prefs.rememberViewed)}
+          ${toggle('discoverable', 'Find me by name', 'Allow signed-in people to find your public profile by name.', prefs.discoverable)}
+          ${toggle('shareTaste', 'Friend taste matching', 'Let friends compare a derived taste summary, never raw history.', prefs.shareTaste)}
+          <div class="settings-privacy-note">Raw ratings, watched history and private lists are never published to friends.</div>
         </section>
       </main>
       <aside>
@@ -81,13 +85,22 @@ function clearSearchHistory() {
 
 export function initSettings() {
   registerActions({
-    'settings-region': el => { state.region = el.value; try { localStorage.setItem('cv_region', state.region); } catch (_) {} queueCloudSettings(); toast('Streaming region updated', 'success'); },
-    'settings-toggle': el => { updatePref(el.dataset.pref, !!el.checked); if (el.dataset.pref === 'rememberSearch' && !el.checked) clearSearchHistory(); toast('Preference saved', 'success'); },
+    'settings-region': el => { state.region = el.value; try { localStorage.setItem('cv_region', state.region); } catch (_) {} queueCloudSettings(); document.dispatchEvent(new Event('cv:region')); toast('Streaming region updated', 'success'); },
+    'settings-toggle': el => {
+      const key = el.dataset.pref;
+      updatePref(key, !!el.checked);
+      if (key === 'rememberSearch' && !el.checked) clearSearchHistory();
+      if (key === 'rememberViewed' && !el.checked) {
+        state.recentlyViewed = [];
+        try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {}
+      }
+      if (key === 'discoverable' || key === 'shareTaste') document.dispatchEvent(new Event('cv:privacy'));
+      toast('Preference saved', 'success');
+    },
     'settings-pref': el => { updatePref(el.dataset.pref, el.value); toast('Preference saved', 'success'); },
-    'settings-accent': el => { updatePref('accent', el.dataset.value); renderSettings(); toast('Accent updated', 'success'); },
     'clear-search-history': () => { clearSearchHistory(); toast('Search history cleared', 'info'); },
     'clear-recent-history': () => { state.recentlyViewed = []; try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {} toast('Recently viewed cleared', 'info'); },
-    'reset-experience': () => { resetPrefs(); renderSettings(); toast('Experience settings reset', 'success'); },
+    'reset-experience': () => { resetPrefs(); document.dispatchEvent(new Event('cv:privacy')); renderSettings(); toast('Experience settings reset', 'success'); },
   });
   document.addEventListener('cv:prefs', event => { if (!event.detail?.cloud) queueCloudSettings(); });
 }

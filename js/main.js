@@ -35,6 +35,7 @@ import { cleanupServiceWorker } from './pwa.js';
 import { initRecommendations } from './recommend.js';
 import { initBackups } from './backup.js';
 import { initAwards } from './awards.js';
+import { initProviderBadges } from './provider-badges.js';
 
 function hideLoader() { const l = $('loader'); if (l) l.classList.add('hidden'); }
 
@@ -45,6 +46,7 @@ async function init() {
   initDelegation();
   initImageFallback();
   initCardSync();
+  initProviderBadges();
   initAuth();
   initWatchlist();
   initLists();

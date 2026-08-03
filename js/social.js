@@ -8,6 +8,7 @@ import { state } from './state.js';
 import { debounce, toast } from './ui.js';
 import { buildTasteProfile } from './recommend.js';
 import { clean, fromKey } from './lists.js';
+import { prefs } from './prefs.js';
 
 export const social = { code: '', friends: [], reqIn: [], reqOut: [], ready: false };
 
@@ -37,7 +38,7 @@ async function ensurePublicProfile(u) {
   }
   social.code = code;
   try {
-    await ref.set({ uid: u.uid, name, nameLower: name.toLowerCase(), code, updatedAt: ts() }, { merge: true });
+    await ref.set({ uid: u.uid, name, nameLower: name.toLowerCase(), code, discoverable: prefs.discoverable !== false, updatedAt: ts() }, { merge: true });
     if (u.email) await db.collection('emailIndex').doc(emailKey(u.email)).set({ uid: u.uid }, { merge: true });
   } catch (e) { console.error('ensurePublicProfile write', e); }
 }
@@ -45,6 +46,11 @@ async function ensurePublicProfile(u) {
 // ----- Publish my derived taste profile (friend-readable) -----
 export async function publishTaste() {
   if (!state.user) return;
+  if (prefs.shareTaste === false) {
+    try { await db.collection('users').doc(state.user.uid).collection('shared').doc('taste').delete(); }
+    catch (e) { console.error('remove shared taste', e); }
+    return;
+  }
   const p = buildTasteProfile(state);
   // Same trap as the shared-list snapshot: an older watchlist entry can lack
   // tmdbId/type, and Firestore throws on undefined — which silently killed the
@@ -187,7 +193,7 @@ export async function searchByName(q) {
   if (s.length < 2) return [];
   try {
     const res = await db.collection('publicProfiles').where('nameLower', '>=', s).where('nameLower', '<', s + '').limit(10).get();
-    return res.docs.map(d => d.data()).filter(p => p.uid !== state.user?.uid);
+    return res.docs.map(d => d.data()).filter(p => p.uid !== state.user?.uid && p.discoverable !== false);
   } catch (e) { console.error('searchByName', e); return []; }
 }
 export async function getFriendTaste(uid) {
@@ -209,4 +215,10 @@ export function initSocial() {
     document.dispatchEvent(new Event('cv:social'));
   });
   document.addEventListener('cv:wl-changed', () => { if (state.user) republish(); });
+  document.addEventListener('cv:privacy', async () => {
+    if (!state.user) return;
+    await ensurePublicProfile(state.user);
+    await publishTaste();
+    document.dispatchEvent(new Event('cv:social'));
+  });
 }

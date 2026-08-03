@@ -501,7 +501,7 @@ export async function renderRecommendations() {
   if (topDirector) descriptors.push({ id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}` });
   if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
 
-  wrap.innerHTML = `<div class="rec-controlbar reveal"><div><span>Made for your taste</span><strong>Your recommendations adapt to every watch, rating, and dismissal.</strong></div><button data-action="open-recommendation-profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/><path d="M9 7h7M9 11h7"/></svg>Why these picks?</button></div>${descriptors.map(shell).join('')}`;
+  wrap.innerHTML = descriptors.map(shell).join('');
   observeReveals(wrap);
 
   // ONE pool fetch + ONE ranking pass, shared by every row. The old code refetched

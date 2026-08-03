@@ -628,6 +628,7 @@ export function initDetail() {
       state.region = el.value;
       try { localStorage.setItem('cv_region', state.region); } catch (e) {}
       if (curDet) { const block = $('providerBlock'); if (block) block.innerHTML = providerHTML(curDet, state.region); }
+      document.dispatchEvent(new Event('cv:region'));
     },
   });
 }

@@ -399,21 +399,56 @@
 
 <!-- DISCOVER -->
 <div class="discover-page page-container" id="discoverPage">
-  <div class="mood-hero">
-    <h1>What's Your Mood?</h1>
-    <p>Tell us how you're feeling and we'll find the perfect movie or show for you</p>
-  </div>
-  <div class="mood-grid" id="moodGrid"></div>
-  <div class="mood-results" id="moodResults"></div>
-  <div class="picker-section">
-    <h2>🎲 Can't Decide?</h2>
-    <p>Let fate choose for you — spin for a random pick!</p>
-    <div style="display:flex;gap:12px;justify-content:center;margin-bottom:16px;flex-wrap:wrap">
-      <button class="spin-btn" id="spinBtn" data-action="random-pick" data-type="movie">🎬 Random Movie</button>
-      <button class="spin-btn" id="spinBtnTV" data-action="random-pick" data-type="tv" style="background:linear-gradient(135deg,var(--cyan),var(--green))">📺 Random Show</button>
+  <section class="discover-premium-hero" id="discoverHero">
+    <div class="discover-hero-copy">
+      <span class="discover-eyebrow">Your next obsession starts here</span>
+      <h1>Discover without the endless scroll.</h1>
+      <p>Explore moods, streaming picks, hidden gems, world cinema, and precise filters—all in one calm, cinematic space.</p>
+      <div class="discover-hero-actions"><button class="btn-primary" data-action="discover-jump" data-target="discoverStudio">Build my perfect pick</button><button class="btn-glass" data-action="show-page" data-page="search">Search with words</button></div>
+      <div class="discover-proof"><span><strong>12</strong>moods</span><span><strong>6</strong>live collections</span><span><strong>1</strong>smart studio</span></div>
     </div>
-    <div class="picker-result" id="pickerResult"></div>
-  </div>
+    <div class="discover-spotlight" id="discoverSpotlight"><div class="discover-spotlight-skeleton skel"></div></div>
+  </section>
+
+  <nav class="discover-jumpbar" aria-label="Discover sections">
+    <button data-action="discover-jump" data-target="discoverStudio">Discovery Studio</button>
+    <button data-action="discover-jump" data-target="discoverMoods">Choose a mood</button>
+    <button data-action="discover-jump" data-target="discoverCollections">Curated collections</button>
+    <button data-action="discover-jump" data-target="discoverSurprise">Surprise me</button>
+  </nav>
+
+  <section class="discover-studio" id="discoverStudio">
+    <div class="discover-section-head"><div><span>Precision discovery</span><h2>Discovery Studio</h2><p>Choose as much or as little as you want. Every control uses real catalog data.</p></div><b>Free · Live</b></div>
+    <div class="discover-filter-grid">
+      <label><span>Content</span><select id="discoverType" class="discover-select" data-action="discover-type"><option value="movie">Movies</option><option value="tv">TV shows</option></select></label>
+      <label><span>Genre</span><select id="discoverGenre" class="discover-select"></select></label>
+      <label><span>Release era</span><select id="discoverEra" class="discover-select"><option value="">Any era</option><option value="2020">2020s</option><option value="2010">2010s</option><option value="2000">2000s</option><option value="1990">1990s</option><option value="classic">Before 1990</option></select></label>
+      <label><span>Language</span><select id="discoverLanguage" class="discover-select"><option value="">Any language</option><option value="en">English</option><option value="hi">Hindi</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="ta">Tamil</option><option value="te">Telugu</option><option value="ml">Malayalam</option></select></label>
+      <label><span>Minimum rating</span><select id="discoverRating" class="discover-select"><option value="0">Any rating</option><option value="6">6+ rated</option><option value="7">7+ rated</option><option value="8">8+ rated</option></select></label>
+      <label><span>Length</span><select id="discoverRuntime" class="discover-select"><option value="">Any length</option><option value="short">Quick watch</option><option value="medium">Standard</option><option value="long">Long watch</option></select></label>
+      <label><span>Order</span><select id="discoverSort" class="discover-select"><option value="popularity.desc">Most popular</option><option value="vote_average.desc">Highest rated</option><option value="vote_count.desc">Most discussed</option><option value="date.desc">Newest first</option></select></label>
+      <label class="discover-stream-toggle"><span>Availability</span><input id="discoverStreaming" type="checkbox" checked><i></i><strong>Streaming now</strong></label>
+      <button class="discover-build-btn" data-action="discover-build">Show my matches <span>→</span></button>
+    </div>
+    <div class="discover-presets" aria-label="Quick discovery presets"><span>Quick starts</span><button data-action="discover-preset" data-preset="critics">Critics’ favorites</button><button data-action="discover-preset" data-preset="hindi">Hindi hits</button><button data-action="discover-preset" data-preset="family">Family night</button><button data-action="discover-preset" data-preset="hidden">Hidden gems</button><button data-action="discover-preset" data-preset="classic">Modern classics</button></div>
+    <div class="discover-lab-results" id="discoverLabResults"></div>
+  </section>
+
+  <section class="discover-moods" id="discoverMoods">
+    <div class="discover-section-head"><div><span>Choose a feeling</span><h2>What are you in the mood for?</h2><p>One tap creates a fresh, high-quality collection around your mood.</p></div></div>
+    <div class="mood-grid" id="moodGrid"></div>
+    <div class="mood-results" id="moodResults"></div>
+  </section>
+
+  <section class="discover-collections" id="discoverCollections">
+    <div class="discover-section-head"><div><span>Always fresh</span><h2>Curated discovery lanes</h2><p>Live collections spanning streaming, cultures, critics, and overlooked favorites.</p></div><div class="discover-section-tools"><b id="discoverRegionLabel">Your region</b><button data-action="discover-refresh-collections">Refresh</button></div></div>
+    <div id="discoverRows"></div>
+  </section>
+
+  <section class="discover-surprise" id="discoverSurprise">
+    <div class="discover-surprise-copy"><span>Decision-free mode</span><h2>Let CineVerse choose tonight.</h2><p>Pick a movie or show. We will choose one strong, streamable title—not a low-quality random result.</p><div><button class="spin-btn" id="spinBtn" data-action="random-pick" data-type="movie">Surprise movie</button><button class="spin-btn secondary" id="spinBtnTV" data-action="random-pick" data-type="tv">Surprise show</button></div></div>
+    <div class="picker-result" id="pickerResult"><div class="discover-surprise-empty"><i>?</i><strong>Your pick will appear here</strong><span>Highly rated · Streamable · Fresh</span></div></div>
+  </section>
 </div>
 
 <!-- STATS -->

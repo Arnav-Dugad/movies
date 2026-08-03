@@ -11,6 +11,7 @@ import { saveProfile } from './auth.js';
 import { friendQrSvg, tasteMatchQrSvg, tasteMatchUrl } from './qrcode.js';
 import { renderRecommendationInsights } from './recommend.js';
 import { tmdb } from './api.js';
+import { prefs } from './prefs.js';
 
 let editing = false;
 let draftAvatar = undefined;   // undefined = untouched; null = cleared to initial
@@ -177,12 +178,13 @@ export function renderProfile() {
   const favoritePoster = favoriteData.favoriteFilmPoster ? `${IMG}w342${favoriteData.favoriteFilmPoster}` : PH;
   const favoriteFilm = favoriteData.favoriteFilm ? `${favoriteData.favoriteFilmId ? `<a class="profile-favorite-film" href="/movie/${favoriteData.favoriteFilmId}" data-action="open-detail" data-id="${favoriteData.favoriteFilmId}" data-type="movie">` : '<article class="profile-favorite-film">'}<img src="${esc(favoritePoster)}" alt="${esc(favoriteData.favoriteFilm)} poster" loading="lazy" data-ph="${PH}"><span><small>Favorite film</small><strong>${esc(favoriteData.favoriteFilm)}</strong><em>Always returning to this one</em></span>${favoriteData.favoriteFilmId ? '</a>' : '</article>'}` : '';
   const about = state.profile.bio || favoriteFilm ? `<section class="profile-panel profile-about"><div><span>Personal note</span><h2>${esc(state.profile.bio || 'A collection shaped by curiosity.')}</h2></div>${favoriteFilm}</section>` : '';
-  const intelligence = intelligenceOpen ? `<section class="profile-intelligence-vault"><div class="profile-intelligence-head"><span>Low-key, private, yours</span><h2>Why you got these recommendations</h2><p>The same live engine used on Home shows its strongest signals, filters and every score here.</p></div><div id="recommendationProfileInsights"></div></section>` : '';
+  const intelligence = intelligenceOpen ? `<section class="profile-intelligence-vault"><div class="profile-intelligence-head"><span>Made for your taste · private</span><h2>Your recommendations adapt to you</h2><p>Every watch, rating and dismissal improves what appears on Home. The live engine's strongest signals, filters and scores are explained here.</p></div><div id="recommendationProfileInsights"></div></section>` : '';
 
-  const privacy = `<section class="profile-panel profile-privacy"><div class="profile-panel-head"><div><span>Data clarity</span><h2>Privacy Dashboard</h2><p>See exactly where each part of your CineVerse experience lives.</p></div><b>Private by default</b></div><div class="profile-privacy-grid">
-    <article class="local"><i>01</i><span>Only on this device</span><h3>Local</h3><p>Recent searches, recently viewed titles and temporary artwork caches.</p><strong>Never shown to friends</strong></article>
+  const localMemory = [prefs.rememberSearch && 'recent searches', prefs.rememberViewed && 'recently viewed titles'].filter(Boolean);
+  const privacy = `<section class="profile-panel profile-privacy"><div class="profile-panel-head"><div><span>Data clarity</span><h2>Privacy Dashboard</h2><p>See exactly where each part of your CineVerse experience lives.</p></div><b>${prefs.discoverable || prefs.shareTaste ? 'Controlled sharing' : 'Maximum privacy'}</b></div><div class="profile-privacy-grid">
+    <article class="local"><i>01</i><span>Only on this device</span><h3>Local</h3><p>${localMemory.length ? `This device remembers ${localMemory.join(' and ')} plus temporary artwork caches.` : 'Search and viewing memory are off. Only temporary artwork caches remain.'}</p><strong>Never shown to friends</strong></article>
     <article class="private"><i>02</i><span>Your signed-in vault</span><h3>Private</h3><p>Lists, watched history, ratings, settings, profile notes and recommendation decisions.</p><strong>Owner-only Firestore rules</strong></article>
-    <article class="shared"><i>03</i><span>Social layer</span><h3>Friend-visible</h3><p>Name, avatar and friend code are searchable by signed-in people. Only accepted friends can compare derived taste—never raw history.</p><strong>You choose who connects</strong></article>
+    <article class="shared"><i>03</i><span>Social layer</span><h3>Friend-visible</h3><p>${prefs.discoverable ? 'Signed-in people can find your name.' : 'Name search is off.'} ${prefs.shareTaste ? 'Friends can compare a derived taste summary—never raw history.' : 'Friend taste sharing is off.'}</p><strong>You choose what is visible</strong></article>
   </div><div class="profile-privacy-foot"><span>Raw watch history and ratings are never published to friends.</span><button data-action="show-page" data-page="settings">Open privacy settings →</button></div></section>`;
 
   const rv = (state.recentlyViewed || []).slice(0, 12);
