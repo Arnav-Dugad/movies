@@ -10,6 +10,8 @@ import { esc, debounce, $, toast } from './ui.js';
 import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { prefs } from './prefs.js';
+import { addToList } from './lists.js';
+import { toggleWatched } from './watchlist.js';
 
 // ---- module state ----
 let searchGen = 0;          // bumped on every submitted query/vibe; in-flight stragglers bail
@@ -21,7 +23,7 @@ let mode = 'search';        // 'search' | 'vibe'
 let vibeCtx = null;         // { genres, type, lang, label } for discover mode
 let commandCtx = null;      // parsed natural-language discovery command
 let suggestItems = [], suggestIdx = -1;
-let speechRecognition = null, voiceListening = false;
+let speechRecognition = null, voiceListening = false, voiceGen = 0;
 
 const IMGw = (size, path) => path ? `${IMG}${size}${path}` : PH;
 
@@ -445,34 +447,95 @@ function paintVoice(active, message = '') {
   if (status) { status.textContent = message; status.classList.toggle('show', !!message); status.classList.toggle('listening', active); }
 }
 
-function startVoiceSearch() {
+function voiceAction(text) {
+  const phrase = String(text || '').trim().replace(/[.!?]+$/, '');
+  let match = phrase.match(/^(?:please\s+)?(?:add|save)\s+(.+?)\s+(?:to\s+)?(?:my\s+)?(?:watch\s*list|list)$/i);
+  if (match) return { action: 'add', title: match[1].trim() };
+  match = phrase.match(/^(?:please\s+)?mark\s+(.+?)\s+(?:as\s+)?watched$/i) || phrase.match(/^i\s+(?:just\s+)?watched\s+(.+)$/i);
+  return match ? { action: 'watched', title: match[1].trim() } : null;
+}
+
+async function resolveVoiceTitle(title) {
+  const data = await tmdb('/search/multi', { query: title, include_adult: false, page: 1 });
+  const candidates = (data.results || []).filter(item => ['movie', 'tv'].includes(item.media_type));
+  const normal = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return candidates.find(item => normal(item.title || item.name) === normal(title)) || candidates[0] || null;
+}
+
+async function runVoicePhrase(value) {
+  const command = voiceAction(value);
+  if (!command) { addToHistory(value); await doSearch(value); return; }
+  if (!state.user) {
+    paintVoice(false, 'Sign in to use voice actions.'); toast('Sign in to use voice actions', 'info');
+    document.dispatchEvent(new Event('cv:open-auth')); return;
+  }
+  paintVoice(false, `Finding “${command.title}”…`);
+  try {
+    const item = await resolveVoiceTitle(command.title);
+    if (!item) { paintVoice(false, `I could not find “${command.title}”.`); return; }
+    const type = item.media_type, title = item.title || item.name;
+    if (command.action === 'add') {
+      if (state.watchlist.some(entry => entry.id === `${type}_${item.id}`)) { paintVoice(false, `${title} is already in your lists.`); return; }
+      await addToList(item, type, 'watchlist'); paintVoice(false, `Added ${title} to your watchlist.`);
+    } else {
+      if (state.watched[`${type}_${item.id}`]) { paintVoice(false, `${title} is already marked watched.`); return; }
+      const detail = await tmdb(`/${type}/${item.id}`).catch(() => item);
+      await toggleWatched(item.id, type, title, {
+        poster: detail.poster_path || '', year: (detail.release_date || detail.first_air_date || '').slice(0, 4),
+        genres: (detail.genres || []).map(genre => genre.id), runtime: detail.runtime || (detail.episode_run_time || [])[0] || 0,
+        language: detail.original_language || '', releaseDate: detail.release_date || detail.first_air_date || '', tmdbRating: detail.vote_average || 0, voteCount: detail.vote_count || 0,
+      });
+      paintVoice(false, `Marked ${title} as watched.`);
+    }
+  } catch (error) { console.error('voice action', error); paintVoice(false, 'That voice action could not be completed. Try again.'); }
+}
+
+async function startVoiceSearch() {
   if (voiceListening && speechRecognition) { speechRecognition.stop(); return; }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) { toast('Voice search is not supported by this browser', 'info'); paintVoice(false, 'Voice search is unavailable in this browser.'); return; }
+  if (!window.isSecureContext) { paintVoice(false, 'Desktop microphone access needs a secure HTTPS connection.'); toast('Open CineVerse over HTTPS to use the microphone', 'info'); return; }
+  const request = ++voiceGen;
+  const voiceButton = $('searchVoice'); if (voiceButton) voiceButton.disabled = true;
+  paintVoice(false, 'Requesting microphone access…');
+  if (navigator.mediaDevices?.getUserMedia) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error) {
+      const messages = { NotAllowedError: 'Microphone access is blocked. Allow it in the browser site settings.', NotFoundError: 'No microphone was found on this computer.', NotReadableError: 'Your microphone is busy in another app.' };
+      const message = messages[error?.name] || 'The desktop microphone could not be opened.';
+      if (voiceButton) voiceButton.disabled = false;
+      paintVoice(false, message); toast(message, 'info'); return;
+    }
+  }
+  if (voiceButton) voiceButton.disabled = false;
+  if (request !== voiceGen || !/^\/search\/?$/.test(location.pathname)) return;
   speechRecognition = new Recognition();
-  speechRecognition.lang = navigator.language || 'en-IN';
+  speechRecognition.lang = document.documentElement.lang || navigator.language || 'en-IN';
   speechRecognition.interimResults = true;
   speechRecognition.continuous = false;
   speechRecognition.maxAlternatives = 1;
-  speechRecognition.onstart = () => { paintVoice(true, 'Listening… Try “Hindi thrillers after 2020”.'); try { navigator.vibrate?.(30); } catch (_) {} };
+  speechRecognition.onstart = () => { paintVoice(true, 'Listening… Try “Add Dune to my watchlist”.'); try { navigator.vibrate?.(30); } catch (_) {} };
   speechRecognition.onresult = event => {
     let transcript = '', final = false;
     for (let index = event.resultIndex; index < event.results.length; index++) { transcript += event.results[index][0].transcript; final ||= event.results[index].isFinal; }
     const value = transcript.trim(); if (!value) return;
     const input = $('searchIn'); input.value = value; toggleClear(); closeSuggest();
-    paintVoice(true, final ? `Searching for “${value}”` : `Hearing “${value}”…`);
-    if (final) { addToHistory(value); doSearch(value); }
+    paintVoice(true, final ? `Working on “${value}”` : `Hearing “${value}”…`);
+    if (final) runVoicePhrase(value);
   };
   speechRecognition.onerror = event => {
-    const messages = { 'not-allowed': 'Microphone access was blocked.', 'audio-capture': 'No microphone was found.', 'no-speech': 'No speech was heard. Try again.' };
+    const messages = { 'not-allowed': 'Microphone access was blocked. Allow it in site settings.', 'service-not-allowed': 'Speech recognition is blocked by the browser.', 'audio-capture': 'No microphone was found.', 'no-speech': 'No speech was heard. Try again.', network: 'Speech recognition needs an internet connection.' };
     const message = messages[event.error] || 'Voice search stopped. Please try again.';
     paintVoice(false, message); if (event.error !== 'no-speech') toast(message, 'info');
   };
-  speechRecognition.onend = () => { if (voiceListening) paintVoice(false, $('searchIn')?.value ? 'Voice phrase added to search.' : 'Tap the microphone to try again.'); };
+  speechRecognition.onend = () => { if (voiceListening) paintVoice(false, $('searchIn')?.value ? 'Voice phrase completed.' : 'Tap the microphone to try again.'); };
   try { speechRecognition.start(); } catch (_) { paintVoice(false, 'Voice search is already starting.'); }
 }
 
 export function stopVoiceSearch() {
+  voiceGen++;
   if (speechRecognition && voiceListening) { try { speechRecognition.abort(); } catch (_) {} }
   speechRecognition = null;
   paintVoice(false, '');

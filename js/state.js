@@ -23,6 +23,8 @@ export const state = {
   // Firestore read. History is capped before every write (recommend.js).
   recommendationFeedback: { dismissed: [], history: [] },
   notificationRead: [],
+  notificationPreferences: { episodes: true, releases: true, streaming: true, providerChanges: true, mutedItems: [], mutedProviders: [], updatedAt: 0 },
+  providerHistory: { region: 'IN', snapshots: {}, changes: [], updatedAt: 0 },
   // The latest compact stats snapshot is loaded by the same owner-only profile
   // read. Stats can reuse slower-changing insights without another Firestore read.
   statsSnapshot: null,

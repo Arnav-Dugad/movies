@@ -1,14 +1,25 @@
 // ===== HOME SECTIONS (+ personalization) =====
 import { tmdb } from './api.js';
-import { $ } from './ui.js';
+import { $, esc } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
 import { registerActions } from './events.js';
 import { renderRecommendations } from './recommend.js';
+import { getStreamingArrivals } from './provider-history.js';
+import { IMG, providerUrl } from './config.js';
+import { state } from './state.js';
 
 // Re-exported so router.js (cv:auth / cv:wl-changed) and initHome can refresh the
 // personalized rows. The advanced logic lives in recommend.js.
 export function renderPersonalRows() { return renderRecommendations(); }
+
+export function renderStreamingArrivals() {
+  const host = $('streamingArrivalRows'); if (!host) return;
+  const arrivals = state.user ? getStreamingArrivals(18) : [];
+  if (!arrivals.length) { host.innerHTML = ''; return; }
+  host.innerHTML = `<section class="section reveal streaming-arrival-section"><div class="section-head"><div><span class="arrival-eyebrow">Subscription intelligence · ${esc(state.region)}</span><h2 class="section-title"><span>✦</span> Streaming Arrival Spotlight</h2><p>Newly detected on services you can stream with a subscription.</p></div><button class="section-see-all" data-action="show-page" data-page="notifications">View history<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div><div class="row arrival-row">${arrivals.map(change => `<div class="arrival-card">${buildCard({ id: change.id, title: change.title, name: change.title, poster_path: change.poster, release_date: change.year ? `${change.year}-01-01` : '', media_type: change.type }, change.type)}<a class="arrival-provider" href="${esc(providerUrl(change.provider?.name, change.title, change.regionLink))}" target="_blank" rel="noopener"><img src="${IMG}w92${change.provider?.logo}" alt="${esc(change.provider?.name || '')}"><span><small>${change.change === 'first_seen' ? 'First detected on' : 'Just arrived on'}</small><strong>${esc(change.provider?.name || 'Streaming')}</strong></span><i>↗</i></a></div>`).join('')}</div></section>`;
+  observeReveals();
+}
 
 // Build a row's cards from a TMDB result set, honoring t10 / wide / person / multi.
 function cardsFor(s, results) {
@@ -32,6 +43,9 @@ export function initHomeActions() {
       } catch (e) { target.innerHTML = rowError(el.dataset.path, el.dataset.target, s, params); }
     },
   });
+  document.addEventListener('cv:provider-history', renderStreamingArrivals);
+  document.addEventListener('cv:auth', renderStreamingArrivals);
+  document.addEventListener('cv:region', renderStreamingArrivals);
 }
 
 // Genre ids: 16 Animation, 27 Horror, 35 Comedy, 878 Sci-Fi, 10751 Family.
@@ -75,6 +89,7 @@ export async function initHome() {
   // Personalized rails belong on Home; Profile contains the private explanation
   // of their signals and scoring instead of duplicating the same cards there.
   renderRecommendations();
+  renderStreamingArrivals();
 
   await Promise.allSettled(SECTIONS.map(async s => {
     const el = $('row_' + s.id);

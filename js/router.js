@@ -23,7 +23,7 @@ import { renderProfile } from './profile.js';
 import { renderSettings } from './settings.js';
 import { renderReleaseReminders } from './release-reminders.js';
 import { closeScanner, isScannerOpen } from './scan.js';
-import { renderNotifications } from './notifications.js';
+import { renderNotifications, closeNotificationDropdown, isNotificationDropdownOpen } from './notifications.js';
 
 // Set when the watchlist/ratings change while we're NOT on home, so home can
 // re-render its personal rows lazily on arrival instead of every list toggle
@@ -106,6 +106,7 @@ function closeAllModals() {
   if (isScannerOpen()) closeScanner();
   if (isDeleteOpen()) closeDelete();
   if (isAuthOpen()) closeAuth();
+  if (isNotificationDropdownOpen()) closeNotificationDropdown();
   const dd = $('profileDD'); if (dd) dd.classList.remove('active');
   forceUnlockScroll();
 }
@@ -171,6 +172,7 @@ function handleEscape() {
   if (isListPickerOpen()) return closeListPicker();
   if (isDeleteOpen()) return closeDelete();
   if (isAuthOpen()) return closeAuth();
+  if (isNotificationDropdownOpen()) return closeNotificationDropdown();
   const dd = $('profileDD'); if (dd && dd.classList.contains('active')) dd.classList.remove('active');
 }
 

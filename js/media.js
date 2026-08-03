@@ -1,7 +1,7 @@
 // ===== TRAILER + SHARE + IMAGE LIGHTBOX =====
 import { toast, $, trapFocus, lockScroll, unlockScroll, esc } from './ui.js';
 import { registerActions } from './events.js';
-import { IMG } from './config.js';
+import { IMG, pickLogo } from './config.js';
 import { tmdb } from './api.js';
 
 export function playTrailer(key) {
@@ -44,6 +44,13 @@ function cover(ctx, image, x, y, width, height) {
   ctx.drawImage(image, (image.width - sw) / 2, (image.height - sh) / 2, sw, sh, x, y, width, height);
 }
 
+function contain(ctx, image, x, y, width, height) {
+  if (!image) return;
+  const scale = Math.min(width / image.width, height / image.height);
+  const w = image.width * scale, h = image.height * scale;
+  ctx.drawImage(image, x + (width - w) / 2, y + (height - h) / 2, w, h);
+}
+
 function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 4) {
   const words = String(text || '').split(/\s+/); let line = '', lines = [];
   words.forEach(word => {
@@ -58,10 +65,41 @@ function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 4) {
   lines.forEach((value, index) => ctx.fillText(value, x, y + index * lineHeight));
 }
 
+function fittedTitle(ctx, text, x, y, maxWidth, maxLines = 5) {
+  let lines = [], size = 68;
+  const lineBreaks = value => {
+    const words = String(value || '').trim().split(/\s+/), output = []; let line = '';
+    for (const original of words) {
+      let word = original;
+      if (ctx.measureText(word).width > maxWidth) {
+        if (line) { output.push(line); line = ''; }
+        let part = '';
+        for (const char of word) {
+          if (part && ctx.measureText(part + char).width > maxWidth) { output.push(part); part = char; } else part += char;
+        }
+        word = part;
+      }
+      const next = line ? `${line} ${word}` : word;
+      if (line && ctx.measureText(next).width > maxWidth) { output.push(line); line = word; } else line = next;
+    }
+    if (line) output.push(line); return output;
+  };
+  for (; size >= 36; size -= 2) { ctx.font = `800 ${size}px Arial`; lines = lineBreaks(text); if (lines.length <= maxLines) break; }
+  const truncated = lines.length > maxLines; lines = lines.slice(0, maxLines);
+  if (truncated && lines.length) {
+    let last = lines.at(-1);
+    while (last && ctx.measureText(`${last}…`).width > maxWidth) last = last.slice(0, -1);
+    lines[lines.length - 1] = `${last}…`;
+  }
+  const lineHeight = Math.round(size * 1.13);
+  lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+}
+
 async function buildSpoilerCard(detail, type) {
   const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 1500;
   const ctx = canvas.getContext('2d');
-  const [poster, backdrop] = await Promise.all([bitmap(detail.poster_path), bitmap(detail.backdrop_path)]);
+  const logoPath = pickLogo(detail.images?.logos);
+  const [poster, backdrop, logo] = await Promise.all([bitmap(detail.poster_path), bitmap(detail.backdrop_path), bitmap(logoPath)]);
   ctx.fillStyle = '#07070c'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (backdrop) { ctx.save(); ctx.globalAlpha = .34; ctx.filter = 'blur(14px)'; cover(ctx, backdrop, -30, -30, 1260, 1560); ctx.restore(); }
   const wash = ctx.createLinearGradient(0, 0, 1200, 1500); wash.addColorStop(0, 'rgba(139,92,246,.3)'); wash.addColorStop(.42, 'rgba(8,8,14,.72)'); wash.addColorStop(1, '#07070c'); ctx.fillStyle = wash; ctx.fillRect(0, 0, 1200, 1500);
@@ -70,16 +108,21 @@ async function buildSpoilerCard(detail, type) {
   ctx.fillStyle = 'rgba(255,255,255,.62)'; ctx.font = '700 22px Arial'; ctx.fillText('SPOILER-FREE PICK', 880, 116);
   roundedRect(ctx, 88, 175, 555, 832, 32); ctx.save(); ctx.clip(); if (poster) cover(ctx, poster, 88, 175, 555, 832); else { ctx.fillStyle = '#181823'; ctx.fillRect(88, 175, 555, 832); } ctx.restore();
   ctx.strokeStyle = 'rgba(255,255,255,.16)'; roundedRect(ctx, 88, 175, 555, 832, 32); ctx.stroke();
-  ctx.fillStyle = '#fff'; ctx.font = '800 68px Arial'; const title = detail.title || detail.name || 'Untitled'; wrapCanvasText(ctx, title, 704, 410, 410, 78, 5);
+  const title = detail.title || detail.name || 'Untitled';
+  ctx.save(); roundedRect(ctx, 678, 235, 456, 490, 18); ctx.clip();
+  if (logo) contain(ctx, logo, 704, 285, 404, 300);
+  else { ctx.fillStyle = '#fff'; fittedTitle(ctx, title, 704, 350, 404, 5); }
+  ctx.restore();
   const year = (detail.release_date || detail.first_air_date || '').slice(0, 4);
   ctx.fillStyle = 'rgba(255,255,255,.67)'; ctx.font = '600 27px Arial'; ctx.fillText(`${type === 'tv' ? 'TV SERIES' : 'MOVIE'}${year ? `  ·  ${year}` : ''}`, 704, 830);
-  ctx.fillStyle = '#fbbf24'; ctx.font = '700 24px Arial'; ctx.fillText('NO PLOT  ·  NO RATINGS  ·  NO SPOILERS', 704, 900);
+  ctx.fillStyle = 'rgba(251,191,36,.09)'; roundedRect(ctx, 688, 866, 434, 58, 29); ctx.fill();
+  ctx.fillStyle = '#fbbf24'; ctx.font = '700 18px Arial'; ctx.textAlign = 'center'; ctx.fillText('NO PLOT  ·  NO RATINGS  ·  NO SPOILERS', 905, 903); ctx.textAlign = 'left';
   ctx.fillStyle = 'rgba(255,255,255,.1)'; roundedRect(ctx, 88, 1080, 1024, 220, 30); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,.58)'; ctx.font = '600 24px Arial'; ctx.fillText('A title worth sharing.', 132, 1165);
   ctx.fillStyle = '#fff'; ctx.font = '800 35px Arial'; ctx.fillText('Open it on CineVerse', 132, 1225);
   ctx.fillStyle = '#ff3342'; ctx.beginPath(); ctx.arc(1030, 1190, 42, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(1018,1168);ctx.lineTo(1018,1212);ctx.lineTo(1050,1190);ctx.closePath();ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = '500 20px Arial'; ctx.fillText('Shared with taste, not spoilers.', 88, 1395);
-  poster?.close?.(); backdrop?.close?.();
+  poster?.close?.(); backdrop?.close?.(); logo?.close?.();
   return await new Promise(resolve => canvas.toBlob(resolve, 'image/png', .94));
 }
 
@@ -92,7 +135,7 @@ export async function shareItem(title, id, type) {
   overlay.classList.add('active'); lockScroll(); shareRelease = trapFocus(overlay, document.activeElement);
   preview.innerHTML = '<div class="skel"></div>'; if (status) status.textContent = 'Preparing your spoiler-free card…'; if (nativeButton) nativeButton.disabled = true;
   try {
-    const detail = await tmdb(`/${type}/${id}`); if (request !== shareGen) return;
+    const detail = await tmdb(`/${type}/${id}`, { append_to_response: 'images', include_image_language: 'en,null' }); if (request !== shareGen) return;
     shareData.title = detail.title || detail.name || title;
     const blob = await buildSpoilerCard(detail, type); if (request !== shareGen || !blob) return;
     shareBlob = blob;

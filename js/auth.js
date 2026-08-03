@@ -9,6 +9,8 @@ import { loadLists } from './lists.js';
 import { applyAvatar } from './avatar.js';
 import { hydratePrefs } from './prefs.js';
 import { REGIONS } from './config.js';
+import { hydrateNotificationPrefs, resetNotificationPrefsForAuth } from './notification-prefs.js';
+import { hydrateProviderHistory, resetProviderHistoryForAuth } from './provider-history.js';
 
 let authMode = 'login';
 let delRelease = null;
@@ -19,6 +21,8 @@ async function loadProfile() {
   state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
   state.recommendationFeedback = { dismissed: [], history: [] };
   state.notificationRead = [];
+  resetNotificationPrefsForAuth();
+  resetProviderHistoryForAuth();
   state.statsSnapshot = null;
   if (!state.user) return;
   let localFeedback = {};
@@ -40,6 +44,7 @@ async function loadProfile() {
       if (d.exists) {
         const x = d.data(), feedback = x.recommendationFeedback || {};
         hydratePrefs(x.experiencePrefs);
+        hydrateNotificationPrefs(x.notificationPreferences);
         const cloudRegion = x.experiencePrefs?.region;
         if (cloudRegion && REGIONS.some(([code]) => code === cloudRegion)) {
           const regionChanged = state.region !== cloudRegion;
@@ -47,6 +52,7 @@ async function loadProfile() {
           try { localStorage.setItem('cv_region', cloudRegion); } catch (_) {}
           if (regionChanged) document.dispatchEvent(new Event('cv:region'));
         }
+        hydrateProviderHistory(x.providerHistory);
       state.profile = {
         avatar: x.avatar || null, created: x.created || null,
         headline: String(x.headline || '').slice(0, 70), bio: String(x.bio || '').slice(0, 220),
@@ -84,6 +90,8 @@ export function initAuth() {
       state.lists = []; state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
       state.recommendationFeedback = { dismissed: [], history: [] };
       state.notificationRead = [];
+      resetNotificationPrefsForAuth();
+      resetProviderHistoryForAuth();
       state.statsSnapshot = null;
     }
     loadRecentlyViewed();
@@ -308,7 +316,8 @@ async function purgeUserData(uid, email) {
 }
 
 function purgeLocal(uid) {
-  ['cv_history_', 'cv_recent_', 'cv_badges_'].forEach(k => { try { localStorage.removeItem(k + uid); } catch (_) {} });
+  ['cv_history_', 'cv_recent_', 'cv_badges_', 'cv_notification_read_', 'cv_notification_prefs_'].forEach(k => { try { localStorage.removeItem(k + uid); } catch (_) {} });
+  try { Object.keys(localStorage).filter(key => key.startsWith(`cv_notification_cache_v2_${uid}_`) || key.startsWith(`cv_provider_history_${uid}_`)).forEach(key => localStorage.removeItem(key)); } catch (_) {}
 }
 
 async function confirmDelete() {

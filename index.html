@@ -105,9 +105,12 @@
       <a class="nav-link" data-page="stats" data-action="show-page" role="button" tabindex="0">Stats</a>
     </div>
     <div class="nav-right">
-      <button class="nav-btn notification-nav-btn" id="notificationBell" data-action="show-page" data-page="notifications" data-tip="Notifications" aria-label="Notifications">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span id="notificationCount" hidden>0</span>
-      </button>
+      <div class="notification-menu-wrap">
+        <button class="nav-btn notification-nav-btn" id="notificationBell" data-action="toggle-notifications" data-tip="Notifications" aria-label="Notifications" aria-haspopup="dialog" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg><span id="notificationCount" hidden>0</span>
+        </button>
+        <div class="notification-dropdown" id="notificationDropdown" role="dialog" aria-label="Recent notifications" aria-hidden="true"></div>
+      </div>
       <button class="nav-btn" data-action="show-page" data-page="search" data-tip="Search · Ctrl K" aria-label="Search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       </button>
@@ -271,7 +274,7 @@
 </div>
 
 <!-- HOME -->
-<main class="page-container" id="homePage"><div class="hero" id="heroWrap"></div><div id="personalRows"></div><div id="homeRows"></div></main>
+<main class="page-container" id="homePage"><div class="hero" id="heroWrap"></div><div id="personalRows"></div><div id="streamingArrivalRows"></div><div id="homeRows"></div></main>
 
 <!-- BROWSE: MOVIES -->
 <div class="browse-page page-container" id="moviesPage">
