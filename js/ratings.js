@@ -47,7 +47,9 @@ function setScore(score) {
   paint(rateTarget.score);
 }
 
-export function openRating(id, type, title) {
+// `preset` pre-selects a score without saving it — used by voice ("rate Arrival 9"),
+// where a misheard number must still be confirmed by the user before it is stored.
+export function openRating(id, type, title, preset = 0) {
   if (!state.user) return document.dispatchEvent(new Event('cv:open-auth'));
   const trigger = document.activeElement;
   rateTarget = { id, type, title: title || '', key: `${type}_${id}` };
@@ -55,7 +57,8 @@ export function openRating(id, type, title) {
   $('rateSub').textContent = title;
 
   const stars = $('rateStars');
-  const current = state.ratings[rateTarget.key] || 0;
+  const chosen = Math.round(+preset || 0);
+  const current = chosen >= 1 && chosen <= 10 ? chosen : (state.ratings[rateTarget.key] || 0);
   stars.innerHTML = '';
   for (let i = 1; i <= 10; i++) {
     const s = document.createElement('div');

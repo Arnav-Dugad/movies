@@ -7,7 +7,8 @@ import { renderWatched } from './watched.js';
 import { initDiscover } from './discover.js';
 import { renderStats } from './stats.js';
 import { renderPersonalRows } from './home.js';
-import { openSearch, stopVoiceSearch } from './search.js';
+import { openSearch } from './search.js';
+import { stopVoiceSearch } from './voice.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
 import { openStudio } from './studio.js';
@@ -23,7 +24,7 @@ import { renderProfile } from './profile.js';
 import { renderSettings } from './settings.js';
 import { renderReleaseReminders } from './release-reminders.js';
 import { closeScanner, isScannerOpen } from './scan.js';
-import { renderNotifications, closeNotificationDropdown, isNotificationDropdownOpen } from './notifications.js';
+import { renderNotifications, closeNotificationDropdown, isNotificationDropdownOpen, stopNotificationCountdowns } from './notifications.js';
 
 // Set when the watchlist/ratings change while we're NOT on home, so home can
 // re-render its personal rows lazily on arrival instead of every list toggle
@@ -118,7 +119,10 @@ function renderRoute(path, { isPopState = false, scroll = true } = {}) {
 
   closeDetail(); // clears any running countdown intervals
   closeAllModals();
-  if (path !== '/search') stopVoiceSearch();
+  // The voice console is global now, but a live microphone must never outlive the
+  // page that opened it — a voice command tears itself down before navigating.
+  stopVoiceSearch();
+  if (!/^\/notifications\/?$/.test(path)) stopNotificationCountdowns();
 
   currentPath = path;
 
@@ -151,10 +155,15 @@ function runRender(path, opts) {
   }
 }
 
+// `path` may carry a query string ("/search?q=dune"): the URL bar keeps it, but
+// route matching and the history state use the pathname alone, since every route
+// pattern is anchored (^…$) and would otherwise fall through to home.
 export function navigate(path, { replace = false } = {}) {
-  if (replace) history.replaceState({ path }, '', path);
-  else history.pushState({ path }, '', path);
-  runRender(path);
+  const url = new URL(path, location.origin);
+  const href = url.pathname + url.search;
+  if (replace) history.replaceState({ path: url.pathname }, '', href);
+  else history.pushState({ path: url.pathname }, '', href);
+  runRender(url.pathname);
 }
 
 export function goHome() { navigate('/'); }

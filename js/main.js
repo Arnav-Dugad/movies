@@ -19,6 +19,7 @@ import { initDiscoverActions } from './discover.js';
 import { initHome, initHomeActions } from './home.js';
 import { initHero, initHeroInteractions } from './hero.js';
 import { initSearch } from './search.js';
+import { initVoice } from './voice.js';
 import { initStats } from './stats.js';
 import { initSocial } from './social.js';
 import { initFriends } from './friends.js';
@@ -66,6 +67,7 @@ async function init() {
   initRecommendations();
   initHeroInteractions();
   initSearch();
+  initVoice();
   initStats();
   initSocial();
   initFriends();
