@@ -157,7 +157,7 @@ export function getProviderStats({ days = 90 } = {}) {
   const touch = provider => {
     const id = String(provider?.id ?? '');
     if (!id) return null;
-    if (!table.has(id)) table.set(id, { id: provider.id, name: provider.name || 'Streaming service', logo: provider.logo || '', current: 0, gained: 0, lost: 0, tracked: 0, lastChangeAt: 0, series: [] });
+    if (!table.has(id)) table.set(id, { id: provider.id, name: provider.name || 'Streaming service', logo: provider.logo || '', current: 0, gained: 0, lost: 0, tracked: 0, checkedTitles: 0, lastCheckedAt: 0, oldestCheckedAt: 0, lastChangeAt: 0, series: [] });
     const row = table.get(id);
     if (provider.name) row.name = provider.name;
     if (provider.logo) row.logo = provider.logo;
@@ -165,7 +165,13 @@ export function getProviderStats({ days = 90 } = {}) {
   };
 
   for (const snapshot of Object.values(ledger.snapshots))
-    for (const provider of snapshot.providers || []) { const row = touch(provider); if (row) row.current++; }
+    for (const provider of snapshot.providers || []) {
+      const row = touch(provider); if (!row) continue;
+      const checkedAt = +(snapshot.lastChecked || 0);
+      row.current++; row.checkedTitles++;
+      row.lastCheckedAt = Math.max(row.lastCheckedAt, checkedAt);
+      row.oldestCheckedAt = row.oldestCheckedAt ? Math.min(row.oldestCheckedAt, checkedAt || row.oldestCheckedAt) : checkedAt;
+    }
 
   for (const change of ledger.changes) {
     if (change.at < since) continue;
@@ -181,8 +187,14 @@ export function getProviderStats({ days = 90 } = {}) {
   for (const row of table.values())
     row.series = samples.map(sample => ({ day: sample.day, value: +(sample.byProvider?.[row.id] || 0) }));
 
+  const now = Date.now();
   return [...table.values()]
-    .map(row => ({ ...row, net: row.gained - row.lost }))
+    .map(row => {
+      const checkedAt = row.lastCheckedAt || row.lastChangeAt;
+      const ageDays = checkedAt ? Math.max(0, (now - checkedAt) / 86400000) : Infinity;
+      const reliability = Number.isFinite(ageDays) ? Math.max(5, Math.round(100 - Math.min(ageDays, 30) * 3.15)) : 0;
+      return { ...row, checkedAt, ageDays, reliability, net: row.gained - row.lost };
+    })
     .filter(row => row.current || row.gained || row.lost)
     .sort((a, b) => Math.abs(b.net) - Math.abs(a.net) || b.current - a.current || a.name.localeCompare(b.name));
 }

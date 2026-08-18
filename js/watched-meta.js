@@ -13,7 +13,7 @@ import { db } from './firebase.js';
 import { state } from './state.js';
 
 // Bump to re-backfill every doc after a schema change.
-export const META_V = 4;
+export const META_V = 5;
 const REPAIR_V = 1;
 
 let running = false, done = false, repairing = false;
@@ -55,6 +55,7 @@ const missingCommon = doc => !doc?.poster || !doc?.year || !doc?.releaseDate || 
 function watchlistPatch(det, type, old) {
   const release = releaseOf(det), genres = (det.genres || []).map(genre => genre.id);
   return {
+    tmdbId: +det.id || +(old.tmdbId || 0), type,
     title: det.title || det.name || old.title || '', poster: det.poster_path || old.poster || '',
     year: release.slice(0, 4) || old.year || '', releaseDate: release || old.releaseDate || '',
     genres: genres.length ? genres : (old.genres || []), runtime: typeRuntime(det, type) || old.runtime || 0,
@@ -71,6 +72,7 @@ function watchedPatch(det, type, old) {
   const episodeCount = type === 'tv' ? +(det.number_of_episodes || 0) : 0;
   const cast = (det.credits?.cast || []).slice(0, 5).map(person => ({ id: person.id, name: person.name || '', profile: person.profile_path || '' }));
   return {
+    tmdbId: +det.id || +(old.tmdbId || 0), type,
     title: det.title || det.name || old.title || '', poster: det.poster_path || old.poster || '',
     year: release.slice(0, 4) || old.year || '', releaseDate: release || old.releaseDate || '',
     genres: genres.length ? genres : (old.genres || []), runtime: typeRuntime(det, type, true) || old.runtime || 0,
@@ -151,25 +153,27 @@ export async function ensureWatchedMeta() {
   if (running || done || !state.user) return;
   const uid = state.user.uid;
   const stale = Object.entries(state.watched)
-    .filter(([, d]) => d.metaV !== META_V || !d.poster || !(d.genres && d.genres.length));
+    .map(([key, doc]) => ({ key, doc, ...identity(key, doc) }))
+    .filter(item => item.id && item.type && (item.doc.metaV !== META_V || !item.doc.poster || !(item.doc.genres && item.doc.genres.length) || !item.doc.tmdbId || !item.doc.type));
   if (!stale.length) { done = true; return; }
 
   running = true;
   let wrote = 0;
   try {
-    await pool(stale, async ([key, d]) => {
+    await pool(stale, async ({ key, doc: d, type, id }) => {
       // Re-check identity per item: a sign-out/switch mid-flight must never write
       // one account's data into another's docs.
       if (!state.user || state.user.uid !== uid) return;
-      const det = await tmdb(`/${d.type}/${d.tmdbId}`, { append_to_response: 'credits' }, { cache: false });
-      const m = d.type === 'tv' ? tvMeta(det) : movieMeta(det);
+      const det = await tmdb(`/${type}/${id}`, { append_to_response: 'credits' }, { cache: false });
+      const m = type === 'tv' ? tvMeta(det) : movieMeta(det);
       const gs = (det.genres || []).map(g => g.id);
       const cs = (det.credits?.cast || []).slice(0, 5).map(p => ({ id: p.id, name: p.name || '', profile: p.profile_path || '' }));
-      const episodeCount = d.type === 'tv' ? +(det.number_of_episodes || d.episodeCount || 0) : 0;
-      const episodeRuntime = d.type === 'tv'
+      const episodeCount = type === 'tv' ? +(det.number_of_episodes || d.episodeCount || 0) : 0;
+      const episodeRuntime = type === 'tv'
         ? +(det.episode_run_time?.[0] || det.last_episode_to_air?.runtime || (episodeCount && m.runtime ? m.runtime / episodeCount : 0) || d.episodeRuntime || 0)
         : 0;
       const patch = {
+        tmdbId: id, type,
         poster: det.poster_path || d.poster || '',
         year: d.year || (det.release_date || det.first_air_date || '').slice(0, 4),
         releaseDate: d.releaseDate || det.release_date || det.first_air_date || '',

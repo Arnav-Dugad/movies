@@ -21,7 +21,7 @@ export const state = {
   profile: { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] },
   // Loaded with the profile root doc, so recommendation controls cost no extra
   // Firestore read. History is capped before every write (recommend.js).
-  recommendationFeedback: { dismissed: [], history: [] },
+  recommendationFeedback: { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 },
   notificationRead: [],
   notificationPreferences: { episodes: true, releases: true, streaming: true, departures: true, providerChanges: true, push: false, sound: false, mutedItems: [], mutedProviders: [], snoozed: {}, dismissed: [], updatedAt: 0 },
   providerHistory: { region: 'IN', snapshots: {}, changes: [], samples: [], updatedAt: 0 },
@@ -48,8 +48,11 @@ export function loadRecentlyViewed() {
       state.recommendationFeedback = {
         dismissed: Array.isArray(saved.dismissed) ? saved.dismissed : [],
         history: Array.isArray(saved.history) ? saved.history : [],
+        rotation: Math.max(0, +(saved.rotation || 0)),
+        lastRecommendationActivityAt: Math.max(0, +(saved.lastRecommendationActivityAt || 0)),
+        lastRotatedAt: Math.max(0, +(saved.lastRotatedAt || 0)),
       };
-    } catch (_) { state.recommendationFeedback = { dismissed: [], history: [] }; }
+    } catch (_) { state.recommendationFeedback = { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 }; }
   }
 }
 export function pushRecentlyViewed(item) {

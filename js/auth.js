@@ -19,7 +19,7 @@ let delRelease = null;
 // nav/dropdown avatars can render. Non-fatal — falls back to the initial avatar.
 async function loadProfile() {
   state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
-  state.recommendationFeedback = { dismissed: [], history: [] };
+  state.recommendationFeedback = { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 };
   state.notificationRead = [];
   resetNotificationPrefsForAuth();
   resetProviderHistoryForAuth();
@@ -34,6 +34,9 @@ async function loadProfile() {
     state.recommendationFeedback = {
       dismissed: dismissed.filter(value => typeof value === 'string').slice(0, 150),
       history: history.filter(Boolean).slice(0, 100),
+      rotation: Math.max(0, Math.floor(+(feedback.rotation || 0))),
+      lastRecommendationActivityAt: Math.max(0, +(feedback.lastRecommendationActivityAt || 0)),
+      lastRotatedAt: Math.max(0, +(feedback.lastRotatedAt || 0)),
     };
   };
   // Start with the device backup so recommendation history still works offline;
@@ -88,7 +91,7 @@ export function initAuth() {
     } else {
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
       state.lists = []; state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
-      state.recommendationFeedback = { dismissed: [], history: [] };
+      state.recommendationFeedback = { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 };
       state.notificationRead = [];
       resetNotificationPrefsForAuth();
       resetProviderHistoryForAuth();

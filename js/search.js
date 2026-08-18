@@ -17,9 +17,10 @@ let suggestGen = 0;         // separate token for the live typeahead dropdown
 let pool = [];              // raw fetched results (across loaded pages)
 let page = 0, totalPages = 0, totalResults = 0;
 let curQuery = '';          // active text query
-let mode = 'search';        // 'search' | 'vibe'
+let mode = 'search';        // 'search' | 'vibe' | 'command' | 'tag'
 let vibeCtx = null;         // { genres, type, lang, label } for discover mode
 let commandCtx = null;      // parsed natural-language discovery command
+let keywordCtx = null;      // exact TMDB keyword/tag match, e.g. "erotic thriller"
 let suggestItems = [], suggestIdx = -1;
 
 const IMGw = (size, path) => path ? `${IMG}${size}${path}` : PH;
@@ -120,6 +121,32 @@ function paintCommandHint(command) {
   el.classList.add('show');
 }
 
+const normalizeKeyword = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+function explicitTagQuery(query) {
+  const match = String(query || '').trim().match(/^(?:(?:movies?|films?|tv(?:\s+shows?)?|shows?|titles?)\s+)?(?:tagged|tag|keyword)\s*[:\-]?\s+(.+)$/i);
+  return match?.[1]?.trim() || '';
+}
+
+async function resolveKeyword(query, force = false) {
+  if (state.searchFilt === 'person') return null;
+  try {
+    const data = await tmdb('/search/keyword', { query, page: 1 });
+    const items = (data.results || []).filter(item => item?.id && item.name);
+    const wanted = normalizeKeyword(query);
+    const exact = items.filter(item => normalizeKeyword(item.name) === wanted);
+    const chosen = exact.length ? exact : force ? items.slice(0, 1) : [];
+    if (!chosen.length) return null;
+    return { ids: chosen.slice(0, 3).map(item => item.id), name: chosen[0].name, forced: force };
+  } catch (_) { return null; }
+}
+
+function paintKeywordHint(keyword) {
+  const el = $('searchCommandHint'); if (!el || !keyword) return;
+  el.innerHTML = `<span>Tag search</span><div><b>${esc(keyword.name)}</b><em>Matching the same keyword used on detail pages</em></div>`;
+  el.classList.add('show');
+}
+
 // ---- helpers ----
 function resolveType(r) {
   if (r.__type) return r.__type;
@@ -158,14 +185,29 @@ async function fetchPage(pageNum) {
     const d = await tmdb(`/discover/${dt}`, p);
     return { results: (d.results || []).map(r => ({ ...r, __type: dt })), total_pages: d.total_pages || 1, total_results: d.total_results };
   }
+  if (mode === 'tag' && keywordCtx?.ids?.length) {
+    const types = state.searchFilt === 'multi' ? ['movie', 'tv'] : [state.searchFilt];
+    const keywordIds = keywordCtx.ids.join('|');
+    const calls = types.filter(type => ['movie', 'tv'].includes(type)).map(type =>
+      tmdb(`/discover/${type}`, { with_keywords: keywordIds, include_adult: false, sort_by: 'popularity.desc', page: pageNum })
+        .then(data => ({ type, data })));
+    const search = tmdb(`/search/${state.searchFilt}`, { query: keywordCtx.query || curQuery, page: pageNum, include_adult: false })
+      .then(data => ({ type: state.searchFilt, data }));
+    const pages = await Promise.all([search, ...calls]);
+    return {
+      results: pages.flatMap(({ type, data }, index) => (data.results || []).map(item => ({ ...item, __type: item.media_type || type, __tagMatch: index > 0 }))),
+      total_pages: Math.max(1, ...pages.map(({ data }) => data.total_pages || 1)),
+      total_results: pages.reduce((sum, { data }) => sum + +(data.total_results || 0), 0),
+    };
+  }
   const d = await tmdb(`/search/${state.searchFilt}`, { query: curQuery, page: pageNum, include_adult: false });
   return { results: d.results || [], total_pages: d.total_pages || 1, total_results: d.total_results };
 }
 
 // ================= entry points =================
-export function openSearch(initialQuery = '') {
+export function openSearch(initialQuery = '', { forceTag = false } = {}) {
   document.title = 'Search — CineVerse';
-  pool = []; page = 0; suggestItems = []; suggestIdx = -1;
+  pool = []; page = 0; suggestItems = []; suggestIdx = -1; commandCtx = null; keywordCtx = null; paintCommandHint(null);
   populateGenreFilter();
   loadTrending();
   loadTrendingSearches();
@@ -177,7 +219,7 @@ export function openSearch(initialQuery = '') {
   if (initialQuery) {
     input.value = initialQuery;
     toggleClear();
-    doSearch(initialQuery);
+    doSearch(initialQuery, { forceTag });
   } else {
     input.value = '';
     toggleClear();
@@ -189,14 +231,21 @@ export function openSearch(initialQuery = '') {
 // Submitted search (router deep-load, history/trend chip, Enter, "see all") — shows
 // the full results grid + filters. The typeahead dropdown is a separate flow so the
 // two never overlap (dropdown closes here).
-export async function doSearch(q) {
+export async function doSearch(q, { forceTag = false } = {}) {
   curQuery = q;
-  const command = parseSearchCommand(q);
-  mode = command.isCommand ? 'command' : 'search'; commandCtx = command.isCommand ? command : null;
+  const explicitTag = explicitTagQuery(q);
+  const command = explicitTag ? { isCommand: false } : parseSearchCommand(q);
+  const request = ++searchGen;
+  mode = command.isCommand ? 'command' : 'search'; commandCtx = command.isCommand ? command : null; keywordCtx = null;
   paintCommandHint(commandCtx);
+  showResults(); showSkeleton(); closeSuggest();
+  if (!command.isCommand) {
+    keywordCtx = await resolveKeyword(explicitTag || q, forceTag || !!explicitTag);
+    if (request !== searchGen) return;
+    if (keywordCtx) { keywordCtx.query = explicitTag || q; mode = 'tag'; paintKeywordHint(keywordCtx); }
+  }
   try { history.replaceState(history.state, '', location.pathname + '?q=' + encodeURIComponent(q)); } catch (e) {}
-  closeSuggest();
-  await runInitial();
+  await runInitial(request);
 }
 
 // Live typing — ONLY the typeahead dropdown (over the default view). The results grid
@@ -215,10 +264,10 @@ async function liveSuggest(q) {
   } catch (e) { if (g === suggestGen) closeSuggest(); }
 }
 
-async function runInitial() {
+async function runInitial(existingGeneration = null) {
   showResults();
   showSkeleton();
-  const g = ++searchGen;
+  const g = existingGeneration || ++searchGen;
   page = 1;
   try {
     const d = await fetchPage(1);
@@ -294,7 +343,7 @@ function renderResults() {
   if (!pool.length) { g.innerHTML = ''; head.innerHTML = ''; moreWrap.style.display = 'none'; showEmpty(curQuery); return; }
   empty.style.display = 'none';
   const items = applyFilters(pool);
-  const label = mode === 'vibe' ? `Popular ${esc(vibeCtx.label)}` : mode === 'command' ? `${items.length}${page < totalPages ? '+' : ''} curated matches for “${esc(curQuery)}”` : `${items.length}${page < totalPages ? '+' : ''} result${items.length !== 1 ? 's' : ''} for “${esc(curQuery)}”`;
+  const label = mode === 'vibe' ? `Popular ${esc(vibeCtx.label)}` : mode === 'command' ? `${items.length}${page < totalPages ? '+' : ''} curated matches for “${esc(curQuery)}”` : mode === 'tag' ? `${items.length}${page < totalPages ? '+' : ''} titles tagged “${esc(keywordCtx?.name || curQuery)}”` : `${items.length}${page < totalPages ? '+' : ''} result${items.length !== 1 ? 's' : ''} for “${esc(curQuery)}”`;
   head.innerHTML = `<span class="srh-label">${label}</span>`;
   g.innerHTML = items.length
     ? items.map(({ r, t }) => (t === 'person' ? personCard(r) : buildCard(r, t))).join('')
@@ -388,12 +437,12 @@ function renderVibeChips(wrap, title) {
 }
 function renderCommandExamples() {
   const wrap = $('advancedSearchExamples'); if (!wrap) return;
-  const examples = ['Hindi thrillers after 2020', 'Korean TV dramas rated 8+', 'Animated movies under 100 minutes', 'British crime shows from 2010 to 2020', 'Top rated sci-fi movies I have not watched', 'Upcoming Japanese movies not in my list'];
+  const examples = ['Hindi thrillers after 2020', 'Korean TV dramas rated 8+', 'Titles tagged erotic thriller', 'Animated movies under 100 minutes', 'Top rated sci-fi movies I have not watched', 'Upcoming Japanese movies not in my list'];
   wrap.innerHTML = `<div class="search-section-title">Try a smart command</div><div class="command-examples">${examples.map(example => `<button data-action="command-search" data-q="${esc(example)}"><span>⌘</span>${esc(example)}</button>`).join('')}</div>`;
 }
 async function vibeSearch(el) {
   mode = 'vibe';
-  commandCtx = null;
+  commandCtx = null; keywordCtx = null;
   vibeCtx = { genres: el.dataset.genres, type: el.dataset.type || 'movie', lang: el.dataset.lang || '', label: el.dataset.label || 'Picks' };
   curQuery = '';
   const input = $('searchIn'); if (input) { input.value = ''; toggleClear(); }
@@ -458,7 +507,7 @@ function bindVoiceBridge() {
     const detail = event.detail || {};
     if (detail.id === 'clear') {
       const input = $('searchIn'); if (input) input.value = '';
-      toggleClear(); curQuery = ''; commandCtx = null; paintCommandHint(null); showDefault();
+      toggleClear(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault();
       return;
     }
     if (detail.id === 'search' && detail.query) {
@@ -481,7 +530,7 @@ function setFilter(f) {
   state.searchFilt = f;
   document.querySelectorAll('.search-chips .chip').forEach(c => c.classList.toggle('active', c.dataset.f === f));
   const q = $('searchIn').value.trim();
-  if (mode === 'search' && q.length >= 2) doSearch(q);
+  if ((mode === 'search' || mode === 'tag') && q.length >= 2) doSearch(q, { forceTag: mode === 'tag' });
 }
 
 // ================= init =================
@@ -491,7 +540,7 @@ export function initSearch() {
   input.addEventListener('input', debounce(function () {
     toggleClear();
     const q = this.value.trim();
-    if (q.length < 2) { closeSuggest(); curQuery = ''; showDefault(); return; }
+    if (q.length < 2) { closeSuggest(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault(); return; }
     liveSuggest(q);
   }, 180));
 
@@ -529,7 +578,7 @@ export function initSearch() {
     'set-filter': (el) => setFilter(el.dataset.f),
     'search-filter': () => renderResults(),
     'search-reset': () => { ['fltGenre', 'fltDecade', 'fltRating'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
-    'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; commandCtx = null; paintCommandHint(null); showDefault(); input.focus(); },
+    'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault(); input.focus(); },
     'load-more-search': () => loadMore(),
     'search-submit': (el) => { const q = el.dataset.q || $('searchIn').value.trim(); if (q.length >= 2) { addToHistory(q); doSearch(q); } },
     'search-retry': () => { if (mode === 'vibe') runInitial(); else if (curQuery) doSearch(curQuery); },
@@ -538,6 +587,10 @@ export function initSearch() {
     'command-search': (el) => { const q = el.dataset.q || ''; input.value = q; toggleClear(); addToHistory(q); doSearch(q); input.focus(); },
     'history-search': (el) => { const q = el.dataset.q ? decodeEntities(el.dataset.q) : (el.querySelector('span')?.textContent || ''); input.value = q; toggleClear(); doSearch(q); addToHistory(q); },
     'history-remove': (el, e) => { e.stopPropagation(); removeHistory(+el.dataset.i); },
+    'search-tag': el => {
+      const tag = el.dataset.tag || el.textContent.trim(); if (!tag) return;
+      document.dispatchEvent(new CustomEvent('cv:go', { detail: `/search?q=${encodeURIComponent(tag)}&tag=1` }));
+    },
   });
 
   bindVoiceBridge();

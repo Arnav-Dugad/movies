@@ -43,7 +43,7 @@ const ROUTES = [
   { test: /^\/watchlist\/?$/, page: 'wlPage', render: () => renderWL() },
   { test: /^\/watched\/?$/, page: 'watchedPage', render: () => renderWatched() },
   { test: /^\/stats\/?$/, page: 'statsPage', render: () => renderStats() },
-  { test: /^\/search\/?$/, page: 'searchPage', render: (p, query) => openSearch(query.get('q') || '') },
+  { test: /^\/search\/?$/, page: 'searchPage', render: (p, query) => openSearch(query.get('q') || '', { forceTag: query.get('tag') === '1' }) },
   { test: /^\/friends\/?$/, page: 'friendsPage', render: () => renderFriends() },
   { test: /^\/party\/?$/, page: 'partyPage', render: () => renderParty() },
   { test: /^\/profile\/?$/, page: 'profilePage', render: () => renderProfile() },

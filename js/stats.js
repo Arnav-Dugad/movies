@@ -13,6 +13,7 @@ import { db, firebase } from './firebase.js';
 import { social } from './social.js';
 import { tmdb } from './api.js';
 import { buildCard } from './cards.js';
+import { getProviderStats, getCatalogSeries } from './provider-history.js';
 
 let statsScope = 'all';
 let latestSnapshot = null;
@@ -39,6 +40,13 @@ const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate
 const monthKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 const itemKey = item => item.id || `${item.type}_${item.tmdbId}`;
 const inScope = (type, scope) => scope === 'all' || type === scope;
+const rowIdentity = (key, doc = {}) => {
+  const split = String(key || '').lastIndexOf('_');
+  const keyType = split > 0 ? String(key).slice(0, split) : '';
+  const keyId = split > 0 ? +String(key).slice(split + 1) : 0;
+  const type = doc.type || keyType, id = +(doc.tmdbId || keyId || 0);
+  return { type, id, key: type && id ? `${type}_${id}` : String(key || '') };
+};
 
 function languageName(code) {
   const value = String(code || '').toLowerCase();
@@ -59,10 +67,11 @@ function watchedDate(doc) {
 function canonicalRows(scope) {
   const rows = new Map();
   state.watchlist.forEach(item => {
-    if (!inScope(item.type, scope)) return;
-    const key = itemKey(item);
+    const identity = rowIdentity(itemKey(item), item);
+    if (!identity.type || !identity.id || !inScope(identity.type, scope)) return;
+    const key = identity.key;
     rows.set(key, {
-      key, id: item.tmdbId, type: item.type, title: item.title || '', poster: item.poster || '',
+      key, id: identity.id, type: identity.type, title: item.title || '', poster: item.poster || '',
       year: item.year || '', releaseDate: item.releaseDate || '', genres: item.genres || [],
       language: item.language || '', country: item.country || '', runtime: +(item.runtime || 0), episodeRuntime: +(item.episodeRuntime || 0), episodeCount: +(item.episodeCount || 0),
       tmdbRating: +(item.rating || 0), saved: true, watched: false, watchedAt: null,
@@ -70,11 +79,13 @@ function canonicalRows(scope) {
     });
   });
   Object.entries(state.watched).forEach(([key, doc]) => {
-    if (!inScope(doc.type, scope)) return;
-    const old = rows.get(key) || { key, id: doc.tmdbId, type: doc.type, saved: false };
-    rows.set(key, {
+    const identity = rowIdentity(key, doc);
+    if (!identity.type || !identity.id || !inScope(identity.type, scope)) return;
+    const canonicalKey = identity.key;
+    const old = rows.get(canonicalKey) || { key: canonicalKey, id: identity.id, type: identity.type, saved: false };
+    rows.set(canonicalKey, {
       ...old,
-      id: doc.tmdbId ?? old.id, type: doc.type || old.type,
+      key: canonicalKey, id: identity.id, type: identity.type,
       title: doc.title || old.title || '', poster: doc.poster || old.poster || '',
       year: doc.year || old.year || '', releaseDate: doc.releaseDate || old.releaseDate || '',
       genres: doc.genres?.length ? doc.genres : (old.genres || []),
@@ -291,7 +302,7 @@ export function computeStats(scope) {
 
 function snapshotFor(stats) {
   return {
-    schema: 6,
+    schema: 7,
     totals: {
       saved: stats.saved.length, watched: stats.watched.length, rated: stats.totalRated,
       movies: stats.movies, shows: stats.shows, friends: social.friends.length,
@@ -463,6 +474,38 @@ function collectionHealthPanel(stats) {
     </div><div class="health-foot"><span>${health.missing} total gaps across ${stats.rows.length} unique titles</span><span>Repair fills metadata, artwork, dates, and credits. Personal ratings always stay yours.</span></div></section>`;
 }
 
+function providerAge(at) {
+  if (!at) return 'Awaiting first check';
+  const seconds = Math.max(0, Math.floor((Date.now() - at) / 1000));
+  if (seconds < 60) return 'Checked just now';
+  if (seconds < 3600) return `Checked ${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `Checked ${Math.floor(seconds / 3600)}h ago`;
+  const days = Math.floor(seconds / 86400);
+  return `Checked ${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function providerSparkline(series, width = 220, height = 54) {
+  if (!series?.length) return `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true"><path d="M0 ${height - 2}H${width}"/></svg>`;
+  const values = series.map(item => +item.value || 0), max = Math.max(1, ...values), min = Math.min(...values);
+  const range = Math.max(1, max - min), step = series.length > 1 ? width / (series.length - 1) : width;
+  const points = values.map((value, index) => `${Math.round(index * step)},${Math.round(height - 4 - ((value - min) / range) * (height - 10))}`).join(' ');
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true"><path d="M0 ${height - 2}H${width}"/><polyline points="${points}"/></svg>`;
+}
+
+function providerIntelligencePanels() {
+  const providers = getProviderStats({ days: 90 }), catalog = getCatalogSeries({ days: 90 });
+  if (!providers.length) return `<section class="stats-panel provider-reliability"><div class="stats-section-head"><div><span>Streaming confidence</span><h2>Provider Reliability Score</h2><p>Freshness scores appear after CineVerse checks subscription availability for titles in your collection.</p></div></div><div class="provider-stats-empty"><i>✦</i><div><strong>No provider scans yet</strong><p>Open Notifications and refresh once to build your private provider baseline.</p></div><button data-action="show-page" data-page="notifications">Open notifications</button></div></section><section class="stats-panel provider-history-charts"><div class="stats-section-head"><div><span>90-day subscription movement</span><h2>Provider History Charts</h2><p>Real additions and removals will appear after CineVerse has two subscription scans to compare.</p></div></div><div class="provider-flow-list"><div class="provider-history-baseline"><i>◎</i><div><strong>No history to compare yet</strong><p>Your first scan creates the baseline; later scans reveal which services gained or lost titles.</p></div></div></div></section>`;
+  const reliable = [...providers].sort((a, b) => b.reliability - a.reliability || b.current - a.current || a.name.localeCompare(b.name));
+  const changed = providers.filter(provider => provider.gained || provider.lost).sort((a, b) => (b.gained + b.lost) - (a.gained + a.lost) || b.current - a.current).slice(0, 9);
+  const maxChange = Math.max(1, ...changed.flatMap(provider => [provider.gained, provider.lost]));
+  const currentTracked = catalog.at(-1)?.total ?? Object.keys(state.providerHistory?.snapshots || {}).length;
+  const reliability = `<section class="stats-panel provider-reliability"><div class="stats-section-head"><div><span>Streaming confidence</span><h2>Provider Reliability Score</h2><p>How recently each subscription service was checked across your tracked collection.</p></div><div class="provider-region-chip">${esc(state.region)} · subscription only</div></div><div class="provider-reliability-summary"><div><span>Services detected</span><strong>${providers.length}</strong></div><div><span>Tracked titles</span><strong>${currentTracked}</strong></div><div><span>Freshest check</span><strong>${esc(providerAge(Math.max(...providers.map(provider => provider.checkedAt))).replace('Checked ', ''))}</strong></div></div><div class="provider-reliability-grid">${reliable.map(provider => `<article><div class="provider-reliability-brand"><img src="${provider.logo ? `${IMG}w92${provider.logo}` : PH}" alt=""><span><strong>${esc(provider.name)}</strong><small>${provider.checkedTitles} current title${provider.checkedTitles === 1 ? '' : 's'}</small></span></div><div class="provider-score-ring" style="--provider-score:${provider.reliability * 3.6}deg"><strong>${provider.reliability}</strong><span>/100</span></div><div class="provider-check-time"><i class="${provider.reliability >= 85 ? 'fresh' : provider.reliability >= 60 ? 'aging' : 'stale'}"></i><span>${esc(providerAge(provider.checkedAt))}</span></div>${providerSparkline(provider.series)}</article>`).join('')}</div><p class="provider-method-note">The score measures check freshness—not provider accuracy. It falls gradually when the catalog has not been scanned.</p></section>`;
+  const historyRows = changed.length ? changed.map(provider => `<article><div class="provider-history-brand"><img src="${provider.logo ? `${IMG}w92${provider.logo}` : PH}" alt=""><span><strong>${esc(provider.name)}</strong><small>${provider.current} available now · net ${provider.net > 0 ? '+' : ''}${provider.net}</small></span></div><div class="provider-flow"><span class="gain"><b style="--flow:${Math.max(provider.gained ? 8 : 0, Math.round(provider.gained / maxChange * 100))}%"></b><em>+${provider.gained}</em></span><span class="loss"><b style="--flow:${Math.max(provider.lost ? 8 : 0, Math.round(provider.lost / maxChange * 100))}%"></b><em>−${provider.lost}</em></span></div></article>`).join('') : `<div class="provider-history-baseline"><i>◎</i><div><strong>Your baseline is ready</strong><p>Gains and losses will appear after a later scan detects a real subscription change.</p></div></div>`;
+  const catalogSeries = catalog.map(item => ({ day: item.day, value: item.total }));
+  const history = `<section class="stats-panel provider-history-charts"><div class="stats-section-head"><div><span>90-day subscription movement</span><h2>Provider History Charts</h2><p>Real additions and removals detected between CineVerse scans. Initial baseline titles never count as gains.</p></div><div class="provider-chart-legend"><span><i></i>Gained</span><span><i></i>Lost</span></div></div><div class="provider-catalog-trend"><div><span>Tracked catalog</span><strong>${currentTracked}<small> titles now</small></strong></div>${providerSparkline(catalogSeries, 680, 92)}<div class="provider-trend-dates"><span>${esc(catalog[0]?.day || 'First scan')}</span><span>${esc(catalog.at(-1)?.day || 'Today')}</span></div></div><div class="provider-flow-list">${historyRows}</div></section>`;
+  return reliability + history;
+}
+
 function tasteChangesPanel(stats) {
   const timeline = stats.tasteTimeline;
   return `<section class="stats-panel taste-changes"><div class="stats-section-head"><div><span>Taste evolution</span><h2>Taste Changes</h2><p>Your leading genre and language across your six most recent active months.</p></div><div class="taste-change-summary"><span>${timeline.genreChanges} genre shifts</span><span>${timeline.languageChanges} language shifts</span></div></div>
@@ -503,6 +546,8 @@ export function directorNetworkPanel(stats) {
 function cachedLoyalty(stats) {
   const value = latestDirectorLoyalty || state.statsSnapshot?.collection?.directorLoyalty;
   if (!value?.items?.length) return null;
+  const watchedSignature = stats.watched.filter(row => row.type === 'movie').map(row => +row.id).filter(Boolean).sort((a, b) => a - b).join(',');
+  if (value.watchedSignature !== watchedSignature) return null;
   const wanted = stats.topMovieDirectors.map(person => +person.id).filter(Boolean).slice(0, 4);
   const available = new Set(value.items.map(item => +item.id));
   return wanted.length && wanted.every(id => available.has(id)) ? value : null;
@@ -571,6 +616,7 @@ async function loadDirectorLoyalty(stats, generation) {
   const cached = cachedLoyalty(stats);
   if (cached && Date.now() - +(cached.calculatedAt || 0) < 30 * 86400000) { latestDirectorLoyalty = cached; return; }
   const watchedMovies = new Set(stats.watched.filter(row => row.type === 'movie').map(row => +row.id));
+  const watchedSignature = [...watchedMovies].filter(Boolean).sort((a, b) => a - b).join(',');
   const items = (await Promise.all(directors.map(async person => {
     try {
       const data = await tmdb(`/person/${person.id}/movie_credits`);
@@ -578,7 +624,7 @@ async function loadDirectorLoyalty(stats, generation) {
     } catch (error) { console.warn('director loyalty', person.id, error); return null; }
   }))).filter(Boolean);
   if (generation !== insightGeneration || !state.user) return;
-  latestDirectorLoyalty = { calculatedAt: Date.now(), items };
+  latestDirectorLoyalty = { calculatedAt: Date.now(), watchedSignature, items };
   const current = $('directorLoyaltyBody'); if (current) current.innerHTML = directorLoyaltyBody(latestDirectorLoyalty);
   queueSnapshot(snapshotFor(computeStats('all')));
 }
@@ -640,6 +686,7 @@ export function renderStats() {
     ${tasteMap(stats)}
     ${tasteChangesPanel(stats)}
     ${collectionHealthPanel(stats)}
+    ${providerIntelligencePanels()}
     ${activityPanel(stats)}
     <div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>
     ${directorLoyaltyPanel(fullStats)}
@@ -706,6 +753,7 @@ export function initStats() {
   });
   document.addEventListener('cv:wl-changed', queueCurrentSnapshot);
   document.addEventListener('cv:meta-backfilled', queueCurrentSnapshot);
+  document.addEventListener('cv:provider-history', () => { if (location.pathname === '/stats') renderStats(); });
   document.addEventListener('cv:recommendation-feedback', () => {
     if (location.pathname === '/stats') renderStats();
   });

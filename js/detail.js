@@ -129,7 +129,7 @@ export async function openDetail(id, type) {
     let simHTML = ''; if (simItems.length) simHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">More Like This</div><div class="similar-row">${simItems.map(s => buildCard(s, s.media_type || type)).join('')}</div></div>`;
 
     const kws = det.keywords?.keywords || det.keywords?.results || [];
-    let kwHTML = ''; if (kws.length) kwHTML = `<div style="margin-bottom:32px;display:flex;flex-wrap:wrap;gap:6px">${kws.slice(0, 15).map(k => `<span class="dtag" style="font-size:.72rem">${esc(k.name)}</span>`).join('')}</div>`;
+    let kwHTML = ''; if (kws.length) kwHTML = `<div class="detail-keywords">${kws.slice(0, 15).map(k => `<button class="dtag detail-keyword" data-action="search-tag" data-tag="${esc(k.name)}" aria-label="Search titles tagged ${esc(k.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>${esc(k.name)}</button>`).join('')}</div>`;
 
     let collHTML = '';
     if (det.belongs_to_collection) { const c = det.belongs_to_collection;

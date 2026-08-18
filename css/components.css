@@ -236,6 +236,7 @@
 .dtag.gold{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.2);color:var(--gold);display:flex;align-items:center;gap:4px}
 .dtag.gold svg{width:13px;height:13px}
 .dtag.green{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.2);color:var(--green2)}
+.detail-keywords{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:32px}.detail-keyword{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;cursor:pointer;transition:color .2s,border-color .2s,background .2s,transform .2s}.detail-keyword svg{width:12px;height:12px;color:var(--purple2)}.detail-keyword:hover{transform:translateY(-2px);border-color:rgba(167,139,250,.35);background:rgba(139,92,246,.1);color:#fff}.detail-keyword:focus-visible{outline:2px solid var(--purple2);outline-offset:2px}
 .detail-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;align-items:center}
 .detail-btns .btn-primary{height:42px;padding:0 22px;font-size:.85rem}
 .dbtn-icon{width:42px;height:42px;border-radius:50%;background:var(--bg3);border:1.5px solid var(--glass-border);display:flex;align-items:center;justify-content:center;transition:all .3s var(--ease);font-size:15px}

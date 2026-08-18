@@ -23,6 +23,8 @@ const TV_GENRES = new Set(tGenreList.map(g => g.id));
 let auditOpen = false;
 let lastAudit = null;
 const HISTORY_LIMIT = 100;
+const ROTATION_IDLE_MS = 3 * 86400000;
+const ACTIVITY_WRITE_GAP = 6 * 60 * 60 * 1000;
 
 function splitKey(key) { const i = key.lastIndexOf('_'); return [key.slice(0, i), +key.slice(i + 1)]; }
 
@@ -382,7 +384,7 @@ function shell(d) {
 }
 
 function feedbackState() {
-  if (!state.recommendationFeedback) state.recommendationFeedback = { dismissed: [], history: [] };
+  if (!state.recommendationFeedback) state.recommendationFeedback = { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 };
   return state.recommendationFeedback;
 }
 
@@ -391,7 +393,12 @@ async function persistFeedback() {
   const feedback = feedbackState();
   // A client timestamp lets loadProfile resolve an offline device write against
   // an older cloud copy and safely retry it on the next successful profile read.
-  const payload = { dismissed: feedback.dismissed.slice(0, 150), history: feedback.history.slice(0, HISTORY_LIMIT), clientUpdatedAt: Date.now() };
+  const payload = {
+    dismissed: feedback.dismissed.slice(0, 150), history: feedback.history.slice(0, HISTORY_LIMIT),
+    rotation: Math.max(0, Math.floor(+(feedback.rotation || 0))),
+    lastRecommendationActivityAt: Math.max(0, +(feedback.lastRecommendationActivityAt || 0)),
+    lastRotatedAt: Math.max(0, +(feedback.lastRotatedAt || 0)), clientUpdatedAt: Date.now(),
+  };
   try { localStorage.setItem(`cv_rec_feedback_${uid}`, JSON.stringify(payload)); } catch (_) {}
   if (!state.user) return;
   try {
@@ -402,6 +409,38 @@ async function persistFeedback() {
     console.error('persist recommendation feedback', error);
     toast('Saved on this device; cloud sync will retry next time', 'info');
   }
+}
+
+function prepareRecommendationRotation() {
+  const feedback = feedbackState(), now = Date.now();
+  if (!feedback.lastRotatedAt) {
+    feedback.lastRotatedAt = now;
+    feedback.lastRecommendationActivityAt ||= now;
+    persistFeedback();
+  } else {
+    const quietSince = Math.max(+(feedback.lastRecommendationActivityAt || 0), +(feedback.lastRotatedAt || 0));
+    if (now - quietSince >= ROTATION_IDLE_MS) {
+      feedback.rotation = (Math.max(0, Math.floor(+(feedback.rotation || 0))) + 1) % 100000;
+      feedback.lastRotatedAt = now;
+      persistFeedback();
+    }
+  }
+  return Math.max(0, Math.floor(+(feedback.rotation || 0)));
+}
+
+function rotatedWindow(items, rotation, size = 20) {
+  if (!items.length) return [];
+  const premium = items.slice(0, Math.min(items.length, Math.max(size, size * 2)));
+  if (!rotation || premium.length <= size) return premium.slice(0, size);
+  const offset = (rotation * 7) % premium.length;
+  return [...premium.slice(offset), ...premium.slice(0, offset)].slice(0, size);
+}
+
+function touchRecommendationActivity() {
+  const feedback = feedbackState(), now = Date.now();
+  if (now - +(feedback.lastRecommendationActivityAt || 0) < ACTIVITY_WRITE_GAP) return;
+  feedback.lastRecommendationActivityAt = now;
+  persistFeedback();
 }
 
 function auditNumber(value) { return Number(value || 0).toFixed(2); }
@@ -445,6 +484,7 @@ async function dismissRecommendation(element, event) {
   };
   feedback.dismissed = [...new Set([key, ...feedback.dismissed])].slice(0, 150);
   feedback.history = [record, ...feedback.history.filter(item => item.key !== key)].slice(0, HISTORY_LIMIT);
+  feedback.lastRecommendationActivityAt = Date.now();
   document.querySelectorAll('[data-recommendation-key]').forEach(card => {
     if (card.dataset.recommendationKey !== key) return;
     const row = card.closest('.row'); card.remove();
@@ -464,6 +504,7 @@ async function restoreRecommendation(key) {
   const feedback = feedbackState();
   feedback.dismissed = feedback.dismissed.filter(value => value !== key);
   feedback.history = feedback.history.filter(item => item.key !== key);
+  feedback.lastRecommendationActivityAt = Date.now();
   await persistFeedback();
   document.dispatchEvent(new Event('cv:recommendation-feedback'));
   toast('Recommendation restored', 'success');
@@ -489,6 +530,7 @@ export async function renderRecommendations() {
   if (!wrap) return;
   const profile = buildTasteProfile();
   if (!profile.hasSignal) { wrap.innerHTML = ''; return; }
+  const rotation = prepareRecommendationRotation();
 
   const seed = pickLabeledSeed(profile);
   const topActor = (profile.topActors || []).find(a => a.name);
@@ -511,14 +553,14 @@ export async function renderRecommendations() {
   // clean discovery surface and only renders the recommendation rails.
 
   fillRow('rowTopPicks', async () => {
-    const picks = diversify(await pool, 20);
+    const picks = rotatedWindow(diversify(await pool, 40), rotation, 20);
     if (!picks.length) return null;
     const top = picks[0].__score || 1;
     return picks.map(c => recommendationCard(c, { badge: matchBadge(c.__score, top) })).join('');
   });
 
   const rowFrom = async (pred, min = 1) => {
-    const items = (await pool).filter(pred).slice(0, 20);
+    const items = rotatedWindow((await pool).filter(pred), rotation, 20);
     return items.length >= min ? items.map(c => recommendationCard(c)).join('') : null;
   };
 
@@ -551,6 +593,7 @@ export async function renderRecommendationInsights() {
     <article><span>Trusted people</span><strong>${leadingPeople.map(esc).join(' · ') || 'Still learning'}</strong><p>Recurring directors and cast add a focused source bonus.</p></article>
     <article><span>Title seed</span><strong>${esc(seed?.title || 'Quality discovery')}</strong><p>${seed ? `Real similarity must overlap with this ${seed.reason} title.` : 'High-quality discoveries fill gaps without inventing a link.'}</p></article>
     <article><span>Privacy rule</span><strong>Watched titles stay out</strong><p>Saved titles can remain useful; watched and dismissed titles are filtered.</p></article>
+    <article><span>Freshness rhythm</span><strong>Rotates after 3 quiet days</strong><p>Using or dismissing a recommendation pauses rotation so useful picks do not disappear too soon.</p></article>
   </div><aside class="rec-audit active profile-rec-audit" id="recAudit" aria-hidden="false">${auditHTML(profile, null, seed, { closable: false })}</aside>`;
   try {
     const ranked = rankAndDedupe(await fetchCandidates(profile), profile);
@@ -571,5 +614,9 @@ export function initRecommendations() {
     },
     'restore-recommendation': element => restoreRecommendation(element.dataset.key),
   });
+  document.addEventListener('click', event => {
+    if (event.target.closest('[data-action="dismiss-recommendation"]')) return;
+    if (event.target.closest('[data-recommendation-key]')) touchRecommendationActivity();
+  }, true);
   document.addEventListener('cv:auth', () => { auditOpen = false; lastAudit = null; });
 }
