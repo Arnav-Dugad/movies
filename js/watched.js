@@ -14,6 +14,7 @@ import { ensureWatchedMeta } from './watched-meta.js';
 let watchedSort = 'recent', watchedGenre = 'all', watchedQuery = '';
 let watchedDecade = 'all', watchedLanguage = 'all', watchedCountry = 'all';
 let watchedCommunity = 0, watchedMine = 'all', watchedRuntime = 'all', watchedWhen = 'all';
+let watchedDirector = 'all', watchedActor = 'all', watchedTheme = 'all', watchedMetadata = 'all';
 let advancedOpen = false;
 
 // Normalize a watched doc into a renderable item, filling poster/year from the
@@ -26,9 +27,11 @@ function toItem(key, d) {
     poster: d.poster || wl?.poster || '',
     year: d.year || wl?.year || '',
     genres: (d.genres && d.genres.length ? d.genres : wl?.genres) || [],
+    keywords: (d.keywords && d.keywords.length ? d.keywords : wl?.keywords) || [],
     language: d.language || wl?.language || '', country: d.country || wl?.country || '',
     runtime: +(d.runtime || wl?.runtime || 0), community: +(d.tmdbRating || wl?.rating || 0),
     userRating: +(state.ratings[key] || 0),
+    director: d.director || '', directorId: +(d.directorId || 0), cast: d.cast || [], releaseDate: d.releaseDate || wl?.releaseDate || '',
     ts: d.watchedAt?.seconds || 0,
   };
 }
@@ -42,10 +45,11 @@ export function applyWatchedFilters(source, filters = {}) {
   const type = filters.type || 'all', genre = filters.genre || 'all', query = (filters.query || '').trim().toLowerCase();
   const decade = filters.decade || 'all', language = filters.language || 'all', country = filters.country || 'all';
   const community = +(filters.community || 0), mine = filters.mine || 'all', runtime = filters.runtime || 'all', when = filters.when || 'all';
+  const director = filters.director || 'all', actor = filters.actor || 'all', theme = filters.theme || 'all', metadata = filters.metadata || 'all';
   const sort = filters.sort || 'recent', now = filters.now || new Date(), nowSeconds = now.getTime() / 1000;
   if (type !== 'all') items = items.filter(i => i.type === type);
   if (genre !== 'all') items = items.filter(i => (i.genres || []).map(String).includes(String(genre)));
-  if (query) items = items.filter(i => i.title.toLowerCase().includes(query));
+  if (query) items = items.filter(i => [i.title, i.director, ...(i.cast || []).map(person => person.name), ...(i.keywords || []).map(keyword => keyword.name || '')].join(' ').toLowerCase().includes(query));
   if (decade !== 'all') items = items.filter(i => Math.floor(+(i.year || 0) / 10) * 10 === +decade);
   if (language !== 'all') items = items.filter(i => i.language === language);
   if (country !== 'all') items = items.filter(i => i.country === country);
@@ -64,6 +68,17 @@ export function applyWatchedFilters(source, filters = {}) {
     else if (when === 'last_year') items = items.filter(i => i.ts && new Date(i.ts * 1000).getFullYear() === now.getFullYear() - 1);
     else if (when === 'unknown') items = items.filter(i => !i.ts);
   }
+  if (director !== 'all') items = items.filter(i => String(i.directorId || i.director) === director);
+  if (actor !== 'all') items = items.filter(i => (i.cast || []).some(person => String(person.id) === actor));
+  if (theme !== 'all') items = items.filter(i => (i.keywords || []).some(keyword => String(keyword.id || keyword) === theme));
+  if (metadata !== 'all') items = items.filter(i => {
+    const complete = !!(i.poster && i.year && i.genres?.length && i.runtime && i.language && i.directorId && i.cast?.length && i.keywords?.length);
+    if (metadata === 'complete') return complete;
+    if (metadata === 'credits_missing') return !i.directorId || !i.cast?.length;
+    if (metadata === 'themes_missing') return !i.keywords?.length;
+    if (metadata === 'poster_missing') return !i.poster;
+    return !complete;
+  });
   const sorters = {
     recent: (a, b) => b.ts - a.ts,
     watched_asc: (a, b) => (a.ts || Number.MAX_SAFE_INTEGER) - (b.ts || Number.MAX_SAFE_INTEGER),
@@ -77,6 +92,10 @@ export function applyWatchedFilters(source, filters = {}) {
     user_asc: (a, b) => (a.userRating || 99) - (b.userRating || 99),
     runtime_desc: (a, b) => b.runtime - a.runtime,
     runtime_asc: (a, b) => (a.runtime || Number.MAX_SAFE_INTEGER) - (b.runtime || Number.MAX_SAFE_INTEGER),
+    rating_gap_desc: (a, b) => (b.userRating ? Math.abs(b.userRating - b.community) : -1) - (a.userRating ? Math.abs(a.userRating - a.community) : -1),
+    theme_desc: (a, b) => (b.keywords?.length || 0) - (a.keywords?.length || 0),
+    cast_desc: (a, b) => (b.cast?.length || 0) - (a.cast?.length || 0),
+    metadata_desc: (a, b) => [b.poster,b.year,b.genres?.length,b.runtime,b.language,b.directorId,b.cast?.length,b.keywords?.length].filter(Boolean).length - [a.poster,a.year,a.genres?.length,a.runtime,a.language,a.directorId,a.cast?.length,a.keywords?.length].filter(Boolean).length,
   };
   return items.sort(sorters[sort] || sorters.recent);
 }
@@ -85,7 +104,7 @@ function watchedItems() {
   return applyWatchedFilters(allItems(), {
     type: state.watchedFilter, genre: watchedGenre, query: watchedQuery, decade: watchedDecade,
     language: watchedLanguage, country: watchedCountry, community: watchedCommunity, mine: watchedMine,
-    runtime: watchedRuntime, when: watchedWhen, sort: watchedSort,
+    runtime: watchedRuntime, when: watchedWhen, director: watchedDirector, actor: watchedActor, theme: watchedTheme, metadata: watchedMetadata, sort: watchedSort,
   });
 }
 
@@ -118,7 +137,7 @@ function decadeOptions(items) {
 }
 
 function activeFilterCount() {
-  return [state.watchedFilter !== 'all', watchedGenre !== 'all', !!watchedQuery, watchedDecade !== 'all', watchedLanguage !== 'all', watchedCountry !== 'all', watchedCommunity > 0, watchedMine !== 'all', watchedRuntime !== 'all', watchedWhen !== 'all'].filter(Boolean).length;
+  return [state.watchedFilter !== 'all', watchedGenre !== 'all', !!watchedQuery, watchedDecade !== 'all', watchedLanguage !== 'all', watchedCountry !== 'all', watchedCommunity > 0, watchedMine !== 'all', watchedRuntime !== 'all', watchedWhen !== 'all', watchedDirector !== 'all', watchedActor !== 'all', watchedTheme !== 'all', watchedMetadata !== 'all'].filter(Boolean).length;
 }
 
 function watchedDateLabel(seconds) {
@@ -178,8 +197,17 @@ export function renderWatched() {
     const dsel = $('watchedDecade'); if (dsel) { dsel.innerHTML = decadeOptions(items); dsel.value = watchedDecade; if (dsel.value !== watchedDecade) { watchedDecade = 'all'; dsel.value = 'all'; } }
     const lsel = $('watchedLanguage'); if (lsel) { lsel.innerHTML = valueOptions(items, 'language', 'Any language', languageName); lsel.value = watchedLanguage; if (lsel.value !== watchedLanguage) { watchedLanguage = 'all'; lsel.value = 'all'; } }
     const csel = $('watchedCountry'); if (csel) { csel.innerHTML = valueOptions(items, 'country', 'Any country', countryName); csel.value = watchedCountry; if (csel.value !== watchedCountry) { watchedCountry = 'all'; csel.value = 'all'; } }
+    const objectOptions = (id, entries, current, first) => {
+      const select = $(id); if (!select) return 'all';
+      const unique = new Map(entries.filter(item => item?.id && item.name).map(item => [String(item.id), item.name]));
+      select.innerHTML = `<option value="all">${first}</option>` + [...unique].sort((a, b) => a[1].localeCompare(b[1])).map(([value, name]) => `<option value="${value}">${esc(name)}</option>`).join('');
+      select.value = unique.has(current) ? current : 'all'; return select.value;
+    };
+    watchedDirector = objectOptions('watchedDirector', items.filter(item => item.directorId).map(item => ({ id: item.directorId, name: item.director })), watchedDirector, 'Any director');
+    watchedActor = objectOptions('watchedActor', items.flatMap(item => item.cast || []), watchedActor, 'Any actor');
+    watchedTheme = objectOptions('watchedTheme', items.flatMap(item => item.keywords || []), watchedTheme, 'Any theme');
     const ssel = $('watchedSort'); if (ssel) ssel.value = watchedSort;
-    [['watchedCommunity', String(watchedCommunity)], ['watchedMine', watchedMine], ['watchedRuntime', watchedRuntime], ['watchedWhen', watchedWhen]].forEach(([id, value]) => { const select = $(id); if (select) select.value = value; });
+    [['watchedCommunity', String(watchedCommunity)], ['watchedMine', watchedMine], ['watchedRuntime', watchedRuntime], ['watchedWhen', watchedWhen], ['watchedMetadata', watchedMetadata]].forEach(([id, value]) => { const select = $(id); if (select) select.value = value; });
     const sinp = $('watchedSearch'); if (sinp && sinp.value !== watchedQuery) sinp.value = watchedQuery;
     const advanced = $('watchedAdvanced'), toggle = controls.querySelector('[data-action="toggle-watched-filters"]');
     if (advanced) advanced.hidden = !advancedOpen;
@@ -202,6 +230,10 @@ export function initWatched() {
     'watched-mine': (el) => { watchedMine = el.value; renderGrid(); },
     'watched-runtime': (el) => { watchedRuntime = el.value; renderGrid(); },
     'watched-when': (el) => { watchedWhen = el.value; renderGrid(); },
+    'watched-director': (el) => { watchedDirector = el.value; renderGrid(); },
+    'watched-actor': (el) => { watchedActor = el.value; renderGrid(); },
+    'watched-theme': (el) => { watchedTheme = el.value; renderGrid(); },
+    'watched-metadata': (el) => { watchedMetadata = el.value; renderGrid(); },
     'toggle-watched-filters': () => { advancedOpen = !advancedOpen; renderWatched(); },
     'watched-random': () => {
       const items = watchedItems();
@@ -210,7 +242,7 @@ export function initWatched() {
       document.dispatchEvent(new CustomEvent('cv:go', { detail: `/${item.type}/${item.id}` }));
     },
     'watched-reset': () => {
-      watchedSort = 'recent'; watchedGenre = 'all'; watchedQuery = ''; watchedDecade = 'all'; watchedLanguage = 'all'; watchedCountry = 'all'; watchedCommunity = 0; watchedMine = 'all'; watchedRuntime = 'all'; watchedWhen = 'all';
+      watchedSort = 'recent'; watchedGenre = 'all'; watchedQuery = ''; watchedDecade = 'all'; watchedLanguage = 'all'; watchedCountry = 'all'; watchedCommunity = 0; watchedMine = 'all'; watchedRuntime = 'all'; watchedWhen = 'all'; watchedDirector = 'all'; watchedActor = 'all'; watchedTheme = 'all'; watchedMetadata = 'all';
       state.watchedFilter = 'all';
       document.querySelectorAll('#watchedPage .wl-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.filter === 'all'));
       renderWatched();

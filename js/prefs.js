@@ -11,6 +11,8 @@ export const DEFAULT_PREFS = Object.freeze({
   rememberSearch: true, rememberViewed: true, discoverable: true, shareTaste: true,
   glass: 'rich', textSize: 'standard',
   backdropArt: true, posterTilt: true, highContrast: false, compactNav: false,
+  detailBoxOfficeExpanded: false, detailGalleryExpanded: false, detailReviewsExpanded: false,
+  directorExcludeShorts: true, directorExcludeDocumentaries: true, directorExcludeUnreleased: true,
 });
 
 export let prefs = { ...DEFAULT_PREFS };
@@ -26,7 +28,7 @@ const allowed = {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   return next;

@@ -298,13 +298,17 @@ function currentFilters() {
     genre: $('fltGenre')?.value || '',
     decade: $('fltDecade')?.value || '',
     rating: +($('fltRating')?.value || 0),
+    ratingMax: +($('fltRatingMax')?.value || 0),
+    votes: +($('fltVotes')?.value || 0),
+    language: $('fltLanguage')?.value || '',
+    collection: $('fltCollection')?.value || 'all',
     sort: $('fltSort')?.value || 'relevance',
   };
 }
 
 function applyFilters(raw) {
   const f = currentFilters();
-  const contentFilter = !!(f.genre || f.decade || f.rating);
+  const contentFilter = !!(f.genre || f.decade || f.rating || f.ratingMax || f.votes || f.language || f.collection !== 'all');
   const seen = new Set();
   let list = [];
   raw.forEach(r => {
@@ -316,6 +320,15 @@ function applyFilters(raw) {
       if (f.genre && !((r.genre_ids || []).some(id => genreMap[id] === f.genre))) return;
       if (f.decade) { const y = itemYear(r); if (!y) return; if (f.decade === 'older') { if (y >= 1990) return; } else { const d = +f.decade; if (y < d || y > d + 9) return; } }
       if (f.rating && (r.vote_average || 0) < f.rating) return;
+      if (f.ratingMax && (r.vote_average || 0) > f.ratingMax) return;
+      if (f.votes && (r.vote_count || 0) < f.votes) return;
+      if (f.language && r.original_language !== f.language) return;
+      const key = `${t}_${r.id}`, watched = !!state.watched[key], saved = state.watchlist.some(item => item.id === key), rated = +(state.ratings[key] || 0) > 0;
+      if (f.collection === 'unwatched' && watched) return;
+      if (f.collection === 'watched' && !watched) return;
+      if (f.collection === 'saved' && !saved) return;
+      if (f.collection === 'unsaved' && saved) return;
+      if (f.collection === 'rated' && !rated) return;
       if (mode === 'command' && commandCtx?.filters.ratingMax && (r.vote_average || 0) > commandCtx.filters.ratingMax) return;
       if (mode === 'command' && commandCtx?.filters.excludeWatched && state.watched[`${t}_${r.id}`]) return;
       if (mode === 'command' && commandCtx?.filters.excludeSaved && state.watchlist.some(item => item.id === `${t}_${r.id}`)) return;
@@ -327,8 +340,13 @@ function applyFilters(raw) {
   // sort
   const q = curQuery.trim().toLowerCase();
   if (f.sort === 'rating') list.sort((a, b) => (b.r.vote_average || 0) - (a.r.vote_average || 0));
+  else if (f.sort === 'rating_asc') list.sort((a, b) => (a.r.vote_average || 99) - (b.r.vote_average || 99));
+  else if (f.sort === 'votes') list.sort((a, b) => (b.r.vote_count || 0) - (a.r.vote_count || 0));
   else if (f.sort === 'newest') list.sort((a, b) => itemYear(b.r) - itemYear(a.r));
+  else if (f.sort === 'oldest') list.sort((a, b) => (itemYear(a.r) || 9999) - (itemYear(b.r) || 9999));
   else if (f.sort === 'popularity') list.sort((a, b) => (b.r.popularity || 0) - (a.r.popularity || 0));
+  else if (f.sort === 'title_asc') list.sort((a, b) => (a.r.title || a.r.name || '').localeCompare(b.r.title || b.r.name || ''));
+  else if (f.sort === 'title_desc') list.sort((a, b) => (b.r.title || b.r.name || '').localeCompare(a.r.title || a.r.name || ''));
   else if (mode === 'search' && q) {
     // relevance: exact/prefix title matches bubble up, otherwise keep TMDB order
     const score = x => { const title = (x.r.title || x.r.name || '').toLowerCase(); if (title === q) return 0; if (title.startsWith(q)) return 1; if (title.includes(q)) return 2; return 3; };
@@ -577,7 +595,7 @@ export function initSearch() {
   registerActions({
     'set-filter': (el) => setFilter(el.dataset.f),
     'search-filter': () => renderResults(),
-    'search-reset': () => { ['fltGenre', 'fltDecade', 'fltRating'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
+    'search-reset': () => { ['fltGenre', 'fltDecade', 'fltRating', 'fltRatingMax', 'fltVotes', 'fltLanguage'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const collection = $('fltCollection'); if (collection) collection.value = 'all'; const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
     'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault(); input.focus(); },
     'load-more-search': () => loadMore(),
     'search-submit': (el) => { const q = el.dataset.q || $('searchIn').value.trim(); if (q.length >= 2) { addToHistory(q); doSearch(q); } },

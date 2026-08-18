@@ -17,6 +17,7 @@ import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
 import { db, firebase } from './firebase.js';
 import { registerActions } from './events.js';
+import { ensureWatchedMeta } from './watched-meta.js';
 
 const MOVIE_GENRES = new Set(mGenreList.map(g => g.id));
 const TV_GENRES = new Set(tGenreList.map(g => g.id));
@@ -30,11 +31,11 @@ function splitKey(key) { const i = key.lastIndexOf('_'); return [key.slice(0, i)
 
 function seedMetaForKey(type, id) {
   const w = state.watchlist.find(x => x.type === type && String(x.tmdbId) === String(id));
-  if (w) return { title: w.title, genres: w.genres || [] };
+  if (w) return { title: w.title, genres: w.genres || [], keywords: w.keywords || [] };
   const watched = state.watched[`${type}_${id}`];
-  if (watched) return { title: watched.title, genres: watched.genres || [] };
+  if (watched) return { title: watched.title, genres: watched.genres || [], keywords: watched.keywords || [] };
   const r = state.recentlyViewed.find(x => x.type === type && String(x.id) === String(id));
-  return r ? { title: r.title, genres: r.genres || [] } : null;
+  return r ? { title: r.title, genres: r.genres || [], keywords: r.keywords || [] } : null;
 }
 
 // A rating recentres on 5: a 10 adds +5, a 3 subtracts 2. Unrated contributes 0,
@@ -42,6 +43,13 @@ function seedMetaForKey(type, id) {
 const ratingW = (s) => (s ? s - 5 : 0);
 const decadeOf = (year) => Math.floor(year / 10) * 10;
 const yearOf = (c) => parseInt((c.release_date || c.first_air_date || '').slice(0, 4)) || 0;
+const timestampMs = value => value?.seconds ? value.seconds * 1000 : (typeof value?.toMillis === 'function' ? value.toMillis() : 0);
+const recencyWeight = value => {
+  const ms = timestampMs(value); if (!ms) return 1;
+  const ageDays = Math.max(0, (Date.now() - ms) / 86400000);
+  return .75 + .65 * Math.exp(-ageDays / 365);
+};
+const keywordList = value => (value || []).map(keyword => typeof keyword === 'object' ? keyword : { id: +keyword, name: '' }).filter(keyword => +keyword.id);
 
 // Sort a {key: weight} map into [{id, name, w}], strongest first, keeping only
 // signals strong enough to be a real preference rather than a single watch.
@@ -62,28 +70,46 @@ export function buildTasteProfile(sources = state) {
   const watched = sources.watched || {};
   const recentlyViewed = sources.recentlyViewed || [];
 
-  const genreWeights = {}, actorWeights = {}, directorWeights = {}, decadeWeights = {};
-  const actorNames = {}, directorNames = {};
+  const genreWeights = {}, actorWeights = {}, directorWeights = {}, decadeWeights = {}, keywordWeights = {}, languageWeights = {};
+  const actorNames = {}, directorNames = {}, keywordNames = {};
   const addG = (genres, w) => (genres || []).forEach(g => { if (g == null) return; genreWeights[g] = (genreWeights[g] || 0) + w; });
   const bump = (map, key, w) => { if (key == null || key === '') return; map[key] = (map[key] || 0) + w; };
 
   // Watchlist — an explicit "I want to see this": the strongest genre signal.
-  watchlist.forEach(w => addG(w.genres, 2 + ratingW(ratings[`${w.type}_${w.tmdbId}`])));
+  watchlist.forEach(w => {
+    const weight = (2 + ratingW(ratings[`${w.type}_${w.tmdbId}`])) * recencyWeight(w.added);
+    addG(w.genres, weight);
+    keywordList(w.keywords).forEach(keyword => { bump(keywordWeights, keyword.id, weight * .72); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
+    if (w.language) bump(languageWeights, w.language, weight * .35);
+  });
 
   // Watched — what you actually consumed. This is where the cast/director/decade
   // signal lives (watched-meta.js backfills it), and it was previously used only
   // to EXCLUDE titles, never to inform taste.
   Object.entries(watched).forEach(([key, d]) => {
     if (!d) return;
-    const rw = ratingW(ratings[key]);
-    addG(d.genres, 1.5 + rw);          // a poorly-rated genre can go negative
+    const rw = ratingW(ratings[key]), recent = recencyWeight(d.watchedAt), signal = (1.5 + rw) * recent;
+    addG(d.genres, signal);          // a poorly-rated genre can go negative
+    keywordList(d.keywords).forEach(keyword => { bump(keywordWeights, keyword.id, signal * .85); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
+    if (d.language) bump(languageWeights, d.language, signal * .4);
     const y = parseInt(d.year);
     if (y) bump(decadeWeights, decadeOf(y), 1 + 0.3 * rw);
     if (d.directorId) { bump(directorWeights, d.directorId, 1 + 0.5 * rw); if (d.director) directorNames[d.directorId] = d.director; }
     (d.cast || []).slice(0, 5).forEach(p => { if (p && p.id) { bump(actorWeights, p.id, 1 + 0.5 * rw); if (p.name) actorNames[p.id] = p.name; } });
   });
 
-  recentlyViewed.forEach(r => addG(r.genres, 1));
+  recentlyViewed.forEach(r => {
+    const signal = .7 + .5 * Math.exp(-Math.max(0, Date.now() - +(r.ts || 0)) / (14 * 86400000));
+    addG(r.genres, signal);
+    keywordList(r.keywords).forEach(keyword => { bump(keywordWeights, keyword.id, signal * .55); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
+  });
+
+  // A dismissal is a soft negative taste signal, never a permanent genre ban.
+  // This lets one bad pick teach the system without erasing a whole category.
+  (sources.recommendationFeedback?.history || []).slice(0, 100).forEach(item => {
+    (item.genres || []).forEach(id => bump(genreWeights, id, -.3));
+    (item.keywords || []).forEach(id => bump(keywordWeights, id, -.5));
+  });
 
   let movie = 0, tv = 0;
   watchlist.forEach(w => (w.type === 'tv' ? tv++ : movie++));
@@ -108,20 +134,22 @@ export function buildTasteProfile(sources = state) {
   const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
   const topActors = topOf(actorWeights, actorNames);
   const topDirectors = topOf(directorWeights, directorNames);
+  const topKeywords = topOf(keywordWeights, keywordNames, 1.1).filter(keyword => keyword.name).slice(0, 12);
   const topDecade = Object.entries(decadeWeights).sort((a, b) => b[1] - a[1]).map(([d]) => +d)[0] || null;
 
   return {
     genreWeights, topGenres, seedIds, seen, dismissed, movieBias: movie >= tv,
+    keywordWeights, keywordNames, topKeywords, languageWeights,
     actorWeights, actorNames, topActors,
     directorWeights, directorNames, topDirectors,
     decadeWeights, topDecade,
-    hasSignal: topGenres.length > 0 || seedIds.length > 0 || topActors.length > 0,
+    hasSignal: topGenres.length > 0 || seedIds.length > 0 || topActors.length > 0 || topKeywords.length > 0,
   };
 }
 
 // Every profile-shaped object carries these, so scoreCandidate/fetchCandidates can
 // read them without guards no matter which builder produced the profile.
-const EMPTY_PEOPLE = { actorWeights: {}, actorNames: {}, topActors: [], directorWeights: {}, directorNames: {}, topDirectors: [], decadeWeights: {}, topDecade: null };
+const EMPTY_PEOPLE = { actorWeights: {}, actorNames: {}, topActors: [], directorWeights: {}, directorNames: {}, topDirectors: [], decadeWeights: {}, topDecade: null, keywordWeights: {}, keywordNames: {}, topKeywords: [], languageWeights: {} };
 
 // Build a profile-shape from a friend's stored "shared taste" doc (see social.js).
 // That doc is genre-level only, so the people/decade maps stay empty.
@@ -193,7 +221,7 @@ export async function fetchCandidates(profile, { only = null } = {}) {
   const tvG = topGenres.filter(g => TV_GENRES.has(g)).slice(0, 3);
   const actors = profile.topActors || [];
   const directors = profile.topDirectors || [];
-  const push = (p, type, source) => calls.push(p.then(d => tag(d.results, type, source)).catch(() => []));
+  const push = (p, type, source, provenance = {}) => calls.push(p.then(d => tag(d.results, type, source, provenance)).catch(() => []));
   // Filter unreleased at the source too, so a page isn't half-wasted on titles
   // the client-side guard would only throw away again.
   const outM = { 'release_date.lte': today() };
@@ -221,6 +249,12 @@ export async function fetchCandidates(profile, { only = null } = {}) {
       .then(d => tag((d.crew || []).filter(c => c.job === 'Director'), 'movie', 'director'))
       .catch(() => []));
   }
+  // Story themes are much more specific than genre buckets. Each call keeps its
+  // exact keyword provenance so the UI can truthfully promise “Because you enjoy…”.
+  (profile.topKeywords || []).slice(0, 2).forEach(keyword => {
+    if (wantMovie) push(tmdb('/discover/movie', { with_keywords: String(keyword.id), sort_by: 'popularity.desc', 'vote_count.gte': 80, ...outM }), 'movie', 'keyword', { __keywordIds: [+keyword.id] });
+    if (wantTV && (only === 'tv' || !profile.movieBias)) push(tmdb('/discover/tv', { with_keywords: String(keyword.id), sort_by: 'popularity.desc', 'vote_count.gte': 80, ...outT }), 'tv', 'keyword', { __keywordIds: [+keyword.id] });
+  });
   if (wantTV && tvG.length && (only === 'tv' || !profile.movieBias)) {
     const or = tvG.join('|');
     push(tmdb('/discover/tv', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, ...outT }), 'tv', 'genre');
@@ -238,7 +272,7 @@ export async function fetchCandidates(profile, { only = null } = {}) {
 // ----- Scoring & ranking -----
 // Where a candidate CAME FROM is itself evidence: a TMDB "more like this" off a
 // title you rated 9 is a better bet than a broad popularity sweep.
-const SOURCE_BONUS = { rec: 1.4, cast: 1.2, castmore: 1.15, director: 1.1, quality: 0.7, genre: 0.6, trending: 0.4 };
+const SOURCE_BONUS = { rec: 1.4, keyword: 1.3, cast: 1.2, castmore: 1.15, director: 1.1, quality: 0.7, genre: 0.6, trending: 0.4 };
 
 // Genres that DEFINE a title's audience rather than just flavour it. Sharing a
 // broad bucket like Comedy or Adventure means little — an animated kids' film and
@@ -275,17 +309,27 @@ export function isRelatedToSeed(candidate, seed) {
 
 export function scoreBreakdown(c, profile, norms = {}) {
   const gw = profile.genreWeights || {};
-  const maxG = norms.maxG || 1, maxDec = norms.maxDec || 1;
+  const kw = profile.keywordWeights || {};
+  const maxG = norms.maxG || 1, maxDec = norms.maxDec || 1, maxKw = norms.maxKw || 1, maxLang = norms.maxLang || 1;
   let g = 0; (c.genre_ids || []).forEach(id => { g += (gw[id] || 0); });
   const genreScore = g / maxG;
   const sourceBonus = SOURCE_BONUS[c.__source] != null ? SOURCE_BONUS[c.__source] : 0.6;
-  const quality = (c.vote_average || 0) / 10 * 0.5 + Math.min((c.popularity || 0) / 500, 1) * 0.3;
+  const keywordScore = (c.__keywordIds || []).reduce((sum, id) => sum + (kw[id] || 0), 0) / maxKw * .9;
+  // Confidence rises logarithmically: 8.2/10 from 20,000 votes should carry more
+  // trust than the same rating from 60 votes, without letting popularity dominate.
+  const confidence = Math.min(1, Math.log10(Math.max(10, +(c.vote_count || 0))) / 4.5);
+  const quality = (((+(c.vote_average || 0) - 5) / 5) * confidence * .75) + Math.min(Math.log10(1 + +(c.popularity || 0)) / 4, .22);
   const y = yearOf(c);
   const decadeScore = y ? ((profile.decadeWeights || {})[decadeOf(y)] || 0) / maxDec * 0.4 : 0;
+  const language = c.original_language ? ((profile.languageWeights || {})[c.original_language] || 0) / maxLang * .28 : 0;
   const offPenalty = offTasteCount(c, profile) * 0.6;
+  const sources = c.__sources || [c.__source];
+  const consensus = Math.max(0, new Set(sources.filter(Boolean)).size - 1) * .22;
+  const hash = ((+c.id * 2654435761 + +(profile.rotation || 0) * 1013904223) >>> 0) / 4294967295;
+  const serendipity = (hash - .5) * .18;
   return {
-    genre: genreScore, source: sourceBonus, quality, decade: decadeScore,
-    penalty: offPenalty, total: genreScore + sourceBonus + quality + decadeScore - offPenalty,
+    genre: genreScore, keyword: keywordScore, source: sourceBonus, quality, decade: decadeScore, language, consensus, serendipity,
+    penalty: offPenalty, total: genreScore + keywordScore + sourceBonus + quality + decadeScore + language + consensus + serendipity - offPenalty,
     matchedGenres: (c.genre_ids || []).filter(id => (gw[id] || 0) > 0).map(id => genreMap[id]).filter(Boolean),
   };
 }
@@ -298,6 +342,8 @@ export function rankAndDedupe(cands, profile) {
   const norms = {
     maxG: Math.max(1, ...Object.values(profile.genreWeights || {}).map(Math.abs)),
     maxDec: Math.max(1, ...Object.values(profile.decadeWeights || {}).map(Math.abs)),
+    maxKw: Math.max(1, ...Object.values(profile.keywordWeights || {}).map(Math.abs)),
+    maxLang: Math.max(1, ...Object.values(profile.languageWeights || {}).map(Math.abs)),
   };
   const byId = new Map();
   const audit = { considered: (cands || []).length, accepted: 0, rejected: { invalid: 0, unreleased: 0, lowVotes: 0, seen: 0 }, duplicates: 0, decisions: [] };
@@ -325,7 +371,7 @@ export function rankAndDedupe(cands, profile) {
     if (!existing) {
       byId.set(key, {
         ...c, __type: type, __score: sc, __audit: breakdown,
-        __sources: [c.__source], __seedKeys: c.__seedKey ? [c.__seedKey] : [],
+        __sources: [c.__source], __seedKeys: c.__seedKey ? [c.__seedKey] : [], __keywordIds: c.__keywordIds || [],
       });
       return;
     }
@@ -335,11 +381,17 @@ export function rankAndDedupe(cands, profile) {
     // does not lose its exact seed/actor/director relationship during deduping.
     const sources = [...new Set([...(existing.__sources || [existing.__source]), c.__source].filter(Boolean))];
     const seedKeys = [...new Set([...(existing.__seedKeys || []), c.__seedKey].filter(Boolean))];
+    const keywordIds = [...new Set([...(existing.__keywordIds || []), ...(c.__keywordIds || [])])];
     byId.set(key, sc > existing.__score
-      ? { ...c, __type: type, __score: sc, __audit: breakdown, __sources: sources, __seedKeys: seedKeys }
-      : { ...existing, __sources: sources, __seedKeys: seedKeys });
+      ? { ...c, __type: type, __score: sc, __audit: breakdown, __sources: sources, __seedKeys: seedKeys, __keywordIds: keywordIds }
+      : { ...existing, __sources: sources, __seedKeys: seedKeys, __keywordIds: keywordIds });
   });
-  const ranked = [...byId.values()].sort((a, b) => b.__score - a.__score);
+  // Re-score merged titles so independent agreement (genre + actor + theme, for
+  // example) becomes measurable evidence instead of discarded provenance.
+  const ranked = [...byId.values()].map(item => {
+    const breakdown = scoreBreakdown(item, profile, norms);
+    return { ...item, __score: breakdown.total, __audit: breakdown };
+  }).sort((a, b) => b.__score - a.__score);
   audit.accepted = ranked.length;
   Object.defineProperty(ranked, '__auditSummary', { value: audit, enumerable: false });
   return ranked;
@@ -445,7 +497,7 @@ function touchRecommendationActivity() {
 
 function auditNumber(value) { return Number(value || 0).toFixed(2); }
 function sourceLabel(source) {
-  return ({ rec: 'Exact title seed', cast: 'Favorite actor', castmore: 'Actor affinity', director: 'Favorite director', quality: 'Quality discovery', genre: 'Genre discovery', trending: 'Trending' })[source] || source || 'Discovery';
+  return ({ rec: 'Exact title seed', keyword: 'Story-theme affinity', cast: 'Favorite actor', castmore: 'Actor affinity', director: 'Favorite director', quality: 'Quality discovery', genre: 'Genre discovery', trending: 'Trending' })[source] || source || 'Discovery';
 }
 
 function auditHTML(profile, ranked, seed, { closable = true } = {}) {
@@ -458,11 +510,11 @@ function auditHTML(profile, ranked, seed, { closable = true } = {}) {
     <div class="rec-audit-grid">
       <section><div class="mini-panel-title"><span>Filter decisions</span><b>before ranking</b></div><div class="audit-filters">
         ${[['Missing card data', rejected.invalid], ['Not released', rejected.unreleased], ['Too few community votes', rejected.lowVotes], ['Watched or not interested', rejected.seen]].map(([label, count]) => `<div><span>${label}</span><strong>${count || 0}</strong></div>`).join('')}
-      </div><details class="audit-decisions"><summary>Every filter decision <b>${(summary.decisions || []).length}</b></summary><div>${(summary.decisions || []).length ? summary.decisions.map(item => `<p><strong>${esc(item.title)}</strong><span>${esc(item.result)} · ${esc(item.reason)}</span></p>`).join('') : '<p><span>No candidates were filtered or merged.</span></p>'}</div></details><p class="audit-formula">Score = genre affinity + source trust + quality + decade affinity − off-taste penalty.</p>${seed ? `<p class="audit-seed">Title row seed: <strong>${esc(seed.title)}</strong> · requires exact seed provenance and real genre overlap.</p>` : ''}</section>
+      </div><details class="audit-decisions"><summary>Every filter decision <b>${(summary.decisions || []).length}</b></summary><div>${(summary.decisions || []).length ? summary.decisions.map(item => `<p><strong>${esc(item.title)}</strong><span>${esc(item.result)} · ${esc(item.reason)}</span></p>`).join('') : '<p><span>No candidates were filtered or merged.</span></p>'}</div></details><p class="audit-formula">Score = genres + story themes + source trust + confidence-weighted quality + era + language + multi-signal agreement + controlled discovery − off-taste penalty.</p>${seed ? `<p class="audit-seed">Title row seed: <strong>${esc(seed.title)}</strong> · requires exact seed provenance and real genre overlap.</p>` : ''}</section>
       <section><div class="mini-panel-title"><span>Not interested history</span><b>Firestore backed</b></div><div class="audit-history">${history.length ? history.map(item => `<div><img src="${item.poster ? `${IMG}w92${item.poster}` : PH}" alt=""><span><strong>${esc(item.title || 'Untitled')}</strong><small>${new Date(item.dismissedAt || Date.now()).toLocaleDateString()}</small></span><button data-action="restore-recommendation" data-key="${esc(item.key)}">Restore</button></div>`).join('') : '<p>No dismissed recommendations yet.</p>'}</div></section>
     </div>
     <div class="mini-panel-title audit-ranked-title"><span>Every ranked candidate</span><b>${candidates.length} scores</b></div>
-    <div class="audit-ranked">${candidates.length ? candidates.map((item, index) => { const a = item.__audit || {}; const title = item.title || item.name || 'Untitled'; return `<article><span class="audit-rank">${index + 1}</span><img src="${item.poster_path ? `${IMG}w92${item.poster_path}` : ''}" alt=""><div class="audit-candidate-copy"><strong>${esc(title)}</strong><small>${(item.__sources || [item.__source]).map(sourceLabel).join(' · ')}</small><em>${(a.matchedGenres || []).join(', ') || 'No positive genre signal'}</em></div><div class="audit-score"><strong>${auditNumber(item.__score)}</strong><span>Genre ${auditNumber(a.genre)} · Source ${auditNumber(a.source)} · Quality ${auditNumber(a.quality)} · Era ${auditNumber(a.decade)} · Penalty −${auditNumber(a.penalty)}</span></div></article>`; }).join('') : '<p class="stats-empty-line">Candidates are still being calculated.</p>'}</div>`;
+    <div class="audit-ranked">${candidates.length ? candidates.map((item, index) => { const a = item.__audit || {}; const title = item.title || item.name || 'Untitled'; return `<article><span class="audit-rank">${index + 1}</span><img src="${item.poster_path ? `${IMG}w92${item.poster_path}` : ''}" alt=""><div class="audit-candidate-copy"><strong>${esc(title)}</strong><small>${(item.__sources || [item.__source]).map(sourceLabel).join(' · ')}</small><em>${(a.matchedGenres || []).join(', ') || 'No positive genre signal'}</em></div><div class="audit-score"><strong>${auditNumber(item.__score)}</strong><span>Genre ${auditNumber(a.genre)} · Theme ${auditNumber(a.keyword)} · Source ${auditNumber(a.source)} · Quality ${auditNumber(a.quality)} · Era ${auditNumber(a.decade)} · Language ${auditNumber(a.language)} · Agreement ${auditNumber(a.consensus)} · Discovery ${auditNumber(a.serendipity)} · Penalty −${auditNumber(a.penalty)}</span></div></article>`; }).join('') : '<p class="stats-empty-line">Candidates are still being calculated.</p>'}</div>`;
 }
 
 function paintAudit(profile, ranked, seed) {
@@ -477,10 +529,13 @@ async function dismissRecommendation(element, event) {
   event?.stopPropagation();
   const key = `${element.dataset.type}_${element.dataset.id}`;
   const feedback = feedbackState();
+  let genres = [], keywords = [];
+  try { genres = JSON.parse(element.dataset.genres || '[]').map(Number).filter(Boolean); } catch (_) {}
+  try { keywords = JSON.parse(element.dataset.keywords || '[]').map(Number).filter(Boolean); } catch (_) {}
   const record = {
     key, id: +element.dataset.id, type: element.dataset.type,
     title: element.dataset.title || '', poster: element.dataset.poster || '',
-    source: element.dataset.source || '', score: +(element.dataset.score || 0), dismissedAt: Date.now(),
+    source: element.dataset.source || '', genres, keywords, score: +(element.dataset.score || 0), dismissedAt: Date.now(),
   };
   feedback.dismissed = [...new Set([key, ...feedback.dismissed])].slice(0, 150);
   feedback.history = [record, ...feedback.history.filter(item => item.key !== key)].slice(0, HISTORY_LIMIT);
@@ -528,19 +583,25 @@ async function fillRow(id, fn) {
 export async function renderRecommendations() {
   const wrap = $('personalRows');
   if (!wrap) return;
+  // Rendering never waits for old watched records to be enriched. When the
+  // one-time metadata pass lands, its event refreshes these rails with themes.
+  ensureWatchedMeta();
   const profile = buildTasteProfile();
   if (!profile.hasSignal) { wrap.innerHTML = ''; return; }
   const rotation = prepareRecommendationRotation();
+  profile.rotation = rotation;
 
   const seed = pickLabeledSeed(profile);
   const topActor = (profile.topActors || []).find(a => a.name);
   const topDirector = (profile.topDirectors || []).find(d => d.name);
+  const topKeyword = (profile.topKeywords || [])[0];
   const genreId = profile.topGenres.find(g => MOVIE_GENRES.has(g));
 
   const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You' }];
   if (seed) descriptors.push({ id: 'rowSeed', icon: seed.reason === 'liked' ? '⭐' : '🍿', title: `Because you ${seed.reason} ${seed.title}` });
   if (topActor) descriptors.push({ id: 'rowActor', icon: '🌟', title: `Starring ${topActor.name}` });
   if (topDirector) descriptors.push({ id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}` });
+  if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}` });
   if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
 
   wrap.innerHTML = descriptors.map(shell).join('');
@@ -570,6 +631,7 @@ export async function renderRecommendations() {
   if (seed) fillRow('rowSeed', () => rowFrom(c => isRelatedToSeed(c, seed), 4));
   if (topActor) fillRow('rowActor', () => rowFrom(c => hasCandidateSource(c, 'cast')));
   if (topDirector) fillRow('rowDirector', () => rowFrom(c => hasCandidateSource(c, 'director')));
+  if (topKeyword) fillRow('rowTheme', () => rowFrom(c => hasCandidateSource(c, 'keyword') && (c.__keywordIds || []).includes(+topKeyword.id), 4));
   if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)));
 }
 
@@ -587,9 +649,11 @@ export async function renderRecommendationInsights() {
   }
   const seed = pickLabeledSeed(profile);
   const topGenres = profile.topGenres.slice(0, 4).map(signalName);
+  const topThemes = (profile.topKeywords || []).slice(0, 4).map(keyword => keyword.name);
   const leadingPeople = [...(profile.topDirectors || []).slice(0, 2).map(person => `${person.name} · director`), ...(profile.topActors || []).slice(0, 2).map(person => `${person.name} · actor`)].filter(name => !name.startsWith(' ·'));
   host.innerHTML = `<div class="profile-rec-map">
     <article><span>Strongest genres</span><strong>${topGenres.map(esc).join(' · ') || 'Still learning'}</strong><p>Built from what you watched, saved, opened and rated.</p></article>
+    <article><span>Story-theme fingerprint</span><strong>${topThemes.map(esc).join(' · ') || 'Still learning'}</strong><p>Specific themes separate a true match from a title that only shares a broad genre.</p></article>
     <article><span>Trusted people</span><strong>${leadingPeople.map(esc).join(' · ') || 'Still learning'}</strong><p>Recurring directors and cast add a focused source bonus.</p></article>
     <article><span>Title seed</span><strong>${esc(seed?.title || 'Quality discovery')}</strong><p>${seed ? `Real similarity must overlap with this ${seed.reason} title.` : 'High-quality discoveries fill gaps without inventing a link.'}</p></article>
     <article><span>Privacy rule</span><strong>Watched titles stay out</strong><p>Saved titles can remain useful; watched and dismissed titles are filtered.</p></article>
@@ -619,4 +683,8 @@ export function initRecommendations() {
     if (event.target.closest('[data-recommendation-key]')) touchRecommendationActivity();
   }, true);
   document.addEventListener('cv:auth', () => { auditOpen = false; lastAudit = null; });
+  document.addEventListener('cv:meta-backfilled', () => {
+    if ($('personalRows')) renderRecommendations();
+    if ($('recommendationProfileInsights')) renderRecommendationInsights();
+  });
 }

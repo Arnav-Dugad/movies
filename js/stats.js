@@ -14,6 +14,7 @@ import { social } from './social.js';
 import { tmdb } from './api.js';
 import { buildCard } from './cards.js';
 import { getProviderStats, getCatalogSeries } from './provider-history.js';
+import { prefs, updatePref } from './prefs.js';
 
 let statsScope = 'all';
 let latestSnapshot = null;
@@ -72,7 +73,7 @@ function canonicalRows(scope) {
     const key = identity.key;
     rows.set(key, {
       key, id: identity.id, type: identity.type, title: item.title || '', poster: item.poster || '',
-      year: item.year || '', releaseDate: item.releaseDate || '', genres: item.genres || [],
+      year: item.year || '', releaseDate: item.releaseDate || '', genres: item.genres || [], keywords: item.keywords || [],
       language: item.language || '', country: item.country || '', runtime: +(item.runtime || 0), episodeRuntime: +(item.episodeRuntime || 0), episodeCount: +(item.episodeCount || 0),
       tmdbRating: +(item.rating || 0), saved: true, watched: false, watchedAt: null,
       director: '', directorId: 0, directorProfile: '', cast: [],
@@ -89,6 +90,7 @@ function canonicalRows(scope) {
       title: doc.title || old.title || '', poster: doc.poster || old.poster || '',
       year: doc.year || old.year || '', releaseDate: doc.releaseDate || old.releaseDate || '',
       genres: doc.genres?.length ? doc.genres : (old.genres || []),
+      keywords: doc.keywords?.length ? doc.keywords : (old.keywords || []),
       language: doc.language || old.language || '', country: doc.country || old.country || '',
       runtime: +(doc.runtime || old.runtime || 0), episodeRuntime: +(doc.episodeRuntime || old.episodeRuntime || 0), episodeCount: +(doc.episodeCount || old.episodeCount || 0), tmdbRating: +(doc.tmdbRating || old.tmdbRating || 0),
       director: doc.director || old.director || '', directorId: doc.directorId || old.directorId || 0,
@@ -162,6 +164,7 @@ function collectionHealth(rows, watched) {
     make('posters', 'Poster artwork', rows, row => !!row.poster, 'Missing poster art is automatically refreshed.'),
     make('dates', 'Release dates', rows, row => !!row.releaseDate, 'Exact release dates power era and reminder insights.'),
     make('credits', 'People credits', watched, row => !!row.directorId && row.cast?.length, 'Director and cast data power loyalty insights.'),
+    make('themes', 'Story themes', watched, row => !!row.keywords?.length, 'Keywords power theme recommendations and your Tag Taste Profile.'),
   ];
   const score = Math.round(checks.reduce((sum, check) => sum + check.coverage, 0) / checks.length);
   return { score, missing: checks.reduce((sum, check) => sum + check.missing, 0), checks, perfect: score === 100 };
@@ -196,13 +199,18 @@ export function computeStats(scope) {
   const ratingValues = ratingEntries.map(([, score]) => +score).filter(Boolean);
   const watchedRated = watched.filter(row => row.userRating > 0).length;
 
-  const genres = new Map(), decades = new Map(), languages = new Map();
+  const genres = new Map(), decades = new Map(), languages = new Map(), themes = new Map();
   rows.forEach(row => {
     (row.genres || []).forEach(id => { if (genreMap[id]) bump(genres, String(id), 1, { name: genreMap[id] }); });
     const year = +(row.year || 0); if (year) { const decade = Math.floor(year / 10) * 10; bump(decades, String(decade), 1, { name: `${decade}s` }); }
     if (row.language) bump(languages, row.language, 1, { name: languageName(row.language) });
   });
+  watched.forEach(row => (row.keywords || []).forEach(keyword => {
+    const id = +(typeof keyword === 'object' ? keyword.id : keyword), name = typeof keyword === 'object' ? keyword.name : '';
+    if (id && name) bump(themes, String(id), 1, { id, name });
+  }));
   const genreRows = sorted(genres), decadeRows = sorted(decades), languageRows = sorted(languages);
+  const themeRows = sorted(themes, 18);
 
   const activity = new Map(), months = new Map();
   const weekdays = Array(7).fill(0);
@@ -283,7 +291,7 @@ export function computeStats(scope) {
   return {
     scope, rows, watched, saved, totalRated: ratingValues.length, avgRating, avgTmdb,
     ratingCounts, completion, ratingCoverage, positiveRate, highScores,
-    genres: genreRows, decades: decadeRows, languages: languageRows, diversityScore,
+    genres: genreRows, decades: decadeRows, languages: languageRows, themes: themeRows, diversityScore,
     totalMinutes, hours: Math.floor(totalMinutes / 60), avgRuntime: averageUnits.length ? Math.round(averageUnits.reduce((sum, value) => sum + value, 0) / averageUnits.length) : 0,
     avgMovieRuntime: movieRuntimes.length ? Math.round(movieRuntimes.reduce((sum, value) => sum + value, 0) / movieRuntimes.length) : 0,
     avgEpisodeRuntime: episodeRuntimes.length ? Math.round(episodeRuntimes.reduce((sum, value) => sum + value, 0) / episodeRuntimes.length) : 0,
@@ -302,7 +310,7 @@ export function computeStats(scope) {
 
 function snapshotFor(stats) {
   return {
-    schema: 7,
+    schema: 8,
     totals: {
       saved: stats.saved.length, watched: stats.watched.length, rated: stats.totalRated,
       movies: stats.movies, shows: stats.shows, friends: social.friends.length,
@@ -316,6 +324,7 @@ function snapshotFor(stats) {
       genres: stats.genres.map(item => ({ id: item.key, name: item.name, count: item.count })),
       decades: stats.decades.map(item => ({ decade: +item.key, count: item.count })),
       languages: stats.languages.map(item => ({ code: item.key, name: item.name, count: item.count })),
+      themes: stats.themes.slice(0, 12).map(item => ({ id: +item.id, name: item.name, count: item.count })),
       diversityScore: stats.diversityScore,
       changes: stats.tasteTimeline.periods,
     },
@@ -426,6 +435,12 @@ function tasteMap(stats) {
       </div>
     </div>
   </section>`;
+}
+
+function tagTasteProfile(stats) {
+  const themes = stats.themes || [], max = themes[0]?.count || 1, total = stats.watched.length;
+  if (!themes.length) return `<section class="stats-panel tag-taste-profile"><div class="stats-section-head"><div><span>Story-level intelligence</span><h2>Tag Taste Profile</h2><p>The specific themes behind your viewing—not just broad genres.</p></div></div><div class="tag-taste-empty"><strong>Theme fingerprint is learning</strong><span>Older watched titles are being enriched with story tags in the background.</span></div></section>`;
+  return `<section class="stats-panel tag-taste-profile"><div class="stats-section-head"><div><span>Story-level intelligence</span><h2>Tag Taste Profile</h2><p>The themes, moods, and story ideas that recur in what you actually watch.</p></div><div class="tag-taste-total">${themes.length} signals</div></div><div class="tag-taste-layout"><div class="tag-taste-lead"><span>Leading theme</span><strong>${esc(themes[0].name)}</strong><p>Appears across ${themes[0].count} of ${total} watched title${total === 1 ? '' : 's'}.</p><button data-action="search-tag" data-tag="${esc(themes[0].name)}">Explore this theme</button></div><div class="tag-taste-cloud">${themes.map((theme, index) => `<button class="tag-taste-chip t${Math.min(index, 5)}" style="--theme-strength:${Math.max(.42, theme.count / max)}" data-action="search-tag" data-tag="${esc(theme.name)}"><span>${esc(theme.name)}</span><b>${theme.count}</b><i style="--theme-width:${Math.round(theme.count / max * 100)}%"></i></button>`).join('')}</div></div><p class="tag-taste-note">Counts use watched titles only. Tap a theme to search the full catalogue with the same tag.</p></section>`;
 }
 
 function activityPanel(stats) {
@@ -546,6 +561,7 @@ export function directorNetworkPanel(stats) {
 function cachedLoyalty(stats) {
   const value = latestDirectorLoyalty || state.statsSnapshot?.collection?.directorLoyalty;
   if (!value?.items?.length) return null;
+  if (value.filterSignature !== directorFilterSignature()) return null;
   const watchedSignature = stats.watched.filter(row => row.type === 'movie').map(row => +row.id).filter(Boolean).sort((a, b) => a - b).join(',');
   if (value.watchedSignature !== watchedSignature) return null;
   const wanted = stats.topMovieDirectors.map(person => +person.id).filter(Boolean).slice(0, 4);
@@ -555,11 +571,30 @@ function cachedLoyalty(stats) {
 
 function directorLoyaltyBody(payload) {
   if (!payload?.items?.length) return '<div class="insight-loading"><i></i><span>Mapping complete filmographies…</span></div>';
-  return `<div class="loyalty-grid">${payload.items.map(item => `<article class="loyalty-card"><a class="loyalty-person" href="/person/${item.id}" data-action="open-person" data-id="${item.id}"><div>${personPicture(item)}</div><span><strong>${esc(item.name)}</strong><small>${item.completed} of ${item.total} released directing credits</small></span></a><div class="loyalty-progress"><i><em style="width:${item.percent}%"></em></i><strong>${item.percent}%</strong></div>${item.next ? `<a class="loyalty-next" href="/movie/${item.next.id}" data-action="open-detail" data-id="${item.next.id}" data-type="movie"><img src="${IMG}w92${item.next.poster}" alt="" loading="lazy"><span><small>Highly rated unseen</small><strong>${esc(item.next.title)}</strong></span></a>` : '<div class="loyalty-complete">No highly rated unseen film found.</div>'}</article>`).join('')}</div><p class="loyalty-note">Completion uses unique, already-released movie credits where the person is listed as Director on TMDB.</p>`;
+  return `<div class="loyalty-grid">${payload.items.map(item => `<article class="loyalty-card"><a class="loyalty-person" href="/person/${item.id}" data-action="open-person" data-id="${item.id}"><div>${personPicture(item)}</div><span><strong>${esc(item.name)}</strong><small>${item.completed} of ${item.total} eligible directing credits</small></span></a><div class="loyalty-progress"><i><em style="width:${item.percent}%"></em></i><strong>${item.percent}%</strong></div>${item.next ? `<a class="loyalty-next" href="/movie/${item.next.id}" data-action="open-detail" data-id="${item.next.id}" data-type="movie"><img src="${IMG}w92${item.next.poster}" alt="" loading="lazy"><span><small>Highly rated unseen</small><strong>${esc(item.next.title)}</strong></span></a>` : '<div class="loyalty-complete">No highly rated unseen film found.</div>'}</article>`).join('')}</div><p class="loyalty-note">${esc(payload.filterSummary || 'Completion uses unique movie credits where the person is listed as Director on TMDB.')}</p>`;
 }
 
+const DIRECTOR_FILTERS = [
+  ['directorExcludeShorts', 'Exclude shorts'],
+  ['directorExcludeDocumentaries', 'Exclude documentaries'],
+  ['directorExcludeUnreleased', 'Exclude unreleased'],
+];
+const directorFilterOptions = () => ({
+  excludeShorts: !!prefs.directorExcludeShorts,
+  excludeDocumentaries: !!prefs.directorExcludeDocumentaries,
+  excludeUnreleased: !!prefs.directorExcludeUnreleased,
+});
+const directorFilterSignature = () => DIRECTOR_FILTERS.map(([key]) => prefs[key] ? '1' : '0').join('');
+const directorFilterSummary = options => {
+  const included = [];
+  if (options.excludeShorts) included.push('feature-length work'); else included.push('short and feature-length work');
+  included.push(options.excludeDocumentaries ? 'non-documentaries' : 'documentaries included');
+  included.push(options.excludeUnreleased ? 'released projects only' : 'announced projects included');
+  return `Completion uses unique TMDB Director credits: ${included.join(', ')}.`;
+};
+
 function directorLoyaltyPanel(stats) {
-  return `<section class="stats-panel director-loyalty"><div class="stats-section-head"><div><span>Filmmaker completion</span><h2>Director Loyalty</h2><p>How much of each favorite director’s released work you have completed.</p></div><div class="loyalty-live">Live filmography check</div></div><div id="directorLoyaltyBody">${directorLoyaltyBody(cachedLoyalty(stats))}</div></section>`;
+  return `<section class="stats-panel director-loyalty"><div class="stats-section-head"><div><span>Filmmaker completion</span><h2>Director Loyalty</h2><p>Choose exactly which projects count toward each filmmaker’s completion score.</p></div><div class="loyalty-live">Live filmography check</div></div><div class="loyalty-filters" aria-label="Director work filters">${DIRECTOR_FILTERS.map(([key, label]) => `<button class="${prefs[key] ? 'active' : ''}" data-action="director-work-filter" data-pref="${key}" aria-pressed="${prefs[key]}"><i></i><span>${label}</span></button>`).join('')}</div><div id="directorLoyaltyBody">${directorLoyaltyBody(cachedLoyalty(stats))}</div></section>`;
 }
 
 function smartWatchPanel() {
@@ -573,10 +608,14 @@ const released = (item, now = new Date()) => {
   return !Number.isNaN(date.getTime()) && date <= now;
 };
 
-export function calculateDirectorLoyalty(person, crew = [], watchedMovieIds = [], now = new Date()) {
+export function calculateDirectorLoyalty(person, crew = [], watchedMovieIds = [], now = new Date(), options = {}) {
   const watched = watchedMovieIds instanceof Set ? watchedMovieIds : new Set(watchedMovieIds);
+  const featureLengthIds = options.featureLengthIds instanceof Set ? options.featureLengthIds : null;
   const credits = [...new Map(crew
-    .filter(credit => credit.job === 'Director' && credit.id && released(credit, now))
+    .filter(credit => credit.job === 'Director' && credit.id)
+    .filter(credit => !options.excludeUnreleased || released(credit, now))
+    .filter(credit => !options.excludeDocumentaries || !(credit.genre_ids || []).map(Number).includes(99))
+    .filter(credit => !options.excludeShorts || !featureLengthIds || featureLengthIds.has(+credit.id))
     .map(credit => [+credit.id, credit])).values()];
   const completed = credits.filter(credit => watched.has(+credit.id)).length;
   const unseen = credits
@@ -587,6 +626,14 @@ export function calculateDirectorLoyalty(person, crew = [], watchedMovieIds = []
     percent: credits.length ? Math.round(completed / credits.length * 100) : 0,
     next: unseen ? { id: unseen.id, title: unseen.title || unseen.original_title || 'Untitled', poster: unseen.poster_path, rating: unseen.vote_average || 0 } : null,
   };
+}
+
+async function featureLengthFilmIds(personId) {
+  const params = { with_crew: String(personId), 'with_runtime.gte': 41, sort_by: 'popularity.desc' };
+  const first = await tmdb('/discover/movie', params);
+  const pages = Math.min(20, Math.max(1, +(first.total_pages || 1)));
+  const rest = pages > 1 ? await Promise.all(Array.from({ length: pages - 1 }, (_, index) => tmdb('/discover/movie', { ...params, page: index + 2 }))) : [];
+  return new Set([...(first.results || []), ...rest.flatMap(page => page.results || [])].map(item => +item.id).filter(Boolean));
 }
 
 export function rankSmartWatchCandidates(candidates = [], options = {}) {
@@ -617,14 +664,18 @@ async function loadDirectorLoyalty(stats, generation) {
   if (cached && Date.now() - +(cached.calculatedAt || 0) < 30 * 86400000) { latestDirectorLoyalty = cached; return; }
   const watchedMovies = new Set(stats.watched.filter(row => row.type === 'movie').map(row => +row.id));
   const watchedSignature = [...watchedMovies].filter(Boolean).sort((a, b) => a - b).join(',');
+  const options = directorFilterOptions();
   const items = (await Promise.all(directors.map(async person => {
     try {
-      const data = await tmdb(`/person/${person.id}/movie_credits`);
-      return calculateDirectorLoyalty(person, data.crew || [], watchedMovies);
+      const [data, featureLengthIds] = await Promise.all([
+        tmdb(`/person/${person.id}/movie_credits`),
+        options.excludeShorts ? featureLengthFilmIds(person.id) : Promise.resolve(null),
+      ]);
+      return calculateDirectorLoyalty(person, data.crew || [], watchedMovies, new Date(), { ...options, featureLengthIds });
     } catch (error) { console.warn('director loyalty', person.id, error); return null; }
   }))).filter(Boolean);
   if (generation !== insightGeneration || !state.user) return;
-  latestDirectorLoyalty = { calculatedAt: Date.now(), watchedSignature, items };
+  latestDirectorLoyalty = { calculatedAt: Date.now(), watchedSignature, filterSignature: directorFilterSignature(), filterSummary: directorFilterSummary(options), items };
   const current = $('directorLoyaltyBody'); if (current) current.innerHTML = directorLoyaltyBody(latestDirectorLoyalty);
   queueSnapshot(snapshotFor(computeStats('all')));
 }
@@ -684,6 +735,7 @@ export function renderStats() {
       ${kpi('compass', 'Taste diversity', stats.diversityScore, '/100', `${stats.genres.length} genres · ${stats.languages.length} languages`, 'pink')}
     </div>
     ${tasteMap(stats)}
+    ${tagTasteProfile(stats)}
     ${tasteChangesPanel(stats)}
     ${collectionHealthPanel(stats)}
     ${providerIntelligencePanels()}
@@ -740,6 +792,13 @@ export function initStats() {
     'stats-filter': element => { statsScope = element.dataset.filter; renderStats(); },
     'export-stats': () => exportStats(),
     'repair-collection': element => repairCollection(element),
+    'director-work-filter': element => {
+      const key = element.dataset.pref;
+      if (!DIRECTOR_FILTERS.some(([pref]) => pref === key)) return;
+      updatePref(key, !prefs[key]);
+      latestDirectorLoyalty = null; insightGeneration++;
+      renderStats();
+    },
   });
   document.addEventListener('cv:auth', () => {
     // auth.js already loaded the owner profile document. Reuse its snapshot hash

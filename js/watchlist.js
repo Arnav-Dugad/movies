@@ -44,6 +44,7 @@ export async function toggleWatched(id, type, title, meta = {}) {
         poster: meta.poster || wl?.poster || '',
         year: meta.year || wl?.year || '',
         genres: meta.genres || wl?.genres || [],
+        keywords: meta.keywords || wl?.keywords || [],
         runtime: +(meta.runtime || wl?.runtime || 0),
         language: meta.language || wl?.language || '',
         country: meta.country || wl?.country || '',
@@ -72,6 +73,7 @@ let listEdit = null;       // { mode: 'new' | 'rename' }
 let pendingDelete = null;  // listId awaiting a second confirming click
 let duplicateOpen = false;
 let wlQuery = '', wlGenre = 'all', wlStatus = 'all', wlRating = 0, wlDecade = 'all', wlSort = 'recent';
+let wlLanguage = 'all', wlCountry = 'all', wlRuntime = 'all', wlMine = 'all', wlAdded = 'all', wlMetadata = 'all';
 const RUNTIME_CACHE_KEY = 'cv_list_runtime_cache_v1';
 const COVER_OFFSETS_KEY = 'cv_list_cover_offsets_v1';
 const runtimeLoads = new Set();
@@ -186,14 +188,46 @@ function filteredListItems() {
     const y = +(w.year || 0);
     return wlDecade === 'older' ? y > 0 && y < 1990 : y >= +wlDecade && y < +wlDecade + 10;
   });
+  if (wlLanguage !== 'all') items = items.filter(w => w.language === wlLanguage);
+  if (wlCountry !== 'all') items = items.filter(w => w.country === wlCountry);
+  if (wlRuntime !== 'all') items = items.filter(w => {
+    const runtime = runtimeOf(w);
+    if (wlRuntime === 'unknown') return !runtime;
+    if (wlRuntime === 'quick') return runtime > 0 && runtime < 90;
+    if (wlRuntime === 'standard') return runtime >= 90 && runtime <= 120;
+    return runtime > 120;
+  });
+  if (wlMine !== 'all') items = items.filter(w => {
+    const mine = +(state.ratings[itemKey(w)] || 0);
+    return wlMine === 'rated' ? mine > 0 : wlMine === 'unrated' ? !mine : mine >= +wlMine;
+  });
+  if (wlAdded !== 'all') items = items.filter(w => {
+    const seconds = addedSeconds(w);
+    if (wlAdded === 'unknown') return !seconds;
+    return seconds && Date.now() / 1000 - seconds <= +wlAdded * 86400;
+  });
+  if (wlMetadata !== 'all') items = items.filter(w => {
+    const complete = !!(w.poster && w.year && w.genres?.length && runtimeOf(w) && w.language && w.releaseDate);
+    if (wlMetadata === 'complete') return complete;
+    if (wlMetadata === 'poster_missing') return !w.poster;
+    if (wlMetadata === 'runtime_missing') return !runtimeOf(w);
+    return !complete;
+  });
+  const smartScore = w => +(w.rating || 0) * .6 + +(state.ratings[itemKey(w)] || 0) * .4 + (state.watched[itemKey(w)] ? 0 : 1);
   const sorters = {
     recent: (a, b) => addedSeconds(b) - addedSeconds(a),
+    added_asc: (a, b) => (addedSeconds(a) || Number.MAX_SAFE_INTEGER) - (addedSeconds(b) || Number.MAX_SAFE_INTEGER),
     title_asc: (a, b) => (a.title || '').localeCompare(b.title || ''),
     title_desc: (a, b) => (b.title || '').localeCompare(a.title || ''),
     year_desc: (a, b) => +(b.year || 0) - +(a.year || 0),
     year_asc: (a, b) => +(a.year || 9999) - +(b.year || 9999),
     rating_desc: (a, b) => +(b.rating || 0) - +(a.rating || 0),
     rating_asc: (a, b) => +(a.rating || 0) - +(b.rating || 0),
+    mine_desc: (a, b) => +(state.ratings[itemKey(b)] || 0) - +(state.ratings[itemKey(a)] || 0),
+    mine_asc: (a, b) => +(state.ratings[itemKey(a)] || 99) - +(state.ratings[itemKey(b)] || 99),
+    runtime_desc: (a, b) => runtimeOf(b) - runtimeOf(a),
+    runtime_asc: (a, b) => (runtimeOf(a) || Number.MAX_SAFE_INTEGER) - (runtimeOf(b) || Number.MAX_SAFE_INTEGER),
+    smart_desc: (a, b) => smartScore(b) - smartScore(a),
   };
   return items.sort(sorters[wlSort] || sorters.recent);
 }
@@ -211,12 +245,21 @@ function syncWLControls(baseItems) {
     if (genre.value !== wlGenre) wlGenre = 'all';
   }
   const values = { wlStatus, wlRating: String(wlRating), wlDecade, wlSort };
+  Object.assign(values, { wlLanguage, wlCountry, wlRuntime, wlMine, wlAdded, wlMetadata });
   Object.entries(values).forEach(([id, value]) => { const el = $(id); if (el) el.value = value; });
+  const dynamicSelect = (id, values, current, label) => {
+    const select = $(id); if (!select) return;
+    select.innerHTML = `<option value="all">${label}</option>` + [...values].filter(Boolean).sort().map(value => `<option value="${esc(value)}">${esc(value.toUpperCase())}</option>`).join('');
+    select.value = values.has(current) ? current : 'all';
+  };
+  dynamicSelect('wlLanguage', new Set(baseItems.map(item => item.language)), wlLanguage, 'Any language');
+  dynamicSelect('wlCountry', new Set(baseItems.map(item => item.country)), wlCountry, 'Any country');
+  wlLanguage = $('wlLanguage')?.value || 'all'; wlCountry = $('wlCountry')?.value || 'all';
   const search = $('wlSearch'); if (search && search.value !== wlQuery) search.value = wlQuery;
 }
 
 function payloadFor(w) {
-  return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [], runtime: w.runtime || 0, language: w.language || '', country: w.country || '', releaseDate: w.releaseDate || '' }));
+  return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [], keywords: w.keywords || [], runtime: w.runtime || 0, language: w.language || '', country: w.country || '', releaseDate: w.releaseDate || '' }));
 }
 
 export function findListDuplicates(watchlist = state.watchlist, lists = state.lists) {
@@ -295,7 +338,7 @@ export function renderWL() {
 
   if (!items.length) {
     const nm = listById(state.wlList)?.name || 'list';
-    const filtered = !!(wlQuery || wlGenre !== 'all' || wlStatus !== 'all' || wlRating || wlDecade !== 'all' || state.wlFilter !== 'all');
+    const filtered = !!(wlQuery || wlGenre !== 'all' || wlStatus !== 'all' || wlRating || wlDecade !== 'all' || wlLanguage !== 'all' || wlCountry !== 'all' || wlRuntime !== 'all' || wlMine !== 'all' || wlAdded !== 'all' || wlMetadata !== 'all' || state.wlFilter !== 'all');
     ct.innerHTML = filtered
       ? `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><h3>No matching titles</h3><p>Try changing or resetting your filters</p></div>`
       : `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><h3>${esc(nm[0].toUpperCase() + nm.slice(1))} is empty</h3><p>Add movies and shows with the + on any poster</p></div>`;
@@ -317,10 +360,12 @@ export function initWatchlist() {
     'toggle-watched': async (el, e) => {
       e.stopPropagation();
       let genres = [];
+      let keywords = [];
       try { genres = el.dataset.genres ? JSON.parse(el.dataset.genres) : []; } catch (_) {}
+      try { keywords = el.dataset.keywords ? JSON.parse(el.dataset.keywords) : []; } catch (_) {}
       const id = +el.dataset.id, type = el.dataset.type;
       await toggleWatched(id, type, el.dataset.title || '', {
-        poster: el.dataset.poster || '', year: el.dataset.year || '', genres,
+        poster: el.dataset.poster || '', year: el.dataset.year || '', genres, keywords,
         runtime: +el.dataset.runtime || 0, language: el.dataset.language || '',
         country: el.dataset.country || '', releaseDate: el.dataset.releaseDate || '',
         tmdbRating: +el.dataset.tmdbRating || 0, voteCount: +el.dataset.voteCount || 0,
@@ -335,9 +380,16 @@ export function initWatchlist() {
     'wl-status': (el) => { wlStatus = el.value; renderWL(); },
     'wl-rating': (el) => { wlRating = +el.value || 0; renderWL(); },
     'wl-decade': (el) => { wlDecade = el.value; renderWL(); },
+    'wl-language': (el) => { wlLanguage = el.value; renderWL(); },
+    'wl-country': (el) => { wlCountry = el.value; renderWL(); },
+    'wl-runtime': (el) => { wlRuntime = el.value; renderWL(); },
+    'wl-mine': (el) => { wlMine = el.value; renderWL(); },
+    'wl-added': (el) => { wlAdded = el.value; renderWL(); },
+    'wl-metadata': (el) => { wlMetadata = el.value; renderWL(); },
     'wl-sort': (el) => { wlSort = el.value; renderWL(); },
     'wl-reset-filters': () => {
       wlQuery = ''; wlGenre = 'all'; wlStatus = 'all'; wlRating = 0; wlDecade = 'all'; wlSort = 'recent';
+      wlLanguage = 'all'; wlCountry = 'all'; wlRuntime = 'all'; wlMine = 'all'; wlAdded = 'all'; wlMetadata = 'all';
       state.wlFilter = 'all';
       document.querySelectorAll('.wl-typefilter .wl-tab').forEach(t => t.classList.toggle('active', t.dataset.filter === 'all'));
       renderWL();

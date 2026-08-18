@@ -23,11 +23,13 @@ const regionName = () => (REGIONS.find(([code]) => code === state.region)?.[1] |
 
 function populateGenres() {
   const type = $('discoverType')?.value || 'movie';
-  const select = $('discoverGenre'); if (!select) return;
-  const selected = select.value;
   const genres = type === 'tv' ? tGenreList : mGenreList;
-  select.innerHTML = '<option value="">Any genre</option>' + genres.map(genre => `<option value="${genre.id}">${esc(genre.n)}</option>`).join('');
-  if ([...select.options].some(option => option.value === selected)) select.value = selected;
+  [['discoverGenre', 'Any genre', ''], ['discoverExcludeGenre', 'Exclude no genre', 'No ']].forEach(([id, first, prefix]) => {
+    const select = $(id); if (!select) return;
+    const selected = select.value;
+    select.innerHTML = `<option value="">${first}</option>` + genres.map(genre => `<option value="${genre.id}">${prefix}${esc(genre.n)}</option>`).join('');
+    if ([...select.options].some(option => option.value === selected)) select.value = selected;
+  });
 }
 
 function populateProviders(preserve = true) {
@@ -99,14 +101,30 @@ function runtimeParams(type, value, params) {
 function labQuery() {
   const type = $('discoverType')?.value || 'movie';
   const sortValue = $('discoverSort')?.value || 'popularity.desc';
-  const params = { include_adult: false, page: labPage, sort_by: sortValue === 'date.desc' ? (type === 'tv' ? 'first_air_date.desc' : 'primary_release_date.desc') : sortValue };
-  const genre = $('discoverGenre')?.value, language = $('discoverLanguage')?.value, rating = +($('discoverRating')?.value || 0);
+  const dateField = type === 'tv' ? 'first_air_date' : 'primary_release_date';
+  const titleField = type === 'tv' ? 'original_name' : 'original_title';
+  const sortBy = sortValue === 'date.desc' ? `${dateField}.desc` : sortValue === 'date.asc' ? `${dateField}.asc` : sortValue === 'title.asc' ? `${titleField}.asc` : sortValue === 'title.desc' ? `${titleField}.desc` : sortValue;
+  const params = { include_adult: false, page: labPage, sort_by: sortBy };
+  const genre = $('discoverGenre')?.value, excludeGenre = $('discoverExcludeGenre')?.value, language = $('discoverLanguage')?.value;
+  const rating = +($('discoverRating')?.value || 0), maxRating = +($('discoverRatingMax')?.value || 0), votes = +($('discoverVotes')?.value || 0);
   if (genre) params.with_genres = genre;
+  if (excludeGenre) params.without_genres = excludeGenre;
   if (language) params.with_original_language = language;
   if (rating) params['vote_average.gte'] = rating;
-  if (sortValue === 'vote_average.desc') params['vote_count.gte'] = 250;
+  if (maxRating) params['vote_average.lte'] = maxRating;
+  if (votes) params['vote_count.gte'] = votes;
+  if (sortValue === 'vote_average.desc') params['vote_count.gte'] = Math.max(250, votes);
+  else if (sortValue === 'vote_average.asc') params['vote_count.gte'] = Math.max(50, votes);
+  if ($('discoverCountry')?.value) params.with_origin_country = $('discoverCountry').value;
   const bounds = dateBounds($('discoverEra')?.value || '');
-  if (bounds) { params[type === 'tv' ? 'first_air_date.gte' : 'primary_release_date.gte'] = bounds.from; params[type === 'tv' ? 'first_air_date.lte' : 'primary_release_date.lte'] = bounds.to; }
+  const lower = value => { const key = `${dateField}.gte`; params[key] = !params[key] || value > params[key] ? value : params[key]; };
+  const upper = value => { const key = `${dateField}.lte`; params[key] = !params[key] || value < params[key] ? value : params[key]; };
+  if (bounds) { lower(bounds.from); upper(bounds.to); }
+  const release = $('discoverRelease')?.value || '', now = new Date(), today = now.toISOString().slice(0, 10), currentYear = now.getFullYear();
+  if (release === 'released') upper(today);
+  else if (release === 'upcoming') lower(today);
+  else if (release === 'this_year') { lower(`${currentYear}-01-01`); upper(`${currentYear}-12-31`); }
+  else if (release === 'recent') { lower(`${currentYear - 4}-01-01`); upper(today); }
   runtimeParams(type, $('discoverRuntime')?.value || '', params);
   applyProviderFilter(params, $('discoverProvider')?.value || '');
   if ($('discoverStreaming')?.checked) { params.watch_region = state.region; params.with_watch_monetization_types = 'flatrate'; }
@@ -146,7 +164,7 @@ async function buildDiscovery({ append = false } = {}) {
 function resetStudio() {
   labRequest++;
   activePreset = '';
-  const defaults = { discoverType: 'movie', discoverGenre: '', discoverEra: '', discoverLanguage: '', discoverRating: '0', discoverRuntime: '', discoverSort: 'popularity.desc', discoverProvider: '' };
+  const defaults = { discoverType: 'movie', discoverGenre: '', discoverExcludeGenre: '', discoverEra: '', discoverLanguage: '', discoverRating: '0', discoverRatingMax: '0', discoverVotes: '0', discoverRuntime: '', discoverCountry: '', discoverRelease: '', discoverSort: 'popularity.desc', discoverProvider: '' };
   Object.entries(defaults).forEach(([id, value]) => { if ($(id)) $(id).value = value; });
   if ($('discoverStreaming')) $('discoverStreaming').checked = true;
   populateGenres();

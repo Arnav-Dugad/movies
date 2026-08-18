@@ -1,19 +1,19 @@
 // ===== WATCHED METADATA BACKFILL =====
-// Enriches watched docs with everything the badge engine needs but the write path
-// doesn't know: runtime (for hours-watched), director, and top-billed cast.
+// Enriches watched docs with everything the intelligence engine needs but the
+// write path may not know: runtime, director, cast, and story-theme keywords.
 // Also fills the older poster/year/genres gap, so this is the ONE backfill for
 // watched docs — a second pass would double the network cost, since tmdb() keys
 // its cache on path+params and `?append_to_response=credits` is a distinct key.
 //
-// Lazy by design: only /watched and /stats trigger it, so users who visit neither
-// never pay for it. Fire-and-forget — it never blocks a paint; `cv:meta-backfilled`
-// re-renders whoever cares once the data lands.
+// Lazy by design: watch history, Stats, or personalized Home rails can trigger it.
+// Fire-and-forget — it never blocks a paint; `cv:meta-backfilled` re-renders
+// whichever surface cares once the data lands.
 import { tmdb, pool } from './api.js';
 import { db } from './firebase.js';
 import { state } from './state.js';
 
 // Bump to re-backfill every doc after a schema change.
-export const META_V = 5;
+export const META_V = 6;
 const REPAIR_V = 1;
 
 let running = false, done = false, repairing = false;
@@ -39,6 +39,9 @@ function tvMeta(det) {
 }
 
 const releaseOf = det => det.release_date || det.first_air_date || '';
+const keywordsOf = det => (det.keywords?.keywords || det.keywords?.results || [])
+  .slice(0, 15).map(keyword => ({ id: +keyword.id, name: keyword.name || '' }))
+  .filter(keyword => keyword.id && keyword.name);
 const typeRuntime = (det, type, completed = false) => {
   if (type === 'movie') return +(det.runtime || 0);
   const episode = +(det.episode_run_time?.[0] || det.last_episode_to_air?.runtime || 0);
@@ -75,7 +78,7 @@ function watchedPatch(det, type, old) {
     tmdbId: +det.id || +(old.tmdbId || 0), type,
     title: det.title || det.name || old.title || '', poster: det.poster_path || old.poster || '',
     year: release.slice(0, 4) || old.year || '', releaseDate: release || old.releaseDate || '',
-    genres: genres.length ? genres : (old.genres || []), runtime: typeRuntime(det, type, true) || old.runtime || 0,
+    genres: genres.length ? genres : (old.genres || []), keywords: keywordsOf(det).length ? keywordsOf(det) : (old.keywords || []), runtime: typeRuntime(det, type, true) || old.runtime || 0,
     episodeRuntime: episodeRuntime || old.episodeRuntime || 0, episodeCount: episodeCount || old.episodeCount || 0,
     language: det.original_language || old.language || '',
     country: det.origin_country?.[0] || det.production_countries?.[0]?.iso_3166_1 || old.country || '',
@@ -106,7 +109,7 @@ export async function repairCollectionMeta(onProgress = () => {}) {
   });
   const pending = [...jobs.values()].filter(job =>
     (job.watchlist && missingCommon(job.watchlist)) ||
-    (job.watched && (missingCommon(job.watched) || job.watched.metaV !== META_V || ((!job.watched.directorId || !job.watched.cast?.length) && job.watched.repairV !== REPAIR_V)))
+    (job.watched && (missingCommon(job.watched) || !job.watched.keywords?.length || job.watched.metaV !== META_V || ((!job.watched.directorId || !job.watched.cast?.length) && job.watched.repairV !== REPAIR_V)))
   );
   if (!pending.length) return { total: 0, repaired: 0, failed: 0 };
 
@@ -117,7 +120,7 @@ export async function repairCollectionMeta(onProgress = () => {}) {
     await pool(pending, async job => {
       try {
         if (!state.user || state.user.uid !== uid) throw new Error('account changed');
-        const det = await tmdb(`/${job.type}/${job.id}`, { append_to_response: 'credits' }, { cache: false });
+        const det = await tmdb(`/${job.type}/${job.id}`, { append_to_response: 'credits,keywords' }, { cache: false });
         const writes = []; let savedPatch = null, seenPatch = null;
         if (job.watchlist) {
           savedPatch = watchlistPatch(det, job.type, job.watchlist);
@@ -164,7 +167,7 @@ export async function ensureWatchedMeta() {
       // Re-check identity per item: a sign-out/switch mid-flight must never write
       // one account's data into another's docs.
       if (!state.user || state.user.uid !== uid) return;
-      const det = await tmdb(`/${type}/${id}`, { append_to_response: 'credits' }, { cache: false });
+      const det = await tmdb(`/${type}/${id}`, { append_to_response: 'credits,keywords' }, { cache: false });
       const m = type === 'tv' ? tvMeta(det) : movieMeta(det);
       const gs = (det.genres || []).map(g => g.id);
       const cs = (det.credits?.cast || []).slice(0, 5).map(p => ({ id: p.id, name: p.name || '', profile: p.profile_path || '' }));
@@ -186,6 +189,7 @@ export async function ensureWatchedMeta() {
         // already good — so an unconditional overwrite would wipe real data
         // whenever a response comes back without a genres array.
         genres: gs.length ? gs : (d.genres || []),
+        keywords: keywordsOf(det).length ? keywordsOf(det) : (d.keywords || []),
         // Same defensive shape: never downgrade a known value to an empty one just
         // because a single response came back thin (matters on a metaV bump, when
         // these fields already hold good data from the previous version).

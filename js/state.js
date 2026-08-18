@@ -63,7 +63,7 @@ export function pushRecentlyViewed(item) {
   state.recentlyViewed.unshift({
     id: item.id, type: item.type,
     title: item.title, poster: item.poster || '',
-    genres: item.genres || [], ts: Date.now()
+    genres: item.genres || [], keywords: (item.keywords || []).slice(0, 15), ts: Date.now()
   });
   state.recentlyViewed = state.recentlyViewed.slice(0, 20);
   try { localStorage.setItem('cv_recent_' + uid, JSON.stringify(state.recentlyViewed)); } catch (e) {}

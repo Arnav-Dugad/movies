@@ -9,6 +9,7 @@ import { observeReveals, observeCountUps } from './effects.js';
 import { mountAmbientVideo } from './video-bg.js';
 import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
+import { prefs, updatePref } from './prefs.js';
 
 let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
@@ -17,6 +18,26 @@ let lastVTSource = null;      // element currently holding the shared view-trans
 let clampResize = null;       // window resize handler that re-measures the read-more toggles
 let reqGen = 0;                // bumped on every openDetail/openCollection call; guards against a slower, stale fetch overwriting a newer one
 let epGen = 0;                 // same idea, scoped to the season-episode list (season tabs can be clicked faster than they load)
+const countdownTimers = new Map(); // one precision clock per title; exact airtimes replace date-only estimates
+
+const DETAIL_SECTION_ICONS = {
+  detailBoxOfficeExpanded: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9m5 10V5m6 14v-7m5 7V3"/><path d="M2 21h20"/></svg>',
+  detailGalleryExpanded: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m5 18 5-5 3 3 2-2 4 4"/></svg>',
+  detailReviewsExpanded: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5h14v11H9l-4 4V5Z"/><path d="M8 9h8M8 12h5"/></svg>',
+};
+
+function detailAccordion(prefKey, eyebrow, title, summary, body, tone = '') {
+  const expanded = !!prefs[prefKey], bodyId = `detailSection_${prefKey}`;
+  return `<section class="detail-accordion ${tone}${expanded ? ' expanded' : ''}"><button class="detail-accordion-toggle" data-action="toggle-detail-section" data-pref="${prefKey}" aria-expanded="${expanded}" aria-controls="${bodyId}"><span class="detail-accordion-icon">${DETAIL_SECTION_ICONS[prefKey] || ''}</span><span class="detail-accordion-copy"><small>${esc(eyebrow)}</small><strong>${esc(title)}</strong><em>${esc(summary)}</em></span><span class="detail-accordion-state"><b>${expanded ? 'Open' : 'Collapsed'}</b><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></i></span></button><div class="detail-accordion-body" id="${bodyId}"${expanded ? '' : ' hidden'}>${body}</div></section>`;
+}
+
+function countdownGrid(id) {
+  return `<div class="countdown-grid" aria-label="Time remaining"><div class="cd-unit"><span class="cd-index">01</span><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">Days</div></div><span class="cd-separator">:</span><div class="cd-unit"><span class="cd-index">02</span><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">Hours</div></div><span class="cd-separator">:</span><div class="cd-unit"><span class="cd-index">03</span><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">Minutes</div></div><span class="cd-separator">:</span><div class="cd-unit"><span class="cd-index">04</span><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">Seconds</div></div></div>`;
+}
+
+function countdownPanel(id, { eyebrow, title, note, localHTML = '' }) {
+  return `<section class="countdown" data-countdown-shell="${id}" style="--cd-progress:0deg"><div class="countdown-gridlines"></div><div class="countdown-beam"></div><header class="countdown-head"><div><span class="countdown-signal"><i></i>${esc(eyebrow)}</span><h2>${esc(title)}</h2><p>${esc(note)}</p></div><span class="countdown-live-chip"><i></i>Live clock</span></header><div class="countdown-stage"><div class="countdown-context">${localHTML}</div>${countdownGrid(id)}<div class="countdown-orbit"><div><strong id="cd_pct_${id}">0%</strong><span>journey</span></div><small>Auto-synced</small></div></div><div class="countdown-foot"><span><i></i>Your local timezone</span><span id="cd_target_${id}">Target synchronising</span><span>Precision: 1 second</span></div></section>`;
+}
 
 export async function openDetail(id, type) {
   const gen = ++reqGen;
@@ -40,7 +61,7 @@ export async function openDetail(id, type) {
     ct.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh"><div class="loader-text">Loading...</div></div>';
   }
   document.title = 'Loading… — CineVerse';
-  state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
+  state.cdIntervals.forEach(clearInterval); state.cdIntervals = []; countdownTimers.clear();
   try {
     const [det, cred, vids, sim, revs] = await Promise.all([
       tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,content_ratings,release_dates,watch/providers,keywords,recommendations,images,alternative_titles', include_image_language: 'en,null' }),
@@ -73,32 +94,34 @@ export async function openDetail(id, type) {
     // You can't have watched — or have an opinion on — something that isn't out yet.
     const out = isReleased(det, type);
     const recs = det.recommendations?.results || sim.results || [];
+    const kws = det.keywords?.keywords || det.keywords?.results || [];
+    const keywordMeta = kws.slice(0, 15).map(keyword => ({ id: +keyword.id, name: keyword.name || '' })).filter(keyword => keyword.id && keyword.name);
 
     // Record for personalization
-    pushRecentlyViewed({ id, type, title, poster: det.poster_path || '', genres: (det.genres || []).map(g => g.id) });
+    pushRecentlyViewed({ id, type, title, poster: det.poster_path || '', genres: (det.genres || []).map(g => g.id), keywords: keywordMeta });
 
     // Watchlist payload
     const contentCountry = det.origin_country?.[0] || det.production_countries?.[0]?.iso_3166_1 || '';
     const contentReleaseDate = det.release_date || det.first_air_date || '';
-    const wlPayload = esc(JSON.stringify({ id, type, title, poster: det.poster_path || '', rating: det.vote_average || 0, year, genres: (det.genres || []).map(g => g.id), runtime: det.runtime || det.episode_run_time?.[0] || 0, language: det.original_language || '', country: contentCountry, releaseDate: contentReleaseDate }));
+    const wlPayload = esc(JSON.stringify({ id, type, title, poster: det.poster_path || '', rating: det.vote_average || 0, year, genres: (det.genres || []).map(g => g.id), keywords: keywordMeta, runtime: det.runtime || det.episode_run_time?.[0] || 0, language: det.original_language || '', country: contentCountry, releaseDate: contentReleaseDate }));
 
     const boHTML = boxOfficeHTML(det);
 
     // One countdown block, shared markup. For an airing show it counts to the next
     // episode; for anything not yet out it counts to the release/premiere date.
     let cdHTML = '', cdDate = null, cdDoneMsg = '';
-    const cdGrid = `<div class="countdown-grid"><div class="cd-unit"><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">Days</div></div><div class="cd-unit"><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">Hours</div></div><div class="cd-unit"><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">Min</div></div><div class="cd-unit"><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">Sec</div></div></div>`;
     if (type === 'tv' && det.next_episode_to_air && new Date(`${det.next_episode_to_air.air_date}T23:59:59`) > new Date()) {
       const ne = det.next_episode_to_air;
       cdDate = `${ne.air_date}T23:59:59`; cdDoneMsg = '🎉 Now Airing!';
-      cdHTML = `<div class="countdown"><div class="countdown-label"><span class="live-dot"></span>Next Episode — S${ne.season_number}E${ne.episode_number}${ne.name ? ` "${esc(ne.name)}"` : ''}</div><div class="detail-local-airtime pending" id="nextAirTime_${id}"><i></i><span>Checking the exact local drop time…</span></div>${cdGrid}</div>`;
+      const episode = `S${ne.season_number}E${ne.episode_number}${ne.name ? ` · ${ne.name}` : ''}`;
+      cdHTML = countdownPanel(id, { eyebrow: 'Next episode intelligence', title: episode, note: 'A precision countdown that automatically upgrades when an exact network time is confirmed.', localHTML: `<div class="detail-local-airtime pending" id="nextAirTime_${id}"><i></i><span><b>Confirming local drop</b><small>Checking the broadcaster schedule…</small></span></div>` });
     } else if (!out) {
       const relRaw = type === 'tv' ? det.first_air_date : det.release_date;
       const rd = relRaw ? new Date(relRaw + 'T00:00:00') : null;
       if (rd && !isNaN(rd) && rd.getTime() > Date.now()) {
         cdDate = relRaw; cdDoneMsg = type === 'tv' ? '🎉 Now Airing!' : '🎉 Now Released!';
         const nice = rd.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
-        cdHTML = `<div class="countdown"><div class="countdown-label"><span class="live-dot"></span>${type === 'tv' ? 'Premieres' : 'Releases'} ${esc(nice)}</div>${cdGrid}</div>`;
+        cdHTML = countdownPanel(id, { eyebrow: type === 'tv' ? 'Premiere intelligence' : 'Release intelligence', title: `${type === 'tv' ? 'Premieres' : 'Releases'} ${nice}`, note: 'The calendar target is shown in your local timezone and updates every second.', localHTML: `<div class="detail-local-airtime release"><i></i><span><b>${esc(nice)}</b><small>Local calendar date · ${esc(localTimeZone())}</small></span></div>` });
       }
     }
 
@@ -128,7 +151,6 @@ export async function openDetail(id, type) {
     const simItems = recs.filter(item => !state.watched[`${item.media_type || type}_${item.id}`]).slice(0, 14);
     let simHTML = ''; if (simItems.length) simHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">More Like This</div><div class="similar-row">${simItems.map(s => buildCard(s, s.media_type || type)).join('')}</div></div>`;
 
-    const kws = det.keywords?.keywords || det.keywords?.results || [];
     let kwHTML = ''; if (kws.length) kwHTML = `<div class="detail-keywords">${kws.slice(0, 15).map(k => `<button class="dtag detail-keyword" data-action="search-tag" data-tag="${esc(k.name)}" aria-label="Search titles tagged ${esc(k.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>${esc(k.name)}</button>`).join('')}</div>`;
 
     let collHTML = '';
@@ -155,7 +177,7 @@ export async function openDetail(id, type) {
             <div class="detail-btns">
               ${trailer ? `<button class="btn-primary magnetic" data-action="play-trailer" data-key="${trailer.key}" data-tip="Play trailer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play Trailer</button>` : ''}
               <button class="dbtn-icon ${wl ? 'active' : ''}" data-wl="${type}|${id}" data-action="open-list-picker" data-item="${wlPayload}" aria-label="${wl ? 'Edit lists' : 'Add to a list'}" data-tip="${wl ? 'Edit lists' : 'Add to a list'}">${wl ? '✓' : '+'}</button>
-              ${out ? `<button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" data-runtime="${det.runtime || det.episode_run_time?.[0] || 0}" data-language="${det.original_language || ''}" data-country="${contentCountry}" data-release-date="${contentReleaseDate}" data-tmdb-rating="${det.vote_average || 0}" data-vote-count="${det.vote_count || 0}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>` : ''}
+              ${out ? `<button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" data-keywords="${esc(JSON.stringify(keywordMeta))}" data-runtime="${det.runtime || det.episode_run_time?.[0] || 0}" data-language="${det.original_language || ''}" data-country="${contentCountry}" data-release-date="${contentReleaseDate}" data-tmdb-rating="${det.vote_average || 0}" data-vote-count="${det.vote_count || 0}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>` : ''}
               ${out ? `<button class="dbtn-icon" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate" data-tip="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>` : ''}
               ${out ? '' : `<span class="unreleased-note" data-tip="You can still add it to your list">${type === 'tv' ? 'Not aired yet' : 'Not released yet'}</span>`}
               <button class="dbtn-icon" data-action="share-item" data-title="${safeTitle}" data-id="${id}" data-type="${type}" aria-label="Share" data-tip="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
@@ -167,8 +189,8 @@ export async function openDetail(id, type) {
           <p class="detail-overview clamped" id="detOv">${esc(det.overview || 'No overview available.')}</p>
           <span class="detail-overview-toggle" id="detOvToggle" data-action="toggle-overview" hidden>Read more</span>
         </div>
+        ${boHTML}
         <div class="stats-grid">
-          ${boHTML}
           ${det.status ? `<div class="stat-card"><div class="stat-label">Status</div><div class="stat-val"><span style="color:${det.status === 'Released' || det.status === 'Returning Series' ? 'var(--green2)' : 'var(--text)'}">${det.status === 'Returning Series' ? '<span class="live-dot"></span>' : ''} ${esc(det.status)}</span></div></div>` : ''}
           ${det.original_language ? `<div class="stat-card"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
           ${det.vote_count ? `<div class="stat-card"><div class="stat-label">Votes</div><div class="stat-val" data-count="${det.vote_count}">${det.vote_count.toLocaleString()}</div></div>` : ''}
@@ -379,7 +401,7 @@ async function hydrateNextEpisodeTime(show, id, gen) {
   }
   label.className = 'detail-local-airtime exact';
   label.innerHTML = `<i></i><span><b>${esc(localEpisodeTime(time.airstamp))}</b><small>Exact drop · converted to ${esc(localTimeZone())} · <a href="https://www.tvmaze.com" target="_blank" rel="noopener">TVmaze</a></small></span>`;
-  state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
+  state.cdIntervals.forEach(clearInterval); state.cdIntervals = []; countdownTimers.clear();
   startCD(id, time.airstamp, '🎉 Now Airing!');
 }
 
@@ -398,7 +420,8 @@ function galleryHTML(det) {
       `<button class="gal-item ${cls}" data-action="open-lightbox" data-paths="${paths}" data-idx="${idx}" aria-label="${label} ${idx + 1} of ${list.length}"><img src="${IMG}${size}${i.file_path}" alt="" loading="lazy"></button>`
     ).join('')}</div></div>`;
   };
-  return `<div style="margin-bottom:32px"><div class="d-sec-title">Gallery</div>${group(backs, 'w780', 'gal-back', 'Backdrops')}${group(posters, 'w342', 'gal-poster', 'Posters')}</div>`;
+  const count = backs.length + posters.length;
+  return detailAccordion('detailGalleryExpanded', 'Artwork vault', 'Gallery', `${count} high-resolution image${count === 1 ? '' : 's'} · ${backs.length} backdrops · ${posters.length} posters`, `<div class="detail-gallery-body">${group(backs, 'w780', 'gal-back', 'Backdrops')}${group(posters, 'w342', 'gal-poster', 'Posters')}</div>`, 'gallery');
 }
 
 function providerHTML(det, region) {
@@ -445,7 +468,10 @@ function reviewsHTML(revs) {
   const more = rest.length
     ? `<div id="revMore" hidden>${rest.map((r, i) => reviewCard(r, i + 6)).join('')}</div><button class="review-showall" data-action="show-all-reviews">Show all ${all.length} reviews</button>`
     : '';
-  return `<div style="margin-bottom:32px"><div class="d-sec-title">Reviews</div>${first}${more}</div>`;
+  const rated = all.filter(review => review.author_details?.rating != null);
+  const average = rated.length ? rated.reduce((sum, review) => sum + +review.author_details.rating, 0) / rated.length : 0;
+  const summary = `${all.length} review${all.length === 1 ? '' : 's'}${average ? ` · ${average.toFixed(1)}/10 reviewer average` : ''}`;
+  return detailAccordion('detailReviewsExpanded', 'Community perspective', 'Reviews', summary, `<div class="detail-reviews-body">${first}${more}</div>`, 'reviews');
 }
 
 // Reveal a clamp toggle ONLY when the text actually overflows its line-clamp.
@@ -493,40 +519,58 @@ function syncAllClampToggles(scope) {
 // Premium financial overview. Revenue minus production budget is labelled as a
 // gross difference—not profit—because marketing and exhibitor shares are absent.
 function boxOfficeHTML(det) {
-  const budget = det.budget || 0, revenue = det.revenue || 0;
+  const budget = +(det.budget || 0), revenue = +(det.revenue || 0);
   if (!budget && !revenue) return '';
-  const max = Math.max(budget, revenue, 1);
-  const bW = Math.round(budget / max * 100), rW = Math.round(revenue / max * 100);
   const hasBoth = !!(budget && revenue);
   const difference = revenue - budget;
   const multiple = budget ? revenue / budget : 0;
   const recovery = budget ? Math.round(multiple * 100) : 0;
   const variance = budget ? Math.round(difference / budget * 100) : 0;
-  const ring = Math.min(100, Math.max(0, recovery));
-  const status = !hasBoth ? 'Reported figures' : difference >= 0 ? 'Gross above budget' : 'Gross below budget';
-  return `<div class="stat-card boxoffice">
-    <div class="bo-head"><div><span class="bo-eyebrow">Financial performance</span><h3>Box Office</h3></div><span class="bo-status${hasBoth ? difference >= 0 ? ' positive' : ' negative' : ''}">${status}</span></div>
+  const marketingLow = budget * .5, marketingHigh = budget;
+  const totalCostLow = budget + marketingLow, totalCostHigh = budget + marketingHigh;
+  const breakEvenLow = budget ? totalCostLow / .55 : 0, breakEvenHigh = budget ? totalCostHigh / .4 : 0;
+  const breakEvenMid = (breakEvenLow + breakEvenHigh) / 2;
+  const scenarioProgress = breakEvenMid ? Math.round(revenue / breakEvenMid * 100) : 0;
+  const studioReturnLow = revenue * .4, studioReturnHigh = revenue * .55;
+  const chartMax = Math.max(budget, totalCostHigh, revenue, 1);
+  const widthOf = value => Math.max(value ? 4 : 0, Math.round(value / chartMax * 100));
+  const ring = Math.min(100, Math.max(0, scenarioProgress || recovery));
+  const scale = !budget ? 'Unreported scale' : budget >= 200e6 ? 'Tentpole scale' : budget >= 100e6 ? 'Blockbuster scale' : budget >= 40e6 ? 'Major studio scale' : budget >= 10e6 ? 'Mid-budget scale' : 'Lean production';
+  const performance = !hasBoth ? 'Reported data is incomplete' : multiple >= 3 ? 'Exceptional gross leverage' : multiple >= 2.5 ? 'Strong theatrical multiple' : multiple >= 2 ? 'Gross comfortably exceeds budget' : multiple >= 1 ? 'Gross recovered reported budget' : 'Gross remains below reported budget';
+  const statusClass = !hasBoth ? '' : multiple >= 2 ? ' positive' : multiple < 1 ? ' negative' : '';
+  const releaseRaw = det.release_date || '';
+  const releaseMs = releaseRaw ? new Date(`${releaseRaw}T00:00:00`).getTime() : 0;
+  const releaseDays = releaseMs && releaseMs <= Date.now() ? Math.max(1, Math.floor((Date.now() - releaseMs) / 86400000) + 1) : 0;
+  const pace = revenue && releaseDays ? revenue / releaseDays : 0;
+  const core = `<div class="boxoffice">
+    <div class="bo-head"><div><span class="bo-eyebrow">Financial intelligence lab</span><h3>Reported performance, decoded</h3><p>${esc(performance)}</p></div><span class="bo-status${statusClass}">${esc(scale)}</span></div>
     <div class="bo-dashboard">
       <div class="bo-main">
         <div class="bo-metrics">
-          ${budget ? `<div><span>Production budget</span><strong>$${fmt(budget)}</strong></div>` : ''}
-          ${revenue ? `<div><span>Worldwide gross</span><strong>$${fmt(revenue)}</strong></div>` : ''}
-          ${hasBoth ? `<div class="${difference >= 0 ? 'positive' : 'negative'}"><span>Gross difference</span><strong>${difference >= 0 ? '+' : '−'}$${fmt(Math.abs(difference))}</strong></div>` : ''}
+          ${budget ? `<div class="bo-card"><span>Reported production</span><strong>$${fmt(budget)}</strong><small>TMDB budget</small></div>` : ''}
+          ${revenue ? `<div class="bo-card"><span>Reported worldwide gross</span><strong>$${fmt(revenue)}</strong><small>Theatrical gross</small></div>` : ''}
+          ${hasBoth ? `<div class="bo-card ${difference >= 0 ? 'positive' : 'negative'}"><span>Gross above production</span><strong>${difference >= 0 ? '+' : '−'}$${fmt(Math.abs(difference))}</strong><small>Not profit</small></div>` : ''}
+          ${pace ? `<div class="bo-card"><span>Lifetime gross pace</span><strong>$${fmt(pace)}/day</strong><small>Across ${releaseDays.toLocaleString()} days</small></div>` : ''}
         </div>
-        <div class="bo-bars" aria-label="Budget and worldwide gross comparison">
-          ${budget ? `<div class="bo-row"><span class="bo-name">Budget</span><div class="bo-track"><div class="bo-fill budget" style="width:0" data-w="${bW}"></div></div><span class="bo-val">$${fmt(budget)}</span></div>` : ''}
-          ${revenue ? `<div class="bo-row"><span class="bo-name">Gross</span><div class="bo-track"><div class="bo-fill revenue" style="width:0" data-w="${rW}"></div></div><span class="bo-val">$${fmt(revenue)}</span></div>` : ''}
+        <div class="bo-bars" aria-label="Reported and modelled financial scale comparison">
+          ${budget ? `<div class="bo-row"><span class="bo-name">Production</span><div class="bo-track"><div class="bo-fill budget" style="width:0" data-w="${widthOf(budget)}"></div></div><span class="bo-val">$${fmt(budget)}</span></div>` : ''}
+          ${budget ? `<div class="bo-row scenario"><span class="bo-name">Cost model</span><div class="bo-track"><div class="bo-fill total-cost" style="width:0" data-w="${widthOf(totalCostHigh)}"></div></div><span class="bo-val">$${fmt(totalCostLow)}–${fmt(totalCostHigh)}</span></div>` : ''}
+          ${revenue ? `<div class="bo-row"><span class="bo-name">Gross</span><div class="bo-track"><div class="bo-fill revenue" style="width:0" data-w="${widthOf(revenue)}"></div></div><span class="bo-val">$${fmt(revenue)}</span></div>` : ''}
         </div>
       </div>
-      ${budget && revenue ? `<div class="bo-recovery"><div class="bo-ring" style="--bo-progress:${ring * 3.6}deg"><div><strong>${recovery}%</strong><span>of budget</span></div></div><p>Budget recovery</p></div>` : ''}
+      ${hasBoth ? `<div class="bo-recovery"><div class="bo-ring" style="--bo-progress:${ring * 3.6}deg"><div><strong>${scenarioProgress}%</strong><span>scenario</span></div></div><p>Modelled break-even journey</p><small>${multiple.toFixed(2)}× gross / budget</small></div>` : ''}
     </div>
-    ${hasBoth ? `<div class="bo-summary"><div class="bo-chip"><span class="bo-clabel">Gross multiple</span><span class="bo-cval">${multiple.toFixed(2)}×</span></div><div class="bo-chip ${variance >= 0 ? 'up' : 'down'}"><span class="bo-clabel">Budget difference</span><span class="bo-cval">${variance >= 0 ? '+' : ''}${variance}%</span></div></div>` : ''}
-    <p class="bo-note">Worldwide gross compared with reported production budget. Marketing, distribution, and cinema shares are not included.</p>
+    ${hasBoth ? `<div class="bo-intelligence-grid"><article><span>Gross multiple</span><strong>${multiple.toFixed(2)}×</strong><p>Worldwide gross divided by production budget.</p></article><article class="${variance >= 0 ? 'positive' : 'negative'}"><span>Production spread</span><strong>${variance >= 0 ? '+' : ''}${variance}%</strong><p>Gross difference versus production only.</p></article><article><span>Modelled break-even band</span><strong>$${fmt(breakEvenLow)}–${fmt(breakEvenHigh)}</strong><p>Uses disclosed assumptions below.</p></article><article><span>Possible studio theatrical return</span><strong>$${fmt(studioReturnLow)}–${fmt(studioReturnHigh)}</strong><p>40–55% gross-share scenario, before other income.</p></article></div>` : ''}
+    ${budget ? `<div class="bo-scenario-lab"><div><span>Transparent scenario model</span><strong>What the reported numbers do not include</strong></div><div class="bo-scenario-flow"><span><b>1.0×</b> Production</span><i>+</i><span><b>0.5–1.0×</b> Marketing assumption</span><i>÷</i><span><b>40–55%</b> Studio gross-share assumption</span></div></div>` : ''}
+    <p class="bo-note"><strong>Reported:</strong> production budget and worldwide gross from TMDB, in USD. <strong>Modelled:</strong> marketing at 50–100% of production and studio theatrical share at 40–55%. This is an educational scenario—not profit, accounting, or a financial claim.</p>
   </div>`;
+  const summary = `${budget ? `$${fmt(budget)} budget` : 'Budget unreported'} · ${revenue ? `$${fmt(revenue)} worldwide gross` : 'Gross unreported'}${hasBoth ? ` · ${multiple.toFixed(2)}× multiple` : ''}`;
+  return detailAccordion('detailBoxOfficeExpanded', 'Financial intelligence', 'Box Office Lab', summary, core, 'box-office');
 }
 
 export function closeDetail() {
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = [];
+  countdownTimers.clear();
   if (ambientTeardown) { ambientTeardown(); ambientTeardown = null; }
   if (clampResize) { window.removeEventListener('resize', clampResize); clampResize = null; }
 }
@@ -537,15 +581,42 @@ function getCert(d, t) {
 }
 
 function startCD(id, ds, doneMsg = '🎉 Now Airing!') {
+  if (countdownTimers.has(id)) {
+    const previous = countdownTimers.get(id); clearInterval(previous);
+    state.cdIntervals = state.cdIntervals.filter(timer => timer !== previous);
+  }
   const tg = new Date(ds).getTime();
+  const shell = document.querySelector(`[data-countdown-shell="${id}"]`);
+  const startedAt = Date.now(), span = Math.max(1000, tg - startedAt);
+  if (shell) { shell.dataset.countdownTarget = String(tg); shell.dataset.countdownStarted = String(startedAt); }
+  const targetLabel = $(`cd_target_${id}`);
+  if (targetLabel && Number.isFinite(tg)) targetLabel.textContent = new Date(tg).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  let timer = null;
+  const paintDigit = (node, value) => {
+    if (!node || node.textContent === value) return;
+    node.textContent = value; node.classList.remove('tick');
+    void node.offsetWidth; node.classList.add('tick');
+  };
   function up() {
     const df = tg - Date.now();
-    if (df <= 0) { const e = $(`cd_d_${id}`); if (e) e.parentElement.parentElement.innerHTML = `<div style="color:var(--green2);font-size:1rem;font-weight:700">${doneMsg}</div>`; return; }
+    if (df <= 0) {
+      if (timer) { clearInterval(timer); countdownTimers.delete(id); state.cdIntervals = state.cdIntervals.filter(value => value !== timer); }
+      const e = $(`cd_d_${id}`), grid = e?.closest('.countdown-grid');
+      if (grid) grid.innerHTML = `<div class="countdown-arrived"><i>✓</i><span><strong>${esc(doneMsg)}</strong><small>The countdown reached its confirmed target.</small></span></div>`;
+      if (shell) { shell.classList.add('arrived'); shell.style.setProperty('--cd-progress', '360deg'); }
+      const pct = $(`cd_pct_${id}`); if (pct) pct.textContent = '100%';
+      return;
+    }
     const d = Math.floor(df / 864e5), h = Math.floor(df % 864e5 / 36e5), m = Math.floor(df % 36e5 / 6e4), s = Math.floor(df % 6e4 / 1e3);
     const de = $(`cd_d_${id}`), he = $(`cd_h_${id}`), me = $(`cd_m_${id}`), se = $(`cd_s_${id}`);
-    if (de) de.textContent = String(d).padStart(2, '0'); if (he) he.textContent = String(h).padStart(2, '0'); if (me) me.textContent = String(m).padStart(2, '0'); if (se) se.textContent = String(s).padStart(2, '0');
+    paintDigit(de, String(d).padStart(2, '0')); paintDigit(he, String(h).padStart(2, '0')); paintDigit(me, String(m).padStart(2, '0')); paintDigit(se, String(s).padStart(2, '0'));
+    const progress = Math.max(0, Math.min(1, 1 - df / span));
+    if (shell) shell.style.setProperty('--cd-progress', `${progress * 360}deg`);
+    const pct = $(`cd_pct_${id}`); if (pct) pct.textContent = `${Math.floor(progress * 100)}%`;
   }
-  up(); state.cdIntervals.push(setInterval(up, 1000));
+  up();
+  if (tg <= Date.now()) return;
+  timer = setInterval(up, 1000); countdownTimers.set(id, timer); state.cdIntervals.push(timer);
 }
 
 async function loadSeason(tid, sn, el) {
@@ -621,6 +692,20 @@ export function initDetail() {
       // Expanded text can't overflow, so mark it — otherwise a resize re-measure
       // would decide there's nothing to expand and hide the "Show less" control.
       el.dataset.expanded = clamped ? '0' : '1';
+    },
+    'toggle-detail-section': el => {
+      const body = $(el.getAttribute('aria-controls')); if (!body) return;
+      const expanded = el.getAttribute('aria-expanded') !== 'true';
+      el.setAttribute('aria-expanded', String(expanded)); body.hidden = !expanded;
+      const section = el.closest('.detail-accordion'); if (section) section.classList.toggle('expanded', expanded);
+      const label = el.querySelector('.detail-accordion-state b'); if (label) label.textContent = expanded ? 'Open' : 'Collapsed';
+      if (el.dataset.pref) updatePref(el.dataset.pref, expanded);
+      if (expanded) {
+        requestAnimationFrame(() => {
+          body.querySelectorAll('.bo-fill').forEach(fill => { fill.style.width = `${+fill.dataset.w || 0}%`; });
+          body.querySelectorAll('.review-body').forEach(review => syncClampToggle(review, body.querySelector(`.review-toggle[data-target="${review.id}"]`)));
+        });
+      }
     },
     'toggle-review': (el) => {
       const body = $(el.dataset.target); if (!body) return;

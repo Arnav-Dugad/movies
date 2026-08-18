@@ -21,6 +21,8 @@ export function initFilters() {
   }
   $('mGenres').innerHTML = '<option value="">All movie genres</option>' + mGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
   $('tGenres').innerHTML = '<option value="">All TV genres</option>' + tGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
+  $('mExcludeGenre').innerHTML = '<option value="">Exclude no movie genre</option>' + mGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
+  $('tExcludeGenre').innerHTML = '<option value="">Exclude no TV genre</option>' + tGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
   fillProviderSelect($('mProvider'), 'movie');
   fillProviderSelect($('tProvider'), 'tv');
 }
@@ -51,15 +53,20 @@ export async function loadMovies(append = false) {
   const sort = $('mSort').value, year = $('mYear').value, lang = $('mLang').value, minRat = $('mRating').value;
   const runtime = $('mRuntime').value, votes = $('mVotes').value, cert = $('mCert').value;
   const release = $('mRelease').value, country = $('mCountry').value, provider = $('mProvider')?.value || '';
+  const maxRat = $('mRatingMax')?.value || '', excludeGenre = $('mExcludeGenre')?.value || '', releaseType = $('mReleaseType')?.value || '';
   const params = { sort_by: sort, page: state.mPg, include_adult: false };
   if (sort === 'vote_average.desc') params['vote_count.gte'] = Math.max(200, +(votes || 0));
+  else if (sort === 'vote_average.asc') params['vote_count.gte'] = Math.max(50, +(votes || 0));
   if (state.mGenre) params.with_genres = state.mGenre;
+  if (excludeGenre) params.without_genres = excludeGenre;
   if (year) params.primary_release_year = year;
   if (lang) params.with_original_language = lang;
   if (minRat) params['vote_average.gte'] = minRat;
+  if (maxRat) params['vote_average.lte'] = maxRat;
   if (votes) params['vote_count.gte'] = Math.max(+(params['vote_count.gte'] || 0), +votes);
   if (country) params.with_origin_country = country;
   if (cert) { params.certification_country = 'US'; params.certification = cert; }
+  if (releaseType) params.with_release_type = releaseType;
   applyProviderFilter(params, provider);
   applyRuntime(params, runtime, 89, 120);
   const now = new Date(), currentYear = now.getFullYear(), today = dateISO(now);
@@ -80,17 +87,28 @@ export async function loadTV(append = false) {
   const sort = $('tSort').value, year = $('tYear').value, lang = $('tLang').value;
   const minRat = $('tRating').value, runtime = $('tRuntime').value, votes = $('tVotes').value;
   const status = $('tStatus').value, country = $('tCountry').value, provider = $('tProvider')?.value || '';
+  const maxRat = $('tRatingMax')?.value || '', excludeGenre = $('tExcludeGenre')?.value || '';
+  const format = $('tType')?.value || '', airWindow = $('tAirWindow')?.value || '';
   const params = { sort_by: sort, page: state.tPg };
   if (sort === 'vote_average.desc') params['vote_count.gte'] = Math.max(200, +(votes || 0));
+  else if (sort === 'vote_average.asc') params['vote_count.gte'] = Math.max(50, +(votes || 0));
   if (state.tGenre) params.with_genres = state.tGenre;
+  if (excludeGenre) params.without_genres = excludeGenre;
   if (year) params.first_air_date_year = year;
   if (lang) params.with_original_language = lang;
   if (minRat) params['vote_average.gte'] = minRat;
+  if (maxRat) params['vote_average.lte'] = maxRat;
   if (votes) params['vote_count.gte'] = Math.max(+(params['vote_count.gte'] || 0), +votes);
   if (status !== '') params.with_status = status;
+  if (format !== '') params.with_type = format;
   if (country) params.with_origin_country = country;
   applyProviderFilter(params, provider);
   applyRuntime(params, runtime, 29, 60);
+  const now = new Date(), today = dateISO(now), currentYear = now.getFullYear();
+  if (airWindow === 'released') params['first_air_date.lte'] = today;
+  else if (airWindow === 'upcoming') params['first_air_date.gte'] = today;
+  else if (airWindow === 'recent') { const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - 90); params['first_air_date.gte'] = dateISO(cutoff); params['first_air_date.lte'] = today; }
+  else if (airWindow === 'this_year') { params['first_air_date.gte'] = `${currentYear}-01-01`; params['first_air_date.lte'] = `${currentYear}-12-31`; }
   try {
     const d = await tmdb('/discover/tv', params);
     paintResults($('tGrid'), d.results, 'tv', append);
@@ -105,11 +123,11 @@ export function initBrowse() {
     'filter-movies': () => loadMovies(),
     'filter-tv': () => loadTV(),
     'reset-movies': () => {
-      ['mYear','mLang','mRating','mRuntime','mVotes','mCert','mRelease','mCountry','mProvider'].forEach(id => { if ($(id)) $(id).value = ''; });
+      ['mYear','mLang','mRating','mRatingMax','mRuntime','mVotes','mCert','mRelease','mReleaseType','mCountry','mProvider','mExcludeGenre'].forEach(id => { if ($(id)) $(id).value = ''; });
       $('mSort').value = 'popularity.desc'; resetGenre('movie'); loadMovies();
     },
     'reset-tv': () => {
-      ['tYear','tLang','tRating','tRuntime','tVotes','tStatus','tCountry','tProvider'].forEach(id => { if ($(id)) $(id).value = ''; });
+      ['tYear','tLang','tRating','tRatingMax','tRuntime','tVotes','tStatus','tType','tAirWindow','tCountry','tProvider','tExcludeGenre'].forEach(id => { if ($(id)) $(id).value = ''; });
       $('tSort').value = 'popularity.desc'; resetGenre('tv'); loadTV();
     },
     'more-movies': () => moreMovies(),
