@@ -53,6 +53,42 @@ the page session only; a reload always re-locks.
 This is a privacy screen, not encryption: the titles stay in your own Firestore
 documents and remain readable by anyone who can sign in as you. The UI says so.
 
+## Continue Watching
+
+TV is tracked per episode. One document per show at `users/{uid}/progress/{tv_<id>}`
+holds the watched episode numbers by season, plus the show's structure (episodes
+per season) and the last episode to have aired:
+
+```
+{ seasons: { "1": [1,2,3], "2": [1] }, structure: { "1": 7, "2": 13 },
+  aired: { season: 2, episode: 4 } }
+```
+
+Carrying `structure` and `aired` on the document is what lets the home rail work
+out "next up" instantly on a cold load, with zero TMDB requests — the episode
+still and title are filled in afterwards and never block the render.
+
+The detail page gets a per-episode tick, a season progress ring, **Mark season
+watched**, and **Up to here** (the one action that makes a show you are already
+halfway through trackable). Whole-season marking stops at the last aired episode,
+so progress can never claim a completion that is not possible. Ticking the final
+aired episode marks the show itself watched, keeping stats and badges consistent.
+
+## Importing an existing history
+
+`js/import-csv.js` reads the exports people actually have — Letterboxd
+(`watched`, `ratings`, `diary`, `watchlist`), Trakt, and IMDb — with a CSV parser
+that handles quoted fields, embedded commas and newlines, and doubled quotes.
+
+Titles resolve to TMDB by `tmdb_id` first, then `imdb_id`, and only fall back to a
+title+year search, so a match is exact wherever the export gave us something
+exact. Rating scale is detected from the file (a five-star export is doubled) and
+shown before anything is written. Diary rewatches collapse to one entry, keeping
+the newest date and highest rating.
+
+Every write merges: an import can add watched entries, ratings, and saved titles,
+and can never delete one or overwrite a rating you already gave.
+
 ## Notification center
 
 The inbox is derived, never invented. Episode dates come from TMDB, exact
@@ -101,8 +137,44 @@ The rails show a different slice of your ranked pool every time CineVerse is
 opened. A device-local counter bumps once per page load (no Firestore write) and
 is added to the stored cross-device rotation; discover pages are varied by the
 same counter so the underlying pool changes too, not just the window over it.
-Shuffle skips ahead on demand. Ranking itself never changes randomly — only which
-part of it you see first.
+It is deliberately silent — there is no banner explaining it, the rails simply
+differ. Ranking itself never changes randomly, only which part of it you see
+first, and in-app navigation never reshuffles.
+
+## Streaming regions
+
+`REGIONS` in `js/config.js` lists the 60 countries TMDB returns watch-provider
+data for. The flag is derived from the ISO 3166-1 alpha-2 code rather than typed,
+so a wrong flag beside a country is impossible by construction; the name is always
+rendered next to it because Windows has no flag glyphs and falls back to the two
+letters.
+
+## Security rules
+
+`tests/` holds an emulator suite covering every `match` path in `firestore.rules`
+— owner-only collections, the deliberately shared `users/{uid}/shared/` surface,
+friend discovery, the friend graph, and default-deny for anything undeclared.
+
+```
+cd tests && npm install && npm test     # needs a JDK: the emulator is a Java process
+node tests/coverage.mjs                 # no Java needed
+```
+
+`coverage.mjs` is the cheap half: it proves the suite is *complete* by checking
+that every rule path is named in the tests, so adding a collection without a test
+fails immediately.
+
+### Publishing them
+
+**Firebase Console → Firestore Database → Rules →** paste `firestore.rules` **→ Publish.**
+
+Sharing a list does not work until these are published: a friend has to be able to
+read the owner's shared snapshot at `users/{uid}/shared/list_{listId}`. Raw
+watchlist, ratings, watched, list, and episode-progress data stay owner-only — the
+only cross-user readable documents are the derived ones under `users/{uid}/shared/`.
+
+If a list action fails, the toast carries the Firestore error code (usually
+`permission-denied`), which normally means the rules are not published yet.
 
 ## Voice search
 
@@ -115,17 +187,3 @@ second capture stream.
 
 Commands: search, open a title, play a trailer, add or remove from your lists,
 mark watched, rate (pre-selected, never auto-saved), and jump to any page.
-
-## Firestore security rules
-
-`firestore.rules` holds the rules this app needs. To apply them:
-
-**Firebase Console → Firestore Database → Rules →** paste the file's contents **→ Publish.**
-
-Sharing a list does not work until these are published: a friend has to be able to
-read the owner's shared snapshot at `users/{uid}/shared/list_{listId}`. Raw
-watchlist, ratings, watched and list data stay owner-only — the only cross-user
-readable documents are the derived ones under `users/{uid}/shared/`.
-
-If a list action fails, the toast now carries the Firestore error code
-(e.g. `permission-denied`), which usually means these rules aren't published yet.

@@ -1,14 +1,15 @@
 // ===== DETAIL PAGE =====
 import { tmdb } from './api.js';
-import { IMG, PH, REGIONS, pickLogo, providerUrl } from './config.js';
+import { IMG, PH, REGIONS, pickLogo, providerUrl, regionLabel } from './config.js';
 import { state, pushRecentlyViewed } from './state.js';
-import { esc, fmt, debounce, $, prefersReducedMotion } from './ui.js';
+import { esc, fmt, debounce, $, prefersReducedMotion, toast } from './ui.js';
 import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals, observeCountUps } from './effects.js';
 import { mountAmbientVideo } from './video-bg.js';
 import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
+import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setSeasonWatched, clearShowProgress } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 
 let curDet = null, curType = null;
@@ -126,16 +127,33 @@ export async function openDetail(id, type) {
     }
 
     let seasHTML = '';
-    if (type === 'tv' && det.seasons?.length) { const vs = det.seasons.filter(s => s.season_number > 0);
-      // Season-at-a-glance strip: poster, episode count and year per season, so
-      // you can size up a long-running show without stepping through the tabs.
+    if (type === 'tv' && det.seasons?.length) {
+      const vs = det.seasons.filter(s => s.season_number > 0);
+      // Keep the progress document's idea of the show current before anything
+      // reads it, so "next up" is right even for a show that gained a season.
+      syncShowStructure(id, showMeta(det));
+      const progress = showProgress(id);
+      const next = nextUp(id);
+      const openSeason = next?.season ?? vs[0]?.season_number;
+
       const seasonCards = vs.map(s => {
         const yr = (s.air_date || '').slice(0, 4);
         const poster = s.poster_path ? `<img src="${IMG}w185${s.poster_path}" alt="${esc(s.name)}" loading="lazy">` : '';
-        return `<div class="season-card" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}"><div class="season-poster">${poster}</div><div class="season-nm">${esc(s.name)}</div><div class="season-meta">${s.episode_count ? `${s.episode_count} ep${s.episode_count === 1 ? '' : 's'}` : ''}${yr && s.episode_count ? ' · ' : ''}${yr}</div></div>`;
+        const done = seasonWatchedCount(id, s.season_number);
+        const pct = s.episode_count ? Math.min(100, Math.round(done / s.episode_count * 100)) : 0;
+        return `<div class="season-card${s.season_number === openSeason ? ' active' : ''}${pct === 100 ? ' complete' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}" data-total="${s.episode_count || 0}">
+          <div class="season-poster">${poster}<span class="season-ring${done ? '' : ' idle'}" style="--season-progress:${pct * 3.6}deg"><b>${pct}%</b></span></div>
+          <div class="season-nm">${esc(s.name)}</div>
+          <div class="season-meta">${s.episode_count ? `${done ? `${done}/${s.episode_count}` : s.episode_count} ep${s.episode_count === 1 ? '' : 's'}` : ''}${yr && s.episode_count ? ' · ' : ''}${yr}</div>
+        </div>`;
       }).join('');
-      seasHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Seasons</div><div class="season-scroll">${seasonCards}</div>`
-        + `<div class="d-sec-title" style="margin-top:24px">Episodes</div><div class="season-tabs">${vs.map((s, i) => `<div class="s-tab ${i === 0 ? 'active' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}">${esc(s.name)}</div>`).join('')}</div><div class="ep-list" id="epList_${id}"><div class="skel" style="height:80px;width:100%"></div></div></div>`; }
+
+      seasHTML = `<div style="margin-bottom:32px">${showProgressPanel(id, det, progress, next)}
+        <div class="d-sec-title">Seasons</div><div class="season-scroll">${seasonCards}</div>
+        <div class="d-sec-title" style="margin-top:24px">Episodes</div>
+        <div class="season-tabs">${vs.map(s => `<div class="s-tab ${s.season_number === openSeason ? 'active' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}">${esc(s.name)}</div>`).join('')}</div>
+        <div class="ep-list" id="epList_${id}"><div class="skel" style="height:80px;width:100%"></div></div></div>`;
+    }
 
     const allVids = (vids.results || []).filter(v => v.site === 'YouTube').slice(0, 10);
     let vidsHTML = ''; if (allVids.length) vidsHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">Videos & Trailers</div><div class="vid-scroll">${allVids.map(v => `<div class="vid-card" role="button" tabindex="0" data-action="play-trailer" data-key="${v.key}"><div class="vid-thumb"><img src="https://img.youtube.com/vi/${v.key}/mqdefault.jpg" alt="${esc(v.name)}" loading="lazy"><div class="vid-play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div></div><div class="vid-name">${esc(v.name)}</div><div class="vid-type">${esc(v.type) || ''}</div></div>`).join('')}</div></div>`;
@@ -217,11 +235,16 @@ export async function openDetail(id, type) {
     observeReveals(ct); observeCountUps(ct);
     // Animate the Box Office bar widths after paint (horizontal %-widths resolve
     // against the definite-width card).
-    requestAnimationFrame(() => animateBoxOffice(ct));
+    requestAnimationFrame(() => {
+      animateBoxOffice(ct);
+      // The show-progress bar is a %-width and needs a laid-out parent, same as
+      // the box-office bars.
+      ct.querySelectorAll('.show-progress-bar i').forEach(bar => { bar.style.width = `${+bar.dataset.w || 0}%`; });
+    });
     // Reveal a "Read more" ONLY where the text actually overflows its clamp.
     if (clampResize) { window.removeEventListener('resize', clampResize); clampResize = null; }
     const remeasure = syncAllClampToggles(ct);
-    clampResize = debounce(remeasure, 150);
+    clampResize = debounce(() => { remeasure(); drawBoxOffice(ct, { animate: false }); }, 150);
     window.addEventListener('resize', clampResize);
     loadAwardsSection(det.external_ids?.imdb_id || '', `awardsSection_${id}`);
     // The rest of the franchise, under the collection banner.
@@ -429,7 +452,8 @@ function providerHTML(det, region) {
   const prov = results[region] || {};
   const title = det.title || det.name || '';
   const regionLink = prov.link || '';   // TMDB's region-level JustWatch page (fallback)
-  const options = REGIONS.map(([code, label]) => `<option value="${code}" ${code === region ? 'selected' : ''}>${label}</option>`).join('');
+  const options = [...REGIONS].sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([code]) => `<option value="${code}" ${code === region ? 'selected' : ''}>${esc(regionLabel(code))}</option>`).join('');
   // Each logo is now a link to that provider's OWN search for the title (or the
   // JustWatch page / web search as a fallback). Rent + Buy are surfaced too.
   const logoLink = p => {
@@ -516,107 +540,283 @@ function syncAllClampToggles(scope) {
   return run;
 }
 
-// Bars grow from zero and the multiple counts up, both only once the section is
-// actually on screen — a %-width needs a definite-width parent, and a number
-// ticking behind a collapsed accordion is wasted motion.
+// ===== BOX OFFICE =====
+// One question, answered in one number and one chart: did it make its money back?
+//
+// Form: the two REPORTED figures (budget, worldwide gross) are bars on a single
+// shared dollar axis, with the gross carrying the accent and the budget in the
+// de-emphasis gray — the emphasis form, because one of them is the story and the
+// other is context. The modelled break-even is a shaded BAND, not a bar, because
+// it is a range and drawing it as a bar would give an estimate the same visual
+// authority as a reported figure.
+//
+// Colour: a single accent (cyan-600) validated against the dark chart surface —
+// lightness band, chroma floor, and 3:1 contrast all pass. Nothing here depends
+// on hue alone: every bar is labelled and the table view carries every value.
+const BO_ACCENT = '#0891b2';
+const BO_ACCENT_SOFT = '#22d3ee';
+const BO_CONTEXT = '#64748b';
+const BO_BAND = '#fbbf24';
+const BO_SURFACE = '#0d0e14';
+const BO_GRID = 'rgba(255,255,255,.07)';
+const BO_INK = '#6b7280';
+
+const money = value => `$${fmt(Math.round(value))}`;
+
+function boxOfficeModel(det) {
+  const budget = +(det.budget || 0), revenue = +(det.revenue || 0);
+  const marketingLow = budget * .5, marketingHigh = budget;
+  const costLow = budget + marketingLow, costHigh = budget + marketingHigh;
+  // Studios keep roughly 40-55% of the worldwide gross, so break-even sits well
+  // above total cost. Both ends of that assumption are stated in the disclosure.
+  const beLow = budget ? costLow / .55 : 0, beHigh = budget ? costHigh / .4 : 0;
+  return {
+    budget, revenue, marketingLow, marketingHigh, costLow, costHigh,
+    beLow, beHigh, beMid: (beLow + beHigh) / 2,
+    multiple: budget ? revenue / budget : 0,
+    hasBoth: !!(budget && revenue),
+    studioLow: revenue * .4, studioHigh: revenue * .55,
+  };
+}
+
+function boxOfficeVerdict(m) {
+  if (!m.hasBoth) return { tone: 'neutral', line: m.budget ? 'Worldwide gross has not been reported yet.' : 'The production budget has not been reported.' };
+  if (m.revenue >= m.beHigh) return { tone: 'strong', line: `Grossed ${m.multiple.toFixed(1)}x its budget and cleared even the most cautious break-even estimate.` };
+  if (m.revenue >= m.beMid) return { tone: 'strong', line: `Grossed ${m.multiple.toFixed(1)}x its budget, past the middle of the modelled break-even band.` };
+  if (m.revenue >= m.beLow) return { tone: 'ok', line: `Grossed ${m.multiple.toFixed(1)}x its budget — inside the modelled break-even band, so the real outcome turns on what marketing actually cost.` };
+  if (m.multiple >= 1) return { tone: 'ok', line: `Earned its production budget back ${m.multiple.toFixed(1)}x over, but that is before any marketing spend.` };
+  return { tone: 'weak', line: `Grossed less than it cost to produce — ${m.multiple.toFixed(2)}x the budget.` };
+}
+
+// Axis ticks on clean round numbers rather than fractions of the max.
+function niceTicks(max) {
+  const rough = max / 4;
+  const power = Math.pow(10, Math.floor(Math.log10(rough)));
+  const step = [1, 2, 2.5, 5, 10].map(n => n * power).find(n => n >= rough) || power * 10;
+  const ticks = [];
+  for (let value = 0; value <= max + step * 0.001; value += step) ticks.push(value);
+  return ticks;
+}
+
+// Rendered at the container's real pixel width so axis and label text stays crisp
+// instead of being scaled by a viewBox.
+function boxOfficeChart(m, width) {
+  const W = Math.max(300, Math.round(width || 720));
+  const narrow = W < 520;
+  const padL = narrow ? 14 : 132, padR = narrow ? 14 : 96, padT = narrow ? 44 : 30, padB = 34;
+  const barH = 22, gap = narrow ? 46 : 30;
+  const H = padT + barH * 2 + gap + padB;
+  const innerW = Math.max(60, W - padL - padR);
+  const max = Math.max(m.budget, m.revenue, m.hasBoth ? m.beHigh : 0, 1);
+  const x = value => padL + (value / max) * innerW;
+  const rows = [
+    { key: 'budget', label: 'Production budget', value: m.budget, color: BO_CONTEXT, emphasis: false },
+    { key: 'gross', label: 'Worldwide gross', value: m.revenue, color: BO_ACCENT, emphasis: true },
+  ].filter(row => row.value > 0);
+
+  const ticks = niceTicks(max);
+  const axis = ticks.map(value => `<line x1="${x(value).toFixed(1)}" x2="${x(value).toFixed(1)}" y1="${padT - 6}" y2="${H - padB + 6}" stroke="${BO_GRID}" stroke-width="1"/>` +
+    `<text x="${x(value).toFixed(1)}" y="${H - padB + 22}" text-anchor="middle" fill="${BO_INK}" font-size="10" font-variant-numeric="tabular-nums">${value ? money(value) : '$0'}</text>`).join('');
+
+  const band = m.hasBoth && m.beHigh > 0 ? (() => {
+    const left = x(m.beLow), right = Math.min(x(m.beHigh), padL + innerW);
+    const mid = x(m.beMid);
+    const top = padT - 6, bottom = H - padB + 6;
+    return `<g class="bo3-band" opacity="0">
+      <rect x="${left.toFixed(1)}" y="${top}" width="${Math.max(2, right - left).toFixed(1)}" height="${(bottom - top).toFixed(1)}" fill="${BO_BAND}" fill-opacity=".045"/>
+      <line x1="${left.toFixed(1)}" x2="${left.toFixed(1)}" y1="${top}" y2="${bottom}" stroke="${BO_BAND}" stroke-opacity=".3" stroke-width="1"/>
+      <line x1="${right.toFixed(1)}" x2="${right.toFixed(1)}" y1="${top}" y2="${bottom}" stroke="${BO_BAND}" stroke-opacity=".3" stroke-width="1"/>
+      <line class="bo3-band-rule" x1="${mid.toFixed(1)}" x2="${mid.toFixed(1)}" y1="${top}" y2="${bottom}" stroke="${BO_BAND}" stroke-width="1.5"/>
+      <text x="${mid.toFixed(1)}" y="${(top - 5).toFixed(1)}" text-anchor="middle" fill="${BO_BAND}" font-size="9.5" font-weight="700">break-even</text>
+      <rect class="bo3-hit" x="${(left - 6).toFixed(1)}" y="${padT - 6}" width="${Math.max(24, right - left + 12).toFixed(1)}" height="${(H - padB + 12 - padT).toFixed(1)}" fill="transparent" data-tip="Modelled break-even ${money(m.beLow)} to ${money(m.beHigh)} — production plus 50-100% marketing, divided by a 40-55% studio share of the gross"></rect>
+    </g>`;
+  })() : '';
+
+  const bars = rows.map((row, index) => {
+    const y = padT + index * (barH + gap);
+    const full = Math.max(3, x(row.value) - padL);
+    const labelY = y + barH / 2 + 4;
+    const inlineLabel = narrow
+      ? `<text x="${padL}" y="${(y - 9).toFixed(1)}" fill="#9ca3af" font-size="11" font-weight="600">${esc(row.label)}</text>`
+      : `<text x="${(padL - 14).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="11.5" font-weight="600">${esc(row.label)}</text>`;
+    return `<g class="bo3-row">
+      ${inlineLabel}
+      <rect class="bo3-bar${row.emphasis ? ' emphasis' : ''}" x="${padL}" y="${y}" width="0" height="${barH}" rx="4" fill="${row.color}" data-w="${full.toFixed(1)}" data-delay="${index * 140}"></rect>
+      <text class="bo3-value" x="${(padL + full + 10).toFixed(1)}" y="${labelY.toFixed(1)}" fill="#f0f0f5" font-size="12" font-weight="700" opacity="0" data-delay="${index * 140 + 520}">${money(row.value)}</text>
+      <rect class="bo3-hit" x="${padL}" y="${(y - 8).toFixed(1)}" width="${Math.max(24, full).toFixed(1)}" height="${barH + 16}" fill="transparent" data-tip="${esc(`${row.label}: ${money(row.value)}`)}"></rect>
+    </g>`;
+  }).join('');
+
+  return `<svg class="bo3-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Reported production budget and worldwide gross on a shared dollar scale, with the modelled break-even range">
+    <defs>
+      <linearGradient id="bo3Gloss" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="${BO_ACCENT}"/><stop offset="1" stop-color="${BO_ACCENT_SOFT}"/>
+      </linearGradient>
+    </defs>
+    ${axis}${band}${bars}
+    <line x1="${padL}" x2="${(padL + innerW).toFixed(1)}" y1="${H - padB + 6}" y2="${H - padB + 6}" stroke="${BO_GRID}" stroke-width="1"/>
+  </svg>`;
+}
+
+function boxOfficeHTML(det) {
+  const m = boxOfficeModel(det);
+  if (!m.budget && !m.revenue) return '';
+  const verdict = boxOfficeVerdict(m);
+  const difference = m.revenue - m.budget;
+
+  const tiles = [
+    m.budget ? ['Production budget', money(m.budget), 'Reported by TMDB'] : null,
+    m.revenue ? ['Worldwide gross', money(m.revenue), 'Theatrical, all territories'] : null,
+    m.hasBoth ? ['Gross above budget', `${difference >= 0 ? '+' : '−'}${money(Math.abs(difference))}`, 'Difference, not profit'] : null,
+  ].filter(Boolean);
+
+  const tableRows = [
+    m.budget ? ['Production budget', money(m.budget), 'Reported'] : null,
+    m.revenue ? ['Worldwide gross', money(m.revenue), 'Reported'] : null,
+    m.budget ? ['Marketing', `${money(m.marketingLow)} – ${money(m.marketingHigh)}`, 'Modelled at 50–100% of production'] : null,
+    m.budget ? ['Total cost', `${money(m.costLow)} – ${money(m.costHigh)}`, 'Modelled: production plus marketing'] : null,
+    m.hasBoth ? ['Break-even gross', `${money(m.beLow)} – ${money(m.beHigh)}`, 'Modelled: cost ÷ a 40–55% studio share'] : null,
+    m.hasBoth ? ['Studio theatrical return', `${money(m.studioLow)} – ${money(m.studioHigh)}`, 'Modelled, before streaming and TV rights'] : null,
+    m.hasBoth ? ['Gross ÷ budget', `${m.multiple.toFixed(2)}x`, 'Reported'] : null,
+  ].filter(Boolean);
+
+  const payload = esc(JSON.stringify(m));
+  const core = `<div class="boxoffice3">
+    <div class="bo3-lead ${verdict.tone}">
+      ${m.hasBoth ? `<div class="bo3-hero"><strong data-count-decimal="${m.multiple.toFixed(2)}">0.00</strong><span>x budget</span></div>` : ''}
+      <p>${esc(verdict.line)}</p>
+    </div>
+
+    <figure class="bo3-figure">
+      <figcaption><strong>Where the money landed</strong><span>Reported figures on one dollar scale. The shaded band is the modelled break-even range.</span></figcaption>
+      <div class="bo3-canvas" data-bo="${payload}"></div>
+      <div class="bo3-legend">
+        <span><i style="background:${BO_CONTEXT}"></i>Production budget</span>
+        <span><i style="background:${BO_ACCENT}"></i>Worldwide gross</span>
+        ${m.hasBoth ? `<span><i class="bo3-legend-band"></i>Modelled break-even</span>` : ''}
+        <button type="button" class="bo3-table-toggle" data-action="toggle-bo-table" aria-expanded="false">View as table</button>
+      </div>
+    </figure>
+
+    <div class="bo3-table-wrap" hidden>
+      <table class="bo3-table"><caption>Every figure, reported and modelled</caption>
+        <thead><tr><th scope="col">Figure</th><th scope="col">Value</th><th scope="col">Source</th></tr></thead>
+        <tbody>${tableRows.map(([label, value, source]) => `<tr><th scope="row">${esc(label)}</th><td>${esc(value)}</td><td>${esc(source)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+
+    <div class="bo3-tiles">${tiles.map(([label, value, note]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`).join('')}</div>
+
+    <details class="bo3-model"><summary>How break-even is estimated</summary><div class="bo3-model-body">
+      <p>TMDB reports two figures: the production budget and the worldwide gross. Studios publish neither their marketing spend nor their share of ticket sales, so everything labelled <em>modelled</em> below is an openly stated estimate — not accounting, and not profit.</p>
+      <ol><li>Marketing is assumed to cost 50–100% of the production budget.</li><li>Total cost is production plus that marketing range.</li><li>Studios keep roughly 40–55% of the worldwide gross, so break-even is total cost divided by that share.</li></ol>
+    </div></details>
+
+    <p class="bo3-note">Figures in USD, as reported to TMDB.</p>
+  </div>`;
+
+  const summary = `${m.budget ? `${money(m.budget)} budget` : 'Budget unreported'} · ${m.revenue ? `${money(m.revenue)} gross` : 'Gross unreported'}${m.hasBoth ? ` · ${m.multiple.toFixed(1)}x` : ''}`;
+  return detailAccordion('detailBoxOfficeExpanded', 'Financial intelligence', 'Box Office', summary, core, 'box-office');
+}
+
+// A shared tooltip for the chart's hit rects. Bars and the break-even band are
+// both labelled on the chart itself, so this enhances rather than gates.
+function bindBoxOfficeTooltip(scope) {
+  const figure = scope?.querySelector?.('.bo3-figure');
+  if (!figure || figure.dataset.bound) return;
+  figure.dataset.bound = '1';
+  const tip = document.createElement('div');
+  tip.className = 'bo3-tooltip';
+  tip.setAttribute('role', 'status');
+  figure.appendChild(tip);
+  const show = (text, clientX, clientY) => {
+    const box = figure.getBoundingClientRect();
+    tip.textContent = text;
+    tip.classList.add('show');
+    tip.style.left = `${Math.min(Math.max(clientX - box.left, 70), Math.max(70, box.width - 70))}px`;
+    tip.style.top = `${Math.max(4, clientY - box.top - 46)}px`;
+  };
+  figure.addEventListener('pointermove', event => {
+    const target = event.target.closest('.bo3-hit');
+    if (!target) { tip.classList.remove('show'); return; }
+    show(target.dataset.tip, event.clientX, event.clientY);
+  });
+  figure.addEventListener('pointerleave', () => tip.classList.remove('show'));
+}
+
+// ---------- render + animate ----------
+// The chart is drawn at the canvas's measured width, so it has to be (re)built
+// whenever that width can change: on first paint, when the accordion opens from
+// collapsed (width 0 until then), and on resize.
+function drawBoxOffice(scope, { animate = true } = {}) {
+  const canvas = scope?.querySelector?.('.bo3-canvas') || (scope?.classList?.contains('bo3-canvas') ? scope : null);
+  if (!canvas) return;
+  const width = Math.round(canvas.clientWidth);
+  if (width < 120) return;                       // still collapsed — redraw on open
+  if (+canvas.dataset.width === width) return;   // nothing changed
+  let model;
+  try { model = JSON.parse(canvas.dataset.bo || '{}'); } catch (_) { return; }
+  canvas.dataset.width = String(width);
+  canvas.innerHTML = boxOfficeChart(model, width);
+  if (animate) animateBoxOfficeChart(canvas);
+  else canvas.querySelectorAll('.bo3-bar').forEach(bar => bar.setAttribute('width', bar.dataset.w || '0'));
+}
+
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+function animateBoxOfficeChart(canvas) {
+  const reduced = prefersReducedMotion();
+  const bars = [...canvas.querySelectorAll('.bo3-bar')];
+  const values = [...canvas.querySelectorAll('.bo3-value')];
+  const band = canvas.querySelector('.bo3-band');
+  if (reduced) {
+    bars.forEach(bar => bar.setAttribute('width', bar.dataset.w || '0'));
+    values.forEach(node => node.setAttribute('opacity', '1'));
+    band?.setAttribute('opacity', '1');
+    return;
+  }
+  const started = performance.now(), duration = 820;
+  const step = now => {
+    let running = false;
+    for (const bar of bars) {
+      const delay = +bar.dataset.delay || 0;
+      const progress = Math.min(1, Math.max(0, (now - started - delay) / duration));
+      bar.setAttribute('width', String((+bar.dataset.w || 0) * easeOutCubic(progress)));
+      if (progress < 1) running = true;
+    }
+    for (const node of values) {
+      const delay = +node.dataset.delay || 0;
+      const progress = Math.min(1, Math.max(0, (now - started - delay) / 320));
+      node.setAttribute('opacity', String(progress));
+      if (progress < 1) running = true;
+    }
+    if (band) {
+      const progress = Math.min(1, Math.max(0, (now - started - 260) / 520));
+      band.setAttribute('opacity', String(progress));
+      if (progress < 1) running = true;
+    }
+    if (running) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// Bars and the hero number, plus the show-progress bar which shares the same
+// "needs a laid-out parent" constraint.
 function animateBoxOffice(scope) {
   if (!scope) return;
-  scope.querySelectorAll('.bo2-fill').forEach(fill => { fill.style.width = `${+fill.dataset.w || 0}%`; });
+  drawBoxOffice(scope);
+  bindBoxOfficeTooltip(scope);
   scope.querySelectorAll('[data-count-decimal]').forEach(node => {
     const target = parseFloat(node.dataset.countDecimal) || 0;
     if (prefersReducedMotion()) { node.textContent = target.toFixed(2); return; }
-    const started = performance.now(), duration = 900;
+    const started = performance.now(), duration = 1000;
     const step = now => {
       const progress = Math.min(1, (now - started) / duration);
-      // easeOutCubic: fast first, settles on the real figure.
-      node.textContent = (target * (1 - Math.pow(1 - progress, 3))).toFixed(2);
+      node.textContent = (target * easeOutCubic(progress)).toFixed(2);
       if (progress < 1) requestAnimationFrame(step); else node.textContent = target.toFixed(2);
     };
     requestAnimationFrame(step);
   });
-}
-
-// Box Office. One question first — did it make its money back? — answered in a
-// sentence and a single number, with two bars on a shared scale underneath.
-// Everything modelled (marketing, the studio's share of the gross) is real but
-// secondary, so it lives behind a disclosure instead of competing with the two
-// figures TMDB actually reports.
-function boxOfficeHTML(det) {
-  const budget = +(det.budget || 0), revenue = +(det.revenue || 0);
-  if (!budget && !revenue) return '';
-  const hasBoth = !!(budget && revenue);
-  const difference = revenue - budget;
-  const multiple = budget ? revenue / budget : 0;
-
-  // Industry rule of thumb, stated openly rather than hidden in the maths:
-  // marketing roughly matches production, and the studio keeps 40-55% of the
-  // worldwide gross. Break-even is therefore well above the budget line.
-  const marketingLow = budget * .5, marketingHigh = budget;
-  const totalCostLow = budget + marketingLow, totalCostHigh = budget + marketingHigh;
-  const breakEvenLow = budget ? totalCostLow / .55 : 0, breakEvenHigh = budget ? totalCostHigh / .4 : 0;
-  const breakEvenMid = (breakEvenLow + breakEvenHigh) / 2;
-  const studioReturnLow = revenue * .4, studioReturnHigh = revenue * .55;
-
-  // The headline is judged against the SAME break-even model the marker draws.
-  // Ranking on the raw multiple instead would let the sentence call something a
-  // clear hit while the marker sitting beside it says it fell short.
-  const verdict = !hasBoth
-    ? { tone: 'neutral', line: budget ? 'Worldwide gross has not been reported yet.' : 'The production budget has not been reported.' }
-    : revenue >= breakEvenHigh ? { tone: 'strong', line: `Grossed ${multiple.toFixed(1)}x its budget and cleared even the most cautious break-even estimate.` }
-    : revenue >= breakEvenMid ? { tone: 'strong', line: `Grossed ${multiple.toFixed(1)}x its budget, past the middle of the modelled break-even band.` }
-    : revenue >= breakEvenLow ? { tone: 'ok', line: `Grossed ${multiple.toFixed(1)}x its budget — inside the modelled break-even band, so the real outcome turns on what marketing actually cost.` }
-    : multiple >= 1 ? { tone: 'ok', line: `Earned its production budget back ${multiple.toFixed(1)}x over, but that is before any marketing spend.` }
-    : { tone: 'weak', line: `Grossed less than it cost to produce — ${multiple.toFixed(2)}x the budget.` };
-
-  // Both bars share one scale so their lengths are directly comparable, and the
-  // scale always includes break-even so the marker cannot fall off the end.
-  const scaleMax = Math.max(budget, revenue, hasBoth ? breakEvenMid : 0, 1);
-  const widthOf = value => Math.max(value ? 3 : 0, Math.round(value / scaleMax * 100));
-  // Clamped so a 2px centred marker is never half-clipped by the track's radius.
-  const breakEvenAt = hasBoth ? Math.min(99, Math.max(1, Math.round(breakEvenMid / scaleMax * 100))) : 0;
-
-  // The break-even marker rides INSIDE the gross track, so it sits on exactly the
-  // same scale as the bar it is judging rather than on a guessed page offset.
-  const marker = hasBoth
-    ? `<i class="bo2-mark" style="left:${breakEvenAt}%" aria-hidden="true"></i>`
-    : '';
-  const bar = (label, value, cls, inner = '') => value
-    ? `<div class="bo2-row"><span class="bo2-label">${label}</span><div class="bo2-track">${inner}<div class="bo2-fill ${cls}" style="width:0" data-w="${widthOf(value)}"></div></div><span class="bo2-value">$${fmt(value)}</span></div>`
-    : '';
-
-  const facts = [
-    budget ? ['Production budget', `$${fmt(budget)}`, 'Reported by TMDB'] : null,
-    revenue ? ['Worldwide gross', `$${fmt(revenue)}`, 'Theatrical, all territories'] : null,
-    hasBoth ? ['Gross above budget', `${difference >= 0 ? '+' : '−'}$${fmt(Math.abs(difference))}`, 'Difference, not profit'] : null,
-  ].filter(Boolean);
-
-  const detailRows = [
-    budget ? ['Marketing (modelled)', `$${fmt(marketingLow)}–${fmt(marketingHigh)}`, '50–100% of the production budget'] : null,
-    budget ? ['Total cost (modelled)', `$${fmt(totalCostLow)}–${fmt(totalCostHigh)}`, 'Production plus that marketing range'] : null,
-    hasBoth ? ['Break-even gross (modelled)', `$${fmt(breakEvenLow)}–${fmt(breakEvenHigh)}`, 'Cost divided by a 40–55% studio share'] : null,
-    hasBoth ? ['Studio theatrical return (modelled)', `$${fmt(studioReturnLow)}–${fmt(studioReturnHigh)}`, 'Before streaming, discs, and TV rights'] : null,
-  ].filter(Boolean);
-
-  const core = `<div class="boxoffice2">
-    <div class="bo2-verdict ${verdict.tone}">
-      ${hasBoth ? `<div class="bo2-hero"><strong data-count-decimal="${multiple.toFixed(2)}">0.00</strong><span>x budget</span></div>` : ''}
-      <p>${esc(verdict.line)}</p>
-    </div>
-    <div class="bo2-bars">
-      ${bar('Budget', budget, 'budget')}
-      ${bar('Worldwide gross', revenue, 'gross', marker)}
-      ${hasBoth ? `<p class="bo2-breakeven">Modelled break-even &asymp; $${fmt(breakEvenMid)} &mdash; the marker on the gross bar.</p>` : ''}
-    </div>
-    <div class="bo2-facts">${facts.map(([label, value, note]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`).join('')}</div>
-    ${detailRows.length ? `<details class="bo2-model"><summary>How break-even is estimated</summary><div class="bo2-model-body">
-      <p>TMDB reports only two figures: the production budget and the worldwide gross. Studios do not publish marketing spend or their share of ticket sales, so the numbers below are an openly stated model — not accounting, and not profit.</p>
-      <div class="bo2-model-rows">${detailRows.map(([label, value, note]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`).join('')}</div>
-    </div></details>` : ''}
-    <p class="bo2-note">Figures in USD, as reported to TMDB. Anything labelled "modelled" is an educational estimate.</p>
-  </div>`;
-
-  const summary = `${budget ? `$${fmt(budget)} budget` : 'Budget unreported'} · ${revenue ? `$${fmt(revenue)} gross` : 'Gross unreported'}${hasBoth ? ` · ${multiple.toFixed(1)}x` : ''}`;
-  return detailAccordion('detailBoxOfficeExpanded', 'Financial intelligence', 'Box Office', summary, core, 'box-office');
 }
 
 export function closeDetail() {
@@ -685,6 +885,94 @@ async function loadSeason(tid, sn, el) {
     if (list && list.scrollIntoView) list.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
+// ===== EPISODE TRACKING (detail page) =====
+// Everything the progress document needs about a show, gathered in one place so
+// the structure it stores can never drift from what TMDB just returned.
+function showMeta(det) {
+  const structure = {};
+  for (const season of det.seasons || []) {
+    if (season.season_number > 0 && season.episode_count > 0) structure[String(season.season_number)] = season.episode_count;
+  }
+  const last = det.last_episode_to_air;
+  return {
+    title: det.name || '', poster: det.poster_path || '', backdrop: det.backdrop_path || '',
+    episodeRuntime: (det.episode_run_time || [])[0] || 0, status: det.status || '',
+    structure,
+    aired: last?.season_number ? { season: last.season_number, episode: last.episode_number } : null,
+  };
+}
+
+const EP_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>';
+
+// The show-level bar above the seasons: where you are, what is next, and the two
+// actions that matter most when you are mid-show.
+function showProgressPanel(id, det, progress, next) {
+  if (!state.user) return '';
+  const meta = esc(JSON.stringify(showMeta(det)));
+  if (!progress.started) {
+    return `<section class="show-progress idle">
+      <div class="show-progress-copy"><span>Episode tracking</span><strong>Track ${esc(det.name || 'this show')} episode by episode</strong><p>Tick episodes as you watch, or mark everything up to where you already are.</p></div>
+      <div class="show-progress-actions"><button class="btn-glass" data-action="ep-mark-upto-prompt" data-tid="${id}">Catch me up</button></div>
+    </section>`;
+  }
+  const nextLabel = next ? `S${next.season} · E${next.episode}` : 'All caught up';
+  return `<section class="show-progress${progress.complete ? ' complete' : ''}">
+    <div class="show-progress-copy">
+      <span>${progress.complete ? 'Complete' : 'Continue watching'}</span>
+      <strong>${esc(nextLabel)}</strong>
+      <p>${progress.watched} of ${progress.aired} aired episode${progress.aired === 1 ? '' : 's'} watched${progress.total > progress.aired ? ` · ${progress.total} total` : ''}</p>
+      <div class="show-progress-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
+    </div>
+    <div class="show-progress-actions">
+      <b>${progress.percent}%</b>
+      ${next ? `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark S${next.season}E${next.episode} watched</button>` : ''}
+      <button class="btn-glass" data-action="ep-reset" data-tid="${id}">Reset</button>
+    </div>
+  </section>`;
+}
+
+// One row's tracking controls. "Up to here" is what makes a half-finished show
+// trackable without ticking twenty boxes.
+function episodeControls(id, ep, meta, watched) {
+  if (!state.user) return '';
+  return `<div class="ep-actions">
+    <button class="ep-check${watched ? ' on' : ''}" data-action="ep-toggle" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-meta="${meta}" aria-pressed="${watched}" aria-label="${watched ? 'Unmark' : 'Mark'} episode ${ep.episode_number} watched">${EP_CHECK}<span>${watched ? 'Watched' : 'Mark watched'}</span></button>
+    <button class="ep-upto" data-action="ep-mark-upto" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-meta="${meta}" data-tip="Mark everything up to and including this episode">Up to here</button>
+  </div>`;
+}
+
+function seasonToolbar(id, season, episodes, meta) {
+  if (!state.user) return '';
+  const aired = episodes.filter(ep => !ep.air_date || new Date(`${ep.air_date}T23:59:59`) <= new Date()).length;
+  const done = seasonWatchedCount(id, season);
+  const all = aired > 0 && done >= aired;
+  return `<div class="season-toolbar">
+    <span><b>${done}</b> of ${aired} aired episode${aired === 1 ? '' : 's'} watched</span>
+    <button data-action="ep-season" data-tid="${id}" data-sn="${season}" data-on="${all ? '0' : '1'}" data-meta="${meta}">${all ? 'Unmark whole season' : 'Mark season watched'}</button>
+  </div>`;
+}
+
+function readEpisodeMeta(el) {
+  try { return JSON.parse(el.dataset.meta || '{}'); } catch (_) { return {}; }
+}
+
+// The toolbar carries the season's own counts, so it has to be recomputed
+// separately from the show-level chrome.
+function syncSeasonToolbar(tid, sn) {
+  const toolbar = document.querySelector('.season-toolbar');
+  if (!toolbar) return;
+  const aired = document.querySelectorAll('.ep-card:not(.unaired)').length;
+  const done = seasonWatchedCount(tid, sn);
+  const count = toolbar.querySelector('b');
+  if (count) count.textContent = String(done);
+  const button = toolbar.querySelector('button');
+  if (button) {
+    const all = aired > 0 && done >= aired;
+    button.dataset.on = all ? '0' : '1';
+    button.textContent = all ? 'Unmark whole season' : 'Mark season watched';
+  }
+}
+
 async function loadEps(tid, sn) {
   const el = $(`epList_${tid}`); if (!el) return;
   // Own generation token (mirrors reqGen): clicking season tabs quickly could
@@ -692,13 +980,63 @@ async function loadEps(tid, sn) {
   const gen = ++epGen;
   el.innerHTML = '<div class="skel" style="height:80px;width:100%"></div>';
   try {
-    const d = await tmdb(`/tv/${tid}/season/${sn}`);
+    const [season, show] = await Promise.all([
+      tmdb(`/tv/${tid}/season/${sn}`),
+      tmdb(`/tv/${tid}`).catch(() => null),
+    ]);
     if (gen !== epGen) return;
-    el.innerHTML = (d.episodes || []).map(ep => `<div class="ep-card"><div class="ep-still">${ep.still_path ? `<img src="${IMG}w300${ep.still_path}" alt="" loading="lazy">` : ''}<div class="ep-num">E${ep.episode_number}</div></div><div class="ep-body"><div class="ep-title">${esc(ep.name) || `Episode ${ep.episode_number}`}</div><div class="ep-meta">${ep.air_date ? `<span>${new Date(ep.air_date).toLocaleDateString()}</span>` : ''}${ep.runtime ? `<span>${ep.runtime}m</span>` : ''}${ep.vote_average ? `<span>⭐ ${ep.vote_average.toFixed(1)}</span>` : ''}</div><div class="ep-desc">${esc(ep.overview || '')}</div></div></div>`).join('') || '<p style="color:var(--text3);padding:12px">No episodes yet</p>';
+    const meta = esc(JSON.stringify(show ? showMeta(show) : {}));
+    const episodes = season.episodes || [];
+    if (!episodes.length) { el.innerHTML = '<p style="color:var(--text3);padding:12px">No episodes yet</p>'; return; }
+    const today = new Date();
+    el.innerHTML = seasonToolbar(tid, sn, episodes, meta) + episodes.map(ep => {
+      const watched = isEpisodeWatched(tid, ep.season_number, ep.episode_number);
+      const future = ep.air_date && new Date(`${ep.air_date}T23:59:59`) > today;
+      return `<div class="ep-card${watched ? ' watched' : ''}${future ? ' unaired' : ''}" data-ep="${ep.season_number}-${ep.episode_number}">
+        <div class="ep-still">${ep.still_path ? `<img src="${IMG}w300${ep.still_path}" alt="" loading="lazy">` : ''}<div class="ep-num">E${ep.episode_number}</div>${watched ? `<div class="ep-seen" aria-hidden="true">${EP_CHECK}</div>` : ''}</div>
+        <div class="ep-body">
+          <div class="ep-title">${esc(ep.name) || `Episode ${ep.episode_number}`}</div>
+          <div class="ep-meta">${ep.air_date ? `<span>${new Date(ep.air_date).toLocaleDateString()}</span>` : ''}${ep.runtime ? `<span>${ep.runtime}m</span>` : ''}${ep.vote_average ? `<span>⭐ ${ep.vote_average.toFixed(1)}</span>` : ''}${future ? '<span class="ep-soon">Not aired yet</span>' : ''}</div>
+          <div class="ep-desc">${esc(ep.overview || '')}</div>
+          ${future ? '' : episodeControls(tid, ep, meta, watched)}
+        </div>
+      </div>`;
+    }).join('');
   } catch (e) {
     if (gen !== epGen) return;
     el.innerHTML = '<p style="color:var(--text3);padding:12px">Failed to load</p>';
   }
+}
+
+// Repaint the tracking chrome in place. A full detail re-render would scroll the
+// reader back to the top of a long show, which is exactly the wrong reaction to
+// ticking one episode.
+function refreshEpisodeUI(tid) {
+  const progress = showProgress(tid), next = nextUp(tid);
+  const panel = document.querySelector('.show-progress');
+  if (panel) {
+    const bar = panel.querySelector('.show-progress-bar i');
+    if (bar) { bar.dataset.w = String(progress.percent); bar.style.width = `${progress.percent}%`; }
+    const value = panel.querySelector('.show-progress-actions b');
+    if (value) value.textContent = `${progress.percent}%`;
+    const heading = panel.querySelector('.show-progress-copy strong');
+    if (heading && progress.started) heading.textContent = next ? `S${next.season} · E${next.episode}` : 'All caught up';
+    const note = panel.querySelector('.show-progress-copy p');
+    if (note && progress.started) note.textContent = `${progress.watched} of ${progress.aired} aired episode${progress.aired === 1 ? '' : 's'} watched`;
+    panel.classList.toggle('complete', progress.complete);
+  }
+  document.querySelectorAll('.season-card').forEach(card => {
+    const season = +card.dataset.sn;
+    const done = seasonWatchedCount(tid, season);
+    const ring = card.querySelector('.season-ring');
+    const total = +(card.dataset.total || 0);
+    if (ring && total) {
+      const pct = Math.min(100, Math.round(done / total * 100));
+      ring.style.setProperty('--season-progress', `${pct * 3.6}deg`);
+      const label = ring.querySelector('b'); if (label) label.textContent = `${pct}%`;
+      card.classList.toggle('complete', pct === 100);
+    }
+  });
 }
 
 export async function openCollection(cid) {
@@ -776,7 +1114,59 @@ export function initDetail() {
       }
       el.remove();
     },
+    'toggle-bo-table': el => {
+      const wrap = el.closest('.boxoffice3')?.querySelector('.bo3-table-wrap'); if (!wrap) return;
+      const open = wrap.hidden;
+      wrap.hidden = !open;
+      el.setAttribute('aria-expanded', String(open));
+      el.textContent = open ? 'Hide table' : 'View as table';
+    },
     'load-season': (el) => loadSeason(+el.dataset.tid, +el.dataset.sn, el),
+    // ----- Episode tracking -----
+    'ep-toggle': el => {
+      const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
+      const watched = toggleEpisode(tid, sn, en, readEpisodeMeta(el));
+      if (!state.user) return;
+      const card = document.querySelector(`.ep-card[data-ep="${sn}-${en}"]`);
+      if (card) {
+        card.classList.toggle('watched', watched);
+        const check = card.querySelector('.ep-check');
+        if (check) { check.classList.toggle('on', watched); check.setAttribute('aria-pressed', String(watched)); const label = check.querySelector('span'); if (label) label.textContent = watched ? 'Watched' : 'Mark watched'; }
+        const still = card.querySelector('.ep-still');
+        if (still) {
+          still.querySelector('.ep-seen')?.remove();
+          if (watched) still.insertAdjacentHTML('beforeend', `<div class="ep-seen" aria-hidden="true">${EP_CHECK}</div>`);
+        }
+      }
+      refreshEpisodeUI(tid);
+      syncSeasonToolbar(tid, sn);
+    },
+    'ep-mark-upto': el => {
+      const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
+      const added = markUpTo(tid, sn, en, readEpisodeMeta(el));
+      if (!state.user) return;
+      toast(added ? `Marked ${added} episode${added === 1 ? '' : 's'} watched` : 'Already up to date', added ? 'success' : 'info');
+      loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
+    },
+    'ep-mark-upto-prompt': el => {
+      // Nothing to pre-fill from: send the reader to the season list, where every
+      // row offers "Up to here".
+      document.querySelector('.season-tabs')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      toast('Open a season and use “Up to here” on the last episode you saw', 'info');
+    },
+    'ep-season': el => {
+      const tid = +el.dataset.tid, sn = +el.dataset.sn, on = el.dataset.on === '1';
+      setSeasonWatched(tid, sn, on, readEpisodeMeta(el));
+      if (!state.user) return;
+      toast(on ? `Season ${sn} marked watched` : `Season ${sn} cleared`, on ? 'success' : 'info');
+      loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
+    },
+    'ep-reset': el => {
+      const tid = +el.dataset.tid;
+      clearShowProgress(tid);
+      toast('Episode progress cleared', 'info');
+      openDetail(tid, 'tv');
+    },
     'go-collection': (el) => document.dispatchEvent(new CustomEvent('cv:go', { detail: `/collection/${el.dataset.cid}` })),
     'region-change': (el) => {
       state.region = el.value;

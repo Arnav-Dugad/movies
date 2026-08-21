@@ -37,6 +37,10 @@ export const state = {
   // not persisted: reloading CineVerse always re-locks. Lives here (not in
   // list-lock.js) so lists.js can honour it without importing that module back.
   unlockedLists: new Set(),
+  // Per-episode TV progress, keyed `tv_<id>`. Loaded from users/{uid}/progress
+  // on sign-in and mirrored to localStorage so the Continue Watching rail can
+  // paint before the network answers. See js/episodes.js.
+  episodeProgress: {},
 };
 
 // ===== LOOKUP HELPERS =====

@@ -12,6 +12,7 @@ import { REGIONS } from './config.js';
 import { hydrateNotificationPrefs, resetNotificationPrefsForAuth } from './notification-prefs.js';
 import { hydrateProviderHistory, resetProviderHistoryForAuth } from './provider-history.js';
 import { hydrateStatsSections } from './stats.js';
+import { loadEpisodeProgress, resetEpisodeProgressForAuth } from './episodes.js';
 
 let authMode = 'login';
 let delRelease = null;
@@ -26,6 +27,7 @@ async function loadProfile() {
   resetProviderHistoryForAuth();
   state.statsSnapshot = null;
   hydrateStatsSections(null);
+  resetEpisodeProgressForAuth();
   if (!state.user) return;
   let localFeedback = {};
   try { localFeedback = JSON.parse(localStorage.getItem(`cv_rec_feedback_${state.user.uid}`) || '{}'); } catch (_) {}
@@ -88,7 +90,7 @@ export function initAuth() {
     state.user = u;
     updateAuthUI();
     if (u) {
-      await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadProfile()]);
+      await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadProfile(), loadEpisodeProgress()]);
       updateAuthUI();   // re-render now that the avatar has loaded
       try { state.searchHistory = JSON.parse(localStorage.getItem('cv_history_' + u.uid) || '[]'); } catch (e) { state.searchHistory = []; }
     } else {
@@ -100,6 +102,7 @@ export function initAuth() {
       resetProviderHistoryForAuth();
       state.statsSnapshot = null;
       hydrateStatsSections(null);
+      resetEpisodeProgressForAuth();
     }
     loadRecentlyViewed();
     document.dispatchEvent(new Event('cv:auth'));

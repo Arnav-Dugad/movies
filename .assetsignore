@@ -24,6 +24,8 @@ vercel.json
 package.json
 package-lock.json
 
-# Repository documentation and rules that belong on GitHub, not on the CDN.
+# Repository documentation, rules, and tests that belong on GitHub, not on the CDN.
 README.md
 firestore.rules
+firebase.json
+tests

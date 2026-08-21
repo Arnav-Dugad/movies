@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { $, toast, esc } from './ui.js';
 import { registerActions } from './events.js';
-import { REGIONS } from './config.js';
+import { REGIONS, regionLabel } from './config.js';
 import { prefs, updatePref, resetPrefs, preferencePayload } from './prefs.js';
 import { db } from './firebase.js';
 
@@ -37,7 +37,8 @@ export function renderSettings() {
     ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px"><h3>Sign in to change settings</h3><p>Your experience controls and collection vault live here.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
-  const regionOpts = REGIONS.map(([code, label]) => `<option value="${code}" ${code === state.region ? 'selected' : ''}>${esc(label)}</option>`).join('');
+  const regionOpts = [...REGIONS].sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([code]) => `<option value="${code}" ${code === state.region ? 'selected' : ''}>${esc(regionLabel(code))}</option>`).join('');
   ct.innerHTML = `<div class="settings-shell">
     <section class="settings-premium-hero"><div><span>Experience control</span><h2>Make the universe yours.</h2><p>Fine-tune the look, motion, discovery signals and privacy of CineVerse. Changes apply instantly and sync efficiently to your account.</p></div><b>${ICONS.palette}</b></section>
     <div class="settings-layout">
@@ -74,8 +75,8 @@ export function renderSettings() {
         </section>
       </main>
       <aside>
-        <section class="settings-panel"><div class="settings-panel-head">${ICONS.shield}<div><span>Region</span><h2>Streaming home</h2></div></div><label class="settings-select-row stacked"><span><strong>Where to Watch region</strong><small>Controls provider availability on details pages.</small></span><select id="settingsRegion" class="watched-select" data-action="settings-region">${regionOpts}</select></label></section>
-        <section class="settings-panel settings-vault"><div class="settings-panel-head">${ICONS.data}<div><span>Collection vault</span><h2>Backup & restore</h2></div></div><p>Download lists, memberships, watched history, ratings and profile showcase data in one readable JSON file.</p><div class="settings-vault-actions"><button class="btn-primary" data-action="download-backup">Download backup</button><button class="btn-glass" data-action="choose-backup">Restore backup</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="download-watched">Export watched only</button><button class="btn-glass" data-action="choose-watched-import">Import watched only</button></div><small>Every restore safely merges data and never deletes newer cloud records.</small></section>
+        <section class="settings-panel"><div class="settings-panel-head">${ICONS.shield}<div><span>Region</span><h2>Streaming home</h2></div></div><label class="settings-select-row stacked"><span><strong>Where to Watch region</strong><small>Controls provider availability across details, notifications, and provider intelligence. ${REGIONS.length} countries, from JustWatch via TMDB.</small></span><select id="settingsRegion" class="watched-select" data-action="settings-region">${regionOpts}</select></label></section>
+        <section class="settings-panel settings-vault"><div class="settings-panel-head">${ICONS.data}<div><span>Collection vault</span><h2>Backup & restore</h2></div></div><p>Download lists, memberships, watched history, ratings and profile showcase data in one readable JSON file.</p><div class="settings-vault-actions"><button class="btn-primary" data-action="download-backup">Download backup</button><button class="btn-glass" data-action="choose-backup">Restore backup</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="download-watched">Export watched only</button><button class="btn-glass" data-action="choose-watched-import">Import watched only</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="open-import">Import from Letterboxd, Trakt or IMDb</button></div><small>Every restore safely merges data and never deletes newer cloud records.</small></section>
         <section class="settings-panel settings-maintenance"><div class="settings-panel-head">${ICONS.data}<div><span>Device data</span><h2>Maintenance</h2></div></div><button data-action="clear-search-history"><span>Clear search history</span><b>Clear</b></button><button data-action="clear-recent-history"><span>Clear recently viewed</span><b>Clear</b></button><button data-action="reset-experience"><span>Reset experience settings</span><b>Reset</b></button><button data-action="sign-out"><span>Sign out on this device</span><b>Sign out</b></button></section>
         <section class="settings-panel settings-danger"><span>Danger zone</span><h2>Delete account</h2><p>Permanently remove the account and its private collection.</p><button class="del-confirm" data-action="open-delete">Delete account</button></section>
       </aside>

@@ -7,7 +7,7 @@
 // deficiency — cyan-600 vs orange-600 rather than the usual green/red, which is
 // indistinguishable to deuteranopes. Direction, sign, and direct labels carry the
 // meaning as well, so the charts never depend on hue alone.
-import { IMG } from './config.js';
+import { IMG, regionLabel } from './config.js';
 import { esc } from './ui.js';
 import { state } from './state.js';
 import { getProviderStats, getCatalogSeries, getProviderLedger } from './provider-history.js';
@@ -37,7 +37,7 @@ function statTiles(stats, series) {
   const first = series[0]?.total ?? tracked, last = series.at(-1)?.total ?? tracked;
   const tile = (label, value, note, tone = '') => `<div class="pi-tile${tone ? ` ${tone}` : ''}"><span>${esc(label)}</span><strong>${esc(String(value))}</strong><small>${note}</small></div>`;
   return `<div class="pi-tiles">
-    ${tile('Titles tracked', tracked, `${esc(state.region)} subscription catalog`)}
+    ${tile('Titles tracked', tracked, `${esc(regionLabel(state.region))} catalog`)}
     ${tile('Services detected', stats.length, 'across your saved titles')}
     ${tile('Catalog additions', gained, `in the last ${currentRange} days`, gained ? 'gain' : '')}
     ${tile('Catalog removals', lost, `in the last ${currentRange} days`, lost ? 'loss' : '')}
@@ -124,7 +124,7 @@ function statsTable(stats) {
     <td>${sparkline(row.series)}</td>
     <td>${row.lastChangeAt ? esc(new Date(row.lastChangeAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })) : '—'}</td>
   </tr>`).join('');
-  return `<div class="pi-table-wrap"${tableOpen ? '' : ' hidden'}><table class="pi-table"><caption>Every subscription service detected in your ${esc(state.region)} catalog</caption>
+  return `<div class="pi-table-wrap"${tableOpen ? '' : ' hidden'}><table class="pi-table"><caption>Every subscription service detected in your ${esc(regionLabel(state.region))} catalog</caption>
     <thead><tr><th scope="col">Service</th><th scope="col">Now</th><th scope="col">Added</th><th scope="col">Removed</th><th scope="col">Net</th><th scope="col">Trend</th><th scope="col">Last change</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
@@ -140,7 +140,7 @@ export function providerIntelHTML({ width = 720 } = {}) {
   }
   return `<section class="provider-intel" id="providerIntel">
     <div class="pi-head">
-      <div><span>Provider intelligence</span><h2>Provider History Charts</h2><p>Which subscription services gained or lost the most titles from your library — measured by comparing CineVerse scans of the ${esc(state.region)} catalog.</p></div>
+      <div><span>Provider intelligence</span><h2>Provider History Charts</h2><p>Which subscription services gained or lost the most titles from your library — measured by comparing CineVerse scans of the ${esc(regionLabel(state.region))} catalog.</p></div>
       <div class="pi-head-tools"><div class="pi-range" role="group" aria-label="Chart time range">${ranges}</div><button class="pi-table-toggle" data-action="provider-chart-table" aria-expanded="${tableOpen}">${tableOpen ? 'Hide table' : 'View as table'}</button></div>
     </div>
     ${statTiles(stats, series)}
@@ -149,7 +149,7 @@ export function providerIntelHTML({ width = 720 } = {}) {
       <figure class="pi-card"><figcaption><strong>Your streamable catalog over time</strong><span>Saved titles detected on any subscription service</span></figcaption><div class="pi-trend-wrap" data-chart="trend">${trendChart(series, width)}</div></figure>
     </div>
     ${statsTable(stats)}
-    <p class="pi-note">Detected by CineVerse from the ${esc(state.region)} subscription catalog. Availability data by <a href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a> via TMDB. Rent and buy offers are never counted.</p>
+    <p class="pi-note">Detected by CineVerse from the ${esc(regionLabel(state.region))} subscription catalog. Availability data by <a href="https://www.justwatch.com" target="_blank" rel="noopener">JustWatch</a> via TMDB. Rent and buy offers are never counted.</p>
   </section>`;
 }
 

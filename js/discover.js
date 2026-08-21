@@ -1,6 +1,6 @@
 // ===== DISCOVER — EDITORIAL DISCOVERY HUB =====
 import { tmdb } from './api.js';
-import { moods, mGenreList, tGenreList, IMG, REGIONS } from './config.js';
+import { moods, mGenreList, tGenreList, IMG, REGIONS, regionName as countryName } from './config.js';
 import { state } from './state.js';
 import { toast, $, esc } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
@@ -19,7 +19,7 @@ let surpriseRequest = 0;
 const sectionSkeleton = () => `<div class="row">${skelCards(8)}</div>`;
 const yearOf = item => (item.release_date || item.first_air_date || '').slice(0, 4);
 const typeOf = item => item.media_type === 'tv' ? 'tv' : 'movie';
-const regionName = () => (REGIONS.find(([code]) => code === state.region)?.[1] || state.region).replace(/[^A-Za-z ]/g, '').trim() || state.region;
+const regionName = () => countryName(state.region);
 
 function populateGenres() {
   const type = $('discoverType')?.value || 'movie';

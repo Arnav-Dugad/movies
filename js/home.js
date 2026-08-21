@@ -1,23 +1,80 @@
 // ===== HOME SECTIONS (+ personalization) =====
-import { tmdb } from './api.js';
+import { tmdb, pool } from './api.js';
 import { $, esc } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
 import { registerActions } from './events.js';
 import { renderRecommendations } from './recommend.js';
 import { getStreamingArrivals } from './provider-history.js';
-import { IMG, providerUrl } from './config.js';
+import { resumeQueue } from './episodes.js';
+import { IMG, PH, providerUrl, regionLabel } from './config.js';
 import { state } from './state.js';
 
 // Re-exported so router.js (cv:auth / cv:wl-changed) and initHome can refresh the
 // personalized rows. The advanced logic lives in recommend.js.
 export function renderPersonalRows() { return renderRecommendations(); }
 
+// ===== CONTINUE WATCHING =====
+// Built entirely from the local progress documents, so the rail paints on the
+// first frame with no network round-trip. The episode still and title are then
+// filled in asynchronously — a missing image never delays the rail, and a failed
+// lookup just leaves the poster in place.
+export function renderContinueWatching() {
+  const host = $('continueWatchingRow'); if (!host) return;
+  const queue = state.user ? resumeQueue(10) : [];
+  if (!queue.length) { host.innerHTML = ''; return; }
+
+  host.innerHTML = `<section class="section reveal continue-section">
+    <div class="section-head"><div><span class="continue-eyebrow">Pick up where you left off</span><h2 class="section-title"><span>▶</span> Continue Watching</h2><p>Your next unwatched episode across ${queue.length} show${queue.length === 1 ? '' : 's'}.</p></div></div>
+    <div class="row continue-row">${queue.map(continueCard).join('')}</div>
+  </section>`;
+  observeReveals();
+  requestAnimationFrame(() => host.querySelectorAll('.continue-bar i').forEach(bar => { bar.style.width = `${+bar.dataset.w || 0}%`; }));
+  hydrateContinueStills(queue);
+}
+
+function continueCard({ id, entry, progress, next }) {
+  const art = entry.backdrop ? `${IMG}w500${entry.backdrop}` : entry.poster ? `${IMG}w342${entry.poster}` : PH;
+  const meta = esc(JSON.stringify({ title: entry.title, poster: entry.poster, backdrop: entry.backdrop, episodeRuntime: entry.episodeRuntime, structure: entry.structure, aired: entry.aired, status: entry.status }));
+  return `<article class="continue-card" data-continue="${id}">
+    <a class="continue-art" href="/tv/${id}" data-action="open-detail" data-id="${id}" data-type="tv" aria-label="Open ${esc(entry.title || 'show')}">
+      <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
+      <span class="continue-play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+      <span class="continue-badge">S${next.season} E${next.episode}</span>
+    </a>
+    <div class="continue-body">
+      <h3>${esc(entry.title || 'TV show')}</h3>
+      <p class="continue-next" data-continue-title="${id}">Episode ${next.episode}</p>
+      <div class="continue-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
+      <div class="continue-meta"><span>${progress.watched}/${progress.aired} watched</span><b>${progress.percent}%</b></div>
+      <button class="continue-mark" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail">Mark watched</button>
+    </div>
+  </article>`;
+}
+
+// One request per show, and only for the six most recent — enough to fill what
+// is visible without turning the home page into a burst of API calls.
+async function hydrateContinueStills(queue) {
+  await pool(queue.slice(0, 6), async row => {
+    const season = await tmdb(`/tv/${row.id}/season/${row.next.season}`).catch(() => null);
+    const episode = (season?.episodes || []).find(item => item.episode_number === row.next.episode);
+    if (!episode) return;
+    const card = document.querySelector(`.continue-card[data-continue="${row.id}"]`);
+    if (!card) return;
+    const label = card.querySelector(`[data-continue-title="${row.id}"]`);
+    if (label && episode.name) label.textContent = episode.name;
+    if (episode.still_path) {
+      const image = card.querySelector('.continue-art img');
+      if (image) image.src = `${IMG}w500${episode.still_path}`;
+    }
+  }, 3);
+}
+
 export function renderStreamingArrivals() {
   const host = $('streamingArrivalRows'); if (!host) return;
   const arrivals = state.user ? getStreamingArrivals(18) : [];
   if (!arrivals.length) { host.innerHTML = ''; return; }
-  host.innerHTML = `<section class="section reveal streaming-arrival-section"><div class="section-head"><div><span class="arrival-eyebrow">Subscription intelligence · ${esc(state.region)}</span><h2 class="section-title"><span>✦</span> Streaming Arrival Spotlight</h2><p>Newly detected on services you can stream with a subscription.</p></div><button class="section-see-all" data-action="show-page" data-page="notifications">View history<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div><div class="row arrival-row">${arrivals.map(change => `<div class="arrival-card">${buildCard({ id: change.id, title: change.title, name: change.title, poster_path: change.poster, release_date: change.year ? `${change.year}-01-01` : '', media_type: change.type }, change.type)}<a class="arrival-provider" href="${esc(providerUrl(change.provider?.name, change.title, change.regionLink))}" target="_blank" rel="noopener"><img src="${IMG}w92${change.provider?.logo}" alt="${esc(change.provider?.name || '')}"><span><small>${change.change === 'first_seen' ? 'First detected on' : 'Just arrived on'}</small><strong>${esc(change.provider?.name || 'Streaming')}</strong></span><i>↗</i></a></div>`).join('')}</div></section>`;
+  host.innerHTML = `<section class="section reveal streaming-arrival-section"><div class="section-head"><div><span class="arrival-eyebrow">Subscription intelligence · ${esc(regionLabel(state.region))}</span><h2 class="section-title"><span>✦</span> Streaming Arrival Spotlight</h2><p>Newly detected on services you can stream with a subscription.</p></div><button class="section-see-all" data-action="show-page" data-page="notifications">View history<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div><div class="row arrival-row">${arrivals.map(change => `<div class="arrival-card">${buildCard({ id: change.id, title: change.title, name: change.title, poster_path: change.poster, release_date: change.year ? `${change.year}-01-01` : '', media_type: change.type }, change.type)}<a class="arrival-provider" href="${esc(providerUrl(change.provider?.name, change.title, change.regionLink))}" target="_blank" rel="noopener"><img src="${IMG}w92${change.provider?.logo}" alt="${esc(change.provider?.name || '')}"><span><small>${change.change === 'first_seen' ? 'First detected on' : 'Just arrived on'}</small><strong>${esc(change.provider?.name || 'Streaming')}</strong></span><i>↗</i></a></div>`).join('')}</div></section>`;
   observeReveals();
 }
 
@@ -46,6 +103,10 @@ export function initHomeActions() {
   document.addEventListener('cv:provider-history', renderStreamingArrivals);
   document.addEventListener('cv:auth', renderStreamingArrivals);
   document.addEventListener('cv:region', renderStreamingArrivals);
+  document.addEventListener('cv:auth', renderContinueWatching);
+  // A tick anywhere — the rail's own button or the detail page — re-orders the
+  // queue, so the rail always rebuilds rather than trying to patch itself.
+  document.addEventListener('cv:episode-progress', renderContinueWatching);
 }
 
 // Genre ids: 16 Animation, 27 Horror, 35 Comedy, 878 Sci-Fi, 10751 Family.
@@ -89,6 +150,7 @@ export async function initHome() {
   // Personalized rails belong on Home; Profile contains the private explanation
   // of their signals and scoring instead of duplicating the same cards there.
   renderRecommendations();
+  renderContinueWatching();
   renderStreamingArrivals();
 
   await Promise.allSettled(SECTIONS.map(async s => {

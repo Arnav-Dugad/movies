@@ -40,6 +40,8 @@ service cloud.firestore {
       match /watched/{docId}   { allow read, write: if isOwner(uid); }
       match /ratings/{docId}   { allow read, write: if isOwner(uid); }
       match /lists/{docId}     { allow read, write: if isOwner(uid); }
+      // Per-episode TV progress (js/episodes.js), one document per show.
+      match /progress/{docId}  { allow read, write: if isOwner(uid); }
     }
 
     // ---- Friend discovery ----

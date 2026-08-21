@@ -1,0 +1,67 @@
+/* ===== CSV IMPORT ===== */
+.import-overlay{position:fixed;inset:0;z-index:8700;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(6,6,11,.92);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);opacity:0;visibility:hidden;transition:opacity .3s var(--ease-out),visibility .3s}
+.import-overlay.active{opacity:1;visibility:visible}
+.import-modal{position:relative;width:min(620px,100%);max-height:calc(100dvh - 40px);padding:30px 30px 26px;overflow:auto;border:1px solid rgba(167,139,250,.2);border-radius:var(--radius-xl);background:radial-gradient(circle at 100% 0,rgba(139,92,246,.14),transparent 40%),var(--bg2);box-shadow:0 30px 90px rgba(0,0,0,.6);transform:scale(.95);transition:transform .4s var(--spring)}
+.import-overlay.active .import-modal{transform:scale(1)}
+.import-close{width:32px;height:32px;position:absolute;right:16px;top:16px;border:1px solid var(--glass-border);border-radius:50%;background:rgba(255,255,255,.04);color:var(--text2);font-size:.85rem}
+.import-close:hover{background:rgba(255,255,255,.09);color:#fff}
+.import-head>span{display:block;color:var(--purple2);font-size:.48rem;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+.import-head h2{margin-top:6px;padding-right:34px;font-family:var(--font-display);font-size:1.6rem;line-height:1.15}
+.import-head p{margin-top:7px;color:var(--text3);font-size:.6rem;line-height:1.6}
+
+.import-sources{display:grid;gap:7px;margin-top:18px}
+.import-sources>div{padding:12px 14px;border:1px solid var(--glass-border);border-radius:14px;background:rgba(255,255,255,.02)}
+.import-sources strong{display:block;font-size:.62rem;font-weight:750}
+.import-sources small{display:block;margin-top:3px;color:var(--text3);font-size:.52rem;line-height:1.55}
+.import-sources code{padding:1px 5px;border-radius:5px;background:rgba(255,255,255,.06);color:var(--cyan2);font-family:var(--font-mono);font-size:.92em}
+
+.import-drop{width:100%;display:flex;flex-direction:column;align-items:center;gap:5px;margin-top:16px;padding:26px 18px;border:1.5px dashed rgba(167,139,250,.3);border-radius:18px;background:rgba(139,92,246,.05);color:var(--text2);transition:border-color .2s,background .2s,transform .2s}
+.import-drop:hover,.import-drop.over{border-color:var(--purple2);background:rgba(139,92,246,.12);transform:translateY(-1px)}
+.import-drop b{font-size:.76rem;font-weight:750}
+.import-drop span{color:var(--text3);font-size:.53rem}
+
+.import-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:7px;margin-top:18px}
+.import-stats>div{min-width:0;padding:12px 13px;border:1px solid var(--glass-border);border-radius:14px;background:rgba(255,255,255,.022)}
+.import-stats span{display:block;color:var(--text3);font-size:.44rem;font-weight:750;letter-spacing:.07em;text-transform:uppercase}
+.import-stats strong{display:block;margin-top:5px;font-size:1.1rem;font-weight:750}
+.import-stats small{display:block;margin-top:3px;color:var(--text3);font-size:.44rem}
+
+.import-sample{margin-top:14px;padding:12px 14px;border:1px solid var(--glass-border);border-radius:14px;background:rgba(255,255,255,.018);list-style:none}
+.import-sample li{padding:3px 0;overflow:hidden;color:var(--text2);font-size:.56rem;text-overflow:ellipsis;white-space:nowrap}
+.import-sample em{color:var(--text3);font-style:normal}
+.import-sample b{color:var(--gold);font-family:var(--font-mono);font-size:.52rem}
+
+.import-targets{margin-top:16px;padding:14px;border:1px solid var(--glass-border);border-radius:16px}
+.import-targets legend{padding:0 7px;color:var(--text3);font-size:.48rem;font-weight:750;letter-spacing:.08em;text-transform:uppercase}
+.import-targets label{display:flex;align-items:flex-start;gap:10px;padding:9px 6px;cursor:pointer}
+.import-targets input{margin-top:3px;accent-color:var(--purple)}
+.import-targets b{display:block;font-size:.62rem;font-weight:750}
+.import-targets small{display:block;margin-top:2px;color:var(--text3);font-size:.5rem;line-height:1.5}
+.import-check{display:flex;align-items:center;gap:9px;margin-top:12px;padding:11px 14px;border:1px solid var(--glass-border);border-radius:13px;color:var(--text2);font-size:.58rem;font-weight:700;cursor:pointer}
+.import-check input{accent-color:var(--purple)}
+.import-check input:disabled+span{opacity:.5}
+
+.import-progress{height:8px;margin-top:20px;overflow:hidden;border-radius:6px;background:rgba(255,255,255,.07)}
+.import-progress i{height:100%;display:block;border-radius:6px;background:linear-gradient(90deg,var(--purple),var(--pink));transition:width .35s var(--ease-out)}
+.import-progress-meta{display:flex;align-items:center;justify-content:space-between;margin-top:8px;color:var(--text3);font-size:.55rem}
+.import-progress-meta b{color:var(--purple2);font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+.import-warn{margin-top:12px;padding:10px 13px;border:1px solid rgba(251,191,36,.24);border-radius:12px;background:rgba(251,191,36,.07);color:var(--gold);font-size:.53rem}
+.import-unmatched{margin-top:14px;overflow:hidden;border:1px solid var(--glass-border);border-radius:14px}
+.import-unmatched summary{padding:12px 14px;color:var(--text2);font-size:.56rem;font-weight:750;cursor:pointer;list-style:none}
+.import-unmatched summary::-webkit-details-marker{display:none}
+.import-unmatched ul{max-height:190px;margin:0;padding:0 14px;overflow:auto;list-style:none}
+.import-unmatched li{padding:3px 0;color:var(--text3);font-size:.53rem}
+.import-unmatched em{font-style:normal;opacity:.7}
+.import-unmatched p{padding:10px 14px 14px;color:var(--text3);font-size:.5rem;line-height:1.6}
+.import-actions{display:flex;gap:9px;margin-top:20px}
+.import-actions button{flex:1;min-height:44px;font-size:.66rem}
+.import-note{margin-top:14px;color:var(--text3);font-size:.48rem;line-height:1.6}
+
+@media(max-width:700px){
+  .import-modal{padding:24px 18px 20px;border-radius:22px}
+  .import-head h2{font-size:1.3rem}
+  .import-stats{grid-template-columns:1fr 1fr}
+  .import-actions{flex-direction:column-reverse}
+}
+@media(prefers-reduced-motion:reduce){.import-modal,.import-progress i,.import-drop{transition:none}}

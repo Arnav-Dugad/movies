@@ -2,7 +2,7 @@
 // Rich analytics are derived from the user's Firestore-backed lists, ratings and
 // watched history. A compact snapshot is mirrored onto users/{uid} only when its
 // content hash changes, keeping it durable without burning free-tier writes.
-import { genreMap, mGenreList, tGenreList, IMG, PH } from './config.js';
+import { genreMap, mGenreList, tGenreList, IMG, PH, regionLabel } from './config.js';
 import { state } from './state.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { registerActions } from './events.js';
@@ -14,6 +14,7 @@ import { social } from './social.js';
 import { tmdb } from './api.js';
 import { buildCard } from './cards.js';
 import { getProviderStats, getCatalogSeries } from './provider-history.js';
+import { episodeTotals } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 
 let statsScope = 'all';
@@ -532,6 +533,10 @@ function tagTasteProfile(stats) {
 }
 
 function activityPanel(stats) {
+  // Per-episode tracking is its own ledger, so it is reported beside the watch
+  // history rather than folded into it — a show counted once as watched must not
+  // also be counted episode by episode.
+  const episodes = episodeTotals();
   const maxMonth = Math.max(1, ...stats.last12Months.map(item => item.count));
   const maxDay = Math.max(1, ...stats.heatDays.map(item => item.count));
   const heat = stats.heatDays.map(item => {
@@ -540,7 +545,7 @@ function activityPanel(stats) {
   }).join('');
   const monthBars = stats.last12Months.map(item => `<div class="activity-month"><div><i style="--month-height:${Math.max(item.count ? 8 : 1, Math.round(item.count / maxMonth * 100))}%"></i></div><span>${item.label}</span><b>${item.count || ''}</b></div>`).join('');
   return `<section class="stats-panel activity-section"><div class="stats-section-head"><div><span>Viewing rhythm</span><h2>Activity Pulse</h2><p>Your recent pace, streaks, and strongest viewing moments.</p></div></div>
-    <div class="activity-highlights"><div><span>Current streak</span><strong>${stats.currentStreak}<small> days</small></strong></div><div><span>Longest streak</span><strong>${stats.longestStreak}<small> days</small></strong></div><div><span>Best month</span><strong>${esc(stats.bestMonth)}</strong></div><div><span>Peak day</span><strong>${esc(stats.peakDay)}</strong></div></div>
+    <div class="activity-highlights"><div><span>Current streak</span><strong>${stats.currentStreak}<small> days</small></strong></div><div><span>Longest streak</span><strong>${stats.longestStreak}<small> days</small></strong></div><div><span>Best month</span><strong>${esc(stats.bestMonth)}</strong></div><div><span>Peak day</span><strong>${esc(stats.peakDay)}</strong></div>${episodes.episodes ? `<div><span>Episodes tracked</span><strong>${episodes.episodes}<small> across ${episodes.shows} show${episodes.shows === 1 ? '' : 's'}</small></strong></div><div><span>Episode hours</span><strong>${Math.round(episodes.minutes / 60)}<small> h${episodes.completed ? ` · ${episodes.completed} finished` : ''}</small></strong></div>` : ''}</div>
     <div class="activity-grid"><div class="activity-chart"><div class="mini-panel-title"><span>Last 12 months</span><b>${stats.thisYear} this year</b></div><div class="activity-months">${monthBars}</div></div><div class="activity-chart"><div class="mini-panel-title"><span>52-week watch map</span><b>${stats.last30} in 30 days</b></div><div class="activity-heat-wrap"><div class="activity-heatmap">${heat}</div><div class="activity-legend"><span>Less</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>More</span></div></div></div></div>
   </section>`;
 }
@@ -602,7 +607,7 @@ function providerIntelligencePanels() {
   const changed = providers.filter(provider => provider.gained || provider.lost).sort((a, b) => (b.gained + b.lost) - (a.gained + a.lost) || b.current - a.current).slice(0, 9);
   const maxChange = Math.max(1, ...changed.flatMap(provider => [provider.gained, provider.lost]));
   const currentTracked = catalog.at(-1)?.total ?? Object.keys(state.providerHistory?.snapshots || {}).length;
-  const reliability = `<section class="stats-panel provider-reliability"><div class="stats-section-head"><div><span>Streaming confidence</span><h2>Provider Reliability Score</h2><p>How recently each subscription service was checked across your tracked collection.</p></div><div class="provider-region-chip">${esc(state.region)} · subscription only</div></div><div class="provider-reliability-summary"><div><span>Services detected</span><strong>${providers.length}</strong></div><div><span>Tracked titles</span><strong>${currentTracked}</strong></div><div><span>Freshest check</span><strong>${esc(providerAge(Math.max(...providers.map(provider => provider.checkedAt))).replace('Checked ', ''))}</strong></div></div><div class="provider-reliability-grid">${reliable.map(provider => `<article><div class="provider-reliability-brand"><img src="${provider.logo ? `${IMG}w92${provider.logo}` : PH}" alt=""><span><strong>${esc(provider.name)}</strong><small>${provider.checkedTitles} current title${provider.checkedTitles === 1 ? '' : 's'}</small></span></div><div class="provider-score-ring" style="--provider-score:${provider.reliability * 3.6}deg"><strong>${provider.reliability}</strong><span>/100</span></div><div class="provider-check-time"><i class="${provider.reliability >= 85 ? 'fresh' : provider.reliability >= 60 ? 'aging' : 'stale'}"></i><span>${esc(providerAge(provider.checkedAt))}</span></div>${providerSparkline(provider.series)}</article>`).join('')}</div><p class="provider-method-note">The score measures check freshness—not provider accuracy. It falls gradually when the catalog has not been scanned.</p></section>`;
+  const reliability = `<section class="stats-panel provider-reliability"><div class="stats-section-head"><div><span>Streaming confidence</span><h2>Provider Reliability Score</h2><p>How recently each subscription service was checked across your tracked collection.</p></div><div class="provider-region-chip">${esc(regionLabel(state.region))} · subscription only</div></div><div class="provider-reliability-summary"><div><span>Services detected</span><strong>${providers.length}</strong></div><div><span>Tracked titles</span><strong>${currentTracked}</strong></div><div><span>Freshest check</span><strong>${esc(providerAge(Math.max(...providers.map(provider => provider.checkedAt))).replace('Checked ', ''))}</strong></div></div><div class="provider-reliability-grid">${reliable.map(provider => `<article><div class="provider-reliability-brand"><img src="${provider.logo ? `${IMG}w92${provider.logo}` : PH}" alt=""><span><strong>${esc(provider.name)}</strong><small>${provider.checkedTitles} current title${provider.checkedTitles === 1 ? '' : 's'}</small></span></div><div class="provider-score-ring" style="--provider-score:${provider.reliability * 3.6}deg"><strong>${provider.reliability}</strong><span>/100</span></div><div class="provider-check-time"><i class="${provider.reliability >= 85 ? 'fresh' : provider.reliability >= 60 ? 'aging' : 'stale'}"></i><span>${esc(providerAge(provider.checkedAt))}</span></div>${providerSparkline(provider.series)}</article>`).join('')}</div><p class="provider-method-note">The score measures check freshness—not provider accuracy. It falls gradually when the catalog has not been scanned.</p></section>`;
   const historyRows = changed.length ? changed.map(provider => `<article><div class="provider-history-brand"><img src="${provider.logo ? `${IMG}w92${provider.logo}` : PH}" alt=""><span><strong>${esc(provider.name)}</strong><small>${provider.current} available now · net ${provider.net > 0 ? '+' : ''}${provider.net}</small></span></div><div class="provider-flow"><span class="gain"><b style="--flow:${Math.max(provider.gained ? 8 : 0, Math.round(provider.gained / maxChange * 100))}%"></b><em>+${provider.gained}</em></span><span class="loss"><b style="--flow:${Math.max(provider.lost ? 8 : 0, Math.round(provider.lost / maxChange * 100))}%"></b><em>−${provider.lost}</em></span></div></article>`).join('') : `<div class="provider-history-baseline"><i>◎</i><div><strong>Your baseline is ready</strong><p>Gains and losses will appear after a later scan detects a real subscription change.</p></div></div>`;
   const catalogSeries = catalog.map(item => ({ day: item.day, value: item.total }));
   const history = `<section class="stats-panel provider-history-charts"><div class="stats-section-head"><div><span>90-day subscription movement</span><h2>Provider History Charts</h2><p>Real additions and removals detected between CineVerse scans. Initial baseline titles never count as gains.</p></div><div class="provider-chart-legend"><span><i></i>Gained</span><span><i></i>Lost</span></div></div><div class="provider-catalog-trend"><div><span>Tracked catalog</span><strong>${currentTracked}<small> titles now</small></strong></div>${providerSparkline(catalogSeries, 680, 92)}<div class="provider-trend-dates"><span>${esc(catalog[0]?.day || 'First scan')}</span><span>${esc(catalog.at(-1)?.day || 'Today')}</span></div></div><div class="provider-flow-list">${historyRows}</div></section>`;
@@ -815,12 +820,13 @@ export function renderStats() {
   const scopeLabel = statsScope === 'movie' ? 'movie' : statsScope === 'tv' ? 'TV' : 'complete';
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const providers = getProviderStats({ days: 90 });
+  const episodeStats = episodeTotals();
   const providerMovement = providers.reduce((sum, provider) => sum + provider.gained + provider.lost, 0);
 
   // Summaries are what a collapsed block shows, so each one has to carry the
   // headline of the panel it stands in for.
   const summaries = {
-    pulse: `${stats.currentStreak}-day current streak · ${stats.last30} watched in 30 days · best month ${stats.bestMonth}`,
+    pulse: `${stats.currentStreak}-day current streak · ${stats.last30} watched in 30 days${episodeStats.episodes ? ` · ${plural(episodeStats.episodes, 'episode')} tracked` : ''}`,
     critic: `${stats.avgRating ? `${stats.avgRating.toFixed(1)}/10 average` : 'No ratings yet'} · ${plural(stats.totalRated, 'rating')} · ${stats.completion}% of the collection watched`,
     taste: `${stats.genres[0]?.name || 'Discovering'} leads · ${plural(stats.languages.length, 'language')} · diversity ${stats.diversityScore}/100`,
     themes: (stats.themes || []).length ? `${stats.themes[0].name} leads · ${plural(stats.themes.length, 'theme signal')}` : 'Theme fingerprint is still learning',

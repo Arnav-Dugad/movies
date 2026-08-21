@@ -47,7 +47,51 @@ export const moods=[
   {emoji:'🔮',name:'Fantasy Worlds',sub:'Magic & wonder',genres:'14,10765',type:'multi'},
 ];
 
-export const REGIONS=[['IN','🇮🇳 India'],['US','🇺🇸 US'],['GB','🇬🇧 UK'],['SA','🇸🇦 Saudi Arabia'],['AU','🇦🇺 Australia']];
+// ===== STREAMING REGIONS =====
+// Every country TMDB returns watch-provider data for (sourced from JustWatch).
+// Stored as ISO 3166-1 alpha-2 so the code goes straight into
+// /watch/providers?results[CODE] and into discover's watch_region.
+//
+// The flag is derived, never typed: an alpha-2 code maps 1:1 onto the two
+// regional-indicator code points, so a wrong flag next to a country is
+// impossible by construction. Platforms without flag glyphs (Windows) fall back
+// to the two letters, which is why the name is always rendered beside it.
+export const REGIONS = [
+  ['AE', 'United Arab Emirates'], ['AR', 'Argentina'], ['AT', 'Austria'], ['AU', 'Australia'],
+  ['BE', 'Belgium'], ['BG', 'Bulgaria'], ['BR', 'Brazil'], ['CA', 'Canada'],
+  ['CH', 'Switzerland'], ['CL', 'Chile'], ['CO', 'Colombia'], ['CZ', 'Czechia'],
+  ['DE', 'Germany'], ['DK', 'Denmark'], ['EC', 'Ecuador'], ['EE', 'Estonia'],
+  ['EG', 'Egypt'], ['ES', 'Spain'], ['FI', 'Finland'], ['FR', 'France'],
+  ['GB', 'United Kingdom'], ['GR', 'Greece'], ['HK', 'Hong Kong'], ['HR', 'Croatia'],
+  ['HU', 'Hungary'], ['ID', 'Indonesia'], ['IE', 'Ireland'], ['IL', 'Israel'],
+  ['IN', 'India'], ['IT', 'Italy'], ['JP', 'Japan'], ['KR', 'South Korea'],
+  ['LT', 'Lithuania'], ['LV', 'Latvia'], ['MA', 'Morocco'], ['MX', 'Mexico'],
+  ['MY', 'Malaysia'], ['NL', 'Netherlands'], ['NO', 'Norway'], ['NZ', 'New Zealand'],
+  ['PE', 'Peru'], ['PH', 'Philippines'], ['PL', 'Poland'], ['PT', 'Portugal'],
+  ['RO', 'Romania'], ['RS', 'Serbia'], ['RU', 'Russia'], ['SA', 'Saudi Arabia'],
+  ['SE', 'Sweden'], ['SG', 'Singapore'], ['SI', 'Slovenia'], ['SK', 'Slovakia'],
+  ['TH', 'Thailand'], ['TR', 'Turkey'], ['TW', 'Taiwan'], ['UA', 'Ukraine'],
+  ['US', 'United States'], ['VE', 'Venezuela'], ['VN', 'Vietnam'], ['ZA', 'South Africa'],
+];
+
+const REGION_NAMES = new Map(REGIONS);
+
+// 0x1F1E6 is REGIONAL INDICATOR SYMBOL LETTER A; 'A'.charCodeAt(0) is 65.
+export function regionFlag(code) {
+  const key = String(code || '').toUpperCase();
+  if (!/^[A-Z]{2}$/.test(key)) return '';
+  return String.fromCodePoint(...[...key].map(letter => 0x1f1e6 + letter.charCodeAt(0) - 65));
+}
+
+export function regionName(code) {
+  const key = String(code || '').toUpperCase();
+  return REGION_NAMES.get(key) || key;
+}
+
+// "🇮🇳 India" — the label used in menus and anywhere the region is named.
+export const regionLabel = code => `${regionFlag(code)} ${regionName(code)}`.trim();
+
+export const isRegion = code => REGION_NAMES.has(String(code || '').toUpperCase());
 
 // Best-effort deep link to a provider's OWN search for a title. TMDB only gives a
 // region-level JustWatch `link` (no per-provider deep link), so map known

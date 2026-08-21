@@ -17,6 +17,7 @@ import { openSharedList } from './shared-list.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeListPicker, isListPickerOpen } from './lists.js';
 import { closePinModal, isPinModalOpen } from './list-lock.js';
+import { closeImport, isImportOpen } from './import-csv.js';
 import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen, closeSpoilerShare, isSpoilerShareOpen } from './media.js';
 import { closeAuth, isAuthOpen, closeDelete, isDeleteOpen } from './auth.js';
 import { renderFriends } from './friends.js';
@@ -106,6 +107,7 @@ function closeAllModals() {
   if (isRatingOpen()) closeRating();
   if (isListPickerOpen()) closeListPicker();
   if (isPinModalOpen()) closePinModal();
+  if (isImportOpen()) closeImport();
   if (isScannerOpen()) closeScanner();
   if (isDeleteOpen()) closeDelete();
   if (isAuthOpen()) closeAuth();
@@ -182,6 +184,7 @@ function handleEscape() {
   if (isRatingOpen()) return closeRating();
   if (isListPickerOpen()) return closeListPicker();
   if (isPinModalOpen()) return closePinModal();
+  if (isImportOpen()) return closeImport();
   if (isDeleteOpen()) return closeDelete();
   if (isAuthOpen()) return closeAuth();
   if (isNotificationDropdownOpen()) return closeNotificationDropdown();

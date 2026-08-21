@@ -1,6 +1,8 @@
 # Wrangler writes these during `wrangler deploy`; they are build scratch, not source.
 .wrangler/
 node_modules/
+tests/node_modules/
+.firebase/
 
 # OS / editor noise
 .DS_Store

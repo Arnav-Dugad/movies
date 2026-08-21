@@ -35,7 +35,6 @@ const ACTIVITY_WRITE_GAP = 6 * 60 * 60 * 1000;
 // The stored (cross-device) rotation is still added on top.
 const SESSION_KEY = () => `cv_rec_session_${state.user?.uid || 'guest'}`;
 let sessionRotation = null;
-let manualShuffle = 0;
 
 function visitRotation() {
   if (sessionRotation !== null) return sessionRotation;
@@ -455,18 +454,6 @@ function pickLabeledSeed(profile) {
   return r ? { id: r.id, type: r.type, title: r.title, genres: r.genres || [], reason: 'viewed' } : null;
 }
 
-// A visible promise that the rails are different this visit, plus a way to skip
-// ahead without waiting for the next one.
-function recommendationBar() {
-  return `<div class="rec-freshbar reveal">
-    <div><span>Personal picks</span><strong>Refreshed for this visit</strong><small>New slice of your ranked pool every time you open CineVerse.</small></div>
-    <button class="rec-shuffle" data-action="shuffle-recommendations" aria-label="Shuffle your recommendations">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
-      <span>Shuffle</span>
-    </button>
-  </div>`;
-}
-
 function shell(d) {
   return `<div class="section reveal"><div class="section-head"><h2 class="section-title"><span>${d.icon}</span> ${esc(d.title)}</h2></div><div class="row" id="${d.id}">${skelCards(8)}</div></div>`;
 }
@@ -527,10 +514,10 @@ function rotatedWindow(items, rotation, size = 20) {
 }
 
 // The stored rotation keeps long-term drift consistent across devices; the visit
-// counter guarantees a different slice every time the app is opened; the manual
-// shuffle lets you skip ahead without waiting for the next visit.
+// counter guarantees a different slice every time the app is opened. Entirely
+// silent by design — the rails simply differ, with no banner explaining why.
 function activeRotation() {
-  return prepareRecommendationRotation() + visitRotation() + manualShuffle;
+  return prepareRecommendationRotation() + visitRotation();
 }
 
 function touchRecommendationActivity() {
@@ -649,7 +636,7 @@ export async function renderRecommendations() {
   if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}` });
   if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
 
-  wrap.innerHTML = recommendationBar() + descriptors.map(shell).join('');
+  wrap.innerHTML = descriptors.map(shell).join('');
   observeReveals(wrap);
 
   // ONE pool fetch + ONE ranking pass, shared by every row. The old code refetched
@@ -722,13 +709,6 @@ export function initRecommendations() {
       if (panel) { panel.classList.toggle('active', auditOpen); panel.setAttribute('aria-hidden', auditOpen ? 'false' : 'true'); }
     },
     'restore-recommendation': element => restoreRecommendation(element.dataset.key),
-    'shuffle-recommendations': element => {
-      // A prime step keeps consecutive shuffles from landing on the same window.
-      manualShuffle += 3;
-      element.classList.add('spinning');
-      renderRecommendations();
-      toast('Fresh picks pulled from your ranked pool', 'success');
-    },
   });
   document.addEventListener('click', event => {
     if (event.target.closest('[data-action="dismiss-recommendation"]')) return;

@@ -28,6 +28,9 @@
 <link rel="stylesheet" href="/css/locks.css">
 <link rel="stylesheet" href="/css/stats-blocks.css">
 <link rel="stylesheet" href="/css/boxoffice.css">
+<link rel="stylesheet" href="/css/episodes.css">
+<link rel="stylesheet" href="/css/people.css">
+<link rel="stylesheet" href="/css/import.css">
 
 <!-- Firebase (compat SDK, classic scripts — must load before the app module) -->
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -202,6 +205,15 @@ setTimeout(function () {
   </div>
 </div>
 
+<!-- CSV IMPORT -->
+<div class="import-overlay" id="importOverlay" role="dialog" aria-modal="true" aria-label="Import from CSV">
+  <div class="import-modal">
+    <button class="import-close" data-action="close-import" aria-label="Close import">✕</button>
+    <div id="importBody"></div>
+  </div>
+</div>
+<input id="importFile" type="file" accept=".csv,text/csv" hidden>
+
 <!-- LIST PIN LOCK -->
 <div class="pin-overlay" id="pinOverlay" role="dialog" aria-modal="true" aria-label="List PIN">
   <div class="pin-modal" id="pinModalBody"></div>
@@ -312,7 +324,7 @@ setTimeout(function () {
 </div>
 
 <!-- HOME -->
-<main class="page-container" id="homePage"><div class="hero" id="heroWrap"></div><div id="personalRows"></div><div id="streamingArrivalRows"></div><div id="homeRows"></div></main>
+<main class="page-container" id="homePage"><div class="hero" id="heroWrap"></div><div id="continueWatchingRow"></div><div id="personalRows"></div><div id="streamingArrivalRows"></div><div id="homeRows"></div></main>
 
 <!-- BROWSE: MOVIES -->
 <div class="browse-page page-container" id="moviesPage">

@@ -4,7 +4,8 @@ import { initDelegation } from './events.js';
 import { initImageFallback, initCardSync } from './cards.js';
 import { loadPrefs } from './prefs.js';
 import { initAuth } from './auth.js';
-import { initWatchlist } from './watchlist.js';
+import { initWatchlist, toggleWatched } from './watchlist.js';
+import { onShowComplete } from './episodes.js';
 import { initLists } from './lists.js';
 import { initListLock } from './list-lock.js';
 import { initWatched } from './watched.js';
@@ -36,6 +37,7 @@ import { initWatchedMeta } from './watched-meta.js';
 import { cleanupServiceWorker } from './pwa.js';
 import { initRecommendations } from './recommend.js';
 import { initBackups } from './backup.js';
+import { initImportCSV } from './import-csv.js';
 import { initAwards } from './awards.js';
 import { initProviderBadges } from './provider-badges.js';
 import { initNotifications } from './notifications.js';
@@ -53,6 +55,16 @@ async function init() {
   initNotifications();
   initAuth();
   initWatchlist();
+  // Ticking the final aired episode finishes the show, so the watched list,
+  // stats, and badges agree with what the user just did instead of leaving a
+  // 100%-complete show marked unwatched.
+  onShowComplete((id, meta, progress) => {
+    toggleWatched(id, 'tv', meta.title || 'TV show', {
+      poster: meta.poster || '', episodeCount: progress.aired,
+      runtime: (meta.episodeRuntime || 0) * progress.aired,
+      episodeRuntime: meta.episodeRuntime || 0,
+    });
+  });
   initLists();
   initListLock();
   initWatched();
@@ -77,6 +89,7 @@ async function init() {
   initProfile();
   initSettings();
   initBackups();
+  initImportCSV();
   initAwards();
   initReleaseReminders();
   initWatchedMeta();

@@ -1,0 +1,91 @@
+/* ===== EPISODE TRACKING + CONTINUE WATCHING ===== */
+
+/* Show-level progress panel above the season strip */
+.show-progress{display:flex;align-items:center;justify-content:space-between;gap:22px;flex-wrap:wrap;margin-bottom:24px;padding:18px 22px;border:1px solid rgba(52,211,153,.2);border-radius:20px;background:radial-gradient(circle at 0 0,rgba(16,185,129,.1),transparent 42%),rgba(255,255,255,.02)}
+.show-progress.idle{border-color:var(--glass-border);background:rgba(255,255,255,.02)}
+.show-progress.complete{border-color:rgba(251,191,36,.26);background:radial-gradient(circle at 0 0,rgba(251,191,36,.1),transparent 42%),rgba(255,255,255,.02)}
+.show-progress-copy{min-width:min(260px,100%);flex:1}
+.show-progress-copy>span{display:block;color:var(--green2);font-size:.46rem;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+.show-progress.idle .show-progress-copy>span{color:var(--text3)}
+.show-progress.complete .show-progress-copy>span{color:var(--gold)}
+.show-progress-copy>strong{display:block;margin-top:5px;font-size:1.15rem;font-weight:750;letter-spacing:-.01em}
+.show-progress-copy>p{margin-top:4px;color:var(--text3);font-size:.6rem}
+.show-progress-bar{height:7px;margin-top:11px;overflow:hidden;border-radius:6px;background:rgba(255,255,255,.07)}
+.show-progress-bar i{height:100%;display:block;border-radius:6px;background:linear-gradient(90deg,var(--green),var(--green2));transition:width .9s var(--ease-out)}
+.show-progress.complete .show-progress-bar i{background:linear-gradient(90deg,var(--gold2),var(--gold))}
+.show-progress-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.show-progress-actions>b{font-family:var(--font-mono);font-size:1.35rem;font-variant-numeric:tabular-nums;color:var(--green2)}
+.show-progress.complete .show-progress-actions>b{color:var(--gold)}
+.show-progress-actions .btn-primary,.show-progress-actions .btn-glass{min-height:40px;padding:0 16px;font-size:.62rem}
+
+/* Season strip progress rings */
+.season-poster{position:relative}
+.season-ring{width:38px;height:38px;display:grid;place-items:center;position:absolute;right:6px;bottom:6px;border-radius:50%;background:conic-gradient(var(--green2) var(--season-progress,0deg),rgba(10,10,16,.75) 0);box-shadow:0 4px 14px rgba(0,0,0,.5);transition:background .5s var(--ease-out)}
+.season-ring.idle{display:none}
+.season-ring b{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:#0b0b12;color:#fff;font-family:var(--font-mono);font-size:.4rem;font-weight:700}
+.season-card.complete .season-ring{background:conic-gradient(var(--gold) 360deg,rgba(10,10,16,.75) 0)}
+.season-card.complete .season-nm{color:var(--gold)}
+
+/* Season toolbar above the episode list */
+.season-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px;padding:11px 15px;border:1px solid var(--glass-border);border-radius:14px;background:rgba(255,255,255,.022)}
+.season-toolbar>span{color:var(--text3);font-size:.58rem}
+.season-toolbar>span b{color:var(--green2);font-family:var(--font-mono);font-size:.7rem}
+.season-toolbar>button{min-height:36px;padding:0 14px;border:1px solid rgba(52,211,153,.24);border-radius:50px;background:rgba(16,185,129,.08);color:var(--green2);font-size:.55rem;font-weight:800;transition:background .18s}
+.season-toolbar>button:hover{background:rgba(16,185,129,.16)}
+
+/* Episode rows */
+.ep-card{transition:border-color .22s,background .22s,opacity .22s}
+.ep-card.watched{border-color:rgba(52,211,153,.24)}
+.ep-card.watched .ep-title{color:var(--green2)}
+.ep-card.unaired{opacity:.62}
+.ep-still{position:relative}
+.ep-seen{display:grid;place-items:center;position:absolute;inset:0;border-radius:inherit;background:rgba(6,20,15,.62);color:var(--green2);animation:epSeenIn .28s var(--ease-out)}
+.ep-seen svg{width:26px;height:26px}
+@keyframes epSeenIn{from{opacity:0;transform:scale(.8)}}
+.ep-soon{color:var(--gold)!important}
+.ep-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:10px}
+.ep-check{display:flex;align-items:center;gap:7px;min-height:32px;padding:0 12px;border:1px solid var(--glass-border);border-radius:50px;background:rgba(255,255,255,.03);color:var(--text3);font-size:.52rem;font-weight:750;transition:border-color .18s,background .18s,color .18s}
+.ep-check svg{width:12px;height:12px;transition:transform .2s var(--bounce)}
+.ep-check:hover{border-color:rgba(52,211,153,.28);color:var(--green2)}
+.ep-check.on{border-color:rgba(52,211,153,.4);background:rgba(16,185,129,.14);color:var(--green2)}
+.ep-check.on svg{transform:scale(1.15)}
+.ep-upto{min-height:32px;padding:0 12px;border:1px solid transparent;border-radius:50px;background:transparent;color:var(--text3);font-size:.52rem;font-weight:700;transition:border-color .18s,color .18s}
+.ep-upto:hover{border-color:var(--glass-border);color:var(--text2)}
+
+/* Continue Watching rail */
+.continue-section{margin-top:6px}
+.continue-eyebrow{display:block;color:var(--green2);font-size:.5rem;font-weight:850;letter-spacing:.15em;text-transform:uppercase}
+.continue-row{align-items:stretch}
+.continue-card{width:290px;flex:0 0 290px;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--glass-border);border-radius:18px;background:linear-gradient(155deg,rgba(255,255,255,.04),rgba(255,255,255,.012));transition:transform .25s var(--ease-out),border-color .25s}
+.continue-card:hover{transform:translateY(-3px);border-color:rgba(52,211,153,.3)}
+.continue-art{display:block;position:relative;aspect-ratio:16/9;overflow:hidden;background:var(--bg4)}
+.continue-art img{width:100%;height:100%;display:block;object-fit:cover;transition:transform .5s var(--ease-out),opacity .3s}
+.continue-card:hover .continue-art img{transform:scale(1.06)}
+.continue-play{width:44px;height:44px;display:grid;place-items:center;position:absolute;left:50%;top:50%;border-radius:50%;background:rgba(6,6,11,.66);color:#fff;backdrop-filter:blur(6px);transform:translate(-50%,-50%) scale(.9);opacity:0;transition:opacity .25s,transform .25s var(--bounce)}
+.continue-card:hover .continue-play{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.continue-play svg{width:19px;height:19px;margin-left:2px}
+.continue-badge{position:absolute;left:10px;top:10px;padding:5px 9px;border-radius:50px;background:rgba(6,6,11,.78);color:#fff;font-family:var(--font-mono);font-size:.46rem;font-weight:700;backdrop-filter:blur(6px)}
+.continue-body{display:flex;flex-direction:column;flex:1;padding:13px 15px 15px}
+.continue-body h3{overflow:hidden;font-size:.8rem;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
+.continue-next{margin-top:3px;overflow:hidden;color:var(--text3);font-size:.56rem;text-overflow:ellipsis;white-space:nowrap}
+.continue-bar{height:5px;margin-top:11px;overflow:hidden;border-radius:5px;background:rgba(255,255,255,.07)}
+.continue-bar i{height:100%;display:block;border-radius:5px;background:linear-gradient(90deg,var(--green),var(--green2));transition:width 1s var(--ease-out)}
+.continue-meta{display:flex;align-items:center;justify-content:space-between;margin-top:7px;color:var(--text3);font-size:.5rem}
+.continue-meta b{color:var(--green2);font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.continue-mark{min-height:36px;margin-top:12px;border:1px solid rgba(52,211,153,.26);border-radius:50px;background:rgba(16,185,129,.09);color:var(--green2);font-size:.55rem;font-weight:800;transition:background .18s}
+.continue-mark:hover{background:rgba(16,185,129,.18)}
+
+@media(max-width:700px){
+  .show-progress{gap:14px;padding:15px 16px;border-radius:18px}
+  .show-progress-copy>strong{font-size:1rem}
+  .show-progress-actions{width:100%}
+  .show-progress-actions .btn-primary{flex:1}
+  .season-toolbar{padding:10px 12px}
+  .season-toolbar>button{width:100%}
+  .continue-card{width:250px;flex-basis:250px}
+  .ep-actions{gap:5px}
+}
+@media(prefers-reduced-motion:reduce){
+  .show-progress-bar i,.continue-bar i,.continue-art img,.season-ring{transition:none}
+  .ep-seen{animation:none}
+}

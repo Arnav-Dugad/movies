@@ -6,7 +6,7 @@
 // no service publishes a leave date, so we never pretend to know one.
 import { tmdb, pool } from './api.js';
 import { state } from './state.js';
-import { IMG, PH, providerUrl } from './config.js';
+import { IMG, PH, providerUrl, regionLabel } from './config.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { registerActions } from './events.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
@@ -584,7 +584,7 @@ function heroHTML(allowed) {
         <b>${unreadCount} unread</b>
         ${urgent.length ? `<u>${urgent.length} need${urgent.length === 1 ? 's' : ''} attention</u>` : ''}
         ${departures ? `<i>${departures} departure warning${departures === 1 ? '' : 's'}</i>` : ''}
-        <span>Times in ${esc(localTimeZone())}</span><span>${esc(state.region)} streaming region</span>
+        <span>Times in ${esc(localTimeZone())}</span><span>${esc(regionLabel(state.region))}</span>
       </div>
       ${next ? `<div class="notification-next"><span>Next up</span><strong>${esc(next.title)}</strong><em>${esc(next.headline)}</em><b data-countdown="${next.at}">${esc(countdownText(next.at))}</b></div>` : ''}
     </div>
