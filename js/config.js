@@ -56,6 +56,23 @@ export const moods=[
 // regional-indicator code points, so a wrong flag next to a country is
 // impossible by construction. Platforms without flag glyphs (Windows) fall back
 // to the two letters, which is why the name is always rendered beside it.
+// ===== MATURE CONTENT =====
+// Hidden behind prefs.mature, which is off by default. These are real TMDB
+// keyword ids (verified against /search/keyword), not genres — TMDB has no
+// "erotic" genre, so the collections are built from keywords instead. Everything
+// still comes from TMDB's public metadata; the toggle only decides whether the
+// app asks for it.
+export const MATURE_KEYWORDS = [
+  { id: 256466, name: 'Erotic', blurb: 'Erotic drama and character pieces' },
+  { id: 155477, name: 'Softcore', blurb: 'Softcore and sensual cinema' },
+  { id: 207767, name: 'Erotic thriller', blurb: 'Desire with a body count' },
+  { id: 325693, name: 'Erotica', blurb: 'Classic and international erotica' },
+  { id: 302868, name: 'Erotic comedy', blurb: 'Bedroom farce and innuendo' },
+  { id: 298666, name: 'Erotic romance', blurb: 'Romance with the heat left in' },
+  { id: 3182, name: 'Seduction', blurb: 'Slow-burn seduction stories' },
+  { id: 362757, name: 'Sensual', blurb: 'Sensual, atmospheric filmmaking' },
+];
+
 export const REGIONS = [
   ['AE', 'United Arab Emirates'], ['AR', 'Argentina'], ['AT', 'Austria'], ['AU', 'Australia'],
   ['BE', 'Belgium'], ['BG', 'Bulgaria'], ['BR', 'Brazil'], ['CA', 'Canada'],

@@ -8,6 +8,7 @@ import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 import { initBrowseHero } from './hero.js';
 import { fillProviderSelect, applyProviderFilter } from './provider-catalog.js';
+import { adultFlag } from './prefs.js';
 
 const gridSkel = (n = 12) => Array(n).fill('<div><div class="card-img skel" style="aspect-ratio:2/3"></div></div>').join('');
 export function initFilters() {
@@ -54,7 +55,7 @@ export async function loadMovies(append = false) {
   const runtime = $('mRuntime').value, votes = $('mVotes').value, cert = $('mCert').value;
   const release = $('mRelease').value, country = $('mCountry').value, provider = $('mProvider')?.value || '';
   const maxRat = $('mRatingMax')?.value || '', excludeGenre = $('mExcludeGenre')?.value || '', releaseType = $('mReleaseType')?.value || '';
-  const params = { sort_by: sort, page: state.mPg, include_adult: false };
+  const params = { sort_by: sort, page: state.mPg, include_adult: adultFlag() };
   if (sort === 'vote_average.desc') params['vote_count.gte'] = Math.max(200, +(votes || 0));
   else if (sort === 'vote_average.asc') params['vote_count.gte'] = Math.max(50, +(votes || 0));
   if (state.mGenre) params.with_genres = state.mGenre;

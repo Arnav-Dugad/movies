@@ -89,3 +89,52 @@
   .show-progress-bar i,.continue-bar i,.continue-art img,.season-ring{transition:none}
   .ep-seen{animation:none}
 }
+
+/* ===== TV TRACKER (stats) ===== */
+.tv-region-chip{flex-shrink:0;padding:7px 12px;border:1px solid rgba(52,211,153,.2);border-radius:50px;background:rgba(16,185,129,.07);color:var(--green2);font-size:.5rem;font-weight:750}
+.tv-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:8px;margin-top:20px}
+.tv-tiles>div{min-width:0;padding:14px 16px;border:1px solid var(--glass-border);border-radius:16px;background:rgba(255,255,255,.022)}
+.tv-tiles span{display:block;color:var(--text3);font-size:.46rem;font-weight:750;letter-spacing:.08em;text-transform:uppercase}
+.tv-tiles strong{display:block;margin-top:6px;font-size:1.3rem;font-weight:750;letter-spacing:-.01em}
+.tv-tiles small{display:block;margin-top:4px;color:var(--text3);font-size:.45rem;line-height:1.4}
+.tv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:12px}
+.tv-card{min-width:0;padding:16px 18px;border:1px solid var(--glass-border);border-radius:18px;background:#0d0e14}
+.tv-card figcaption{margin-bottom:16px}
+.tv-card figcaption strong{display:block;font-size:.68rem;font-weight:750}
+.tv-card figcaption span{display:block;margin-top:3px;color:var(--text3);font-size:.46rem;line-height:1.5}
+.tv-months{display:flex;align-items:flex-end;gap:5px;height:132px;padding-bottom:30px;position:relative}
+.tv-months::after{content:'';position:absolute;left:0;right:0;bottom:30px;height:1px;background:rgba(255,255,255,.08)}
+.tv-month{display:flex;flex-direction:column;justify-content:flex-end;flex:1;height:100%;position:relative}
+.tv-month-track{display:flex;align-items:flex-end;height:100%}
+.tv-month i{width:100%;height:0;border-radius:4px 4px 0 0;background:#0891b2;opacity:.6;transition:height .7s var(--ease-out),opacity .2s}
+.tv-month:hover i{opacity:1}
+.tv-month.peak i{opacity:1;background:#22d3ee}
+.tv-month span{position:absolute;left:0;right:0;bottom:-26px;color:var(--text3);font-size:.42rem;text-align:center}
+.tv-month b{position:absolute;left:0;right:0;bottom:-14px;color:var(--text2);font-family:var(--font-mono);font-size:.42rem;text-align:center}
+.tv-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:11px;padding:8px 0}
+.tv-row+.tv-row{border-top:1px solid rgba(255,255,255,.05)}
+.tv-row>img{width:34px;height:48px;object-fit:cover;border-radius:7px;background:var(--bg4)}
+.tv-row-copy{min-width:0}
+.tv-row-copy strong{display:block;overflow:hidden;font-size:.6rem;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
+.tv-row-copy small{display:block;margin-top:2px;overflow:hidden;color:var(--text3);font-size:.47rem;text-overflow:ellipsis;white-space:nowrap}
+.tv-row-bar{height:4px;margin-top:6px;overflow:hidden;border-radius:4px;background:rgba(255,255,255,.07)}
+.tv-row-bar i{width:0;height:100%;display:block;border-radius:4px;background:linear-gradient(90deg,#0891b2,#22d3ee);transition:width .8s var(--ease-out)}
+.tv-row>b{color:#22d3ee;font-family:var(--font-mono);font-size:.55rem;font-variant-numeric:tabular-nums}
+.tv-allclear{display:flex;align-items:center;gap:12px;padding:18px 4px;color:var(--text3);font-size:.55rem}
+.tv-allclear i{width:32px;height:32px;display:grid;place-items:center;flex-shrink:0;border-radius:10px;background:rgba(16,185,129,.1);color:var(--green2);font-style:normal}
+.tv-empty{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:18px;padding:20px;border:1px dashed rgba(255,255,255,.09);border-radius:16px}
+.tv-empty>i{width:38px;height:38px;display:grid;place-items:center;flex-shrink:0;border-radius:12px;background:rgba(6,182,212,.1);color:#22d3ee;font-size:1rem;font-style:normal}
+.tv-empty div{min-width:200px;flex:1}
+.tv-empty strong{display:block;font-size:.7rem}
+.tv-empty p{margin-top:4px;color:var(--text3);font-size:.53rem;line-height:1.6}
+.tv-empty b{color:var(--text2);font-weight:750}
+.tv-note{margin-top:14px;color:var(--text3);font-size:.46rem;line-height:1.6}
+@media(max-width:980px){.tv-grid{grid-template-columns:1fr}}
+@media(max-width:700px){
+  .tv-tiles{grid-template-columns:1fr 1fr}
+  .tv-tiles strong{font-size:1.05rem}
+  .tv-card{padding:14px}
+  .tv-months{height:108px;gap:3px}
+  .tv-month span{font-size:.38rem}
+}
+@media(prefers-reduced-motion:reduce){.tv-month i,.tv-row-bar i{transition:none}}

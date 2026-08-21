@@ -31,6 +31,7 @@
 <link rel="stylesheet" href="/css/episodes.css">
 <link rel="stylesheet" href="/css/people.css">
 <link rel="stylesheet" href="/css/import.css">
+<link rel="stylesheet" href="/css/mature.css">
 
 <!-- Firebase (compat SDK, classic scripts — must load before the app module) -->
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -547,6 +548,8 @@ setTimeout(function () {
     <div class="discover-section-head"><div><span>Always fresh</span><h2>Curated discovery lanes</h2><p>Live collections spanning streaming, cultures, critics, and overlooked favorites.</p></div><div class="discover-section-tools"><b id="discoverRegionLabel">Your region</b><button data-action="discover-refresh-collections">Refresh</button></div></div>
     <div id="discoverRows"></div>
   </section>
+
+  <div id="discoverMature"></div>
 
   <section class="discover-surprise" id="discoverSurprise">
     <div class="discover-surprise-copy"><span>Decision-free mode</span><h2>Let CineVerse choose tonight.</h2><p>Pick a movie or show. We will choose one strong, streamable title—not a low-quality random result.</p><div><button class="spin-btn" id="spinBtn" data-action="random-pick" data-type="movie">Surprise movie</button><button class="spin-btn secondary" id="spinBtnTV" data-action="random-pick" data-type="tv">Surprise show</button></div></div>

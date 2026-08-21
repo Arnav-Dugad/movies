@@ -25,6 +25,7 @@ import { addToList, removeFromAllLists } from './lists.js';
 import { toggleWatched } from './watchlist.js';
 import { playTrailer } from './media.js';
 import { openRating } from './ratings.js';
+import { adultFlag } from './prefs.js';
 
 const Recognition = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
 const START_TIMEOUT = 2600;
@@ -386,7 +387,7 @@ export function startVoiceSearch() {
 
 // ---------- command execution ----------
 async function resolveTitle(title) {
-  const data = await tmdb('/search/multi', { query: title, include_adult: false, page: 1 });
+  const data = await tmdb('/search/multi', { query: title, include_adult: adultFlag(), page: 1 });
   const candidates = (data.results || []).filter(item => ['movie', 'tv'].includes(item.media_type));
   const normal = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   return candidates.find(item => normal(item.title || item.name) === normal(title)) || candidates[0] || null;

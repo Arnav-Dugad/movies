@@ -13,9 +13,17 @@ export const DEFAULT_PREFS = Object.freeze({
   backdropArt: true, posterTilt: true, highContrast: false, compactNav: false,
   detailBoxOfficeExpanded: false, detailGalleryExpanded: false, detailReviewsExpanded: false,
   directorExcludeShorts: true, directorExcludeDocumentaries: true, directorExcludeUnreleased: true,
+  // Mature content is OFF by default and leaves no trace in the UI until it is
+  // turned on: no section, no chips, no badge, and include_adult stays false.
+  mature: false, matureBlur: true,
 });
 
 export let prefs = { ...DEFAULT_PREFS };
+
+// Every user-facing search and discover call passes this rather than a literal,
+// so adult results can never leak in while the toggle is off — and turning it on
+// does not require touching a dozen call sites.
+export const adultFlag = () => !!prefs.mature;
 let updatedAt = 0;
 
 const allowed = {
@@ -28,7 +36,7 @@ const allowed = {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   return next;
@@ -48,6 +56,8 @@ export function applyPrefs() {
   root.dataset.backdropArt = prefs.backdropArt ? 'show' : 'hide';
   root.dataset.posterTilt = prefs.posterTilt ? 'on' : 'off';
   root.dataset.contrast = prefs.highContrast ? 'high' : 'standard';
+  root.dataset.mature = prefs.mature ? 'on' : 'off';
+  root.dataset.matureBlur = prefs.mature && prefs.matureBlur ? 'on' : 'off';
   root.dataset.compactNav = prefs.compactNav ? 'on' : 'off';
   root.dataset.rememberViewed = prefs.rememberViewed ? 'on' : 'off';
 }

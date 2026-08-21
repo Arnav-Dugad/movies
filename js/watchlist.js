@@ -7,6 +7,7 @@ import { refreshWLBtns, rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './
 import { registerActions, readItem } from './events.js';
 import { removeFromList, listsArr, listById, createList, renameList, deleteList, shareList } from './lists.js';
 import { isListLocked, listHasPin, openPinModal, relockList } from './list-lock.js';
+import { markShowWatched, clearShowProgress, showProgress } from './episodes.js';
 import { tmdb, pool } from './api.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
@@ -34,7 +35,11 @@ export async function toggleWatched(id, type, title, meta = {}) {
   try {
     const ref = db.collection('users').doc(state.user.uid).collection('watched').doc(key);
     if (state.watched[key]) {
-      await ref.delete(); delete state.watched[key]; toast('Unmarked as watched', 'info');
+      await ref.delete(); delete state.watched[key];
+      // Only clear episode progress when it was the "whole show" mark that put it
+      // there. Someone who ticked episodes individually keeps their progress.
+      if (type === 'tv' && showProgress(id).complete) clearShowProgress(id);
+      toast('Unmarked as watched', 'info');
     } else {
       // Enrich with poster/year/genres so the Watched page (and anywhere else)
       // can render a real card without an extra TMDB fetch. Fall back to the
@@ -62,6 +67,14 @@ export async function toggleWatched(id, type, title, meta = {}) {
       // clock; the real server value wins on the next load.
       state.watched[key] = { ...d, watchedAt: { seconds: Math.floor(Date.now() / 1000) } };
       toast('Marked as watched!', 'success');
+      // A show marked watched IS every aired episode watched. Filling them keeps
+      // the tracker, Continue Watching, and the TV stats agreeing with the badge
+      // the user just turned on — without it the show sat at 0% forever.
+      if (type === 'tv') {
+        markShowWatched(id, { title, poster: d.poster, episodeRuntime: meta.episodeRuntime || 0 })
+          .then(added => { if (added) document.dispatchEvent(new Event('cv:wl-changed')); })
+          .catch(error => console.warn('markShowWatched', error));
+      }
     }
     document.dispatchEvent(new Event('cv:wl-changed'));
   } catch (e) { console.error('toggleWatched failed:', e); toast('Error', 'error'); }

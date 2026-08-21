@@ -15,6 +15,7 @@ import { $, esc, toast, trapFocus, lockScroll, unlockScroll } from './ui.js';
 import { registerActions } from './events.js';
 import { loadWatchlist, loadWatched } from './watchlist.js';
 import { loadRatings } from './ratings.js';
+import { adultFlag } from './prefs.js';
 
 const MAX_ROWS = 4000;
 const MAX_BYTES = 12 * 1024 * 1024;
@@ -164,12 +165,12 @@ async function resolveItem(item) {
     }
     if (!item.title) return null;
     const endpoint = item.type === 'tv' ? '/search/tv' : item.type === 'movie' ? '/search/movie' : '/search/multi';
-    const params = { query: item.title, include_adult: false, page: 1 };
+    const params = { query: item.title, include_adult: adultFlag(), page: 1 };
     if (item.year) params[item.type === 'tv' ? 'first_air_date_year' : 'year'] = item.year;
     let results = (await tmdb(endpoint, params).catch(() => null))?.results || [];
     // A year filter that returns nothing is worse than no year filter: retry
     // wide before giving up on a title that clearly exists.
-    if (!results.length && item.year) results = ((await tmdb(endpoint, { query: item.title, include_adult: false, page: 1 }).catch(() => null))?.results) || [];
+    if (!results.length && item.year) results = ((await tmdb(endpoint, { query: item.title, include_adult: adultFlag(), page: 1 }).catch(() => null))?.results) || [];
     const candidates = results.filter(row => !row.media_type || ['movie', 'tv'].includes(row.media_type));
     if (!candidates.length) return null;
     const wanted = normalTitle(item.title);

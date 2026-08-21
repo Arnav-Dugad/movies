@@ -7,6 +7,8 @@ import { buildCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 import { fillProviderSelect, applyProviderFilter } from './provider-catalog.js';
+import { adultFlag } from './prefs.js';
+import { matureOn, matureSectionHTML, renderMatureRow } from './mature.js';
 
 let labPage = 1;
 let labSignature = '';
@@ -55,7 +57,7 @@ async function loadSpotlight(refresh = false) {
 }
 
 function curatedDefinitions() {
-  const streaming = { watch_region: state.region, with_watch_monetization_types: 'flatrate', include_adult: false };
+  const streaming = { watch_region: state.region, with_watch_monetization_types: 'flatrate', include_adult: adultFlag() };
   return [
     { id: 'discoverTrending', kicker: 'What everyone is finding', title: 'Trending across movies & TV', path: '/trending/all/week', type: 'multi', params: {} },
     { id: 'discoverStreamingMovies', kicker: `Subscription streaming · ${regionName()}`, title: 'Popular movies streaming now', path: '/discover/movie', type: 'movie', params: { ...streaming, sort_by: 'popularity.desc', 'vote_count.gte': 150 } },
@@ -104,7 +106,7 @@ function labQuery() {
   const dateField = type === 'tv' ? 'first_air_date' : 'primary_release_date';
   const titleField = type === 'tv' ? 'original_name' : 'original_title';
   const sortBy = sortValue === 'date.desc' ? `${dateField}.desc` : sortValue === 'date.asc' ? `${dateField}.asc` : sortValue === 'title.asc' ? `${titleField}.asc` : sortValue === 'title.desc' ? `${titleField}.desc` : sortValue;
-  const params = { include_adult: false, page: labPage, sort_by: sortBy };
+  const params = { include_adult: adultFlag(), page: labPage, sort_by: sortBy };
   const genre = $('discoverGenre')?.value, excludeGenre = $('discoverExcludeGenre')?.value, language = $('discoverLanguage')?.value;
   const rating = +($('discoverRating')?.value || 0), maxRating = +($('discoverRatingMax')?.value || 0), votes = +($('discoverVotes')?.value || 0);
   if (genre) params.with_genres = genre;
@@ -191,7 +193,7 @@ async function pickMood(index) {
   host.innerHTML = `<div class="discover-mood-result-head"><div><span>${mood.emoji} Mood journey</span><h3>${esc(mood.name)}</h3><p>Finding excellent ${esc(mood.sub.toLowerCase())} picks…</p></div></div><div class="discover-result-grid">${skelCards(10)}</div>`;
   host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   const type = mood.type === 'tv' ? 'tv' : 'movie';
-  const params = { with_genres: mood.genres, sort_by: 'vote_average.desc', 'vote_count.gte': 150, page: Math.floor(Math.random() * 3) + 1, include_adult: false, watch_region: state.region, with_watch_monetization_types: 'flatrate' };
+  const params = { with_genres: mood.genres, sort_by: 'vote_average.desc', 'vote_count.gte': 150, page: Math.floor(Math.random() * 3) + 1, include_adult: adultFlag(), watch_region: state.region, with_watch_monetization_types: 'flatrate' };
   if (mood.lang) params.with_original_language = mood.lang;
   try {
     const data = await tmdb(`/discover/${type}`, params);
@@ -211,7 +213,7 @@ export async function randomPick(type) {
   host.innerHTML = '<div class="discover-surprise-empty loading"><i>···</i><strong>Choosing carefully</strong><span>Quality and streaming availability matter</span></div>';
   try {
     const page = Math.floor(Math.random() * 8) + 1;
-    const data = await tmdb(`/discover/${type}`, { sort_by: 'vote_average.desc', page, 'vote_average.gte': 6.5, 'vote_count.gte': 250, watch_region: state.region, with_watch_monetization_types: 'flatrate', include_adult: false });
+    const data = await tmdb(`/discover/${type}`, { sort_by: 'vote_average.desc', page, 'vote_average.gte': 6.5, 'vote_count.gte': 250, watch_region: state.region, with_watch_monetization_types: 'flatrate', include_adult: adultFlag() });
     if (request !== surpriseRequest) return;
     const choices = (data.results || []).filter(item => item.poster_path && item.backdrop_path);
     const pick = choices[Math.floor(Math.random() * choices.length)];
@@ -230,9 +232,21 @@ export function initDiscover() {
   if (!$('discoverLabResults')?.children.length) $('discoverLabResults').innerHTML = '<div class="discover-lab-welcome"><i>✦</i><div><strong>Your filters are ready</strong><span>Use one quick start or build a precise collection above.</span></div></div>';
   loadSpotlight();
   loadCollections();
+  mountMatureSection();
+}
+
+// Renders nothing at all while mature content is off — no placeholder, no empty
+// container, no hint in the DOM that the section exists.
+function mountMatureSection() {
+  const host = $('discoverMature');
+  if (!host) return;
+  if (!matureOn()) { host.innerHTML = ''; return; }
+  host.innerHTML = matureSectionHTML();
+  renderMatureRow();
 }
 
 export function initDiscoverActions() {
+  document.addEventListener('cv:mature', () => { if (location.pathname === '/discover') mountMatureSection(); });
   registerActions({
     'pick-mood': element => pickMood(+element.dataset.idx),
     'random-pick': element => randomPick(element.dataset.type === 'tv' ? 'tv' : 'movie'),

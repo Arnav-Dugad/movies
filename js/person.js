@@ -169,12 +169,40 @@ function creditCard(credit) {
 }
 
 // ---------- page ----------
-function renderFilmography() {
+// Two different jobs, deliberately kept apart.
+//
+// "Show more" APPENDS: replacing the whole section made the browser drop its
+// scroll anchor and land the reader at the bottom of a freshly rebuilt list,
+// which is exactly the wrong reaction to asking for twenty-four more cards.
+//
+// A department/sort/type change is a genuinely new list, so that one rebuilds —
+// and pins the section header to the top, because the reader's place in the old
+// list means nothing in the new one.
+function appendFilmography() {
+  const grid = document.querySelector('.person-credit-grid');
+  const groups = groupCredits(credits);
+  const list = activeCredits(groups);
+  const previous = view.shown;
+  view.shown = Math.min(list.length, previous + PAGE_SIZE);
+  if (!grid) return renderFilmography();
+  const added = list.slice(previous, view.shown);
+  grid.insertAdjacentHTML('beforeend', added.map(creditCard).join(''));
+  observeReveals(grid);
+  const wrap = document.querySelector('.person-more');
+  const remaining = list.length - view.shown;
+  if (!remaining) { wrap?.remove(); return; }
+  const button = wrap?.querySelector('button');
+  if (button) button.textContent = `Show ${Math.min(PAGE_SIZE, remaining)} more of ${remaining}`;
+}
+
+function renderFilmography({ keepPlace = false } = {}) {
   const host = $('personFilmography');
   if (!host || !person) return;
   const groups = groupCredits(credits);
   host.outerHTML = filmographyHTML(groups);
-  observeReveals($('personFilmography'));
+  const fresh = $('personFilmography');
+  observeReveals(fresh);
+  if (!keepPlace) requestAnimationFrame(() => fresh?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
 }
 
 export async function openPerson(id) {
@@ -254,6 +282,6 @@ export function initPerson() {
     'person-dept': el => { view.dept = el.dataset.dept; view.shown = PAGE_SIZE; renderFilmography(); },
     'person-sort': el => { view.sort = el.value; view.shown = PAGE_SIZE; renderFilmography(); },
     'person-type': el => { view.type = el.value; view.shown = PAGE_SIZE; renderFilmography(); },
-    'person-more': () => { view.shown += PAGE_SIZE; renderFilmography(); },
+    'person-more': () => appendFilmography(),
   });
 }

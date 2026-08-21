@@ -69,10 +69,43 @@ out "next up" instantly on a cold load, with zero TMDB requests — the episode
 still and title are filled in afterwards and never block the render.
 
 The detail page gets a per-episode tick, a season progress ring, **Mark season
-watched**, and **Up to here** (the one action that makes a show you are already
-halfway through trackable). Whole-season marking stops at the last aired episode,
-so progress can never claim a completion that is not possible. Ticking the final
-aired episode marks the show itself watched, keeping stats and badges consistent.
+watched**, **Up to here** (the one action that makes a show you are already
+halfway through trackable), and **I have seen it all**. Whole-season marking stops
+at the last aired episode, so progress can never claim a completion that is not
+possible. Ticking the final aired episode marks the show itself watched, and
+marking a show watched anywhere fills its episodes — the two directions stay in
+agreement instead of a "watched" show sitting at 0%.
+
+### Shows watched before episode tracking existed
+
+They have a `watched` document and no progress document, so they would read as 0%
+forever. A one-time background pass fills them in using the date each was
+*originally* marked, capped per run and remembered on the device so a show you
+later un-tick is never silently re-filled.
+
+### Why the log carries a `bulk` flag
+
+Each watched episode is logged as `[season, episode, when, bulk]`. Ticking
+episodes one at a time is real viewing; a whole-season mark, a whole-show mark, or
+a back-filled history is bookkeeping. Both belong in the episodes-over-time chart,
+but only the first is a binge — so the longest-sitting figure counts single ticks
+and says so. Bulk marks carry the moment they were actually marked, with no
+fabricated spacing.
+
+## Mature content
+
+Off by default and invisible until switched on: no section renders, no chip
+appears, `include_adult` stays false everywhere, and nothing in the interface
+hints that the option exists. It lives behind a disclosure in Settings.
+
+TMDB has no "erotic" genre, so the collections are built from verified TMDB
+**keywords** (erotic, softcore, erotic thriller, erotica, erotic comedy, erotic
+romance, seduction, sensual). Turning it on adds an After Dark section to Discover
+and lets adult results into search. Artwork stays blurred until hover by default,
+and anything you save can go straight into a PIN-locked list.
+
+Every search and discover call passes `adultFlag()` rather than a literal, so
+adult results cannot leak in while the toggle is off.
 
 ## Importing an existing history
 
@@ -124,7 +157,23 @@ snapshot, an append-only change log, and one catalog sample per day.
 ## Stats
 
 Sections are ordered by what answers "how am I doing" first — Activity Pulse,
-then Rating & Library, then the deeper taste and collection analysis. Each one
+then the TV Tracker, then Rating & Library, then the deeper taste and collection
+analysis.
+
+**Watch time was wrong and is now right.** A TV show marked watched from the
+detail page stored one episode's runtime, while one finished through the episode
+tracker stored the whole series — the same show contributed 45 minutes or 40
+hours depending on which button was used. Watch time now reads from the episode
+ledger where it exists (episodes watched x episode length), falls back to
+`episodeRuntime x episodeCount`, then to the stored runtime, and reports what
+percentage of watched titles have a known runtime instead of implying all of them
+do. Titles with no reported runtime are excluded rather than guessed, and the
+"longest title" figure is movies-only because ranking a 62-episode series against
+a two-hour film by total minutes answers nothing.
+
+`tests/` has no coverage of this, but `scratchpad/test-stats.mjs` in development
+asserts 50 arithmetic properties against a hand-computed collection, including
+empty and malformed input (no NaN, no percentage above 100). Each one
 collapses independently and remembers its state on `users/{uid}.statsSections`,
 so the layout follows the account rather than the device. A collapsed section is
 not hidden with CSS: its body is a thunk that is never called, so the Director

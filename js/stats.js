@@ -14,7 +14,7 @@ import { social } from './social.js';
 import { tmdb } from './api.js';
 import { buildCard } from './cards.js';
 import { getProviderStats, getCatalogSeries } from './provider-history.js';
-import { episodeTotals } from './episodes.js';
+import { episodeTotals, episodeStats, showProgress, showEntry } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 
 let statsScope = 'all';
@@ -233,7 +233,22 @@ export function computeStats(scope) {
   const bestMonthRaw = sorted(months, 1)[0];
   const bestMonth = bestMonthRaw ? new Date(`${bestMonthRaw.key}-01T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : 'Not enough history';
 
-  const runtimes = watched.map(row => row.runtime).filter(value => value > 0);
+  // Watch time per title. TV was the source of a real inconsistency: marking a
+  // show watched from the detail page stored ONE episode's runtime, while
+  // finishing it through the episode tracker stored the whole series — so the
+  // same show contributed 45 minutes or 40 hours depending on which button was
+  // used. The episode ledger is the authoritative answer where it exists, and
+  // the stored fields are the fallback, in descending order of trust.
+  const runtimeOf = row => {
+    if (row.type !== 'tv') return row.runtime > 0 && row.runtime < 1000 ? row.runtime : 0;
+    const entry = showEntry(row.id);
+    const perEpisode = +(row.episodeRuntime || entry?.episodeRuntime || 0);
+    const progress = showProgress(row.id);
+    if (progress.watched > 0 && perEpisode > 0) return progress.watched * perEpisode;
+    if (perEpisode > 0 && row.episodeCount > 0) return perEpisode * row.episodeCount;
+    return row.runtime > 0 ? row.runtime : 0;
+  };
+  const runtimes = watched.map(runtimeOf).filter(value => value > 0);
   // Total watch time uses a completed show's full runtime, while "average runtime"
   // compares equivalent viewing units: movie length or episode length. Mixing an
   // entire 80-episode series with a two-hour film made the old average meaningless.
@@ -256,7 +271,9 @@ export function computeStats(scope) {
   const topMovieDirectors = sorted(movieDirectorMap, 4), topDirectors = topMovieDirectors, topActors = sorted(actorMap, 7);
   const topDirector = topMovieDirectors[0] || null;
   const topActor = topActors[0] || null;
-  const longestTitle = [...watched].filter(row => row.runtime > 0).sort((a, b) => b.runtime - a.runtime)[0] || null;
+  // Movies only — ranking a 62-episode series against a two-hour film by total
+  // minutes answers a question nobody asked.
+  const longestTitle = [...watched].filter(row => row.type === 'movie' && row.runtime > 0 && row.runtime < 1000).sort((a, b) => b.runtime - a.runtime)[0] || null;
   const oldestTitle = [...rows].filter(row => +row.year).sort((a, b) => +a.year - +b.year)[0] || null;
   const newestTitle = [...rows].filter(row => +row.year).sort((a, b) => +b.year - +a.year)[0] || null;
 
@@ -293,7 +310,10 @@ export function computeStats(scope) {
     scope, rows, watched, saved, totalRated: ratingValues.length, avgRating, avgTmdb,
     ratingCounts, completion, ratingCoverage, positiveRate, highScores,
     genres: genreRows, decades: decadeRows, languages: languageRows, themes: themeRows, diversityScore,
-    totalMinutes, hours: Math.floor(totalMinutes / 60), avgRuntime: averageUnits.length ? Math.round(averageUnits.reduce((sum, value) => sum + value, 0) / averageUnits.length) : 0,
+    totalMinutes, hours: Math.floor(totalMinutes / 60),
+    runtimeKnown: runtimes.length,
+    runtimeCoverage: watched.length ? Math.round(runtimes.length / watched.length * 100) : 100,
+    avgRuntime: averageUnits.length ? Math.round(averageUnits.reduce((sum, value) => sum + value, 0) / averageUnits.length) : 0,
     avgMovieRuntime: movieRuntimes.length ? Math.round(movieRuntimes.reduce((sum, value) => sum + value, 0) / movieRuntimes.length) : 0,
     avgEpisodeRuntime: episodeRuntimes.length ? Math.round(episodeRuntimes.reduce((sum, value) => sum + value, 0) / episodeRuntimes.length) : 0,
     metaCoverage: rows.length ? enriched.length / rows.length : 1,
@@ -403,6 +423,7 @@ function queueSnapshot(snapshot) {
 // expensive ones, and skipping them is the whole point of collapsing.
 const SECTION_META = [
   ['pulse', 'Activity Pulse', 'Streaks, recent pace, and your strongest viewing moments'],
+  ['tv', 'TV Tracker', 'Episode progress, pace, and shows still in flight'],
   ['critic', 'Rating & Library', 'Your critic profile beside the anatomy of your collection'],
   ['taste', 'Taste Map', 'Genres, eras, and languages across everything you keep'],
   ['themes', 'Tag Taste Profile', 'The specific story themes behind what you watch'],
@@ -530,6 +551,74 @@ function tagTasteProfile(stats) {
   const themes = stats.themes || [], max = themes[0]?.count || 1, total = stats.watched.length;
   if (!themes.length) return `<section class="stats-panel tag-taste-profile"><div class="stats-section-head"><div><span>Story-level intelligence</span><h2>Tag Taste Profile</h2><p>The specific themes behind your viewing—not just broad genres.</p></div></div><div class="tag-taste-empty"><strong>Theme fingerprint is learning</strong><span>Older watched titles are being enriched with story tags in the background.</span></div></section>`;
   return `<section class="stats-panel tag-taste-profile"><div class="stats-section-head"><div><span>Story-level intelligence</span><h2>Tag Taste Profile</h2><p>The themes, moods, and story ideas that recur in what you actually watch.</p></div><div class="tag-taste-total">${themes.length} signals</div></div><div class="tag-taste-layout"><div class="tag-taste-lead"><span>Leading theme</span><strong>${esc(themes[0].name)}</strong><p>Appears across ${themes[0].count} of ${total} watched title${total === 1 ? '' : 's'}.</p><button data-action="search-tag" data-tag="${esc(themes[0].name)}">Explore this theme</button></div><div class="tag-taste-cloud">${themes.map((theme, index) => `<button class="tag-taste-chip t${Math.min(index, 5)}" style="--theme-strength:${Math.max(.42, theme.count / max)}" data-action="search-tag" data-tag="${esc(theme.name)}"><span>${esc(theme.name)}</span><b>${theme.count}</b><i style="--theme-width:${Math.round(theme.count / max * 100)}%"></i></button>`).join('')}</div></div><p class="tag-taste-note">Counts use watched titles only. Tap a theme to search the full catalogue with the same tag.</p></section>`;
+}
+
+// ===== TV TRACKER PANEL =====
+// Everything here comes from the per-episode ledger in js/episodes.js, which is
+// a different source from the watched list: a show counted once as watched must
+// not also be counted episode by episode, so the two are reported side by side
+// and never summed.
+//
+// Charts follow the same rules as the rest of the app: one series, one hue,
+// hairline baseline, selective direct labels, and a caption that names what is
+// plotted rather than a legend box.
+function tvTrackerPanel() {
+  const tv = episodeStats({ months: 12 });
+  if (!tv.shows) {
+    return `<section class="stats-panel tv-tracker"><div class="stats-section-head"><div><span>Episode intelligence</span><h2>TV Tracker</h2><p>Tick episodes on any show and this panel fills in — completion, pace, and your longest sitting.</p></div></div>
+      <div class="tv-empty"><i>▦</i><div><strong>No episode history yet</strong><p>Open a show and use <b>Mark season watched</b>, <b>Up to here</b>, or <b>I have seen it all</b>. Shows you marked watched before episode tracking existed are filled in automatically.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
+  }
+
+  const hours = Math.round(tv.minutes / 60);
+  const days = tv.minutes >= 1440 ? (tv.minutes / 1440).toFixed(1) : 0;
+  const maxMonth = Math.max(1, ...tv.series.map(point => point.count));
+  const busiestMonth = tv.series.reduce((best, point) => (point.count > best.count ? point : best), tv.series[0]);
+
+  const months = tv.series.map(point => `<div class="tv-month${point.count === maxMonth && point.count ? ' peak' : ''}" data-tip="${esc(`${point.label} ${point.year}: ${point.count} episode${point.count === 1 ? '' : 's'}`)}">
+      <div class="tv-month-track"><i style="--tv-h:${point.count ? Math.max(6, Math.round(point.count / maxMonth * 100)) : 0}%"></i></div>
+      <span>${esc(point.label)}</span><b>${point.count || ''}</b>
+    </div>`).join('');
+
+  // Only in-progress shows earn a row here: a finished show has nothing left to
+  // say, and listing every completed series would bury the ones that matter.
+  const active = tv.byShow.filter(show => !show.complete).slice(0, 8);
+  const completedShows = tv.byShow.filter(show => show.complete);
+
+  const rows = active.map(show => `<article class="tv-row">
+      <img src="${show.poster ? `${IMG}w92${show.poster}` : PH}" alt="" loading="lazy">
+      <div class="tv-row-copy">
+        <strong>${esc(show.title)}</strong>
+        <small>${show.watched} of ${show.aired} aired${show.next ? ` · next S${show.next.season}E${show.next.episode}` : ''}</small>
+        <div class="tv-row-bar"><i style="--tv-w:${show.percent}%"></i></div>
+      </div>
+      <b>${show.percent}%</b>
+    </article>`).join('');
+
+  const tile = (label, value, note) => `<div><span>${esc(label)}</span><strong>${esc(String(value))}</strong><small>${esc(note)}</small></div>`;
+
+  return `<section class="stats-panel tv-tracker">
+    <div class="stats-section-head"><div><span>Episode intelligence</span><h2>TV Tracker</h2><p>Per-episode progress across every show you track. Counted separately from your watched list, never added to it.</p></div><div class="tv-region-chip">${tv.completionRate}% completion rate</div></div>
+
+    <div class="tv-tiles">
+      ${tile('Episodes watched', tv.episodes.toLocaleString(), `${tv.shows} show${tv.shows === 1 ? '' : 's'} tracked`)}
+      ${tile('Episode time', hours ? `${hours.toLocaleString()}h` : '—', tv.runtimeCoverage === 100 ? 'Runtime known for every episode' : `Runtime known for ${tv.runtimeCoverage}% of them${days ? ` · about ${days} days` : ''}`)}
+      ${tile('Shows finished', tv.completed, tv.inProgress ? `${tv.inProgress} still in progress` : 'Nothing left open')}
+      ${tile('Longest sitting', tv.binge ? `${tv.binge.count} eps` : '—', tv.binge ? `on ${new Date(`${tv.binge.day}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Counts episodes ticked one at a time')}
+    </div>
+
+    <div class="tv-grid">
+      <figure class="tv-card">
+        <figcaption><strong>Episodes marked per month</strong><span>Last 12 months${busiestMonth?.count ? ` · busiest ${busiestMonth.label} ${busiestMonth.year} with ${busiestMonth.count}` : ''}</span></figcaption>
+        <div class="tv-months">${months}</div>
+      </figure>
+      <figure class="tv-card">
+        <figcaption><strong>Shows in progress</strong><span>${active.length ? `${active.length} open · ${completedShows.length} finished` : 'Every tracked show is finished'}</span></figcaption>
+        ${rows || `<div class="tv-allclear"><i>✓</i><p>Nothing half-finished. ${completedShows.length} show${completedShows.length === 1 ? '' : 's'} complete.</p></div>`}
+      </figure>
+    </div>
+
+    <p class="tv-note">Episode counts come from the per-episode ledger. Bulk actions — a whole season, a whole show, or a back-filled history — are stamped with the moment they were marked and excluded from the longest-sitting figure, which only counts episodes ticked individually.</p>
+  </section>`;
 }
 
 function activityPanel(stats) {
@@ -803,6 +892,8 @@ function animateStats(scope, stats) {
       const pct = +fill.dataset.pct || 0, height = fill.parentElement.clientHeight || 90;
       fill.style.height = pct ? Math.max(3, Math.round(height * pct / 100)) + 'px' : '0';
     });
+    scope.querySelectorAll('.tv-month i').forEach(bar => { bar.style.height = bar.style.getPropertyValue('--tv-h'); });
+    scope.querySelectorAll('.tv-row-bar i').forEach(bar => { bar.style.width = bar.style.getPropertyValue('--tv-w'); });
     animateBadgeBars(scope);
   });
 }
@@ -820,13 +911,17 @@ export function renderStats() {
   const scopeLabel = statsScope === 'movie' ? 'movie' : statsScope === 'tv' ? 'TV' : 'complete';
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const providers = getProviderStats({ days: 90 });
-  const episodeStats = episodeTotals();
+  const episodeTally = episodeTotals();
+  const tvStats = episodeStats({ months: 12 });
   const providerMovement = providers.reduce((sum, provider) => sum + provider.gained + provider.lost, 0);
 
   // Summaries are what a collapsed block shows, so each one has to carry the
   // headline of the panel it stands in for.
   const summaries = {
-    pulse: `${stats.currentStreak}-day current streak · ${stats.last30} watched in 30 days${episodeStats.episodes ? ` · ${plural(episodeStats.episodes, 'episode')} tracked` : ''}`,
+    tv: tvStats.shows
+      ? `${tvStats.episodes.toLocaleString()} episodes · ${tvStats.completed} show${tvStats.completed === 1 ? '' : 's'} finished · ${tvStats.inProgress} in progress`
+      : 'No episode history tracked yet',
+    pulse: `${stats.currentStreak}-day current streak · ${stats.last30} watched in 30 days${episodeTally.episodes ? ` · ${plural(episodeTally.episodes, 'episode')} tracked` : ''}`,
     critic: `${stats.avgRating ? `${stats.avgRating.toFixed(1)}/10 average` : 'No ratings yet'} · ${plural(stats.totalRated, 'rating')} · ${stats.completion}% of the collection watched`,
     taste: `${stats.genres[0]?.name || 'Discovering'} leads · ${plural(stats.languages.length, 'language')} · diversity ${stats.diversityScore}/100`,
     themes: (stats.themes || []).length ? `${stats.themes[0].name} leads · ${plural(stats.themes.length, 'theme signal')}` : 'Theme fingerprint is still learning',
@@ -842,7 +937,7 @@ export function renderStats() {
   container.innerHTML = `${statsHero(stats)}
     <div class="stats-kpi-grid">
       ${kpi('watched', 'Watched', stats.watched.length, '', `${stats.movies} movies · ${stats.shows} shows`, 'red')}
-      ${kpi('clock', 'Watch time', stats.hours, 'h', stats.metaCoverage < 1 ? 'Still enriching runtimes' : 'Approximate lifetime total', 'gold')}
+      ${kpi('clock', 'Watch time', stats.hours, 'h', stats.runtimeCoverage >= 100 ? 'Runtime known for every watched title' : `Runtime known for ${stats.runtimeCoverage}% of watched titles`, 'gold')}
       ${kpi('star', 'Average rating', stats.avgRating ? +stats.avgRating.toFixed(1) : '—', stats.avgRating ? '/10' : '', `${stats.totalRated} personal ratings`, 'purple')}
       ${kpi('library', 'Collection watched', stats.completion, '%', `${stats.saved.length} currently saved`, 'cyan')}
       ${kpi('fire', 'Longest streak', stats.longestStreak, 'd', `${stats.currentStreak} day current streak`, 'green')}
@@ -850,17 +945,18 @@ export function renderStats() {
     </div>
     ${sectionIndexBar()}
     ${block('pulse', 1, summaries.pulse, () => activityPanel(stats))}
-    ${block('critic', 2, summaries.critic, () => `<div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>`)}
-    ${block('taste', 3, summaries.taste, () => tasteMap(stats))}
-    ${block('themes', 4, summaries.themes, () => tagTasteProfile(stats))}
-    ${block('evolution', 5, summaries.evolution, () => tasteChangesPanel(stats))}
-    ${block('health', 6, summaries.health, () => collectionHealthPanel(stats))}
-    ${block('providers', 7, summaries.providers, () => providerIntelligencePanels())}
-    ${block('directors', 8, summaries.directors, () => directorLoyaltyPanel(fullStats))}
-    ${block('network', 9, summaries.network, () => directorNetworkPanel(stats))}
-    ${block('smartwatch', 10, summaries.smartwatch, () => smartWatchPanel())}
-    ${block('achievements', 11, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
-    <p class="stats-footnote">${esc(scopeLabel)} stats · Watch time for TV is approximate because a completed show uses its full available runtime.</p>`;
+    ${block('tv', 2, summaries.tv, () => tvTrackerPanel())}
+    ${block('critic', 3, summaries.critic, () => `<div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>`)}
+    ${block('taste', 4, summaries.taste, () => tasteMap(stats))}
+    ${block('themes', 5, summaries.themes, () => tagTasteProfile(stats))}
+    ${block('evolution', 6, summaries.evolution, () => tasteChangesPanel(stats))}
+    ${block('health', 7, summaries.health, () => collectionHealthPanel(stats))}
+    ${block('providers', 8, summaries.providers, () => providerIntelligencePanels())}
+    ${block('directors', 9, summaries.directors, () => directorLoyaltyPanel(fullStats))}
+    ${block('network', 10, summaries.network, () => directorNetworkPanel(stats))}
+    ${block('smartwatch', 11, summaries.smartwatch, () => smartWatchPanel())}
+    ${block('achievements', 12, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
+    <p class="stats-footnote">${esc(scopeLabel)} stats · TV watch time comes from the episode ledger where it exists (episodes watched × episode length), falling back to stored runtime otherwise. Titles with no reported runtime are excluded rather than guessed.</p>`;
 
   const snapshot = snapshotFor(fullStats);
   queueSnapshot(snapshot);

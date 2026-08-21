@@ -9,7 +9,7 @@ import { state } from './state.js';
 import { esc, debounce, $ } from './ui.js';
 import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
-import { prefs } from './prefs.js';
+import { prefs, adultFlag } from './prefs.js';
 
 // ---- module state ----
 let searchGen = 0;          // bumped on every submitted query/vibe; in-flight stragglers bail
@@ -98,7 +98,7 @@ export function parseSearchCommand(query, nowYear = new Date().getFullYear()) {
 
 function commandParams(type, pageNum) {
   const f = commandCtx.filters, date = type === 'tv' ? 'first_air_date' : 'primary_release_date';
-  const params = { page: pageNum, include_adult: false, sort_by: f.sort === 'date.desc' ? `${date}.desc` : f.sort === 'date.asc' ? `${date}.asc` : f.sort };
+  const params = { page: pageNum, include_adult: adultFlag(), sort_by: f.sort === 'date.desc' ? `${date}.desc` : f.sort === 'date.asc' ? `${date}.asc` : f.sort };
   const genres = f.genres.map(item => item[type]).filter(Boolean); if (genres.length) params.with_genres = genres.join(',');
   if (f.language) params.with_original_language = f.language;
   if (f.country) params.with_origin_country = f.country;
@@ -189,9 +189,9 @@ async function fetchPage(pageNum) {
     const types = state.searchFilt === 'multi' ? ['movie', 'tv'] : [state.searchFilt];
     const keywordIds = keywordCtx.ids.join('|');
     const calls = types.filter(type => ['movie', 'tv'].includes(type)).map(type =>
-      tmdb(`/discover/${type}`, { with_keywords: keywordIds, include_adult: false, sort_by: 'popularity.desc', page: pageNum })
+      tmdb(`/discover/${type}`, { with_keywords: keywordIds, include_adult: adultFlag(), sort_by: 'popularity.desc', page: pageNum })
         .then(data => ({ type, data })));
-    const search = tmdb(`/search/${state.searchFilt}`, { query: keywordCtx.query || curQuery, page: pageNum, include_adult: false })
+    const search = tmdb(`/search/${state.searchFilt}`, { query: keywordCtx.query || curQuery, page: pageNum, include_adult: adultFlag() })
       .then(data => ({ type: state.searchFilt, data }));
     const pages = await Promise.all([search, ...calls]);
     return {
@@ -200,7 +200,7 @@ async function fetchPage(pageNum) {
       total_results: pages.reduce((sum, { data }) => sum + +(data.total_results || 0), 0),
     };
   }
-  const d = await tmdb(`/search/${state.searchFilt}`, { query: curQuery, page: pageNum, include_adult: false });
+  const d = await tmdb(`/search/${state.searchFilt}`, { query: curQuery, page: pageNum, include_adult: adultFlag() });
   return { results: d.results || [], total_pages: d.total_pages || 1, total_results: d.total_results };
 }
 
@@ -258,7 +258,7 @@ async function liveSuggest(q) {
   curQuery = q; mode = 'search';
   const g = ++suggestGen;
   try {
-    const d = await tmdb(`/search/${state.searchFilt}`, { query: q, page: 1, include_adult: false });
+    const d = await tmdb(`/search/${state.searchFilt}`, { query: q, page: 1, include_adult: adultFlag() });
     if (g !== suggestGen) return;
     renderSuggest(d.results || [], q);
   } catch (e) { if (g === suggestGen) closeSuggest(); }

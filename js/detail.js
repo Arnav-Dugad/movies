@@ -9,7 +9,7 @@ import { observeReveals, observeCountUps } from './effects.js';
 import { mountAmbientVideo } from './video-bg.js';
 import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
-import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setSeasonWatched, clearShowProgress } from './episodes.js';
+import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 
 let curDet = null, curType = null;
@@ -886,21 +886,6 @@ async function loadSeason(tid, sn, el) {
   }
 }
 // ===== EPISODE TRACKING (detail page) =====
-// Everything the progress document needs about a show, gathered in one place so
-// the structure it stores can never drift from what TMDB just returned.
-function showMeta(det) {
-  const structure = {};
-  for (const season of det.seasons || []) {
-    if (season.season_number > 0 && season.episode_count > 0) structure[String(season.season_number)] = season.episode_count;
-  }
-  const last = det.last_episode_to_air;
-  return {
-    title: det.name || '', poster: det.poster_path || '', backdrop: det.backdrop_path || '',
-    episodeRuntime: (det.episode_run_time || [])[0] || 0, status: det.status || '',
-    structure,
-    aired: last?.season_number ? { season: last.season_number, episode: last.episode_number } : null,
-  };
-}
 
 const EP_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>';
 
@@ -911,8 +896,11 @@ function showProgressPanel(id, det, progress, next) {
   const meta = esc(JSON.stringify(showMeta(det)));
   if (!progress.started) {
     return `<section class="show-progress idle">
-      <div class="show-progress-copy"><span>Episode tracking</span><strong>Track ${esc(det.name || 'this show')} episode by episode</strong><p>Tick episodes as you watch, or mark everything up to where you already are.</p></div>
-      <div class="show-progress-actions"><button class="btn-glass" data-action="ep-mark-upto-prompt" data-tid="${id}">Catch me up</button></div>
+      <div class="show-progress-copy"><span>Episode tracking</span><strong>Track ${esc(det.name || 'this show')} episode by episode</strong><p>Tick episodes as you watch, mark everything up to where you are, or mark the whole show at once.</p></div>
+      <div class="show-progress-actions">
+        <button class="btn-primary" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">I have seen it all</button>
+        <button class="btn-glass" data-action="ep-mark-upto-prompt" data-tid="${id}">Catch me up</button>
+      </div>
     </section>`;
   }
   const nextLabel = next ? `S${next.season} · E${next.episode}` : 'All caught up';
@@ -926,6 +914,7 @@ function showProgressPanel(id, det, progress, next) {
     <div class="show-progress-actions">
       <b>${progress.percent}%</b>
       ${next ? `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark S${next.season}E${next.episode} watched</button>` : ''}
+      ${progress.complete ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all ${progress.aired - progress.watched} remaining</button>`}
       <button class="btn-glass" data-action="ep-reset" data-tid="${id}">Reset</button>
     </div>
   </section>`;
@@ -1160,6 +1149,17 @@ export function initDetail() {
       if (!state.user) return;
       toast(on ? `Season ${sn} marked watched` : `Season ${sn} cleared`, on ? 'success' : 'info');
       loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
+    },
+    'ep-mark-show': async el => {
+      const tid = +el.dataset.tid;
+      el.disabled = true;
+      const before = el.textContent;
+      el.textContent = 'Marking…';
+      const added = await markShowWatched(tid, readEpisodeMeta(el));
+      el.disabled = false; el.textContent = before;
+      if (!added) { toast('Every aired episode is already marked', 'info'); return; }
+      toast(`Marked ${added} episode${added === 1 ? '' : 's'} watched`, 'success');
+      openDetail(tid, 'tv');
     },
     'ep-reset': el => {
       const tid = +el.dataset.tid;

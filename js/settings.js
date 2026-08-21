@@ -61,6 +61,17 @@ export function renderSettings() {
           ${toggle('showWatched', 'Watched artwork marks', 'Show the green watched treatment on posters.', prefs.showWatched)}
           ${toggle('spoilerShield', 'Spoiler shield', 'Blur long summaries until you hover or focus them.', prefs.spoilerShield)}
         </section>
+        <section class="settings-panel settings-mature"><div class="settings-panel-head">${ICONS.shield}<div><span>Content</span><h2>Maturity</h2></div></div>
+          <details class="settings-mature-disclosure"${prefs.mature ? ' open' : ''}>
+            <summary>Mature content${prefs.mature ? ' <b>On</b>' : ''}</summary>
+            <div class="settings-mature-body">
+              <p>Off by default. While it is off, adult titles are excluded from every search and Discover request and nothing about this appears anywhere in the app.</p>
+              ${toggle('mature', 'Show mature content', 'Adds an After Dark section to Discover with erotic, softcore, and sensual collections, and includes adult results in search.', prefs.mature)}
+              ${prefs.mature ? toggle('matureBlur', 'Blur mature artwork', 'Posters in the After Dark section stay blurred until you hover or focus them.', prefs.matureBlur) : ''}
+              <small>Collections are built from TMDB keywords, not a genre — TMDB has no erotic genre. Titles you save can be kept in a PIN-locked list from the + button on any poster.</small>
+            </div>
+          </details>
+        </section>
         <section class="settings-panel"><div class="settings-panel-head">${ICONS.data}<div><span>Detail pages</span><h2>Section defaults</h2></div></div>
           ${toggle('detailBoxOfficeExpanded', 'Open Box Office', 'Show the financial intelligence panel expanded by default.', prefs.detailBoxOfficeExpanded)}
           ${toggle('detailGalleryExpanded', 'Open Gallery', 'Show backdrop and poster artwork expanded by default.', prefs.detailGalleryExpanded)}
@@ -96,6 +107,13 @@ export function initSettings() {
       const key = el.dataset.pref;
       updatePref(key, !!el.checked);
       if (key === 'rememberSearch' && !el.checked) clearSearchHistory();
+      // The panel itself changes shape (the blur option only exists while mature
+      // is on), and Discover has a whole section to add or remove.
+      if (key === 'mature' || key === 'matureBlur') {
+        document.dispatchEvent(new Event('cv:mature'));
+        if (key === 'mature') { renderSettings(); toast(el.checked ? 'Mature content is on' : 'Mature content is hidden', el.checked ? 'success' : 'info'); }
+        return;
+      }
       if (key === 'rememberViewed' && !el.checked) {
         state.recentlyViewed = [];
         try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {}

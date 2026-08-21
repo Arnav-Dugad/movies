@@ -315,11 +315,14 @@ function renderPickerRows() {
   const rows = $('listRows');
   if (!rows || !pickerTarget) return;
   const { id, type } = pickerTarget;
-  // A locked list is rendered as a locked row: its membership is a fact about the
-  // hidden list, so revealing a ticked box here would leak exactly what the PIN
-  // is meant to cover. Unlock it on My List first.
+  // A locked list gets an "Add" button instead of a checkbox. A ticked box would
+  // reveal whether the title is already inside, which is exactly what the PIN
+  // hides — but ADDING leaks nothing, because the answer is the same either way
+  // and the operation is idempotent. Removing still requires unlocking the list.
   rows.innerHTML = state.lists.map(l => {
-    if (listIsLocked(l.id)) return `<div class="list-row locked" aria-disabled="true"><span class="list-ico">🔒</span><span class="list-nm">${esc(l.name)}</span><small>Locked</small></div>`;
+    if (listIsLocked(l.id)) {
+      return `<div class="list-row locked"><span class="list-ico">🔒</span><span class="list-nm">${esc(l.name)}</span><button type="button" class="list-add-locked" data-action="add-to-locked-list" data-list="${esc(l.id)}">Add</button></div>`;
+    }
     const on = inList(id, type, l.id);
     return `<label class="list-row"><input type="checkbox" data-action="toggle-list-member" data-list="${esc(l.id)}" ${on ? 'checked' : ''}><span class="list-ico">${l.icon || '📁'}</span><span class="list-nm">${esc(l.name)}</span></label>`;
   }).join('');
@@ -370,6 +373,17 @@ export function initLists() {
       if (el.checked) await addToList(pickerTarget.item, pickerTarget.type, listId);
       else await removeFromList(pickerTarget.item, pickerTarget.type, listId);
       renderPickerRows();   // re-sync checkboxes (membership may have created/deleted the doc)
+    },
+    // Deliberately silent about prior membership: it always says "Added", whether
+    // the title was already there or not, so the confirmation reveals nothing the
+    // PIN is meant to keep hidden.
+    'add-to-locked-list': async (el) => {
+      if (!pickerTarget) return;
+      el.disabled = true;
+      await addToList(pickerTarget.item, pickerTarget.type, el.dataset.list, { silent: true });
+      el.textContent = 'Added';
+      el.classList.add('done');
+      toast('Saved to your locked list', 'success');
     },
     'create-list': () => { creating = true; renderPickerRows(); },
     'create-list-confirm': async () => {

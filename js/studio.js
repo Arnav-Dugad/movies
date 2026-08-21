@@ -14,7 +14,8 @@ import { observeReveals } from './effects.js';
 let reqGen = 0;
 let company = null, kind = 'company', companyId = null;
 let view = { type: 'movie', sort: 'popularity.desc', decade: '', rating: 0 };
-let pages = { movie: 1, tv: 1 }, maxPages = { movie: 1, tv: 1 }, totals = { movie: 0, tv: 0 };
+let pages = { movie: 0, tv: 0 }, maxPages = { movie: 1, tv: 1 }, totals = { movie: 0, tv: 0 };
+let loaded = { movie: [], tv: [] };   // everything fetched so far, for the decade profile
 
 const SORTS = [
   ['popularity.desc', 'Most popular'],
@@ -67,7 +68,7 @@ function decadeProfile(rows) {
   const ordered = [...decades.entries()].sort((a, b) => a[0] - b[0]);
   const max = Math.max(...ordered.map(entry => entry[1]));
   return `<div class="studio-decades">
-    <span class="studio-decade-label">Titles on this page by decade</span>
+    <span class="studio-decade-label">${rows.length} loaded title${rows.length === 1 ? '' : 's'} by decade</span>
     <div class="studio-decade-row">${ordered.map(([decade, count]) => `<div class="studio-decade${count === max ? ' peak' : ''}"><i style="--decade-h:${Math.max(10, Math.round(count / max * 100))}%"></i><b>${count}</b><span>${decade}s</span></div>`).join('')}</div>
   </div>`;
 }
@@ -91,23 +92,41 @@ function resultsHTML(rows, type) {
     ${pages[type] < maxPages[type] ? `<div class="studio-more"><button class="btn-glass" data-action="studio-more">Load more ${type === 'tv' ? 'shows' : 'movies'}</button></div>` : ''}`;
 }
 
+// `reset` rebuilds from page 1; otherwise the NEXT page is appended. The page
+// counter advances here rather than in the click handler so a failed request
+// leaves it untouched and the retry asks for the same page instead of skipping
+// one — and the button is always restored, which is what previously made
+// "Load more" work exactly once and then sit disabled forever.
 async function renderResults({ reset = true } = {}) {
   const host = $('studioResults'); if (!host) return;
   const gen = reqGen;
   const type = view.type;
-  if (reset) { pages[type] = 1; host.innerHTML = `<div class="browse-grid">${skelCards(12)}</div>`; }
+  const button = reset ? null : document.querySelector('.studio-more button');
+  const wanted = reset ? 1 : pages[type] + 1;
+  if (reset) host.innerHTML = `<div class="browse-grid">${skelCards(12)}</div>`;
+  else if (button) { button.disabled = true; button.textContent = 'Loading…'; }
   try {
-    const data = await fetchPage(type, pages[type]);
+    const data = await fetchPage(type, wanted);
     if (gen !== reqGen) return;
+    pages[type] = wanted;
     maxPages[type] = Math.min(data.total_pages || 1, 500);   // TMDB refuses page > 500
     totals[type] = data.total_results || 0;
     const rows = data.results || [];
     if (reset) {
+      loaded[type] = rows;
       host.innerHTML = resultsHTML(rows, type);
     } else {
+      loaded[type] = [...(loaded[type] || []), ...rows];
       const grid = $('studioGrid');
       if (grid) grid.insertAdjacentHTML('beforeend', rows.map(item => buildCard(item, type)).join(''));
-      if (pages[type] >= maxPages[type]) document.querySelector('.studio-more')?.remove();
+      // The decade profile describes everything loaded so far, so it grows too —
+      // and it may not exist yet, because one page can span a single decade.
+      const decades = host.querySelector('.studio-decades');
+      const markup = decadeProfile(loaded[type]);
+      if (decades) decades.outerHTML = markup;
+      else if (markup && grid) grid.insertAdjacentHTML('beforebegin', markup);
+      if (pages[type] >= maxPages[type] || !rows.length) document.querySelector('.studio-more')?.remove();
+      else if (button) { button.disabled = false; button.textContent = `Load more ${type === 'tv' ? 'shows' : 'movies'}`; }
     }
     const bar = $('studioToolbar'); if (bar) bar.innerHTML = toolbar();
     requestAnimationFrame(() => host.querySelectorAll('.studio-decade i').forEach(node => { node.style.height = node.style.getPropertyValue('--decade-h'); }));
@@ -115,7 +134,8 @@ async function renderResults({ reset = true } = {}) {
   } catch (error) {
     if (gen !== reqGen) return;
     console.error('studio results', error);
-    host.innerHTML = `<p class="studio-empty">Could not load titles. <button class="link-btn" data-action="studio-retry">Try again</button></p>`;
+    if (reset) host.innerHTML = `<p class="studio-empty">Could not load titles. <button class="link-btn" data-action="studio-retry">Try again</button></p>`;
+    else if (button) { button.disabled = false; button.textContent = 'Retry loading more'; }
   }
 }
 
@@ -123,7 +143,7 @@ export async function openStudio(id, mode = 'company') {
   const gen = ++reqGen;
   companyId = id; kind = mode;
   view = { type: mode === 'network' ? 'tv' : 'movie', sort: 'popularity.desc', decade: '', rating: 0 };
-  pages = { movie: 1, tv: 1 }; maxPages = { movie: 1, tv: 1 }; totals = { movie: 0, tv: 0 };
+  pages = { movie: 0, tv: 0 }; maxPages = { movie: 1, tv: 1 }; totals = { movie: 0, tv: 0 }; loaded = { movie: [], tv: [] };
   const ct = $('studioContent');
   if (!ct) return;
   ct.innerHTML = '<div style="text-align:center;padding:100px"><div class="loader-text">Loading...</div></div>';
@@ -179,7 +199,7 @@ export function initStudio() {
     'studio-sort': el => { view.sort = el.value; renderResults(); },
     'studio-decade': el => { view.decade = el.value; renderResults(); },
     'studio-rating': el => { view.rating = +el.value || 0; renderResults(); },
-    'studio-more': el => { el.disabled = true; el.textContent = 'Loading…'; pages[view.type]++; renderResults({ reset: false }); },
+    'studio-more': () => renderResults({ reset: false }),
     'studio-retry': () => renderResults(),
   });
 }

@@ -1,0 +1,37 @@
+/* ===== MATURE CONTENT =====
+   Nothing in this file applies unless prefs.mature is on: the section is never
+   rendered otherwise, and the blur hook is gated on a root attribute that only
+   exists when the toggle is enabled. */
+.mature-section{margin-top:68px;padding:clamp(20px,3vw,30px);border:1px solid rgba(236,72,153,.16);border-radius:26px;background:radial-gradient(circle at 100% 0,rgba(236,72,153,.09),transparent 34%),linear-gradient(150deg,rgba(255,255,255,.03),rgba(255,255,255,.01))}
+.mature-section .discover-section-head>div>span{color:var(--pink)}
+.mature-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 18px}
+.mature-chips button{min-height:36px;padding:0 14px;border:1px solid var(--glass-border);border-radius:50px;background:rgba(255,255,255,.03);color:var(--text3);font-size:.55rem;font-weight:750;transition:border-color .18s,background .18s,color .18s}
+.mature-chips button:hover{border-color:rgba(236,72,153,.3);color:var(--text2)}
+.mature-chips button.active{border-color:rgba(236,72,153,.4);background:rgba(236,72,153,.12);color:#f9a8d4}
+.mature-section .discover-section-tools button{border-color:rgba(236,72,153,.22)}
+.mature-empty{padding:22px 0;color:var(--text3);font-size:.62rem}
+.mature-note{margin-top:16px;color:var(--text3);font-size:.47rem;line-height:1.6}
+
+/* Artwork stays blurred until the poster is hovered or focused. Applied through
+   a root attribute so it costs nothing when the feature is off. */
+html[data-mature-blur="on"] .mature-grid .card-img img{filter:blur(16px) saturate(.8);transition:filter .28s var(--ease-out)}
+html[data-mature-blur="on"] .mature-grid .card:hover .card-img img,
+html[data-mature-blur="on"] .mature-grid .card:focus-within .card-img img{filter:none}
+
+/* Settings disclosure */
+.settings-mature-disclosure{overflow:hidden;border:1px solid var(--glass-border);border-radius:16px;background:rgba(255,255,255,.018)}
+.settings-mature-disclosure summary{padding:14px 16px;color:var(--text2);font-size:.62rem;font-weight:750;cursor:pointer;list-style:none}
+.settings-mature-disclosure summary::-webkit-details-marker{display:none}
+.settings-mature-disclosure summary::after{content:'+';float:right;color:var(--text3);font-family:var(--font-mono);font-size:.8rem;line-height:1}
+.settings-mature-disclosure[open] summary::after{content:'\2212'}
+.settings-mature-disclosure summary:hover{background:rgba(255,255,255,.026);color:#fff}
+.settings-mature-disclosure summary b{margin-left:8px;padding:3px 8px;border-radius:30px;background:rgba(236,72,153,.14);color:#f9a8d4;font-size:.46rem;font-weight:800}
+.settings-mature-body{padding:0 16px 16px}
+.settings-mature-body>p{margin-bottom:10px;color:var(--text3);font-size:.55rem;line-height:1.65}
+.settings-mature-body>small{display:block;margin-top:10px;color:var(--text3);font-size:.47rem;line-height:1.6}
+
+@media(max-width:700px){
+  .mature-section{margin-top:50px;padding:20px 14px;border-radius:22px}
+  .mature-chips{margin-bottom:14px}
+}
+@media(prefers-reduced-motion:reduce){html[data-mature-blur="on"] .mature-grid .card-img img{transition:none}}
