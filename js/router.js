@@ -245,9 +245,9 @@ export function initRouter() {
     if (commandSearch || slashSearch) { e.preventDefault(); navigate('/search'); }
   });
 
-  // Initial load — the host rewrites every client route to index.html (Vercel:
-  // the "rewrites" block in vercel.json; Cloudflare Pages/Workers: _redirects),
-  // so location.pathname is already the real route. Both files must stay in sync
-  // or deep links, shared URLs, and "open in new tab" 404 on that host.
+  // Initial load — the host serves index.html for every client route (Vercel: the
+  // "rewrites" block in vercel.json; Cloudflare Workers: assets.not_found_handling
+  // in wrangler.jsonc), so location.pathname is already the real route. Without
+  // that, deep links, shared URLs, and "open in new tab" 404 on that host.
   renderRoute(location.pathname, { scroll: false });
 }

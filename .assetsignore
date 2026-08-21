@@ -1,0 +1,29 @@
+# Files wrangler must NOT upload as public assets.
+#
+# The assets directory is the repository root, so without this every deploy
+# uploaded .git/ as well — 270+ objects, publicly readable at /.git/config,
+# /.git/index, /.git/objects/*. Nothing secret is in there (the remote is a
+# public repo and carries no token), but serving a browsable copy of the
+# repository from the site is pointless and slows every deploy.
+#
+# gitignore syntax.
+
+.git
+.github
+.wrangler
+node_modules
+.gitignore
+.assetsignore
+.vscode
+.DS_Store
+
+# Build/deploy configuration — read by the platforms, never served.
+wrangler.jsonc
+wrangler.toml
+vercel.json
+package.json
+package-lock.json
+
+# Repository documentation and rules that belong on GitHub, not on the CDN.
+README.md
+firestore.rules

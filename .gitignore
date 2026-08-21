@@ -1,0 +1,7 @@
+# Wrangler writes these during `wrangler deploy`; they are build scratch, not source.
+.wrangler/
+node_modules/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db

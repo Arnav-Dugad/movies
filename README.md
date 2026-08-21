@@ -5,18 +5,39 @@ https://arnav-dugad.github.io/movies/
 ## Deploying
 
 CineVerse is a static SPA with clean URLs (`/movie/693134`, `/stats`, …). Every
-host has to rewrite unknown paths to `index.html`, or opening a card in a new tab,
-refreshing, or following a shared link returns that host's 404 instead of the app.
+host has to serve `index.html` for paths that do not match a file, or opening a
+card in a new tab, refreshing, or following a shared link returns that host's 404
+instead of the app.
 
 | Host | File | What it does |
 |---|---|---|
-| Vercel | `vercel.json` | `rewrites` sends extension-less paths to `/index.html`; `headers` sets the security and cache policy |
-| Cloudflare Pages / Workers Assets | `_redirects` | one `200` rewrite per client route plus a catch-all |
-| Cloudflare Pages / Workers Assets | `_headers` | the same headers as `vercel.json` |
+| Cloudflare Workers (`npx wrangler deploy`) | `wrangler.jsonc` | `assets.not_found_handling: "single-page-application"` — the SPA fallback |
+| Cloudflare Workers | `.assetsignore` | keeps `.git/`, `.wrangler/`, and config files out of the upload |
+| Cloudflare Workers / Pages | `_headers` | security and cache headers |
+| Vercel | `vercel.json` | `rewrites` for the SPA fallback, `headers` for the same policy |
 
-Both configs must stay in sync — the route list in `_redirects` mirrors `ROUTES`
-in `js/router.js`. Nothing is fingerprinted, so JS, CSS, and HTML are served
-`must-revalidate` (cheap 304s, instant deploys) while `/assets/*` caches for a week.
+### Why there is no `_redirects`
+
+The obvious Cloudflare SPA recipe — `/movie/* /index.html 200` — is rejected by
+the API and **fails the whole deploy**:
+
+```
+Invalid _redirects configuration:
+Line 15: Infinite loop detected in this rule. This would cause a redirect to
+strip `.html` or `/index` and end up triggering this rule again.
+```
+
+With the default `html_handling` (`auto-trailing-slash`) Cloudflare already
+rewrites `/index.html` to `/`, so a splat rule pointing at `/index.html` is a
+cycle. Exact-path rules (`/stats /index.html 200`) validate fine; every rule with
+a `*` does not. `not_found_handling` is the first-class mechanism and has no such
+interaction, so it does the job alone.
+
+### Caching
+
+Nothing is fingerprinted, so HTML, JS, and CSS are served `must-revalidate`
+(cheap 304s, instant deploys) while `/assets/*` caches for a week. A long cache on
+unhashed files would pin visitors to an old build.
 
 ## Private lists
 

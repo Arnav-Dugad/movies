@@ -1,5 +1,6 @@
-# Cloudflare Pages / Workers-Assets response headers.
+# Cloudflare response headers (Workers static assets and Pages read this file).
 # Mirrors the "headers" block in vercel.json so both deployments behave the same.
+# The SPA fallback is NOT here: see assets.not_found_handling in wrangler.jsonc.
 
 /*
   Referrer-Policy: strict-origin-when-cross-origin

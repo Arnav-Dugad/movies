@@ -1,0 +1,28 @@
+{
+  // Cloudflare Workers static-assets deployment (`npx wrangler deploy`).
+  //
+  // Without this file wrangler generates one at build time and guesses. The one
+  // setting that matters is `not_found_handling`: CineVerse is a single-page app
+  // with clean URLs (/movie/693134, /stats, ...), so any path that does not match
+  // a real file has to serve index.html with a 200 — otherwise opening a card in
+  // a new tab, refreshing, or following a shared link returns Cloudflare's 404.
+  //
+  // This replaces the SPA rules that used to live in _redirects. Cloudflare
+  // rejects `/movie/* -> /index.html 200` outright: with the default
+  // html_handling ("auto-trailing-slash") /index.html is itself rewritten to /,
+  // so a splat rule pointing at it is flagged as an infinite loop and the whole
+  // deploy fails. `not_found_handling` is the first-class mechanism and has no
+  // such interaction.
+  //
+  // Vercel does the same job through the "rewrites" block in vercel.json.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "movies",
+  "compatibility_date": "2026-08-20",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "single-page-application"
+  }
+}
