@@ -13,7 +13,7 @@ import { db } from './firebase.js';
 import { state } from './state.js';
 
 // Bump to re-backfill every doc after a schema change.
-export const META_V = 6;
+export const META_V = 7;   // 7: collection membership, for franchise completion
 const REPAIR_V = 1;
 
 let running = false, done = false, repairing = false;
@@ -39,6 +39,14 @@ function tvMeta(det) {
 }
 
 const releaseOf = det => det.release_date || det.first_air_date || '';
+// Only movies belong to a TMDB collection. Stamping it here means franchise
+// completion costs no extra request — it rides the enrichment fetch that already
+// happens for runtime, credits, and keywords.
+const collectionOf = (det, old = {}) => {
+  const c = det.belongs_to_collection;
+  if (!c || !c.id) return { collectionId: +(old.collectionId || 0), collectionName: old.collectionName || '', collectionPoster: old.collectionPoster || '' };
+  return { collectionId: +c.id, collectionName: c.name || '', collectionPoster: c.poster_path || '' };
+};
 const keywordsOf = det => (det.keywords?.keywords || det.keywords?.results || [])
   .slice(0, 15).map(keyword => ({ id: +keyword.id, name: keyword.name || '' }))
   .filter(keyword => keyword.id && keyword.name);
@@ -85,6 +93,7 @@ function watchedPatch(det, type, old) {
     tmdbRating: +(det.vote_average || old.tmdbRating || 0), voteCount: +(det.vote_count || old.voteCount || 0),
     director: people.director || old.director || '', directorId: people.directorId || old.directorId || 0,
     directorProfile: people.directorProfile || old.directorProfile || '', cast: cast.length ? cast : (old.cast || []),
+    ...collectionOf(det, old),
     metaV: META_V, repairV: REPAIR_V,
   };
 }

@@ -171,10 +171,10 @@ do. Titles with no reported runtime are excluded rather than guessed, and the
 "longest title" figure is movies-only because ranking a 62-episode series against
 a two-hour film by total minutes answers nothing.
 
-`tests/` has no coverage of this, but `scratchpad/test-stats.mjs` in development
-asserts 50 arithmetic properties against a hand-computed collection, including
-empty and malformed input (no NaN, no percentage above 100). Each one
-collapses independently and remembers its state on `users/{uid}.statsSections`,
+`tests/logic/stats.test.mjs` asserts 50 arithmetic properties against a
+hand-computed collection, including empty and malformed input (no NaN, no
+percentage above 100). Each section collapses independently and remembers its
+state on `users/{uid}.statsSections`,
 so the layout follows the account rather than the device. A collapsed section is
 not hidden with CSS: its body is a thunk that is never called, so the Director
 Network SVG and the provider charts cost nothing (and skip their network calls)
@@ -198,20 +198,97 @@ so a wrong flag beside a country is impossible by construction; the name is alwa
 rendered next to it because Windows has no flag glyphs and falls back to the two
 letters.
 
-## Security rules
-
-`tests/` holds an emulator suite covering every `match` path in `firestore.rules`
-— owner-only collections, the deliberately shared `users/{uid}/shared/` surface,
-friend discovery, the friend graph, and default-deny for anything undeclared.
+## Tests
 
 ```
-cd tests && npm install && npm test     # needs a JDK: the emulator is a Java process
-node tests/coverage.mjs                 # no Java needed
+cd tests
+npm run test:logic    # 250 assertions, no dependencies and no Java
+npm install && npm test   # adds the Firestore rules suite (needs a JDK)
 ```
+
+`tests/logic/` runs the real application modules against a small browser shim —
+list locking, the episode ledger, CSV import, every stats figure, rewatch
+counting, and collection completion. It needs nothing installed.
+
+`tests/rules.test.mjs` loads the real `firestore.rules` into the Firestore
+emulator and covers every `match` path: owner-only collections, the deliberately
+shared `users/{uid}/shared/` surface, friend discovery, the friend graph, and
+default-deny for anything undeclared. The emulator is a Java process, so this
+half needs a JDK on `PATH` (on Windows, `JAVA_HOME` usually has to be set
+explicitly — see `tests/README.md`). 29 tests, all passing.
 
 `coverage.mjs` is the cheap half: it proves the suite is *complete* by checking
 that every rule path is named in the tests, so adding a collection without a test
-fails immediately.
+fails immediately. No Java needed.
+
+## Rewatch tracking
+
+A watched entry is a count, not a boolean. The first viewing is play 1; **Log a
+rewatch** on a title's page appends a dated play, and the Watched page gains a
+`3x` badge, a rewatch filter, and two sort orders.
+
+There is no migration. Entries written before this existed carry no `plays` field
+and read as exactly one viewing stamped with their `watchedAt`, so every account
+has a complete history from the moment it ships — a document only grows the new
+fields once it is actually rewatched. Dates are capped at 60 per title while
+`plays` keeps counting, so a total is never wrong, only less detailed.
+
+The Rewatches stats block measures repeat time with the *same* runtime model as
+headline watch time (`runtimeOf`), so the two figures can be compared without a
+caveat.
+
+## Franchise completion
+
+"Part of the Alien Collection" was a link and nothing more. The banner now
+carries a completion meter, and a `/collection/:id` page opens with where you
+stand and a **Carry on with...** button pointing at the earliest entry you have
+not seen. A Franchises block in Stats ranks every series in your history by how
+close it is to done.
+
+Completion is measured against **released** entries only, for the same reason the
+episode tracker caps at the last aired episode: a series with an announced sequel
+is not 80% complete, it is complete with more coming, and counting a film nobody
+can watch yet against you produces a number that can never reach 100.
+
+Membership costs no extra request — `belongs_to_collection` is stamped onto
+watched documents by the metadata backfill that already fetches runtime, credits,
+and keywords.
+
+## Fewer reads on sign-in
+
+Signing in read five whole collections every time — on a large library, hundreds
+of document reads to fetch data that had not changed since the last page load.
+
+`js/library-cache.js` keeps a version counter on the profile document, which
+sign-in already reads, so checking it is free. Every mutation increments it. The
+page paints from a device cache immediately, then compares versions: equal means
+nothing changed anywhere and the five reads are skipped, taking sign-in from
+hundreds of reads to one.
+
+It cannot serve stale data. The local counter is only ever advanced by this
+device's own increments, so it is always less than or equal to the server's — a
+false *miss* is possible and harmless, while a false *hit* would require our count
+to exceed the server's, which cannot happen. Three guards cover the rest: a failed
+increment leaves a dirty flag that forces a full read until it lands, the cache
+expires after seven days regardless, and a library too large for `localStorage`
+falls back to reading rather than guessing.
+
+Writers do not call into the cache directly. Every module that changes the
+library already ends with `cv:wl-changed` (and the episode ledger with
+`cv:episode-progress`), so the cache hooks those two events — a write path added
+later is covered by the convention it already follows.
+
+## First-run onboarding
+
+A new account used to land on a home page personalised from nothing. Three
+questions fix that, and each has a real consequence: the region becomes the one
+used for every provider lookup, and the chosen genres are folded into the taste
+profile with a weight of 1.4 each — enough to decide the first session, and
+outvoted within a dozen titles by actual viewing, which contributes 1.5 or more
+apiece.
+
+It appears once, only for an account with an empty library, and skipping counts
+as answering. Whatever was chosen before the skip is still kept.
 
 ### Publishing them
 

@@ -32,6 +32,9 @@
 <link rel="stylesheet" href="/css/people.css">
 <link rel="stylesheet" href="/css/import.css">
 <link rel="stylesheet" href="/css/mature.css">
+<link rel="stylesheet" href="/css/rewatch.css">
+<link rel="stylesheet" href="/css/franchise.css">
+<link rel="stylesheet" href="/css/onboarding.css">
 
 <!-- Firebase (compat SDK, classic scripts — must load before the app module) -->
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -219,6 +222,9 @@ setTimeout(function () {
 <div class="pin-overlay" id="pinOverlay" role="dialog" aria-modal="true" aria-label="List PIN">
   <div class="pin-modal" id="pinModalBody"></div>
 </div>
+
+<!-- FIRST-RUN ONBOARDING -->
+<div class="ob-overlay" id="onboardOverlay" role="dialog" aria-modal="true" aria-label="Set up CineVerse"></div>
 
 <!-- VOICE CONSOLE -->
 <div class="voice-console" id="voiceConsole" role="dialog" aria-label="Voice search" aria-hidden="true">
@@ -434,6 +440,7 @@ setTimeout(function () {
         <option value="runtime_desc">Runtime: longest</option><option value="runtime_asc">Runtime: shortest</option>
         <option value="rating_gap_desc">Biggest rating disagreement</option><option value="theme_desc">Most story themes</option>
         <option value="cast_desc">Most known cast</option><option value="metadata_desc">Metadata quality</option>
+        <option value="plays_desc">Most rewatched</option><option value="last_play_desc">Recently rewatched</option>
       </select>
       <button class="watched-tool-btn" data-action="toggle-watched-filters" aria-expanded="false" aria-controls="watchedAdvanced"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>More filters</span><b id="watchedActiveCount" hidden>0</b></button>
       <button class="watched-tool-btn accent" data-action="watched-random"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg><span>Surprise me</span></button>
@@ -445,6 +452,7 @@ setTimeout(function () {
       <label><span>Country</span><select id="watchedCountry" class="watched-select" data-action="watched-country"><option value="all">Any country</option></select></label>
       <label><span>Community score</span><select id="watchedCommunity" class="watched-select" data-action="watched-community"><option value="0">Any score</option><option value="8">8+ rated</option><option value="7">7+ rated</option><option value="6">6+ rated</option><option value="5">5+ rated</option></select></label>
       <label><span>My rating</span><select id="watchedMine" class="watched-select" data-action="watched-mine"><option value="all">Any rating status</option><option value="rated">Rated by me</option><option value="unrated">Not rated yet</option><option value="10">My 10/10 titles</option><option value="9">My 9+ titles</option><option value="8">My 8+ titles</option><option value="7">My 7+ titles</option></select></label>
+      <label><span>Rewatches</span><select id="watchedPlays" class="watched-select" data-action="watched-plays"><option value="all">Any number of plays</option><option value="rewatched">Rewatched at least once</option><option value="once">Seen only once</option><option value="3">Seen 3+ times</option><option value="5">Seen 5+ times</option></select></label>
       <label><span>Total runtime</span><select id="watchedRuntime" class="watched-select" data-action="watched-runtime"><option value="all">Any runtime</option><option value="quick">Up to 2 hours</option><option value="standard">2–10 hours</option><option value="long">10–40 hours</option><option value="epic">Over 40 hours</option><option value="unknown">Runtime missing</option></select></label>
       <label><span>Watched date</span><select id="watchedWhen" class="watched-select" data-action="watched-when"><option value="all">Any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="this_year">This year</option><option value="last_year">Last year</option><option value="unknown">Date missing</option></select></label>
       <label><span>Director</span><select id="watchedDirector" class="watched-select" data-action="watched-director"><option value="all">Any director</option></select></label>

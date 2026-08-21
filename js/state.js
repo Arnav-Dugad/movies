@@ -18,7 +18,7 @@ export const state = {
   recentlyViewed: [],
   region: 'IN',
   // Loaded from users/{uid} on sign-in: { avatar: {emoji,grad}|null, created }.
-  profile: { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] },
+  profile: { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [], onboarded: false, seedGenres: [] },
   // Loaded with the profile root doc, so recommendation controls cost no extra
   // Firestore read. History is capped before every write (recommend.js).
   recommendationFeedback: { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 },

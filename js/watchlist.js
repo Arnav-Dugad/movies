@@ -57,6 +57,11 @@ export async function toggleWatched(id, type, title, meta = {}) {
         releaseDate: meta.releaseDate || wl?.releaseDate || '',
         tmdbRating: +(meta.tmdbRating || wl?.rating || 0),
         voteCount: +(meta.voteCount || 0),
+        // Franchise membership, when the caller knew it (the detail page always
+        // does). Otherwise the metadata backfill fills it in later.
+        collectionId: +(meta.collectionId || 0),
+        collectionName: meta.collectionName || '',
+        collectionPoster: meta.collectionPoster || '',
         watchedAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
       await ref.set(d);
@@ -410,7 +415,10 @@ export function initWatchlist() {
         runtime: +el.dataset.runtime || 0, language: el.dataset.language || '',
         country: el.dataset.country || '', releaseDate: el.dataset.releaseDate || '',
         tmdbRating: +el.dataset.tmdbRating || 0, voteCount: +el.dataset.voteCount || 0,
+        collectionId: +el.dataset.collectionId || 0, collectionName: el.dataset.collectionName || '',
+        collectionPoster: el.dataset.collectionPoster || '',
       });
+      document.dispatchEvent(new CustomEvent('cv:watched-toggled', { detail: { id, type } }));
       // Sync the button from the actual result rather than toggling blind — on a
       // failed write, toggleWatched leaves state.watched unchanged, so this
       // correctly leaves the button as-is instead of flipping to a wrong state.

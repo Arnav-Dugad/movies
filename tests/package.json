@@ -2,11 +2,13 @@
   "name": "cineverse-rules-tests",
   "private": true,
   "type": "module",
-  "description": "Firestore security-rule tests. Kept out of the repo root so the Cloudflare build never sees a package.json and tries to install anything.",
+  "description": "CineVerse tests. Logic suites need only Node; the rules suite needs a JDK (the Firestore emulator is a Java process). Kept out of the repo root so the Cloudflare build never sees a package.json.",
   "scripts": {
-    "test": "firebase emulators:exec --config ../firebase.json --project cineverse-rules-test --only firestore \"node --test rules.test.mjs\"",
-    "emulator": "firebase emulators:start --config ../firebase.json --project cineverse-rules-test --only firestore",
-    "coverage": "node coverage.mjs"
+    "test": "npm run test:logic && npm run coverage && npm run test:rules",
+    "test:logic": "node --test logic/*.test.mjs",
+    "test:rules": "firebase emulators:exec --config ../firebase.json --project cineverse-rules-test --only firestore \"node --test rules.test.mjs\"",
+    "coverage": "node coverage.mjs",
+    "emulator": "firebase emulators:start --config ../firebase.json --project cineverse-rules-test --only firestore"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.4",

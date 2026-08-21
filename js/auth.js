@@ -12,15 +12,19 @@ import { REGIONS } from './config.js';
 import { hydrateNotificationPrefs, resetNotificationPrefsForAuth } from './notification-prefs.js';
 import { hydrateProviderHistory, resetProviderHistoryForAuth } from './provider-history.js';
 import { hydrateStatsSections } from './stats.js';
-import { loadEpisodeProgress, resetEpisodeProgressForAuth } from './episodes.js';
+import { loadEpisodeProgress, resetEpisodeProgressForAuth, hydrateEpisodeProgressFromCache } from './episodes.js';
+import { hydrateFromCache, writeCache, clearLibraryCache, resetLibraryRuntime, ensureLibraryVersion, initLibraryCache, flushLibraryVersion } from './library-cache.js';
 
 let authMode = 'login';
 let delRelease = null;
 
 // Read the profile doc (avatar + created) into state so the Profile page and the
 // nav/dropdown avatars can render. Non-fatal — falls back to the initial avatar.
+// Returns the account's libraryVersion so the caller can decide whether the five
+// collection reads are needed at all (see js/library-cache.js).
 async function loadProfile() {
-  state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
+  let libraryVersion = 0;
+  state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [], onboarded: false, seedGenres: [] };
   state.recommendationFeedback = { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 };
   state.notificationRead = [];
   resetNotificationPrefsForAuth();
@@ -28,7 +32,7 @@ async function loadProfile() {
   state.statsSnapshot = null;
   hydrateStatsSections(null);
   resetEpisodeProgressForAuth();
-  if (!state.user) return;
+  if (!state.user) return 0;
   let localFeedback = {};
   try { localFeedback = JSON.parse(localStorage.getItem(`cv_rec_feedback_${state.user.uid}`) || '{}'); } catch (_) {}
   const hasFeedback = feedback => Array.isArray(feedback?.dismissed) || Array.isArray(feedback?.history);
@@ -50,6 +54,7 @@ async function loadProfile() {
     const d = await db.collection('users').doc(state.user.uid).get();
       if (d.exists) {
         const x = d.data(), feedback = x.recommendationFeedback || {};
+        libraryVersion = Math.max(0, Math.floor(+x.libraryVersion || 0));
         hydratePrefs(x.experiencePrefs);
         hydrateNotificationPrefs(x.notificationPreferences);
         const cloudRegion = x.experiencePrefs?.region;
@@ -68,6 +73,9 @@ async function loadProfile() {
         favoriteFilmId: Number.isInteger(+x.favoriteFilmId) && +x.favoriteFilmId > 0 ? +x.favoriteFilmId : null,
         favoriteFilmPoster: /^\/[\w.-]+$/.test(String(x.favoriteFilmPoster || '')) ? String(x.favoriteFilmPoster) : '',
         pinnedBadges: Array.isArray(x.pinnedBadges) ? x.pinnedBadges.filter(value => typeof value === 'string').slice(0, 3) : [],
+        // First-run flow: shown once, and only to an account with nothing in it.
+        onboarded: !!x.onboarded,
+        seedGenres: Array.isArray(x.seedGenres) ? x.seedGenres.map(Number).filter(Number.isFinite).slice(0, 8) : [],
       };
       state.statsSnapshot = x.statsSnapshot || null;
       state.notificationRead = Array.isArray(x.notificationRead) ? x.notificationRead.filter(value => typeof value === 'string').slice(-400) : [];
@@ -83,19 +91,34 @@ async function loadProfile() {
       }
     }
   } catch (e) { console.error('loadProfile', e); }
+  return libraryVersion;
 }
 
 export function initAuth() {
+  initLibraryCache();
   auth.onAuthStateChanged(async u => {
     state.user = u;
     updateAuthUI();
     if (u) {
-      await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadProfile(), loadEpisodeProgress()]);
+      // Paint the library from this device before the network answers, then let
+      // the profile read (one document, which we needed anyway) say whether any
+      // of it is out of date. Unchanged means five collection reads are skipped.
+      const cachedVersion = hydrateFromCache(u.uid);
+      const serverVersion = await loadProfile();
+      if (cachedVersion > 0 && cachedVersion === serverVersion) {
+        // loadProfile resets episode progress for the new session; its own device
+        // mirror restores it without touching Firestore.
+        hydrateEpisodeProgressFromCache();
+      } else {
+        await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadEpisodeProgress()]);
+        writeCache(u.uid, await ensureLibraryVersion(u.uid, serverVersion));
+      }
       updateAuthUI();   // re-render now that the avatar has loaded
       try { state.searchHistory = JSON.parse(localStorage.getItem('cv_history_' + u.uid) || '[]'); } catch (e) { state.searchHistory = []; }
     } else {
+      resetLibraryRuntime();
       state.watchlist = []; state.ratings = {}; state.watched = {}; state.searchHistory = [];
-      state.lists = []; state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [] };
+      state.lists = []; state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [], onboarded: false, seedGenres: [] };
       state.recommendationFeedback = { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 };
       state.notificationRead = [];
       resetNotificationPrefsForAuth();
@@ -125,7 +148,7 @@ export function initAuth() {
     'profile-auth': () => handleProfileAuth(),
     'toggle-profile': () => toggleProfile(),
     'reset-password': (el, e) => resetPassword(e),
-    'sign-out': () => { auth.signOut(); const dd = $('profileDD'); if (dd) dd.classList.remove('active'); toast('Signed out', 'info'); },
+    'sign-out': () => { flushLibraryVersion(); clearLibraryCache(state.user?.uid); auth.signOut(); const dd = $('profileDD'); if (dd) dd.classList.remove('active'); toast('Signed out', 'info'); },
     'open-delete': () => openDelete(),
     'close-delete': () => closeDelete(),
     'confirm-delete': () => confirmDelete(),

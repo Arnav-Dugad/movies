@@ -11,6 +11,8 @@ import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
 import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
+import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
+import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
 
 let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
@@ -175,7 +177,9 @@ export async function openDetail(id, type) {
     if (det.belongs_to_collection) { const c = det.belongs_to_collection;
       // The strip below the banner is filled in after paint (one extra request,
       // and only when the title actually belongs to a collection).
-      collHTML = `<a class="coll-banner" href="/collection/${c.id}" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div></div></a><div id="collStrip_${id}"></div>`; }
+      // The meter is empty until the parts list lands (loadCollectionStrip already
+      // fetches it, so completion costs no extra request).
+      collHTML = `<a class="coll-banner" href="/collection/${c.id}" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div><div class="coll-progress" id="collProg_${id}"></div></div></a><div id="collStrip_${id}"></div>`; }
 
     ct.innerHTML = `
       ${back ? `<div class="detail-back"><img src="${back}" alt=""><div class="detail-back-grad"></div></div>` : '<div style="height:var(--nav-h)"></div>'}
@@ -195,11 +199,12 @@ export async function openDetail(id, type) {
             <div class="detail-btns">
               ${trailer ? `<button class="btn-primary magnetic" data-action="play-trailer" data-key="${trailer.key}" data-tip="Play trailer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play Trailer</button>` : ''}
               <button class="dbtn-icon ${wl ? 'active' : ''}" data-wl="${type}|${id}" data-action="open-list-picker" data-item="${wlPayload}" aria-label="${wl ? 'Edit lists' : 'Add to a list'}" data-tip="${wl ? 'Edit lists' : 'Add to a list'}">${wl ? '✓' : '+'}</button>
-              ${out ? `<button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" data-keywords="${esc(JSON.stringify(keywordMeta))}" data-runtime="${det.runtime || det.episode_run_time?.[0] || 0}" data-language="${det.original_language || ''}" data-country="${contentCountry}" data-release-date="${contentReleaseDate}" data-tmdb-rating="${det.vote_average || 0}" data-vote-count="${det.vote_count || 0}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>` : ''}
+              ${out ? `<button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" data-keywords="${esc(JSON.stringify(keywordMeta))}" data-runtime="${det.runtime || det.episode_run_time?.[0] || 0}" data-language="${det.original_language || ''}" data-country="${contentCountry}" data-release-date="${contentReleaseDate}" data-tmdb-rating="${det.vote_average || 0}" data-vote-count="${det.vote_count || 0}" data-collection-id="${det.belongs_to_collection?.id || 0}" data-collection-name="${esc(det.belongs_to_collection?.name || '')}" data-collection-poster="${det.belongs_to_collection?.poster_path || ''}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>` : ''}
               ${out ? `<button class="dbtn-icon" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate" data-tip="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>` : ''}
               ${out ? '' : `<span class="unreleased-note" data-tip="You can still add it to your list">${type === 'tv' ? 'Not aired yet' : 'Not released yet'}</span>`}
               <button class="dbtn-icon" data-action="share-item" data-title="${safeTitle}" data-id="${id}" data-type="${type}" aria-label="Share" data-tip="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
             </div>
+            ${rewatchStripHTML(id, type)}
           </div>
         </div>
         ${cdHTML}${collHTML}
@@ -255,6 +260,44 @@ export async function openDetail(id, type) {
     console.error(e);
     ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-size:1.1rem;font-weight:600">Failed to load</p><p style="color:var(--text3);margin:8px 0 20px">Please try again</p><button class="btn-primary" data-action="back">Back</button></div>';
   }
+}
+
+// ===== REWATCH STRIP =====
+// Only rendered for something already marked watched: a rewatch of an unwatched
+// title is not a rewatch, it is a first viewing, and that is the tick above.
+const playDate = ms => ms ? new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
+function rewatchStripHTML(id, type) {
+  const key = `${type}_${id}`;
+  if (!state.watched[key]) return '';
+  const plays = playCount(key), dates = playDates(key);
+  const first = playDate(dates[0]), last = plays > 1 ? playDate(dates[dates.length - 1]) : '';
+  // The count is authoritative; dates are only what we hold, so the caption says
+  // "first" and "last" rather than listing viewings we may have aged out.
+  const caption = last && last !== first ? `First ${first} · last ${last}`
+    : first ? `Watched ${first}` : 'Date not recorded';
+  return `<div class="rewatch-strip" id="rwStrip_${type}_${id}">
+    <div class="rw-count" aria-hidden="true"><b>${plays}</b><span>${plays === 1 ? 'play' : 'plays'}</span></div>
+    <div class="rw-body"><div class="rw-label">${playLabel(key)}</div><div class="rw-dates">${esc(caption)}</div></div>
+    <div class="rw-acts">
+      <button class="rw-btn rw-add" data-action="log-rewatch" data-id="${id}" data-type="${type}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>Log a rewatch</button>
+      ${plays > 1 ? `<button class="rw-btn rw-undo" data-action="undo-rewatch" data-id="${id}" data-type="${type}">Undo</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function paintRewatchStrip(id, type) {
+  const host = $(`rwStrip_${type}_${id}`);
+  const html = rewatchStripHTML(id, type);
+  if (host) {
+    if (html) host.outerHTML = html; else host.remove();
+    return;
+  }
+  // The title was just marked watched, so the strip did not exist to replace.
+  if (!html) return;
+  const anchor = document.querySelector('.detail-head .detail-btns');
+  if (anchor) anchor.insertAdjacentHTML('afterend', html);
 }
 
 // ===== RELEASE STATE =====
@@ -315,15 +358,54 @@ async function loadCollectionStrip(id, collectionId, gen) {
   const host = $(`collStrip_${id}`);
   if (!host) return;
   try {
-    const d = await tmdb(`/collection/${collectionId}`);
-    if (gen !== reqGen || !$(`collStrip_${id}`)) return;
+    const d = await collectionParts(collectionId);
+    if (!d || gen !== reqGen || !$(`collStrip_${id}`)) return;
+    paintCollectionProgress(id, d.parts);
     const parts = (d.parts || [])
-      .filter(p => p && p.id !== id && p.poster_path)
-      .sort((a, b) => new Date(a.release_date || '9999') - new Date(b.release_date || '9999'));
+      .filter(p => p && p.id !== id && p.poster)
+      .sort((a, b) => new Date(a.release_date || '9999') - new Date(b.release_date || '9999'))
+      .map(p => ({ id: p.id, title: p.title, poster_path: p.poster, release_date: p.release_date, vote_average: p.vote }));
     if (!parts.length) return;
     host.innerHTML = `<div style="margin-bottom:32px"><div class="d-sec-title">More in ${esc(d.name || 'this collection')}</div><div class="similar-row">${parts.map(p => buildCard(p, 'movie')).join('')}</div></div>`;
     observeReveals(host);
   } catch (e) { /* the banner alone is fine */ }
+}
+
+// The collection page leads with where you stand, because that is the question
+// that brought you here. Unreleased parts are named separately rather than
+// counted against you — see js/franchise.js.
+function collectionHeaderHTML(progress) {
+  if (!progress.released) return '';
+  const pct = Math.round(progress.percent);
+  const next = progress.nextUp;
+  return `<div class="coll-standing${progress.complete ? ' done' : ''}">
+    <div class="coll-ring" style="--pct:${pct}">
+      <span class="coll-ring-val"><b data-count="${pct}">${pct}</b><i>%</i></span>
+    </div>
+    <div class="coll-standing-body">
+      <div class="coll-standing-head">${progress.complete ? 'Collection complete' : `${progress.seen} of ${progress.released} seen`}</div>
+      <p>${progress.complete
+        ? (progress.upcoming ? `Everything released. ${progress.upcoming} more on the way.` : 'You have seen every film in this collection.')
+        : `${progress.unseen.length} film${progress.unseen.length === 1 ? '' : 's'} left${progress.upcoming ? `, plus ${progress.upcoming} not out yet` : ''}.`}</p>
+      ${next ? `<button class="btn-primary coll-next" data-action="open-detail" data-id="${next.id}" data-type="movie">Carry on with ${esc(next.title)}</button>` : ''}
+    </div>
+  </div>`;
+}
+
+// Completion is drawn as a filled bar plus the count in words — the bar alone
+// would leave the exact position to be eyeballed, and the words alone would
+// hide how close to done you are.
+function paintCollectionProgress(id, parts) {
+  const host = $(`collProg_${id}`);
+  if (!host) return;
+  const progress = collectionProgress(parts);
+  if (!progress.released) { host.innerHTML = ''; return; }
+  const pct = Math.round(progress.percent);
+  host.innerHTML = `
+    <div class="coll-meter" role="img" aria-label="${progress.seen} of ${progress.released} released films seen">
+      <i style="width:${pct}%"${progress.complete ? ' class="done"' : ''}></i>
+    </div>
+    <span class="coll-meter-label">${esc(progressLabel(progress))}${progress.upcoming ? ` · ${progress.upcoming} still to come` : ''}</span>`;
 }
 
 // ===== STUDIOS / NETWORKS =====
@@ -1037,13 +1119,16 @@ export async function openCollection(cid) {
     if (gen !== reqGen) return;
     if (d.parts?.length) {
       const sorted = d.parts.sort((a, b) => new Date(a.release_date || '9999') - new Date(b.release_date || '9999'));
+      const progress = collectionProgress(sorted);
       document.title = `${d.name} — CineVerse`;
       ct.innerHTML = `<div style="padding:calc(var(--nav-h) + 20px) clamp(16px,4vw,40px) 100px;max-width:1100px;margin:0 auto">
         <h1 style="font-family:var(--font-display);font-size:2rem;margin-bottom:4px">${esc(d.name)}</h1>
-        ${d.overview ? `<p style="color:var(--text2);font-size:.92rem;line-height:1.7;margin-bottom:24px;max-width:600px">${esc(d.overview)}</p>` : ''}
+        ${d.overview ? `<p style="color:var(--text2);font-size:.92rem;line-height:1.7;margin-bottom:20px;max-width:600px">${esc(d.overview)}</p>` : ''}
+        ${collectionHeaderHTML(progress)}
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:14px">${sorted.map(m => buildCard(m, 'movie')).join('')}</div>
       </div>`;
       observeReveals(ct);
+      observeCountUps(ct);
     }
   } catch (e) { ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-weight:600">Failed to load collection</p><button class="btn-primary" data-action="back">Back</button></div>'; }
 }
@@ -1062,6 +1147,26 @@ export function initDetail() {
         try { img.style.viewTransitionName = 'cv-hero'; lastVTSource = img; } catch (er) {}
       } else { navHint = null; }
       document.dispatchEvent(new CustomEvent('cv:go', { detail: `/${type}/${id}` }));
+    },
+    'log-rewatch': async (el) => {
+      const id = +el.dataset.id, type = el.dataset.type;
+      el.disabled = true;
+      try {
+        const plays = await logPlay(id, type);
+        if (plays) { paintRewatchStrip(id, type); toast(`Logged — ${plays === 2 ? 'seen twice' : `seen ${plays} times`}`, 'success'); }
+        else toast('Mark it watched first', 'info');
+      } catch (error) { console.error('log-rewatch', error); toast('Could not save that rewatch', 'error'); }
+      finally { const live = $(`rwStrip_${type}_${id}`); if (!live && el.isConnected) el.disabled = false; }
+    },
+    'undo-rewatch': async (el) => {
+      const id = +el.dataset.id, type = el.dataset.type;
+      el.disabled = true;
+      try {
+        const plays = await removeLastPlay(id, type);
+        paintRewatchStrip(id, type);
+        toast(plays > 1 ? `Back to ${plays} plays` : 'Back to one viewing', 'info');
+      } catch (error) { console.error('undo-rewatch', error); toast('Could not undo that', 'error'); }
+      finally { const live = $(`rwStrip_${type}_${id}`); if (!live && el.isConnected) el.disabled = false; }
     },
     'toggle-overview': (el) => {
       const ov = $('detOv'); if (!ov) return;
@@ -1168,6 +1273,16 @@ export function initDetail() {
       openDetail(tid, 'tv');
     },
     'go-collection': (el) => document.dispatchEvent(new CustomEvent('cv:go', { detail: `/collection/${el.dataset.cid}` })),
+  });
+
+  // The watched tick and the rewatch strip are two views of one fact, so ticking
+  // either has to update the other. Scoped to the title actually on screen.
+  document.addEventListener('cv:watched-toggled', (e) => {
+    const id = +(e.detail?.id || 0), type = e.detail?.type;
+    if (id && curDet && +curDet.id === id && curType === type) paintRewatchStrip(id, type);
+  });
+
+  registerActions({
     'region-change': (el) => {
       state.region = el.value;
       try { localStorage.setItem('cv_region', state.region); } catch (e) {}

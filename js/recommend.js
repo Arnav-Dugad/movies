@@ -98,6 +98,11 @@ export function buildTasteProfile(sources = state) {
   const addG = (genres, w) => (genres || []).forEach(g => { if (g == null) return; genreWeights[g] = (genreWeights[g] || 0) + w; });
   const bump = (map, key, w) => { if (key == null || key === '') return; map[key] = (map[key] || 0) + w; };
 
+  // Declared at sign-up, when there is nothing else to go on. Weighted so it
+  // decides the first session and is outvoted by real viewing soon after: each
+  // watched title contributes 1.5 or more, so a dozen of them bury a 1.4 seed.
+  (sources.profile?.seedGenres || []).forEach(id => bump(genreWeights, +id, 1.4));
+
   // Watchlist — an explicit "I want to see this": the strongest genre signal.
   watchlist.forEach(w => {
     const weight = (2 + ratingW(ratings[`${w.type}_${w.tmdbId}`])) * recencyWeight(w.added);

@@ -1,0 +1,96 @@
+/* ===== COLLECTION COMPLETION ===== */
+/* The bar carries position, the words carry the exact count. Neither alone is
+   enough: a bar leaves you estimating, a number leaves you doing the division. */
+
+/* --- meter on the detail-page collection banner --- */
+.coll-progress{
+  flex:0 0 auto;margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px;
+  min-width:140px;
+}
+.coll-meter{
+  width:140px;height:6px;border-radius:999px;overflow:hidden;
+  background:rgba(255,255,255,.1);
+}
+.coll-meter i{
+  display:block;height:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));
+  transition:width .7s var(--ease-out);
+}
+.coll-meter i.done{background:linear-gradient(90deg,var(--green),var(--green2))}
+.coll-meter-label{
+  font-size:.74rem;font-weight:700;color:var(--text2);
+  font-variant-numeric:tabular-nums;text-align:right;
+}
+
+/* --- standing block at the top of a /collection page --- */
+.coll-standing{
+  display:flex;align-items:center;gap:22px;
+  padding:20px 24px;margin-bottom:28px;
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-xl);
+}
+.coll-standing.done{
+  border-color:rgba(16,185,129,.28);
+  background:linear-gradient(135deg,rgba(16,185,129,.09),var(--glass));
+}
+
+/* The ring reads as a dial, not a decoration: the sweep IS the percentage. */
+.coll-ring{
+  flex:0 0 auto;position:relative;width:82px;height:82px;border-radius:50%;
+  background:conic-gradient(var(--accent) calc(var(--pct,0) * 1%),rgba(255,255,255,.09) 0);
+  display:grid;place-items:center;
+}
+.coll-standing.done .coll-ring{background:conic-gradient(var(--green) calc(var(--pct,0) * 1%),rgba(255,255,255,.09) 0)}
+.coll-ring::after{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--bg2)}
+.coll-ring-val{position:relative;z-index:1;display:flex;align-items:baseline;gap:1px}
+.coll-ring-val b{font-size:1.35rem;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.03em}
+.coll-ring-val i{font-size:.72rem;font-style:normal;font-weight:800;color:var(--text2)}
+
+.coll-standing-body{min-width:0}
+.coll-standing-head{
+  font-family:var(--font-display);font-size:1.25rem;font-weight:900;letter-spacing:-.01em;
+}
+.coll-standing-body p{font-size:.86rem;color:var(--text2);margin:4px 0 0;line-height:1.5}
+.coll-next{margin-top:12px}
+
+@media (max-width:600px){
+  .coll-standing{gap:16px;padding:16px}
+  .coll-ring{width:66px;height:66px}
+  .coll-ring-val b{font-size:1.1rem}
+  .coll-standing-head{font-size:1.05rem}
+  .coll-next{width:100%;justify-content:center}
+  /* The banner is short on phones — the meter would crowd the title out. */
+  .coll-progress{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .coll-meter i{transition:none}
+}
+
+/* ===== FRANCHISES BLOCK (stats) ===== */
+.fr-list{display:flex;flex-direction:column;gap:10px}
+.fr-row{
+  display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:14px;
+  padding:10px 12px;border-radius:var(--radius);
+  background:var(--glass);border:1px solid var(--glass-border);
+  text-align:left;font-family:inherit;color:inherit;cursor:pointer;width:100%;
+  transition:border-color .2s var(--ease),background .2s var(--ease);
+}
+.fr-row:hover{border-color:rgba(255,255,255,.14);background:var(--surface2)}
+.fr-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fr-poster{width:44px;height:66px;border-radius:var(--radius-sm);object-fit:cover;background:var(--bg4)}
+.fr-name{font-size:.9rem;font-weight:700;letter-spacing:-.01em;margin-bottom:6px}
+.fr-bar{height:5px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;max-width:340px}
+.fr-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.fr-row.done .fr-bar i{background:linear-gradient(90deg,var(--green),var(--green2))}
+.fr-meta{font-size:.74rem;color:var(--text2);margin-top:5px;font-variant-numeric:tabular-nums}
+.fr-badge{
+  font-size:.68rem;font-weight:900;letter-spacing:.05em;text-transform:uppercase;
+  padding:4px 9px;border-radius:999px;white-space:nowrap;
+  color:var(--text2);background:rgba(255,255,255,.05);border:1px solid var(--glass-border);
+}
+.fr-row.done .fr-badge{color:var(--green2);background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.3)}
+.fr-row.almost .fr-badge{color:var(--gold);background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3)}
+@media (max-width:520px){
+  .fr-row{grid-template-columns:36px 1fr;gap:10px}
+  .fr-poster{width:36px;height:54px}
+  .fr-badge{grid-column:2;justify-self:start;margin-top:4px}
+}

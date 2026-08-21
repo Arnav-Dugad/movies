@@ -7,3 +7,7 @@ tests/node_modules/
 # OS / editor noise
 .DS_Store
 Thumbs.db
+
+# Emulator scratch output.
+tests/firestore-debug.log
+tests/ui-debug.log

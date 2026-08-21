@@ -30,6 +30,7 @@ import { initFriends } from './friends.js';
 import { initParty } from './party.js';
 import { initProfile } from './profile.js';
 import { initSettings } from './settings.js';
+import { initOnboarding } from './onboarding.js';
 import { initReleaseReminders } from './release-reminders.js';
 import { initRouter } from './router.js';
 import { initEffects } from './effects.js';
@@ -91,6 +92,7 @@ async function init() {
   initParty();
   initProfile();
   initSettings();
+  initOnboarding();
   initBackups();
   initImportCSV();
   initAwards();

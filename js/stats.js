@@ -16,6 +16,8 @@ import { buildCard } from './cards.js';
 import { getProviderStats, getCatalogSeries } from './provider-history.js';
 import { episodeTotals, episodeStats, showProgress, showEntry } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
+import { rewatchSummary, rewatchesSince, playCount } from './rewatch.js';
+import { franchiseSummary } from './franchise.js';
 
 let statsScope = 'all';
 let latestSnapshot = null;
@@ -141,6 +143,26 @@ function streaks(dateKeys) {
   return { current, longest };
 }
 
+// Hoisted so the rewatch panel measures repeat viewing with exactly the model
+// the headline watch-time figure uses. Two different answers to "how long is
+// this title" is the bug this whole function exists to prevent.
+function runtimeOf(row) {
+  if (row.type !== 'tv') return row.runtime > 0 && row.runtime < 1000 ? row.runtime : 0;
+  const entry = showEntry(row.id);
+  const perEpisode = +(row.episodeRuntime || entry?.episodeRuntime || 0);
+  const progress = showProgress(row.id);
+  if (progress.watched > 0 && perEpisode > 0) return progress.watched * perEpisode;
+  if (perEpisode > 0 && row.episodeCount > 0) return perEpisode * row.episodeCount;
+  return row.runtime > 0 ? row.runtime : 0;
+}
+
+// A watched DOCUMENT in the shape runtimeOf expects (it is written for the
+// derived row used everywhere else in this file).
+const docRuntime = (doc, key) => runtimeOf({
+  id: +(doc.tmdbId || String(key).split('_').pop() || 0), type: doc.type || String(key).split('_')[0],
+  runtime: +(doc.runtime || 0), episodeRuntime: +(doc.episodeRuntime || 0), episodeCount: +(doc.episodeCount || 0),
+});
+
 function buildHeatDays(activityMap) {
   const today = new Date(); today.setHours(12, 0, 0, 0);
   const total = 52 * 7 + today.getDay() + 1;
@@ -239,15 +261,6 @@ export function computeStats(scope) {
   // same show contributed 45 minutes or 40 hours depending on which button was
   // used. The episode ledger is the authoritative answer where it exists, and
   // the stored fields are the fallback, in descending order of trust.
-  const runtimeOf = row => {
-    if (row.type !== 'tv') return row.runtime > 0 && row.runtime < 1000 ? row.runtime : 0;
-    const entry = showEntry(row.id);
-    const perEpisode = +(row.episodeRuntime || entry?.episodeRuntime || 0);
-    const progress = showProgress(row.id);
-    if (progress.watched > 0 && perEpisode > 0) return progress.watched * perEpisode;
-    if (perEpisode > 0 && row.episodeCount > 0) return perEpisode * row.episodeCount;
-    return row.runtime > 0 ? row.runtime : 0;
-  };
   const runtimes = watched.map(runtimeOf).filter(value => value > 0);
   // Total watch time uses a completed show's full runtime, while "average runtime"
   // compares equivalent viewing units: movie length or episode length. Mixing an
@@ -424,11 +437,13 @@ function queueSnapshot(snapshot) {
 const SECTION_META = [
   ['pulse', 'Activity Pulse', 'Streaks, recent pace, and your strongest viewing moments'],
   ['tv', 'TV Tracker', 'Episode progress, pace, and shows still in flight'],
+  ['rewatch', 'Rewatches', 'What you keep going back to, and what that costs in hours'],
   ['critic', 'Rating & Library', 'Your critic profile beside the anatomy of your collection'],
   ['taste', 'Taste Map', 'Genres, eras, and languages across everything you keep'],
   ['themes', 'Tag Taste Profile', 'The specific story themes behind what you watch'],
   ['evolution', 'Taste Changes', 'How your leading genre and language have shifted'],
   ['health', 'Collection Health', 'Missing ratings, artwork, dates, and credits'],
+  ['franchises', 'Franchises', 'How far through each film series you are'],
   ['providers', 'Streaming Intelligence', 'Provider freshness and 90-day catalog movement'],
   ['directors', 'Director Loyalty', 'How deep you have gone into a filmography'],
   ['network', 'Director Network', 'Directors, titles, and actors you keep returning to'],
@@ -910,6 +925,7 @@ export function renderStats() {
   const context = buildCtx();
   const scopeLabel = statsScope === 'movie' ? 'movie' : statsScope === 'tv' ? 'TV' : 'complete';
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const rewatchTally = rewatchSummary();
   const providers = getProviderStats({ days: 90 });
   const episodeTally = episodeTotals();
   const tvStats = episodeStats({ months: 12 });
@@ -930,6 +946,10 @@ export function renderStats() {
     providers: providers.length ? `${plural(providers.length, 'service')} tracked · ${providerMovement ? `${providerMovement} catalog changes in 90 days` : 'baseline recorded'}` : 'No subscription scans yet',
     directors: 'Filmography depth for the directors you return to',
     network: `${stats.network.directors.length ? `${plural(stats.network.directors.length, 'director')} linked to ${plural(stats.network.titles.length, 'title')}` : 'Credits are still being enriched'}`,
+    rewatch: rewatchTally.extraPlays
+      ? `${rewatchTally.extraPlays} rewatch${rewatchTally.extraPlays === 1 ? '' : 'es'} across ${plural(rewatchTally.rewatchedTitles, 'title')}`
+      : 'Nothing logged twice yet',
+    franchises: 'Completion across the film series in your history',
     smartwatch: 'Ranked from your own genre, theme, and people signals',
     achievements: `${countEarnedBadges(context)}/${BADGES.length} badges earned`,
   };
@@ -946,16 +966,18 @@ export function renderStats() {
     ${sectionIndexBar()}
     ${block('pulse', 1, summaries.pulse, () => activityPanel(stats))}
     ${block('tv', 2, summaries.tv, () => tvTrackerPanel())}
-    ${block('critic', 3, summaries.critic, () => `<div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>`)}
-    ${block('taste', 4, summaries.taste, () => tasteMap(stats))}
-    ${block('themes', 5, summaries.themes, () => tagTasteProfile(stats))}
-    ${block('evolution', 6, summaries.evolution, () => tasteChangesPanel(stats))}
-    ${block('health', 7, summaries.health, () => collectionHealthPanel(stats))}
-    ${block('providers', 8, summaries.providers, () => providerIntelligencePanels())}
-    ${block('directors', 9, summaries.directors, () => directorLoyaltyPanel(fullStats))}
-    ${block('network', 10, summaries.network, () => directorNetworkPanel(stats))}
-    ${block('smartwatch', 11, summaries.smartwatch, () => smartWatchPanel())}
-    ${block('achievements', 12, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
+    ${block('rewatch', 3, summaries.rewatch, () => rewatchPanel())}
+    ${block('critic', 4, summaries.critic, () => `<div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>`)}
+    ${block('taste', 5, summaries.taste, () => tasteMap(stats))}
+    ${block('themes', 6, summaries.themes, () => tagTasteProfile(stats))}
+    ${block('evolution', 7, summaries.evolution, () => tasteChangesPanel(stats))}
+    ${block('health', 8, summaries.health, () => collectionHealthPanel(stats))}
+    ${block('franchises', 9, summaries.franchises, () => franchisePanel())}
+    ${block('providers', 10, summaries.providers, () => providerIntelligencePanels())}
+    ${block('directors', 11, summaries.directors, () => directorLoyaltyPanel(fullStats))}
+    ${block('network', 12, summaries.network, () => directorNetworkPanel(stats))}
+    ${block('smartwatch', 13, summaries.smartwatch, () => smartWatchPanel())}
+    ${block('achievements', 14, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
     <p class="stats-footnote">${esc(scopeLabel)} stats · TV watch time comes from the episode ledger where it exists (episodes watched × episode length), falling back to stored runtime otherwise. Titles with no reported runtime are excluded rather than guessed.</p>`;
 
   const snapshot = snapshotFor(fullStats);
@@ -966,7 +988,96 @@ export function renderStats() {
   // so the request would be pure waste.
   if (!isCollapsed('directors')) loadDirectorLoyalty(fullStats, generation);
   if (!isCollapsed('smartwatch')) loadSmartWatchList(stats, generation);
+  if (!isCollapsed('franchises')) loadFranchises(generation);
   ensureWatchedMeta();
+}
+
+// ===== REWATCHES =====
+// The question a watch history cannot otherwise answer: what do you go back to?
+// Repeat viewings are measured with the same runtime model as headline watch
+// time (see runtimeOf), so the two figures can be compared without a caveat.
+function rewatchPanel() {
+  const summary = rewatchSummary({ runtimeOf: docRuntime });
+  const head = `<div class="stats-section-head"><div><span>Repeat viewing</span><h2>Rewatches</h2><p>Every viewing after the first, logged from a title's page. Older entries count as one viewing until you log another.</p></div>${summary.extraPlays ? `<div class="tv-region-chip">${Math.round(summary.repeatShare)}% of viewings were repeats</div>` : ''}</div>`;
+
+  if (!summary.extraPlays) {
+    return `<section class="stats-panel rewatch-panel">${head}
+      <div class="tv-empty"><i>&#8635;</i><div><strong>Nothing logged twice yet</strong><p>Open something you have seen before and use <b>Log a rewatch</b> under the watched tick. The count, the dates, and the time it added all land here.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
+  }
+
+  const hours = Math.round(summary.extraMinutes / 60);
+  const tile = (label, value, note) => `<div><span>${esc(label)}</span><strong>${value}</strong><small>${esc(note)}</small></div>`;
+  const peak = summary.top[0]?.plays || 1;
+
+  const rows = summary.top.map(item => `<article class="tv-row" data-action="open-detail" data-id="${item.id}" data-type="${item.type}" role="link" tabindex="0" aria-label="${esc(item.title)}, seen ${item.plays} times">
+      <img src="${item.poster ? `${IMG}w92${item.poster}` : PH}" alt="" loading="lazy">
+      <div class="tv-row-copy">
+        <strong>${esc(item.title)}</strong>
+        <small>${item.extra} rewatch${item.extra === 1 ? '' : 'es'}${item.last ? ` &middot; last ${new Date(item.last).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : ''}</small>
+        <div class="tv-row-bar"><i style="--tv-w:${Math.round(item.plays / peak * 100)}%"></i></div>
+      </div>
+      <b>${item.plays}&times;</b>
+    </article>`).join('');
+
+  return `<section class="stats-panel rewatch-panel">${head}
+    <div class="tv-tiles">
+      ${tile('Rewatches logged', summary.extraPlays.toLocaleString(), `across ${summary.rewatchedTitles} title${summary.rewatchedTitles === 1 ? '' : 's'}`)}
+      ${tile('Returned to', `${Math.round(summary.rewatchRate)}%`, `${summary.rewatchedTitles} of ${summary.titles} watched titles`)}
+      ${tile('Time on repeats', hours ? `${hours.toLocaleString()}h` : '&mdash;', summary.timedTitles === summary.rewatchedTitles ? 'Runtime known for all of them' : `Runtime known for ${summary.timedTitles} of ${summary.rewatchedTitles}`)}
+      ${tile('Most returned to', summary.top[0] ? `${summary.top[0].plays}&times;` : '&mdash;', summary.top[0] ? summary.top[0].title : 'Nothing yet')}
+    </div>
+    <div class="tv-rows">${rows}</div>
+  </section>`;
+}
+
+// ===== FRANCHISES =====
+// Filled after paint: each collection not already cached costs one TMDB request,
+// so the panel opens with its own skeleton rather than blocking the page.
+function franchisePanel() {
+  return `<section class="stats-panel franchise-panel">
+    <div class="stats-section-head"><div><span>Collection completion</span><h2>Franchises</h2><p>How far through each film series you are. Measured against released entries only &mdash; an announced sequel cannot count against you.</p></div></div>
+    <div id="franchiseBody"><div class="network-empty">Working out where you stand&hellip;</div></div>
+  </section>`;
+}
+
+async function loadFranchises(generation) {
+  if (!$('franchiseBody')) return;
+  let summary;
+  try {
+    summary = await franchiseSummary({ limit: 14 });
+  } catch (error) {
+    console.warn('franchiseSummary', error);
+    if (generation === insightGeneration && $('franchiseBody')) $('franchiseBody').innerHTML = '<div class="network-empty">Could not reach TMDB for collection data. Try again later.</div>';
+    return;
+  }
+  if (generation !== insightGeneration || !$('franchiseBody')) return;
+
+  if (!summary.rows.length) {
+    $('franchiseBody').innerHTML = '<div class="network-empty">No film series in your history yet. Watch two entries from the same collection and this fills in.</div>';
+    return;
+  }
+
+  // Closest to finishing first: the panel exists to tell you what to watch next,
+  // and a series you are one film from completing is the strongest answer.
+  const ordered = [...summary.inProgress, ...summary.complete];
+  const row = item => `<button class="fr-row${item.complete ? ' done' : item.unseen.length === 1 ? ' almost' : ''}" data-action="go-collection" data-cid="${item.id}" aria-label="${esc(item.name)}, ${item.seen} of ${item.released} seen">
+      <img class="fr-poster" src="${item.poster ? `${IMG}w92${item.poster}` : PH}" alt="" loading="lazy">
+      <span>
+        <span class="fr-name">${esc(item.name)}</span>
+        <span class="fr-bar"><i style="width:${Math.round(item.percent)}%"></i></span>
+        <span class="fr-meta">${item.seen} of ${item.released} seen${item.upcoming ? ` &middot; ${item.upcoming} still to come` : ''}${item.nextUp ? ` &middot; next: ${esc(item.nextUp.title)}` : ''}</span>
+      </span>
+      <span class="fr-badge">${item.complete ? 'Complete' : item.unseen.length === 1 ? '1 to go' : `${item.unseen.length} left`}</span>
+    </button>`;
+
+  const tile = (label, value, note) => `<div><span>${esc(label)}</span><strong>${value}</strong><small>${esc(note)}</small></div>`;
+  $('franchiseBody').innerHTML = `
+    <div class="tv-tiles">
+      ${tile('Series tracked', summary.rows.length, `${summary.seenParts} of ${summary.trackedParts} released entries seen`)}
+      ${tile('Completed', summary.complete.length, summary.complete.length ? 'Every released entry watched' : 'None finished yet')}
+      ${tile('One film away', summary.almost.length, summary.almost.length ? summary.almost[0].name : 'Nothing that close yet')}
+    </div>
+    <div class="fr-list">${ordered.map(row).join('')}</div>`;
 }
 
 function exportStats() {
