@@ -86,6 +86,13 @@ export async function loadLists() {
 
 export function listById(id) { return state.lists.find(l => l.id === id) || null; }
 
+// A list with a PIN that has not been opened this session. Read straight from
+// `state` rather than importing js/list-lock.js, which imports this module.
+export function listIsLocked(id) {
+  const list = listById(id);
+  return !!(list?.lock?.hash && !state.unlockedLists.has(id));
+}
+
 // Membership, with lazy migration: a legacy doc (or one with no lists field) reads
 // as belonging to the default Watchlist.
 export function listsArr(entry) {
@@ -223,6 +230,32 @@ export async function deleteList(id) {
 // inherits that cross-user read posture — the raw watchlist stays owner-only.
 const sharedListRef = (uid, listId) => db.collection('users').doc(uid).collection('shared').doc(`list_${listId}`);
 
+// ----- PIN lock (js/list-lock.js owns the crypto; this owns the write) -----
+// Passing null clears the field. deleteField() keeps the document clean instead
+// of leaving a null behind that listHasPin would then have to special-case.
+export async function saveListLock(listId, lock) {
+  const list = listById(listId);
+  if (!state.user || !list) return false;
+  try {
+    await listCol().doc(listId).set({ lock: lock || firebase.firestore.FieldValue.delete() }, { merge: true });
+    if (lock) list.lock = lock; else delete list.lock;
+    document.dispatchEvent(new Event('cv:wl-changed'));
+    return true;
+  } catch (e) { console.error('saveListLock', e); toast(`Could not update the list lock${errCode(e)}`, 'error'); return false; }
+}
+
+// Revokes a published share snapshot. Called when a list is locked, so an old
+// link can never keep serving titles the owner has just made private.
+export async function unshareList(listId) {
+  const list = listById(listId);
+  if (!state.user || !list || !list.shared) return;
+  try {
+    await sharedListRef(state.user.uid, listId).delete();
+    await listCol().doc(listId).set({ shared: false }, { merge: true });
+    list.shared = false;
+  } catch (e) { console.error('unshareList', e); }
+}
+
 function itemsInList(listId) {
   return state.watchlist
     .filter(w => listsArr(w).includes(listId))
@@ -253,6 +286,8 @@ export async function shareList(listId) {
   if (!state.user) return document.dispatchEvent(new Event('cv:open-auth'));
   const list = listById(listId);
   if (!list) return;
+  // Publishing a snapshot of a PIN-locked list would defeat the lock entirely.
+  if (list.lock?.hash) { toast('Remove the PIN before sharing this list', 'info'); return; }
   try {
     await writeSharedList(list);
     if (!list.shared) { list.shared = true; await listCol().doc(listId).set({ shared: true }, { merge: true }); }
@@ -266,7 +301,7 @@ export async function shareList(listId) {
 // Keep already-shared lists' snapshots fresh when the watchlist changes.
 export async function republishSharedLists() {
   if (!state.user) return;
-  for (const l of state.lists.filter(l => l.shared)) {
+  for (const l of state.lists.filter(l => l.shared && !l.lock?.hash)) {
     try { await writeSharedList(l); } catch (e) { console.error('republishSharedLists', e); }
   }
 }
@@ -280,7 +315,11 @@ function renderPickerRows() {
   const rows = $('listRows');
   if (!rows || !pickerTarget) return;
   const { id, type } = pickerTarget;
+  // A locked list is rendered as a locked row: its membership is a fact about the
+  // hidden list, so revealing a ticked box here would leak exactly what the PIN
+  // is meant to cover. Unlock it on My List first.
   rows.innerHTML = state.lists.map(l => {
+    if (listIsLocked(l.id)) return `<div class="list-row locked" aria-disabled="true"><span class="list-ico">🔒</span><span class="list-nm">${esc(l.name)}</span><small>Locked</small></div>`;
     const on = inList(id, type, l.id);
     return `<label class="list-row"><input type="checkbox" data-action="toggle-list-member" data-list="${esc(l.id)}" ${on ? 'checked' : ''}><span class="list-ico">${l.icon || '📁'}</span><span class="list-nm">${esc(l.name)}</span></label>`;
   }).join('');

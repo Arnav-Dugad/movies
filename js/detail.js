@@ -2,7 +2,7 @@
 import { tmdb } from './api.js';
 import { IMG, PH, REGIONS, pickLogo, providerUrl } from './config.js';
 import { state, pushRecentlyViewed } from './state.js';
-import { esc, fmt, debounce, $ } from './ui.js';
+import { esc, fmt, debounce, $, prefersReducedMotion } from './ui.js';
 import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals, observeCountUps } from './effects.js';
@@ -217,7 +217,7 @@ export async function openDetail(id, type) {
     observeReveals(ct); observeCountUps(ct);
     // Animate the Box Office bar widths after paint (horizontal %-widths resolve
     // against the definite-width card).
-    requestAnimationFrame(() => ct.querySelectorAll('.bo-fill').forEach(f => { f.style.width = (+f.dataset.w || 0) + '%'; }));
+    requestAnimationFrame(() => animateBoxOffice(ct));
     // Reveal a "Read more" ONLY where the text actually overflows its clamp.
     if (clampResize) { window.removeEventListener('resize', clampResize); clampResize = null; }
     const remeasure = syncAllClampToggles(ct);
@@ -516,56 +516,107 @@ function syncAllClampToggles(scope) {
   return run;
 }
 
-// Premium financial overview. Revenue minus production budget is labelled as a
-// gross difference—not profit—because marketing and exhibitor shares are absent.
+// Bars grow from zero and the multiple counts up, both only once the section is
+// actually on screen — a %-width needs a definite-width parent, and a number
+// ticking behind a collapsed accordion is wasted motion.
+function animateBoxOffice(scope) {
+  if (!scope) return;
+  scope.querySelectorAll('.bo2-fill').forEach(fill => { fill.style.width = `${+fill.dataset.w || 0}%`; });
+  scope.querySelectorAll('[data-count-decimal]').forEach(node => {
+    const target = parseFloat(node.dataset.countDecimal) || 0;
+    if (prefersReducedMotion()) { node.textContent = target.toFixed(2); return; }
+    const started = performance.now(), duration = 900;
+    const step = now => {
+      const progress = Math.min(1, (now - started) / duration);
+      // easeOutCubic: fast first, settles on the real figure.
+      node.textContent = (target * (1 - Math.pow(1 - progress, 3))).toFixed(2);
+      if (progress < 1) requestAnimationFrame(step); else node.textContent = target.toFixed(2);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+// Box Office. One question first — did it make its money back? — answered in a
+// sentence and a single number, with two bars on a shared scale underneath.
+// Everything modelled (marketing, the studio's share of the gross) is real but
+// secondary, so it lives behind a disclosure instead of competing with the two
+// figures TMDB actually reports.
 function boxOfficeHTML(det) {
   const budget = +(det.budget || 0), revenue = +(det.revenue || 0);
   if (!budget && !revenue) return '';
   const hasBoth = !!(budget && revenue);
   const difference = revenue - budget;
   const multiple = budget ? revenue / budget : 0;
-  const recovery = budget ? Math.round(multiple * 100) : 0;
-  const variance = budget ? Math.round(difference / budget * 100) : 0;
+
+  // Industry rule of thumb, stated openly rather than hidden in the maths:
+  // marketing roughly matches production, and the studio keeps 40-55% of the
+  // worldwide gross. Break-even is therefore well above the budget line.
   const marketingLow = budget * .5, marketingHigh = budget;
   const totalCostLow = budget + marketingLow, totalCostHigh = budget + marketingHigh;
   const breakEvenLow = budget ? totalCostLow / .55 : 0, breakEvenHigh = budget ? totalCostHigh / .4 : 0;
   const breakEvenMid = (breakEvenLow + breakEvenHigh) / 2;
-  const scenarioProgress = breakEvenMid ? Math.round(revenue / breakEvenMid * 100) : 0;
   const studioReturnLow = revenue * .4, studioReturnHigh = revenue * .55;
-  const chartMax = Math.max(budget, totalCostHigh, revenue, 1);
-  const widthOf = value => Math.max(value ? 4 : 0, Math.round(value / chartMax * 100));
-  const ring = Math.min(100, Math.max(0, scenarioProgress || recovery));
-  const scale = !budget ? 'Unreported scale' : budget >= 200e6 ? 'Tentpole scale' : budget >= 100e6 ? 'Blockbuster scale' : budget >= 40e6 ? 'Major studio scale' : budget >= 10e6 ? 'Mid-budget scale' : 'Lean production';
-  const performance = !hasBoth ? 'Reported data is incomplete' : multiple >= 3 ? 'Exceptional gross leverage' : multiple >= 2.5 ? 'Strong theatrical multiple' : multiple >= 2 ? 'Gross comfortably exceeds budget' : multiple >= 1 ? 'Gross recovered reported budget' : 'Gross remains below reported budget';
-  const statusClass = !hasBoth ? '' : multiple >= 2 ? ' positive' : multiple < 1 ? ' negative' : '';
-  const releaseRaw = det.release_date || '';
-  const releaseMs = releaseRaw ? new Date(`${releaseRaw}T00:00:00`).getTime() : 0;
-  const releaseDays = releaseMs && releaseMs <= Date.now() ? Math.max(1, Math.floor((Date.now() - releaseMs) / 86400000) + 1) : 0;
-  const pace = revenue && releaseDays ? revenue / releaseDays : 0;
-  const core = `<div class="boxoffice">
-    <div class="bo-head"><div><span class="bo-eyebrow">Financial intelligence lab</span><h3>Reported performance, decoded</h3><p>${esc(performance)}</p></div><span class="bo-status${statusClass}">${esc(scale)}</span></div>
-    <div class="bo-dashboard">
-      <div class="bo-main">
-        <div class="bo-metrics">
-          ${budget ? `<div class="bo-card"><span>Reported production</span><strong>$${fmt(budget)}</strong><small>TMDB budget</small></div>` : ''}
-          ${revenue ? `<div class="bo-card"><span>Reported worldwide gross</span><strong>$${fmt(revenue)}</strong><small>Theatrical gross</small></div>` : ''}
-          ${hasBoth ? `<div class="bo-card ${difference >= 0 ? 'positive' : 'negative'}"><span>Gross above production</span><strong>${difference >= 0 ? '+' : '−'}$${fmt(Math.abs(difference))}</strong><small>Not profit</small></div>` : ''}
-          ${pace ? `<div class="bo-card"><span>Lifetime gross pace</span><strong>$${fmt(pace)}/day</strong><small>Across ${releaseDays.toLocaleString()} days</small></div>` : ''}
-        </div>
-        <div class="bo-bars" aria-label="Reported and modelled financial scale comparison">
-          ${budget ? `<div class="bo-row"><span class="bo-name">Production</span><div class="bo-track"><div class="bo-fill budget" style="width:0" data-w="${widthOf(budget)}"></div></div><span class="bo-val">$${fmt(budget)}</span></div>` : ''}
-          ${budget ? `<div class="bo-row scenario"><span class="bo-name">Cost model</span><div class="bo-track"><div class="bo-fill total-cost" style="width:0" data-w="${widthOf(totalCostHigh)}"></div></div><span class="bo-val">$${fmt(totalCostLow)}–${fmt(totalCostHigh)}</span></div>` : ''}
-          ${revenue ? `<div class="bo-row"><span class="bo-name">Gross</span><div class="bo-track"><div class="bo-fill revenue" style="width:0" data-w="${widthOf(revenue)}"></div></div><span class="bo-val">$${fmt(revenue)}</span></div>` : ''}
-        </div>
-      </div>
-      ${hasBoth ? `<div class="bo-recovery"><div class="bo-ring" style="--bo-progress:${ring * 3.6}deg"><div><strong>${scenarioProgress}%</strong><span>scenario</span></div></div><p>Modelled break-even journey</p><small>${multiple.toFixed(2)}× gross / budget</small></div>` : ''}
+
+  // The headline is judged against the SAME break-even model the marker draws.
+  // Ranking on the raw multiple instead would let the sentence call something a
+  // clear hit while the marker sitting beside it says it fell short.
+  const verdict = !hasBoth
+    ? { tone: 'neutral', line: budget ? 'Worldwide gross has not been reported yet.' : 'The production budget has not been reported.' }
+    : revenue >= breakEvenHigh ? { tone: 'strong', line: `Grossed ${multiple.toFixed(1)}x its budget and cleared even the most cautious break-even estimate.` }
+    : revenue >= breakEvenMid ? { tone: 'strong', line: `Grossed ${multiple.toFixed(1)}x its budget, past the middle of the modelled break-even band.` }
+    : revenue >= breakEvenLow ? { tone: 'ok', line: `Grossed ${multiple.toFixed(1)}x its budget — inside the modelled break-even band, so the real outcome turns on what marketing actually cost.` }
+    : multiple >= 1 ? { tone: 'ok', line: `Earned its production budget back ${multiple.toFixed(1)}x over, but that is before any marketing spend.` }
+    : { tone: 'weak', line: `Grossed less than it cost to produce — ${multiple.toFixed(2)}x the budget.` };
+
+  // Both bars share one scale so their lengths are directly comparable, and the
+  // scale always includes break-even so the marker cannot fall off the end.
+  const scaleMax = Math.max(budget, revenue, hasBoth ? breakEvenMid : 0, 1);
+  const widthOf = value => Math.max(value ? 3 : 0, Math.round(value / scaleMax * 100));
+  // Clamped so a 2px centred marker is never half-clipped by the track's radius.
+  const breakEvenAt = hasBoth ? Math.min(99, Math.max(1, Math.round(breakEvenMid / scaleMax * 100))) : 0;
+
+  // The break-even marker rides INSIDE the gross track, so it sits on exactly the
+  // same scale as the bar it is judging rather than on a guessed page offset.
+  const marker = hasBoth
+    ? `<i class="bo2-mark" style="left:${breakEvenAt}%" aria-hidden="true"></i>`
+    : '';
+  const bar = (label, value, cls, inner = '') => value
+    ? `<div class="bo2-row"><span class="bo2-label">${label}</span><div class="bo2-track">${inner}<div class="bo2-fill ${cls}" style="width:0" data-w="${widthOf(value)}"></div></div><span class="bo2-value">$${fmt(value)}</span></div>`
+    : '';
+
+  const facts = [
+    budget ? ['Production budget', `$${fmt(budget)}`, 'Reported by TMDB'] : null,
+    revenue ? ['Worldwide gross', `$${fmt(revenue)}`, 'Theatrical, all territories'] : null,
+    hasBoth ? ['Gross above budget', `${difference >= 0 ? '+' : '−'}$${fmt(Math.abs(difference))}`, 'Difference, not profit'] : null,
+  ].filter(Boolean);
+
+  const detailRows = [
+    budget ? ['Marketing (modelled)', `$${fmt(marketingLow)}–${fmt(marketingHigh)}`, '50–100% of the production budget'] : null,
+    budget ? ['Total cost (modelled)', `$${fmt(totalCostLow)}–${fmt(totalCostHigh)}`, 'Production plus that marketing range'] : null,
+    hasBoth ? ['Break-even gross (modelled)', `$${fmt(breakEvenLow)}–${fmt(breakEvenHigh)}`, 'Cost divided by a 40–55% studio share'] : null,
+    hasBoth ? ['Studio theatrical return (modelled)', `$${fmt(studioReturnLow)}–${fmt(studioReturnHigh)}`, 'Before streaming, discs, and TV rights'] : null,
+  ].filter(Boolean);
+
+  const core = `<div class="boxoffice2">
+    <div class="bo2-verdict ${verdict.tone}">
+      ${hasBoth ? `<div class="bo2-hero"><strong data-count-decimal="${multiple.toFixed(2)}">0.00</strong><span>x budget</span></div>` : ''}
+      <p>${esc(verdict.line)}</p>
     </div>
-    ${hasBoth ? `<div class="bo-intelligence-grid"><article><span>Gross multiple</span><strong>${multiple.toFixed(2)}×</strong><p>Worldwide gross divided by production budget.</p></article><article class="${variance >= 0 ? 'positive' : 'negative'}"><span>Production spread</span><strong>${variance >= 0 ? '+' : ''}${variance}%</strong><p>Gross difference versus production only.</p></article><article><span>Modelled break-even band</span><strong>$${fmt(breakEvenLow)}–${fmt(breakEvenHigh)}</strong><p>Uses disclosed assumptions below.</p></article><article><span>Possible studio theatrical return</span><strong>$${fmt(studioReturnLow)}–${fmt(studioReturnHigh)}</strong><p>40–55% gross-share scenario, before other income.</p></article></div>` : ''}
-    ${budget ? `<div class="bo-scenario-lab"><div><span>Transparent scenario model</span><strong>What the reported numbers do not include</strong></div><div class="bo-scenario-flow"><span><b>1.0×</b> Production</span><i>+</i><span><b>0.5–1.0×</b> Marketing assumption</span><i>÷</i><span><b>40–55%</b> Studio gross-share assumption</span></div></div>` : ''}
-    <p class="bo-note"><strong>Reported:</strong> production budget and worldwide gross from TMDB, in USD. <strong>Modelled:</strong> marketing at 50–100% of production and studio theatrical share at 40–55%. This is an educational scenario—not profit, accounting, or a financial claim.</p>
+    <div class="bo2-bars">
+      ${bar('Budget', budget, 'budget')}
+      ${bar('Worldwide gross', revenue, 'gross', marker)}
+      ${hasBoth ? `<p class="bo2-breakeven">Modelled break-even &asymp; $${fmt(breakEvenMid)} &mdash; the marker on the gross bar.</p>` : ''}
+    </div>
+    <div class="bo2-facts">${facts.map(([label, value, note]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`).join('')}</div>
+    ${detailRows.length ? `<details class="bo2-model"><summary>How break-even is estimated</summary><div class="bo2-model-body">
+      <p>TMDB reports only two figures: the production budget and the worldwide gross. Studios do not publish marketing spend or their share of ticket sales, so the numbers below are an openly stated model — not accounting, and not profit.</p>
+      <div class="bo2-model-rows">${detailRows.map(([label, value, note]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></div>`).join('')}</div>
+    </div></details>` : ''}
+    <p class="bo2-note">Figures in USD, as reported to TMDB. Anything labelled "modelled" is an educational estimate.</p>
   </div>`;
-  const summary = `${budget ? `$${fmt(budget)} budget` : 'Budget unreported'} · ${revenue ? `$${fmt(revenue)} worldwide gross` : 'Gross unreported'}${hasBoth ? ` · ${multiple.toFixed(2)}× multiple` : ''}`;
-  return detailAccordion('detailBoxOfficeExpanded', 'Financial intelligence', 'Box Office Lab', summary, core, 'box-office');
+
+  const summary = `${budget ? `$${fmt(budget)} budget` : 'Budget unreported'} · ${revenue ? `$${fmt(revenue)} gross` : 'Gross unreported'}${hasBoth ? ` · ${multiple.toFixed(1)}x` : ''}`;
+  return detailAccordion('detailBoxOfficeExpanded', 'Financial intelligence', 'Box Office', summary, core, 'box-office');
 }
 
 export function closeDetail() {
@@ -702,7 +753,7 @@ export function initDetail() {
       if (el.dataset.pref) updatePref(el.dataset.pref, expanded);
       if (expanded) {
         requestAnimationFrame(() => {
-          body.querySelectorAll('.bo-fill').forEach(fill => { fill.style.width = `${+fill.dataset.w || 0}%`; });
+          animateBoxOffice(body);
           body.querySelectorAll('.review-body').forEach(review => syncClampToggle(review, body.querySelector(`.review-toggle[data-target="${review.id}"]`)));
         });
       }

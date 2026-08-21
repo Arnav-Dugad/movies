@@ -6,6 +6,7 @@ import { loadPrefs } from './prefs.js';
 import { initAuth } from './auth.js';
 import { initWatchlist } from './watchlist.js';
 import { initLists } from './lists.js';
+import { initListLock } from './list-lock.js';
 import { initWatched } from './watched.js';
 import { initRatings } from './ratings.js';
 import { initMedia } from './media.js';
@@ -39,7 +40,7 @@ import { initAwards } from './awards.js';
 import { initProviderBadges } from './provider-badges.js';
 import { initNotifications } from './notifications.js';
 
-function hideLoader() { const l = $('loader'); if (l) l.classList.add('hidden'); }
+function hideLoader() { window.__cvBooted = true; const l = $('loader'); if (l) l.classList.add('hidden'); }
 
 async function init() {
   loadPrefs();
@@ -53,6 +54,7 @@ async function init() {
   initAuth();
   initWatchlist();
   initLists();
+  initListLock();
   initWatched();
   initRatings();
   initMedia();

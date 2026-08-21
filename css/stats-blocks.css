@@ -1,0 +1,39 @@
+/* ===== COLLAPSIBLE STATS SECTIONS =====
+   The bar is the section's identity when the body is closed, so it carries the
+   number, the name, and a real summary rather than just a chevron. */
+.stats-index{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:22px 0 6px;padding:9px;position:sticky;top:calc(var(--nav-h) + 7px);z-index:20;border:1px solid var(--glass-border);border-radius:18px;background:rgba(10,10,16,.86);backdrop-filter:blur(20px);box-shadow:0 14px 40px rgba(0,0,0,.24)}
+.stats-index-jump{display:flex;align-items:center;gap:5px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.stats-index-jump::-webkit-scrollbar{display:none}
+.stats-index-jump button{min-height:34px;padding:0 11px;flex-shrink:0;border:1px solid transparent;border-radius:11px;color:var(--text2);font-size:.53rem;font-weight:750;white-space:nowrap;transition:background .16s,color .16s,border-color .16s}
+.stats-index-jump button:hover{border-color:rgba(167,139,250,.24);background:rgba(139,92,246,.1);color:var(--purple2)}
+.stats-index-jump button.off{color:var(--text3)}
+.stats-index-jump button.off::before{content:'';width:5px;height:5px;display:inline-block;margin-right:6px;border-radius:50%;background:var(--text3);vertical-align:middle}
+.stats-index-toggle{min-height:34px;padding:0 13px;flex-shrink:0;border:1px solid var(--glass-border);border-radius:11px;background:rgba(255,255,255,.03);color:var(--text2);font-size:.52rem;font-weight:800}
+.stats-index-toggle:hover{border-color:rgba(167,139,250,.26);color:var(--purple2)}
+
+.stats-block{margin-top:14px;scroll-margin-top:calc(var(--nav-h) + 74px)}
+.stats-block-bar{width:100%;display:flex;align-items:center;gap:14px;padding:13px 16px;border:1px solid var(--glass-border);border-radius:16px;background:rgba(255,255,255,.022);color:inherit;text-align:left;cursor:pointer;transition:border-color .18s,background .18s}
+.stats-block-bar:hover{border-color:rgba(167,139,250,.24);background:rgba(139,92,246,.05)}
+.stats-block-index{flex-shrink:0;color:var(--text3);font-family:var(--font-mono);font-size:.6rem;font-weight:700;letter-spacing:.04em}
+.stats-block-label{min-width:0;flex:1}
+.stats-block-label b{display:block;font-size:.82rem;font-weight:750}
+.stats-block-label small{display:block;margin-top:3px;overflow:hidden;color:var(--text3);font-size:.53rem;line-height:1.45;text-overflow:ellipsis}
+.stats-block-chev{width:17px;height:17px;flex-shrink:0;color:var(--text3);transition:transform .24s var(--ease-out),color .18s}
+.stats-block-bar:hover .stats-block-chev{color:var(--purple2)}
+.stats-block.collapsed .stats-block-chev{transform:rotate(-90deg)}
+.stats-block.collapsed .stats-block-bar{background:rgba(255,255,255,.012)}
+.stats-block-body{padding-top:10px;animation:statsBlockIn .3s var(--ease-out)}
+.stats-block-body[hidden]{display:none}
+@keyframes statsBlockIn{from{opacity:0;transform:translateY(-6px)}}
+/* Panels already carry their own margins; inside a block the bar provides them. */
+.stats-block-body>.stats-panel,.stats-block-body>.stats-achievements{margin-top:0}
+
+@media(max-width:700px){
+  .stats-index{position:relative;top:auto;flex-direction:column;align-items:stretch;gap:8px;border-radius:15px}
+  .stats-index-jump{margin:0 -3px}
+  .stats-index-toggle{width:100%;min-height:40px}
+  .stats-block-bar{gap:10px;padding:12px 13px;border-radius:14px}
+  .stats-block-label b{font-size:.74rem}
+  .stats-block-label small{font-size:.48rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal}
+}
+@media(prefers-reduced-motion:reduce){.stats-block-body{animation:none}.stats-block-chev{transition:none}}

@@ -11,6 +11,7 @@ import { hydratePrefs } from './prefs.js';
 import { REGIONS } from './config.js';
 import { hydrateNotificationPrefs, resetNotificationPrefsForAuth } from './notification-prefs.js';
 import { hydrateProviderHistory, resetProviderHistoryForAuth } from './provider-history.js';
+import { hydrateStatsSections } from './stats.js';
 
 let authMode = 'login';
 let delRelease = null;
@@ -24,6 +25,7 @@ async function loadProfile() {
   resetNotificationPrefsForAuth();
   resetProviderHistoryForAuth();
   state.statsSnapshot = null;
+  hydrateStatsSections(null);
   if (!state.user) return;
   let localFeedback = {};
   try { localFeedback = JSON.parse(localStorage.getItem(`cv_rec_feedback_${state.user.uid}`) || '{}'); } catch (_) {}
@@ -56,6 +58,7 @@ async function loadProfile() {
           if (regionChanged) document.dispatchEvent(new Event('cv:region'));
         }
         hydrateProviderHistory(x.providerHistory);
+        hydrateStatsSections(x.statsSections);
       state.profile = {
         avatar: x.avatar || null, created: x.created || null,
         headline: String(x.headline || '').slice(0, 70), bio: String(x.bio || '').slice(0, 220),
@@ -96,6 +99,7 @@ export function initAuth() {
       resetNotificationPrefsForAuth();
       resetProviderHistoryForAuth();
       state.statsSnapshot = null;
+      hydrateStatsSections(null);
     }
     loadRecentlyViewed();
     document.dispatchEvent(new Event('cv:auth'));

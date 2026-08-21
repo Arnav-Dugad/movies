@@ -28,8 +28,15 @@ export const state = {
   // The latest compact stats snapshot is loaded by the same owner-only profile
   // read. Stats can reuse slower-changing insights without another Firestore read.
   statsSnapshot: null,
+  // Which Stats sections are collapsed, keyed by block id. Mirrored onto the
+  // owner profile doc so the layout follows the account, not the device.
+  statsSections: {},
   lists: [],          // custom lists metadata (loaded by lists.js)
   wlList: 'watchlist',   // active chip on the My List page ('watched' | listId; defaults to the Watchlist list)
+  // PIN-locked lists that have been opened during THIS page session. Deliberately
+  // not persisted: reloading CineVerse always re-locks. Lives here (not in
+  // list-lock.js) so lists.js can honour it without importing that module back.
+  unlockedLists: new Set(),
 };
 
 // ===== LOOKUP HELPERS =====

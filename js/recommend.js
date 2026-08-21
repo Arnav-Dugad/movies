@@ -27,6 +27,30 @@ const HISTORY_LIMIT = 100;
 const ROTATION_IDLE_MS = 3 * 86400000;
 const ACTIVITY_WRITE_GAP = 6 * 60 * 60 * 1000;
 
+// ----- Per-visit freshness -----
+// Every time CineVerse is OPENED the rails show a different slice of the ranked
+// pool. The counter is a device-local integer bumped once per page load, so it
+// costs no Firestore write, and it is deliberately not bumped on in-app
+// navigation — rails that reshuffled while you browsed would feel broken.
+// The stored (cross-device) rotation is still added on top.
+const SESSION_KEY = () => `cv_rec_session_${state.user?.uid || 'guest'}`;
+let sessionRotation = null;
+let manualShuffle = 0;
+
+function visitRotation() {
+  if (sessionRotation !== null) return sessionRotation;
+  let stored = 0;
+  try { stored = Math.max(0, Math.floor(+(localStorage.getItem(SESSION_KEY()) || 0))); } catch (_) { stored = 0; }
+  sessionRotation = (stored + 1) % 100000;
+  try { localStorage.setItem(SESSION_KEY(), String(sessionRotation)); } catch (_) {}
+  return sessionRotation;
+}
+
+// The raw pool is varied too, not just the window over it: a rotation that only
+// re-sliced the same 40 candidates would keep showing the same titles in a new
+// order. Pages 1-3 all hold quality results for these queries.
+const pageFor = (offset = 0) => 1 + ((visitRotation() + offset) % 3);
+
 function splitKey(key) { const i = key.lastIndexOf('_'); return [key.slice(0, i), +key.slice(i + 1)]; }
 
 function seedMetaForKey(type, id) {
@@ -229,14 +253,14 @@ export async function fetchCandidates(profile, { only = null } = {}) {
 
   if (wantMovie && movieG.length) {
     const or = movieG.join('|');
-    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, ...outM }), 'movie', 'genre');
-    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, page: 2, ...outM }), 'movie', 'genre');
-    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 500, ...outM }), 'movie', 'quality');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, page: pageFor(0), ...outM }), 'movie', 'genre');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, page: pageFor(1), ...outM }), 'movie', 'genre');
+    push(tmdb('/discover/movie', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 500, page: pageFor(2), ...outM }), 'movie', 'quality');
   }
   if (wantMovie && actors.length) {
     // The TOP actor gets its own call so the "Starring X" row is always accurate;
     // the next two only widen the pool.
-    push(tmdb('/discover/movie', { with_cast: String(actors[0].id), sort_by: 'popularity.desc', ...outM }), 'movie', 'cast');
+    push(tmdb('/discover/movie', { with_cast: String(actors[0].id), sort_by: 'popularity.desc', page: pageFor(1), ...outM }), 'movie', 'cast');
     const more = actors.slice(1, 3).map(a => a.id);
     if (more.length) push(tmdb('/discover/movie', { with_cast: more.join('|'), sort_by: 'popularity.desc', ...outM }), 'movie', 'castmore');
   }
@@ -252,12 +276,12 @@ export async function fetchCandidates(profile, { only = null } = {}) {
   // Story themes are much more specific than genre buckets. Each call keeps its
   // exact keyword provenance so the UI can truthfully promise “Because you enjoy…”.
   (profile.topKeywords || []).slice(0, 2).forEach(keyword => {
-    if (wantMovie) push(tmdb('/discover/movie', { with_keywords: String(keyword.id), sort_by: 'popularity.desc', 'vote_count.gte': 80, ...outM }), 'movie', 'keyword', { __keywordIds: [+keyword.id] });
+    if (wantMovie) push(tmdb('/discover/movie', { with_keywords: String(keyword.id), sort_by: 'popularity.desc', 'vote_count.gte': 80, page: pageFor(2), ...outM }), 'movie', 'keyword', { __keywordIds: [+keyword.id] });
     if (wantTV && (only === 'tv' || !profile.movieBias)) push(tmdb('/discover/tv', { with_keywords: String(keyword.id), sort_by: 'popularity.desc', 'vote_count.gte': 80, ...outT }), 'tv', 'keyword', { __keywordIds: [+keyword.id] });
   });
   if (wantTV && tvG.length && (only === 'tv' || !profile.movieBias)) {
     const or = tvG.join('|');
-    push(tmdb('/discover/tv', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, ...outT }), 'tv', 'genre');
+    push(tmdb('/discover/tv', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, page: pageFor(0), ...outT }), 'tv', 'genre');
     if (only === 'tv') push(tmdb('/discover/tv', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 300, ...outT }), 'tv', 'quality');
   }
   (profile.seedIds || []).slice(0, 3).filter(s => !only || s.type === only)
@@ -431,6 +455,18 @@ function pickLabeledSeed(profile) {
   return r ? { id: r.id, type: r.type, title: r.title, genres: r.genres || [], reason: 'viewed' } : null;
 }
 
+// A visible promise that the rails are different this visit, plus a way to skip
+// ahead without waiting for the next one.
+function recommendationBar() {
+  return `<div class="rec-freshbar reveal">
+    <div><span>Personal picks</span><strong>Refreshed for this visit</strong><small>New slice of your ranked pool every time you open CineVerse.</small></div>
+    <button class="rec-shuffle" data-action="shuffle-recommendations" aria-label="Shuffle your recommendations">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
+      <span>Shuffle</span>
+    </button>
+  </div>`;
+}
+
 function shell(d) {
   return `<div class="section reveal"><div class="section-head"><h2 class="section-title"><span>${d.icon}</span> ${esc(d.title)}</h2></div><div class="row" id="${d.id}">${skelCards(8)}</div></div>`;
 }
@@ -484,8 +520,17 @@ function rotatedWindow(items, rotation, size = 20) {
   if (!items.length) return [];
   const premium = items.slice(0, Math.min(items.length, Math.max(size, size * 2)));
   if (!rotation || premium.length <= size) return premium.slice(0, size);
+  // 7 is coprime with every window length we produce, so successive rotations
+  // land on genuinely different starting points instead of cycling early.
   const offset = (rotation * 7) % premium.length;
   return [...premium.slice(offset), ...premium.slice(0, offset)].slice(0, size);
+}
+
+// The stored rotation keeps long-term drift consistent across devices; the visit
+// counter guarantees a different slice every time the app is opened; the manual
+// shuffle lets you skip ahead without waiting for the next visit.
+function activeRotation() {
+  return prepareRecommendationRotation() + visitRotation() + manualShuffle;
 }
 
 function touchRecommendationActivity() {
@@ -588,7 +633,7 @@ export async function renderRecommendations() {
   ensureWatchedMeta();
   const profile = buildTasteProfile();
   if (!profile.hasSignal) { wrap.innerHTML = ''; return; }
-  const rotation = prepareRecommendationRotation();
+  const rotation = activeRotation();
   profile.rotation = rotation;
 
   const seed = pickLabeledSeed(profile);
@@ -604,7 +649,7 @@ export async function renderRecommendations() {
   if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}` });
   if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
 
-  wrap.innerHTML = descriptors.map(shell).join('');
+  wrap.innerHTML = recommendationBar() + descriptors.map(shell).join('');
   observeReveals(wrap);
 
   // ONE pool fetch + ONE ranking pass, shared by every row. The old code refetched
@@ -657,7 +702,7 @@ export async function renderRecommendationInsights() {
     <article><span>Trusted people</span><strong>${leadingPeople.map(esc).join(' · ') || 'Still learning'}</strong><p>Recurring directors and cast add a focused source bonus.</p></article>
     <article><span>Title seed</span><strong>${esc(seed?.title || 'Quality discovery')}</strong><p>${seed ? `Real similarity must overlap with this ${seed.reason} title.` : 'High-quality discoveries fill gaps without inventing a link.'}</p></article>
     <article><span>Privacy rule</span><strong>Watched titles stay out</strong><p>Saved titles can remain useful; watched and dismissed titles are filtered.</p></article>
-    <article><span>Freshness rhythm</span><strong>Rotates after 3 quiet days</strong><p>Using or dismissing a recommendation pauses rotation so useful picks do not disappear too soon.</p></article>
+    <article><span>Freshness rhythm</span><strong>A new slice every visit</strong><p>Opening CineVerse rotates the window over your ranked pool, and Shuffle skips ahead on demand. Ranking itself never changes randomly — only which part of it you see first.</p></article>
   </div><aside class="rec-audit active profile-rec-audit" id="recAudit" aria-hidden="false">${auditHTML(profile, null, seed, { closable: false })}</aside>`;
   try {
     const ranked = rankAndDedupe(await fetchCandidates(profile), profile);
@@ -677,6 +722,13 @@ export function initRecommendations() {
       if (panel) { panel.classList.toggle('active', auditOpen); panel.setAttribute('aria-hidden', auditOpen ? 'false' : 'true'); }
     },
     'restore-recommendation': element => restoreRecommendation(element.dataset.key),
+    'shuffle-recommendations': element => {
+      // A prime step keeps consecutive shuffles from landing on the same window.
+      manualShuffle += 3;
+      element.classList.add('spinning');
+      renderRecommendations();
+      toast('Fresh picks pulled from your ranked pool', 'success');
+    },
   });
   document.addEventListener('click', event => {
     if (event.target.closest('[data-action="dismiss-recommendation"]')) return;

@@ -48,12 +48,6 @@
   .provider-reliability-summary{grid-template-columns:1fr 1fr}.provider-reliability-summary>div:last-child{grid-column:1/-1}.provider-reliability-grid,.provider-flow-list{grid-template-columns:1fr}.provider-region-chip,.provider-chart-legend{align-self:flex-start}.provider-catalog-trend{grid-template-columns:1fr;gap:8px}.provider-catalog-trend svg,.provider-trend-dates{grid-column:1}.provider-stats-empty{align-items:flex-start;flex-wrap:wrap}.provider-stats-empty button{width:100%}
   .stat-card{min-width:0;max-width:100%;min-height:88px;padding:14px}
   .stat-person-multi,.stat-media,#providerBlock,.boxoffice{grid-column:1/-1}
-  .bo-dashboard{grid-template-columns:1fr}
-  .bo-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .bo-metrics>div:nth-child(3){grid-column:1/-1}
-  .bo-recovery{display:flex;align-items:center;justify-content:center;gap:14px}
-  .bo-ring{width:92px;height:92px;margin:0}
-  .bo-recovery p{margin:0}
   .cd-num{font-size:1.7rem}
   .ep-still{width:100px}
   .vid-card{width:210px}
@@ -204,12 +198,6 @@
   .wl-cover-grid{grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr)}
   .wl-cover-copy{left:18px;bottom:18px}
   .wl-insights>div{padding:14px 12px}
-  .bo-head{flex-direction:column;gap:10px}
-  .bo-status{align-self:flex-start}
-  .bo-metrics{grid-template-columns:1fr}
-  .bo-metrics>div:nth-child(3){grid-column:auto}
-  .bo-row{gap:7px}
-  .bo-val{width:66px;font-size:.67rem}
   .stats-page{padding-left:10px;padding-right:10px}
   .stats-hero-actions{align-items:stretch;flex-direction:column}
   .stats-scope{width:100%}

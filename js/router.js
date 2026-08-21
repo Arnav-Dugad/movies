@@ -16,6 +16,7 @@ import { openCollection2 } from './collection.js';
 import { openSharedList } from './shared-list.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeListPicker, isListPickerOpen } from './lists.js';
+import { closePinModal, isPinModalOpen } from './list-lock.js';
 import { closeTrailer, isTrailerOpen, closeLightbox, isLightboxOpen, closeSpoilerShare, isSpoilerShareOpen } from './media.js';
 import { closeAuth, isAuthOpen, closeDelete, isDeleteOpen } from './auth.js';
 import { renderFriends } from './friends.js';
@@ -104,6 +105,7 @@ function closeAllModals() {
   if (isSpoilerShareOpen()) closeSpoilerShare();
   if (isRatingOpen()) closeRating();
   if (isListPickerOpen()) closeListPicker();
+  if (isPinModalOpen()) closePinModal();
   if (isScannerOpen()) closeScanner();
   if (isDeleteOpen()) closeDelete();
   if (isAuthOpen()) closeAuth();
@@ -179,6 +181,7 @@ function handleEscape() {
   if (isTrailerOpen()) return closeTrailer();
   if (isRatingOpen()) return closeRating();
   if (isListPickerOpen()) return closeListPicker();
+  if (isPinModalOpen()) return closePinModal();
   if (isDeleteOpen()) return closeDelete();
   if (isAuthOpen()) return closeAuth();
   if (isNotificationDropdownOpen()) return closeNotificationDropdown();
@@ -242,7 +245,9 @@ export function initRouter() {
     if (commandSearch || slashSearch) { e.preventDefault(); navigate('/search'); }
   });
 
-  // Initial load — Vercel serves index.html for deep links (see vercel.json),
-  // so location.pathname is already the real route.
+  // Initial load — the host rewrites every client route to index.html (Vercel:
+  // the "rewrites" block in vercel.json; Cloudflare Pages/Workers: _redirects),
+  // so location.pathname is already the real route. Both files must stay in sync
+  // or deep links, shared URLs, and "open in new tab" 404 on that host.
   renderRoute(location.pathname, { scroll: false });
 }

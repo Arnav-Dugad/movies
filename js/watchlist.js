@@ -6,6 +6,7 @@ import { esc, toast, $, debounce } from './ui.js';
 import { refreshWLBtns, rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { registerActions, readItem } from './events.js';
 import { removeFromList, listsArr, listById, createList, renameList, deleteList, shareList } from './lists.js';
+import { isListLocked, listHasPin, openPinModal, relockList } from './list-lock.js';
 import { tmdb, pool } from './api.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
@@ -262,8 +263,11 @@ function payloadFor(w) {
   return esc(JSON.stringify({ id: w.tmdbId, type: w.type, title: w.title, poster: w.poster, rating: w.rating, year: w.year, genres: w.genres || [], keywords: w.keywords || [], runtime: w.runtime || 0, language: w.language || '', country: w.country || '', releaseDate: w.releaseDate || '' }));
 }
 
+// Locked lists are excluded: naming one here as a membership would reveal that a
+// title is inside it, which is exactly what the PIN hides. Unlock it to include
+// it in the scan.
 export function findListDuplicates(watchlist = state.watchlist, lists = state.lists) {
-  const valid = new Set(lists.filter(list => list.id !== 'watchlist').map(list => list.id));
+  const valid = new Set(lists.filter(list => list.id !== 'watchlist' && !isListLocked(list.id)).map(list => list.id));
   return watchlist.map(item => ({ item, memberships: listsArr(item).filter(id => valid.has(id)) }))
     .filter(entry => entry.memberships.length > 1)
     .sort((a, b) => b.memberships.length - a.memberships.length || (a.item.title || '').localeCompare(b.item.title || ''));
@@ -297,7 +301,10 @@ export function renderWL() {
 
   // ----- List chip rail -----
   if (rail) {
-    const chip = (id, label, icon) => `<button class="wl-chip${state.wlList === id ? ' active' : ''}" data-action="wl-list" data-list="${id}">${icon ? `<span class="wl-chip-ico">${icon}</span>` : ''}${esc(label)}</button>`;
+    const chip = (id, label, icon) => {
+      const locked = isListLocked(id);
+      return `<button class="wl-chip${state.wlList === id ? ' active' : ''}${listHasPin(id) ? ' has-pin' : ''}${locked ? ' locked' : ''}" data-action="wl-list" data-list="${id}"${locked ? ' aria-label="' + esc(label) + ' (locked)"' : ''}>${icon ? `<span class="wl-chip-ico">${locked ? '🔒' : icon}</span>` : ''}${esc(label)}</button>`;
+    };
     let html = '';
     state.lists.forEach(l => { html += chip(l.id, l.name, l.icon); });
     html += `<button class="wl-chip wl-chip-new" data-action="wl-new-list">＋ New</button>`;
@@ -321,11 +328,32 @@ export function renderWL() {
           : `<button class="btn-glass wl-manage danger" data-action="wl-delete-list" data-tip="Delete list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg></button>`;
         manage = `<button class="btn-glass wl-manage" data-action="wl-rename-list" data-tip="Rename list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/></svg></button>${del}`;
       }
+      const lockBtn = listHasPin(active.id)
+        ? `<button class="btn-glass wl-manage locked" data-action="relock-list" data-list="${esc(active.id)}" data-tip="Lock now"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button><button class="btn-glass wl-manage" data-action="open-list-pin" data-mode="change" data-list="${esc(active.id)}" data-tip="Change PIN"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><path d="M12 15v2"/></svg></button><button class="btn-glass wl-manage danger" data-action="open-list-pin" data-mode="remove" data-list="${esc(active.id)}" data-tip="Remove PIN"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 6.9-2.3"/></svg></button>`
+        : `<button class="btn-glass wl-manage" data-action="open-list-pin" data-mode="set" data-list="${esc(active.id)}" data-tip="Lock with a PIN"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0"/></svg></button>`;
       const duplicateCount = findListDuplicates().length;
       const duplicateButton = `<button class="btn-glass wl-duplicate-btn${duplicateOpen ? ' active' : ''}" data-action="toggle-duplicates" data-tip="Open Duplicates Finder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="12" height="12" rx="2"/><path d="M8 20h10a2 2 0 0 0 2-2V8"/></svg><span>Duplicates Finder</span>${duplicateCount ? `<b>${duplicateCount}</b>` : ''}</button>`;
-      head.innerHTML = duplicateButton + share + manage;
+      head.innerHTML = duplicateButton + share + lockBtn + manage;
     } else head.innerHTML = '';
     const inp = $('wlListName'); if (inp) inp.focus();
+  }
+
+  // ----- Locked list: nothing about its contents reaches the DOM -----
+  // Not a CSS blur or a display:none over rendered cards — the titles, the count,
+  // the showcase, and the filter facets are simply never built while locked.
+  if (isListLocked(state.wlList)) {
+    const active = listById(state.wlList);
+    if (showcase) showcase.innerHTML = '';
+    if (cnt) cnt.textContent = 'Locked';
+    syncWLControls([]);
+    ct.innerHTML = `<section class="wl-locked">
+      <div class="wl-locked-shield" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1.4"/></svg></div>
+      <h3>${esc(active?.name || 'This list')} is locked</h3>
+      <p>Enter the PIN to show its titles. CineVerse re-locks it every time the page reloads.</p>
+      <button class="btn-primary" data-action="open-list-pin" data-mode="unlock" data-list="${esc(state.wlList)}">Enter PIN</button>
+      <small>A privacy screen, not encryption — these titles remain in your own account.</small>
+    </section>`;
+    return;
   }
 
   // ----- Grid -----
@@ -428,4 +456,5 @@ export function initWatchlist() {
   if (search) search.addEventListener('input', debounce(function () { wlQuery = this.value.trim(); renderWL(); }, 180));
   // Reset transient edit state when leaving the page or signing out.
   document.addEventListener('cv:auth', () => { listEdit = null; pendingDelete = null; duplicateOpen = false; state.wlList = 'watchlist'; });
+  document.addEventListener('cv:list-lock', () => { if (location.pathname === '/watchlist') renderWL(); });
 }

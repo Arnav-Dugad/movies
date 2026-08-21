@@ -7,7 +7,7 @@ import { state } from './state.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { registerActions } from './events.js';
 import { observeCountUps, observeReveals } from './effects.js';
-import { buildCtx, badgesHTML, challengesHTML, animateBadgeBars } from './badges.js';
+import { buildCtx, badgesHTML, challengesHTML, animateBadgeBars, BADGES } from './badges.js';
 import { ensureWatchedMeta, repairCollectionMeta } from './watched-meta.js';
 import { db, firebase } from './firebase.js';
 import { social } from './social.js';
@@ -393,6 +393,94 @@ function queueSnapshot(snapshot) {
   persistSnapshotSoon({ uid: state.user.uid, snapshot, hash });
 }
 
+// ===== COLLAPSIBLE STATS SECTIONS =====
+// Order is deliberate: the panels that answer "how am I doing right now" come
+// first, the deep-analysis ones last. Every block remembers its own open/closed
+// state on users/{uid}.statsSections, so the page you built stays built across
+// devices. Collapsed blocks are never RENDERED (their body is a thunk that is
+// simply not called) — the Director Network SVG and the provider charts are the
+// expensive ones, and skipping them is the whole point of collapsing.
+const SECTION_META = [
+  ['pulse', 'Activity Pulse', 'Streaks, recent pace, and your strongest viewing moments'],
+  ['critic', 'Rating & Library', 'Your critic profile beside the anatomy of your collection'],
+  ['taste', 'Taste Map', 'Genres, eras, and languages across everything you keep'],
+  ['themes', 'Tag Taste Profile', 'The specific story themes behind what you watch'],
+  ['evolution', 'Taste Changes', 'How your leading genre and language have shifted'],
+  ['health', 'Collection Health', 'Missing ratings, artwork, dates, and credits'],
+  ['providers', 'Streaming Intelligence', 'Provider freshness and 90-day catalog movement'],
+  ['directors', 'Director Loyalty', 'How deep you have gone into a filmography'],
+  ['network', 'Director Network', 'Directors, titles, and actors you keep returning to'],
+  ['smartwatch', 'Smart Watch List', 'What to watch next, ranked from your own signals'],
+  ['achievements', 'Challenges & Trophies', 'Milestones derived from your whole account'],
+];
+
+const countEarnedBadges = context => BADGES.filter(badge => badge.value(context) >= badge.goal).length;
+
+// Default-open, so an existing user sees no change until they collapse something.
+const isCollapsed = id => state.statsSections?.[id] === true;
+const sectionsKey = () => `cv_stats_sections_${state.user?.uid || 'guest'}`;
+let sectionSyncTimer = null;
+
+export function hydrateStatsSections(cloud) {
+  const clean = value => {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const out = {};
+    for (const [id] of SECTION_META) if (source[id] === true) out[id] = true;
+    return out;
+  };
+  let local = {};
+  try { local = JSON.parse(localStorage.getItem(sectionsKey()) || '{}'); } catch (_) { local = {}; }
+  // The cloud copy wins when present: this is a preference the user set on
+  // purpose, and a fresh device should inherit it rather than reset it.
+  state.statsSections = cloud && typeof cloud === 'object' ? clean(cloud) : clean(local);
+  try { localStorage.setItem(sectionsKey(), JSON.stringify(state.statsSections)); } catch (_) {}
+}
+
+function persistSections() {
+  const value = state.statsSections || {};
+  try { localStorage.setItem(sectionsKey(), JSON.stringify(value)); } catch (_) {}
+  clearTimeout(sectionSyncTimer);
+  if (!state.user) return;
+  const uid = state.user.uid;
+  sectionSyncTimer = setTimeout(() => {
+    if (state.user?.uid !== uid) return;
+    db.collection('users').doc(uid).set({ statsSections: value }, { merge: true })
+      .catch(error => console.warn('stats sections sync', error));
+  }, 700);
+}
+
+function setCollapsed(id, collapsed) {
+  const next = { ...(state.statsSections || {}) };
+  if (collapsed) next[id] = true; else delete next[id];
+  state.statsSections = next;
+  persistSections();
+}
+
+function sectionIndexBar() {
+  const collapsedCount = SECTION_META.filter(([id]) => isCollapsed(id)).length;
+  const allCollapsed = collapsedCount === SECTION_META.length;
+  return `<nav class="stats-index" aria-label="Statistics sections">
+    <div class="stats-index-jump">${SECTION_META.map(([id, title]) => `<button class="${isCollapsed(id) ? 'off' : ''}" data-action="stats-jump" data-block="${id}">${esc(title)}</button>`).join('')}</div>
+    <button class="stats-index-toggle" data-action="stats-toggle-all" data-collapse="${allCollapsed ? '0' : '1'}">${allCollapsed ? 'Expand all' : 'Collapse all'}</button>
+  </nav>`;
+}
+
+const CHEVRON = '<svg class="stats-block-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+
+// `body` is a thunk so a collapsed block costs nothing to render.
+function block(id, index, summary, body) {
+  const meta = SECTION_META.find(entry => entry[0] === id) || [id, id, ''];
+  const open = !isCollapsed(id);
+  return `<section class="stats-block${open ? '' : ' collapsed'}" id="statsBlock-${esc(id)}" data-block="${esc(id)}">
+    <button class="stats-block-bar" data-action="stats-toggle-block" data-block="${esc(id)}" aria-expanded="${open}" aria-controls="statsBody-${esc(id)}">
+      <span class="stats-block-index">${pad(index)}</span>
+      <span class="stats-block-label"><b>${esc(meta[1])}</b><small>${esc(summary || meta[2])}</small></span>
+      ${CHEVRON}
+    </button>
+    <div class="stats-block-body" id="statsBody-${esc(id)}"${open ? '' : ' hidden'}>${open ? body() : ''}</div>
+  </section>`;
+}
+
 function scopeToggle() {
   return `<div class="stats-scope" aria-label="Statistics scope">${[['all', 'Everything'], ['movie', 'Movies'], ['tv', 'TV Shows']].map(([value, label]) => `<button class="${statsScope === value ? 'active' : ''}" data-action="stats-filter" data-filter="${value}">${label}</button>`).join('')}</div>`;
 }
@@ -725,6 +813,26 @@ export function renderStats() {
   const fullStats = statsScope === 'all' ? stats : computeStats('all');
   const context = buildCtx();
   const scopeLabel = statsScope === 'movie' ? 'movie' : statsScope === 'tv' ? 'TV' : 'complete';
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const providers = getProviderStats({ days: 90 });
+  const providerMovement = providers.reduce((sum, provider) => sum + provider.gained + provider.lost, 0);
+
+  // Summaries are what a collapsed block shows, so each one has to carry the
+  // headline of the panel it stands in for.
+  const summaries = {
+    pulse: `${stats.currentStreak}-day current streak · ${stats.last30} watched in 30 days · best month ${stats.bestMonth}`,
+    critic: `${stats.avgRating ? `${stats.avgRating.toFixed(1)}/10 average` : 'No ratings yet'} · ${plural(stats.totalRated, 'rating')} · ${stats.completion}% of the collection watched`,
+    taste: `${stats.genres[0]?.name || 'Discovering'} leads · ${plural(stats.languages.length, 'language')} · diversity ${stats.diversityScore}/100`,
+    themes: (stats.themes || []).length ? `${stats.themes[0].name} leads · ${plural(stats.themes.length, 'theme signal')}` : 'Theme fingerprint is still learning',
+    evolution: `${plural(stats.tasteTimeline.genreChanges, 'genre shift')} · ${plural(stats.tasteTimeline.languageChanges, 'language shift')}`,
+    health: `${stats.health.score}/100 health · ${plural(stats.health.missing, 'gap')} across ${plural(stats.rows.length, 'title')}`,
+    providers: providers.length ? `${plural(providers.length, 'service')} tracked · ${providerMovement ? `${providerMovement} catalog changes in 90 days` : 'baseline recorded'}` : 'No subscription scans yet',
+    directors: 'Filmography depth for the directors you return to',
+    network: `${stats.network.directors.length ? `${plural(stats.network.directors.length, 'director')} linked to ${plural(stats.network.titles.length, 'title')}` : 'Credits are still being enriched'}`,
+    smartwatch: 'Ranked from your own genre, theme, and people signals',
+    achievements: `${countEarnedBadges(context)}/${BADGES.length} badges earned`,
+  };
+
   container.innerHTML = `${statsHero(stats)}
     <div class="stats-kpi-grid">
       ${kpi('watched', 'Watched', stats.watched.length, '', `${stats.movies} movies · ${stats.shows} shows`, 'red')}
@@ -734,25 +842,28 @@ export function renderStats() {
       ${kpi('fire', 'Longest streak', stats.longestStreak, 'd', `${stats.currentStreak} day current streak`, 'green')}
       ${kpi('compass', 'Taste diversity', stats.diversityScore, '/100', `${stats.genres.length} genres · ${stats.languages.length} languages`, 'pink')}
     </div>
-    ${tasteMap(stats)}
-    ${tagTasteProfile(stats)}
-    ${tasteChangesPanel(stats)}
-    ${collectionHealthPanel(stats)}
-    ${providerIntelligencePanels()}
-    ${activityPanel(stats)}
-    <div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>
-    ${directorLoyaltyPanel(fullStats)}
-    ${directorNetworkPanel(stats)}
-    ${smartWatchPanel()}
-    <section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>
+    ${sectionIndexBar()}
+    ${block('pulse', 1, summaries.pulse, () => activityPanel(stats))}
+    ${block('critic', 2, summaries.critic, () => `<div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>`)}
+    ${block('taste', 3, summaries.taste, () => tasteMap(stats))}
+    ${block('themes', 4, summaries.themes, () => tagTasteProfile(stats))}
+    ${block('evolution', 5, summaries.evolution, () => tasteChangesPanel(stats))}
+    ${block('health', 6, summaries.health, () => collectionHealthPanel(stats))}
+    ${block('providers', 7, summaries.providers, () => providerIntelligencePanels())}
+    ${block('directors', 8, summaries.directors, () => directorLoyaltyPanel(fullStats))}
+    ${block('network', 9, summaries.network, () => directorNetworkPanel(stats))}
+    ${block('smartwatch', 10, summaries.smartwatch, () => smartWatchPanel())}
+    ${block('achievements', 11, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
     <p class="stats-footnote">${esc(scopeLabel)} stats · Watch time for TV is approximate because a completed show uses its full available runtime.</p>`;
 
   const snapshot = snapshotFor(fullStats);
   queueSnapshot(snapshot);
   animateStats(container, stats);
   const generation = ++insightGeneration;
-  loadDirectorLoyalty(fullStats, generation);
-  loadSmartWatchList(stats, generation);
+  // Both do network work to fill a panel. A collapsed panel has no DOM to fill,
+  // so the request would be pure waste.
+  if (!isCollapsed('directors')) loadDirectorLoyalty(fullStats, generation);
+  if (!isCollapsed('smartwatch')) loadSmartWatchList(stats, generation);
   ensureWatchedMeta();
 }
 
@@ -790,6 +901,27 @@ async function repairCollection(element) {
 export function initStats() {
   registerActions({
     'stats-filter': element => { statsScope = element.dataset.filter; renderStats(); },
+    'stats-toggle-block': element => {
+      const id = element.dataset.block;
+      const collapsing = element.getAttribute('aria-expanded') === 'true';
+      setCollapsed(id, collapsing);
+      renderStats();
+      // Expanding from far down the page would otherwise leave the reader
+      // looking at whatever moved into that spot.
+      if (!collapsing) requestAnimationFrame(() => $(`statsBlock-${id}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    },
+    'stats-toggle-all': element => {
+      const collapse = element.dataset.collapse === '1';
+      state.statsSections = collapse ? Object.fromEntries(SECTION_META.map(([id]) => [id, true])) : {};
+      persistSections();
+      renderStats();
+      if (collapse) window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    'stats-jump': element => {
+      const id = element.dataset.block;
+      if (isCollapsed(id)) { setCollapsed(id, false); renderStats(); }
+      requestAnimationFrame(() => $(`statsBlock-${id}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    },
     'export-stats': () => exportStats(),
     'repair-collection': element => repairCollection(element),
     'director-work-filter': element => {

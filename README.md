@@ -2,6 +2,36 @@
 
 https://arnav-dugad.github.io/movies/
 
+## Deploying
+
+CineVerse is a static SPA with clean URLs (`/movie/693134`, `/stats`, …). Every
+host has to rewrite unknown paths to `index.html`, or opening a card in a new tab,
+refreshing, or following a shared link returns that host's 404 instead of the app.
+
+| Host | File | What it does |
+|---|---|---|
+| Vercel | `vercel.json` | `rewrites` sends extension-less paths to `/index.html`; `headers` sets the security and cache policy |
+| Cloudflare Pages / Workers Assets | `_redirects` | one `200` rewrite per client route plus a catch-all |
+| Cloudflare Pages / Workers Assets | `_headers` | the same headers as `vercel.json` |
+
+Both configs must stay in sync — the route list in `_redirects` mirrors `ROUTES`
+in `js/router.js`. Nothing is fingerprinted, so JS, CSS, and HTML are served
+`must-revalidate` (cheap 304s, instant deploys) while `/assets/*` caches for a week.
+
+## Private lists
+
+Any list can be locked with a 4-8 digit PIN. While locked its titles, count,
+showcase, and duplicate-finder entries are never rendered, its membership is
+hidden in the add-to-list picker, and it cannot be shared — locking a list also
+revokes any share snapshot published earlier.
+
+The PIN is never stored. `js/list-lock.js` writes a PBKDF2-SHA256 derivation
+(150k iterations, random per-list salt) to the list document. Unlocking lasts for
+the page session only; a reload always re-locks.
+
+This is a privacy screen, not encryption: the titles stay in your own Firestore
+documents and remain readable by anyone who can sign in as you. The UI says so.
+
 ## Notification center
 
 The inbox is derived, never invented. Episode dates come from TMDB, exact
@@ -33,6 +63,25 @@ so hue is never the only channel. A table view carries the same data.
 
 Both features are seeded by `js/provider-history.js`, which keeps a per-title
 snapshot, an append-only change log, and one catalog sample per day.
+
+## Stats
+
+Sections are ordered by what answers "how am I doing" first — Activity Pulse,
+then Rating & Library, then the deeper taste and collection analysis. Each one
+collapses independently and remembers its state on `users/{uid}.statsSections`,
+so the layout follows the account rather than the device. A collapsed section is
+not hidden with CSS: its body is a thunk that is never called, so the Director
+Network SVG and the provider charts cost nothing (and skip their network calls)
+while closed.
+
+## Recommendations
+
+The rails show a different slice of your ranked pool every time CineVerse is
+opened. A device-local counter bumps once per page load (no Firestore write) and
+is added to the stored cross-device rotation; discover pages are varied by the
+same counter so the underlying pool changes too, not just the window over it.
+Shuffle skips ahead on demand. Ranking itself never changes randomly — only which
+part of it you see first.
 
 ## Voice search
 

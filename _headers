@@ -1,0 +1,27 @@
+# Cloudflare Pages / Workers-Assets response headers.
+# Mirrors the "headers" block in vercel.json so both deployments behave the same.
+
+/*
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: microphone=(self)
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+
+# Nothing in this app is fingerprinted, so a long-lived cache would pin visitors
+# to an old build. Revalidation is cheap (304s) and keeps deploys instant.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/js/*
+  Cache-Control: public, max-age=0, must-revalidate
+/css/*
+  Cache-Control: public, max-age=0, must-revalidate
+/manifest.webmanifest
+  Cache-Control: public, max-age=0, must-revalidate
+
+# The self-destroying worker must never be served from cache.
+/sw.js
+  Cache-Control: no-cache
+
+# Icons and avatars are content-stable.
+/assets/*
+  Cache-Control: public, max-age=604800

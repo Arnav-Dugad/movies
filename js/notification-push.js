@@ -10,7 +10,6 @@ import { IMG } from './config.js';
 
 const SENT_KEY = () => `cv_notification_sent_${state.user?.uid || 'guest'}`;
 const MAX_PER_BURST = 3;
-const ICON = '/assets/icons/icon.svg';
 
 export function pushSupported() { return typeof window !== 'undefined' && 'Notification' in window; }
 export function pushPermission() { return pushSupported() ? Notification.permission : 'unsupported'; }
@@ -50,8 +49,9 @@ function show(event) {
   const body = [event.headline, event.detail].filter(Boolean).join(' — ');
   const notification = new Notification(event.title || 'CineVerse', {
     body: body.slice(0, 160),
-    icon: event.poster ? `${IMG}w185${event.poster}` : ICON,
-    badge: ICON,
+    // Chrome will not render an SVG notification icon, so there is no point in
+    // pointing at the app icon: with no poster we let the browser use its default.
+    ...(event.poster ? { icon: `${IMG}w185${event.poster}` } : {}),
     tag: `cineverse-${event.key}`,
     silent: !state.notificationPreferences?.sound,
     data: { path: `/${event.mediaType}/${event.id}` },

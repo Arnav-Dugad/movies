@@ -1,0 +1,48 @@
+/* ===== LIST PIN LOCK ===== */
+.pin-overlay{position:fixed;inset:0;z-index:8600;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(6,6,11,.92);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);opacity:0;visibility:hidden;transition:opacity .3s var(--ease-out),visibility .3s}
+.pin-overlay.active{opacity:1;visibility:visible}
+.pin-modal{width:min(360px,100%);max-height:calc(100dvh - 40px);padding:28px 26px 22px;overflow:auto;border:1px solid rgba(167,139,250,.22);border-radius:var(--radius-xl);background:radial-gradient(circle at 50% 0,rgba(139,92,246,.16),transparent 45%),var(--bg2);box-shadow:0 30px 90px rgba(0,0,0,.6);text-align:center;transform:scale(.94);transition:transform .4s var(--spring)}
+.pin-overlay.active .pin-modal{transform:scale(1)}
+.pin-head>span{color:var(--purple2);font-size:.5rem;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+.pin-head h2{margin-top:6px;font-family:var(--font-display);font-size:1.5rem}
+.pin-head p{margin-top:5px;color:var(--text3);font-size:.58rem}
+.pin-dots{display:flex;align-items:center;justify-content:center;gap:9px;margin:20px 0 12px}
+.pin-dots i{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.11);transition:background .18s,transform .18s,box-shadow .18s}
+.pin-dots i.gate{box-shadow:0 0 0 1px rgba(255,255,255,.14)}
+.pin-dots i.on{background:var(--purple2);box-shadow:0 0 12px rgba(167,139,250,.55);transform:scale(1.18)}
+.pin-hint,.pin-error{min-height:30px;padding:0 6px;font-size:.55rem;line-height:1.45}
+.pin-hint{color:var(--text3)}
+.pin-error{color:#fda4af;font-weight:700}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+.pin-key{min-height:52px;border:1px solid var(--glass-border);border-radius:14px;background:rgba(255,255,255,.035);color:var(--text);font-family:var(--font-mono);font-size:1.05rem;font-weight:600;transition:background .16s,border-color .16s,transform .1s}
+.pin-key:hover{border-color:rgba(167,139,250,.32);background:rgba(139,92,246,.12)}
+.pin-key:active{transform:scale(.96)}
+.pin-key.ghost{font-family:var(--font);font-size:.6rem;font-weight:750;color:var(--text3)}
+.pin-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.pin-actions button{min-height:44px;font-size:.62rem}
+.pin-actions .btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.pin-note{margin-top:14px;color:var(--text3);font-size:.46rem;line-height:1.5}
+
+/* Chips and the locked-list screen on My List */
+.wl-chip.has-pin{border-color:rgba(167,139,250,.28)}
+.wl-chip.locked{color:var(--text3)}
+.wl-chip.locked.active{border-color:rgba(167,139,250,.4);color:#fff}
+.wl-manage.locked{border-color:rgba(167,139,250,.3)!important;color:var(--purple2)!important}
+.wl-locked{min-height:380px;display:grid;place-content:center;justify-items:center;padding:40px 20px;text-align:center}
+.wl-locked-shield{width:76px;height:76px;display:grid;place-items:center;margin-bottom:18px;border:1px solid rgba(167,139,250,.24);border-radius:26px;background:radial-gradient(circle at 50% 20%,rgba(139,92,246,.2),transparent 65%);color:var(--purple2)}
+.wl-locked-shield svg{width:34px;height:34px}
+.wl-locked h3{font-family:var(--font-display);font-size:1.6rem}
+.wl-locked p{max-width:430px;margin-top:8px;color:var(--text3);font-size:.68rem;line-height:1.6}
+.wl-locked>button{margin-top:18px}
+.wl-locked>small{max-width:420px;margin-top:14px;color:var(--text3);font-size:.5rem;line-height:1.5}
+
+/* A locked list in the add-to-list picker: named, never revealing membership */
+.list-row.locked{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;background:rgba(255,255,255,.02);color:var(--text3);cursor:not-allowed}
+.list-row.locked small{margin-left:auto;font-size:.48rem;font-weight:750;text-transform:uppercase;letter-spacing:.08em}
+
+@media(max-width:700px){
+  .pin-modal{padding:24px 18px 18px;border-radius:22px}
+  .pin-key{min-height:56px}
+  .wl-locked{min-height:300px}
+  .wl-locked h3{font-size:1.3rem}
+}

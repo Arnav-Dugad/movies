@@ -183,7 +183,6 @@
 .card-sub{font-size:.72rem;color:var(--text3);margin-top:3px;display:flex;align-items:center;gap:6px}
 .card-sub .dot{width:3px;height:3px;border-radius:50%;background:var(--text3)}
 
-
 /* Wide card */
 .card-w{width:290px}
 .card-w .card-img{aspect-ratio:16/9}
@@ -290,42 +289,6 @@
 /* Box Office combined graph (spans the whole stats grid) */
 .boxoffice{grid-column:1/-1;width:100%;min-height:0;padding:clamp(19px,3vw,28px);justify-content:flex-start;background:radial-gradient(circle at 92% 4%,rgba(16,185,129,.13),transparent 28%),radial-gradient(circle at 4% 100%,rgba(251,191,36,.08),transparent 30%),linear-gradient(145deg,#161622,#0e0e17);border-color:rgba(255,255,255,.09);box-shadow:0 22px 55px rgba(0,0,0,.24)}
 .boxoffice::before{display:none}
-.bo-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:20px}
-.bo-eyebrow{display:block;margin-bottom:4px;color:var(--green2);font-size:.59rem;font-weight:850;text-transform:uppercase;letter-spacing:.16em}
-.bo-head h3{font-family:var(--font-display);font-size:clamp(1.35rem,2.5vw,1.8rem);line-height:1.1}
-.bo-status{flex-shrink:0;padding:7px 10px;border-radius:50px;border:1px solid var(--glass-border);background:rgba(255,255,255,.04);color:var(--text2);font-size:.62rem;font-weight:800}
-.bo-status.positive{color:var(--green2);border-color:rgba(16,185,129,.24);background:rgba(16,185,129,.08)}
-.bo-status.negative{color:var(--red2);border-color:rgba(229,9,20,.24);background:rgba(229,9,20,.08)}
-.bo-dashboard{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:clamp(20px,4vw,46px)}
-.bo-main{min-width:0}
-.bo-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:18px}
-.bo-metrics>div{min-width:0;padding:13px 14px;border-radius:var(--radius);border:1px solid var(--glass-border);background:rgba(255,255,255,.027)}
-.bo-metrics span{display:block;margin-bottom:5px;color:var(--text3);font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;font-weight:750}
-.bo-metrics strong{display:block;font-family:var(--font-mono);font-size:clamp(.88rem,2vw,1.12rem);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bo-metrics .positive strong{color:var(--green2)}
-.bo-metrics .negative strong{color:var(--red2)}
-.bo-bars{display:flex;flex-direction:column;gap:10px}
-.bo-row{display:flex;align-items:center;gap:12px}
-.bo-name{width:52px;flex-shrink:0;font-size:.7rem;font-weight:650;color:var(--text2)}
-.bo-track{flex:1;height:10px;background:rgba(255,255,255,.055);border-radius:50px;overflow:hidden}
-.bo-fill{height:100%;border-radius:50px;width:0;transition:width 1s var(--ease);box-shadow:0 0 18px currentColor}
-.bo-fill.budget{color:var(--gold2);background:linear-gradient(90deg,var(--gold2),var(--gold))}
-.bo-fill.revenue{color:var(--green);background:linear-gradient(90deg,var(--green),var(--green2))}
-.bo-val{width:78px;flex-shrink:0;text-align:right;font-family:var(--font-mono);font-size:.74rem;font-weight:650;color:var(--text)}
-.bo-recovery{text-align:center;min-width:128px}
-.bo-ring{width:112px;height:112px;margin:auto;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--green2) var(--bo-progress),rgba(255,255,255,.055) 0);position:relative;box-shadow:0 0 32px rgba(16,185,129,.1)}
-.bo-ring::before{content:'';position:absolute;inset:9px;border-radius:50%;background:#11111b;border:1px solid rgba(255,255,255,.055)}
-.bo-ring>div{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center}
-.bo-ring strong{font-family:var(--font-mono);font-size:1.08rem;color:var(--green2)}
-.bo-ring span{margin-top:1px;color:var(--text3);font-size:.55rem;text-transform:uppercase}
-.bo-recovery p{margin-top:8px;color:var(--text2);font-size:.66rem;font-weight:700}
-.bo-summary{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
-.bo-chip{display:flex;align-items:baseline;gap:8px;padding:8px 11px;border-radius:50px;background:rgba(255,255,255,.035);border:1px solid var(--glass-border)}
-.bo-clabel{font-size:.56rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:750}
-.bo-cval{font-family:var(--font-mono);font-size:.82rem;font-weight:750;color:var(--cyan2)}
-.bo-chip.up .bo-cval{color:var(--green2)}
-.bo-chip.down .bo-cval{color:var(--red2)}
-.bo-note{margin-top:15px;padding-top:12px;border-top:1px solid var(--glass-border);color:var(--text3);font-size:.61rem;line-height:1.5}
 .provider-group{margin-bottom:8px}
 .provider-group:last-child{margin-bottom:0}
 .provider-group-label{font-size:.68rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
