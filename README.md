@@ -239,7 +239,26 @@ not hidden with CSS: its body is a thunk that is never called, so the Director
 Network SVG and the provider charts cost nothing (and skip their network calls)
 while closed.
 
+## Top 10 This Week
+
+A countdown, not a grid with numbers bolted on. The leader gets the space it
+earns — backdrop, poster, overview, and a trailer fetched after paint — and the
+other nine read downward as a chart.
+
+Movement is the half of a chart nobody can fake, and no free API publishes last
+week's ranking. So CineVerse keeps its own: the ten ids and the week they were
+seen, on the device. A chip appears only when there is a snapshot from a
+genuinely **earlier** week to compare against — never on a first visit, never on
+a reload in the same week, and never invented. Direction is carried by an arrow
+and a number as well as colour.
+
 ## Recommendations
+
+Each rail is headed by the thing it is about: a round photograph for a person, a
+poster for a title, and the emoji glyph only where there is nothing to show — a
+theme and a genre have no picture. The artwork costs no extra request; director
+headshots and the top five cast profiles are already on the watched documents
+from the metadata backfill.
 
 The rails show a different slice of your ranked pool every time CineVerse is
 opened. A device-local counter bumps once per page load (no Firestore write) and
@@ -306,8 +325,13 @@ If a list action fails, the toast carries the Firestore error code (usually
 The rail ordered itself strictly by what was watched most recently: a good
 default and a bad rule. **Edit** turns on pinning, hiding, and reordering.
 
-Two lists do all of it — `pinned` (ordered ids that come first) and `hidden` (ids
-the rail never shows). Moving a card *is* pinning it to that position, so
+The rail lists **every** show in progress rather than an arbitrary first dozen —
+a show cut off at position 13 is a show you never get back to. Episode stills are
+fetched for what is on screen and the rest arrive as the rail is scrolled, so
+length costs nothing until it is looked at.
+
+Two lists do the editing — `pinned` (ordered ids that come first) and `hidden`
+(ids the rail never shows). Moving a card *is* pinning it to that position, so
 arbitrary ordering and "keep this at the front" are one concept rather than two;
 unpin and a show returns to the automatic order in the right place. Hiding never
 touches episode progress, and hidden shows are listed while editing so bringing

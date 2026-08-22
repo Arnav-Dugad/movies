@@ -8,6 +8,7 @@ import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 import { SECTIONS } from './home.js';
+import { top10HTML, hydrateTop10Trailer } from './top10.js';
 
 let reqGen = 0, curSec = null, page = 1, maxPage = 1;
 
@@ -27,14 +28,21 @@ export async function openCollection2(id) {
   if (!s) { ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="color:var(--text3)">Unknown collection</p><br><button class="btn-primary" data-action="back">Back</button></div>'; document.title = 'CineVerse'; return; }
   curSec = s; page = 1;
   document.title = `${s.t} — CineVerse`;
-  ct.innerHTML = `<div class="browse-top"><h1>${s.icon} ${s.t}</h1>${s.t10 ? '<p class="collection-kicker">The definitive weekly countdown · ranked 1–10</p>' : ''}</div><div class="browse-grid${s.t10 ? ' collection-rank-grid' : ''}" id="collGrid">${skelCards(s.t10 ? 10 : 12)}</div><div class="load-more" id="collMore"></div>`;
+  ct.innerHTML = s.t10
+    ? `<div class="t10-top"><span class="t10-eyebrow">Updated every week from TMDB</span><h1>${s.icon} ${s.t}</h1><p>The ten titles the world is actually watching, counted down. Movement is measured against the last week CineVerse saw on this device — never guessed.</p></div><div id="collGrid">${skelCards(10)}</div><div class="load-more" id="collMore"></div>`
+    : `<div class="browse-top"><h1>${s.icon} ${s.t}</h1></div><div class="browse-grid" id="collGrid">${skelCards(12)}</div><div class="load-more" id="collMore"></div>`;
   try {
     const d = await tmdb(s.p, { ...(s.params || {}), page: 1 });
     if (gen !== reqGen) return;
     maxPage = s.t10 ? 1 : Math.min(d.total_pages || 1, 500);
     const grid = $('collGrid');
     const results = (d.results || []).filter(x => keep(s, x)).slice(0, s.t10 ? 10 : 20);
-    grid.innerHTML = results.map((x, index) => cardFor(s, x, index)).join('') || '<p style="color:var(--text3);padding:20px 0">Nothing here right now.</p>';
+    if (s.t10) {
+      grid.innerHTML = top10HTML(results, s.type);
+      if (results[0]) hydrateTop10Trailer(results[0], s.type);
+    } else {
+      grid.innerHTML = results.map((x, index) => cardFor(s, x, index)).join('') || '<p style="color:var(--text3);padding:20px 0">Nothing here right now.</p>';
+    }
     renderMore();
     observeReveals(ct);
   } catch (e) {

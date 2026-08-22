@@ -27,15 +27,17 @@ let continueEditing = false;
 
 export function renderContinueWatching() {
   const host = $('continueWatchingRow'); if (!host) return;
-  // Pull deeper than the rail shows, so hidden shows do not eat visible slots.
-  const all = state.user ? applyContinuePrefs(resumeQueue(50)) : [];
-  const queue = all.slice(0, 12);
+  // Every show in progress, not an arbitrary first dozen. The rail is a
+  // horizontal scroller with lazy images, so length costs almost nothing, and a
+  // show cut off at position 13 is a show you never get back to.
+  const all = state.user ? applyContinuePrefs(resumeQueue(500)) : [];
+  const queue = all;
   // While editing, keep the section up even if everything has been hidden —
   // otherwise the control to unhide disappears with the last card.
   if (!queue.length && !continueEditing) { host.innerHTML = ''; continueEditing = false; return; }
   if (!state.user) { host.innerHTML = ''; return; }
 
-  const hiddenCount = resumeQueue(50).length - all.length;
+  const hiddenCount = resumeQueue(500).length - all.length;
   host.innerHTML = `<section class="section reveal continue-section${continueEditing ? ' editing' : ''}">
     <div class="section-head"><div><span class="continue-eyebrow">Pick up where you left off</span><h2 class="section-title"><span>▶</span> Continue Watching</h2><p>${continueEditing
       ? 'Pin a show to keep it at the front, or hide one you have stopped watching. Hiding never touches your episode progress.'
@@ -50,7 +52,9 @@ export function renderContinueWatching() {
   </section>`;
   observeReveals();
   requestAnimationFrame(() => host.querySelectorAll('.continue-bar i').forEach(bar => { bar.style.width = `${+bar.dataset.w || 0}%`; }));
+  stillsDone.clear();
   hydrateContinueStills(queue);
+  watchContinueScroll(queue);
 }
 
 // The one line worth interrupting for: you are one or two episodes from your own
@@ -68,7 +72,7 @@ function recordChaseHTML() {
 // Hidden shows are only listed while editing — visible enough to bring back,
 // invisible the rest of the time, which is the point of hiding them.
 function hiddenCardsHTML() {
-  const hidden = resumeQueue(50).filter(row => isHidden(row.id));
+  const hidden = resumeQueue(500).filter(row => isHidden(row.id));
   if (!hidden.length) return '';
   return hidden.map(row => `<article class="continue-card hidden-card">
     <div class="continue-art muted"><img src="${row.entry.poster ? `${IMG}w342${row.entry.poster}` : PH}" alt="" loading="lazy"></div>
@@ -83,44 +87,74 @@ function hiddenCardsHTML() {
 function continueCard({ id, entry, progress, next }, index = 0, total = 1) {
   const art = entry.backdrop ? `${IMG}w500${entry.backdrop}` : entry.poster ? `${IMG}w342${entry.poster}` : PH;
   const meta = esc(JSON.stringify({ title: entry.title, poster: entry.poster, backdrop: entry.backdrop, episodeRuntime: entry.episodeRuntime, structure: entry.structure, aired: entry.aired, status: entry.status }));
-  return `<article class="continue-card" data-continue="${id}">
-    <a class="continue-art" href="/tv/${id}" data-action="open-detail" data-id="${id}" data-type="tv" aria-label="Open ${esc(entry.title || 'show')}">
+  const title = esc(entry.title || 'TV show');
+  const left = Math.max(0, progress.aired - progress.watched);
+  return `<article class="continue-card${isPinned(id) ? ' pinned' : ''}" data-continue="${id}">
+    <a class="continue-art" href="/tv/${id}" data-action="open-detail" data-id="${id}" data-type="tv" aria-label="Open ${title}">
       <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
+      <span class="continue-scrim" aria-hidden="true"></span>
       <span class="continue-play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
-      <span class="continue-badge">S${next.season} E${next.episode}</span>
+      <span class="continue-badge">S${next.season}<i>:</i>E${next.episode}</span>
+      ${isPinned(id) ? '<span class="continue-pin-mark" aria-hidden="true">&#9733;</span>' : ''}
+      <span class="continue-left">${left} left</span>
+      <span class="continue-bar"><i style="width:0" data-w="${progress.percent}"></i></span>
     </a>
     <div class="continue-body">
-      <h3>${esc(entry.title || 'TV show')}</h3>
-      <p class="continue-next" data-continue-title="${id}">Episode ${next.episode}</p>
-      <div class="continue-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
-      <div class="continue-meta"><span>${progress.watched}/${progress.aired} watched</span><b>${progress.percent}%</b></div>
-      <button class="continue-mark" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail">Mark watched</button>
+      <h3>${title}</h3>
+      <p class="continue-next" data-continue-title="${id}">S${next.season}:E${next.episode}</p>
+      <div class="continue-meta"><span>${progress.watched} of ${progress.aired} watched</span><b>${progress.percent}%</b></div>
+      <button class="continue-mark" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail" aria-label="Mark S${next.season} E${next.episode} of ${title} watched">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg>Mark watched</button>
       ${continueEditing ? `<div class="continue-edit-bar">
-        <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Move ${esc(entry.title || 'show')} earlier">&#8592;</button>
-        <button class="ce-btn${isPinned(id) ? ' on' : ''}" data-action="continue-pin" data-tid="${id}" aria-pressed="${isPinned(id)}" aria-label="${isPinned(id) ? 'Unpin' : 'Pin'} ${esc(entry.title || 'show')}">${isPinned(id) ? '&#9733; Pinned' : '&#9734; Pin'}</button>
-        <button class="ce-btn" data-action="continue-hide" data-tid="${id}" aria-label="Hide ${esc(entry.title || 'show')}">Hide</button>
-        <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="1" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${esc(entry.title || 'show')} later">&#8594;</button>
+        <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Move ${title} earlier">&#8592;</button>
+        <button class="ce-btn${isPinned(id) ? ' on' : ''}" data-action="continue-pin" data-tid="${id}" aria-pressed="${isPinned(id)}" aria-label="${isPinned(id) ? 'Unpin' : 'Pin'} ${title}">${isPinned(id) ? '&#9733; Pinned' : '&#9734; Pin'}</button>
+        <button class="ce-btn" data-action="continue-hide" data-tid="${id}" aria-label="Hide ${title}">Hide</button>
+        <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="1" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${title} later">&#8594;</button>
       </div>` : ''}
     </div>
   </article>`;
 }
 
-// One request per show, and only for the six most recent — enough to fill what
-// is visible without turning the home page into a burst of API calls.
-async function hydrateContinueStills(queue) {
-  await pool(queue.slice(0, 6), async row => {
+// One request per show, and only for what is actually on screen. The rail now
+// lists every show in progress, so filling all of them up front would turn the
+// home page into a burst of API calls for cards nobody has scrolled to. The
+// first batch covers the visible run; the rest arrive as the rail is scrolled.
+const stillsDone = new Set();
+
+async function hydrateContinueStills(queue, from = 0, count = 8) {
+  const slice = queue.slice(from, from + count).filter(row => !stillsDone.has(row.id));
+  if (!slice.length) return;
+  slice.forEach(row => stillsDone.add(row.id));
+  await pool(slice, async row => {
     const season = await tmdb(`/tv/${row.id}/season/${row.next.season}`).catch(() => null);
     const episode = (season?.episodes || []).find(item => item.episode_number === row.next.episode);
     if (!episode) return;
     const card = document.querySelector(`.continue-card[data-continue="${row.id}"]`);
     if (!card) return;
     const label = card.querySelector(`[data-continue-title="${row.id}"]`);
-    if (label && episode.name) label.textContent = episode.name;
+    // Keep the season/episode prefix: the title alone loses where you are.
+    if (label && episode.name) label.textContent = `S${row.next.season}:E${row.next.episode} ${episode.name}`;
     if (episode.still_path) {
       const image = card.querySelector('.continue-art img');
       if (image) image.src = `${IMG}w500${episode.still_path}`;
     }
   }, 3);
+}
+
+// Fill the next batch as the rail is scrolled, so a long queue costs nothing
+// until it is actually looked at.
+function watchContinueScroll(queue) {
+  const row = document.querySelector('.continue-row');
+  if (!row || queue.length <= 8) return;
+  let filled = 8;
+  const onScroll = debounce(() => {
+    const cards = row.querySelectorAll('.continue-card');
+    if (!cards.length) return;
+    const width = cards[0].getBoundingClientRect().width + 16;
+    const visibleEnd = Math.ceil((row.scrollLeft + row.clientWidth) / Math.max(1, width));
+    if (visibleEnd + 4 > filled) { hydrateContinueStills(queue, filled, 8); filled += 8; }
+  }, 200);
+  row.addEventListener('scroll', onScroll, { passive: true });
 }
 
 export function renderStreamingArrivals() {

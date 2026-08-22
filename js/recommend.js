@@ -54,11 +54,11 @@ function splitKey(key) { const i = key.lastIndexOf('_'); return [key.slice(0, i)
 
 function seedMetaForKey(type, id) {
   const w = state.watchlist.find(x => x.type === type && String(x.tmdbId) === String(id));
-  if (w) return { title: w.title, genres: w.genres || [], keywords: w.keywords || [] };
+  if (w) return { title: w.title, genres: w.genres || [], keywords: w.keywords || [], poster: w.poster || '' };
   const watched = state.watched[`${type}_${id}`];
-  if (watched) return { title: watched.title, genres: watched.genres || [], keywords: watched.keywords || [] };
+  if (watched) return { title: watched.title, genres: watched.genres || [], keywords: watched.keywords || [], poster: watched.poster || '' };
   const r = state.recentlyViewed.find(x => x.type === type && String(x.id) === String(id));
-  return r ? { title: r.title, genres: r.genres || [], keywords: r.keywords || [] } : null;
+  return r ? { title: r.title, genres: r.genres || [], keywords: r.keywords || [], poster: r.poster || '' } : null;
 }
 
 // A rating recentres on 5: a 10 adds +5, a 3 subtracts 2. Unrated contributes 0,
@@ -76,11 +76,11 @@ const keywordList = value => (value || []).map(keyword => typeof keyword === 'ob
 
 // Sort a {key: weight} map into [{id, name, w}], strongest first, keeping only
 // signals strong enough to be a real preference rather than a single watch.
-function topOf(weights, names, min = 1.5) {
+function topOf(weights, names, min = 1.5, images = {}) {
   return Object.entries(weights)
     .filter(([, w]) => w >= min)
     .sort((a, b) => b[1] - a[1])
-    .map(([id, w]) => ({ id: +id, name: names[id] || '', w }));
+    .map(([id, w]) => ({ id: +id, name: names[id] || '', w, image: images[id] || '' }));
 }
 
 // ----- Taste profile -----
@@ -95,6 +95,7 @@ export function buildTasteProfile(sources = state) {
 
   const genreWeights = {}, actorWeights = {}, directorWeights = {}, decadeWeights = {}, keywordWeights = {}, languageWeights = {};
   const actorNames = {}, directorNames = {}, keywordNames = {};
+  const actorImages = {}, directorImages = {};
   const addG = (genres, w) => (genres || []).forEach(g => { if (g == null) return; genreWeights[g] = (genreWeights[g] || 0) + w; });
   const bump = (map, key, w) => { if (key == null || key === '') return; map[key] = (map[key] || 0) + w; };
 
@@ -122,8 +123,17 @@ export function buildTasteProfile(sources = state) {
     if (d.language) bump(languageWeights, d.language, signal * .4);
     const y = parseInt(d.year);
     if (y) bump(decadeWeights, decadeOf(y), 1 + 0.3 * rw);
-    if (d.directorId) { bump(directorWeights, d.directorId, 1 + 0.5 * rw); if (d.director) directorNames[d.directorId] = d.director; }
-    (d.cast || []).slice(0, 5).forEach(p => { if (p && p.id) { bump(actorWeights, p.id, 1 + 0.5 * rw); if (p.name) actorNames[p.id] = p.name; } });
+    if (d.directorId) {
+      bump(directorWeights, d.directorId, 1 + 0.5 * rw);
+      if (d.director) directorNames[d.directorId] = d.director;
+      if (d.directorProfile) directorImages[d.directorId] = d.directorProfile;
+    }
+    (d.cast || []).slice(0, 5).forEach(p => {
+      if (!p || !p.id) return;
+      bump(actorWeights, p.id, 1 + 0.5 * rw);
+      if (p.name) actorNames[p.id] = p.name;
+      if (p.profile) actorImages[p.id] = p.profile;
+    });
   });
 
   recentlyViewed.forEach(r => {
@@ -160,16 +170,16 @@ export function buildTasteProfile(sources = state) {
   const seen = new Set([...Object.keys(watched), ...dismissed]);
 
   const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
-  const topActors = topOf(actorWeights, actorNames);
-  const topDirectors = topOf(directorWeights, directorNames);
+  const topActors = topOf(actorWeights, actorNames, 1.5, actorImages);
+  const topDirectors = topOf(directorWeights, directorNames, 1.5, directorImages);
   const topKeywords = topOf(keywordWeights, keywordNames, 1.1).filter(keyword => keyword.name).slice(0, 12);
   const topDecade = Object.entries(decadeWeights).sort((a, b) => b[1] - a[1]).map(([d]) => +d)[0] || null;
 
   return {
     genreWeights, topGenres, seedIds, seen, dismissed, movieBias: movie >= tv,
     keywordWeights, keywordNames, topKeywords, languageWeights,
-    actorWeights, actorNames, topActors,
-    directorWeights, directorNames, topDirectors,
+    actorWeights, actorNames, actorImages, topActors,
+    directorWeights, directorNames, directorImages, topDirectors,
     decadeWeights, topDecade,
     hasSignal: topGenres.length > 0 || seedIds.length > 0 || topActors.length > 0 || topKeywords.length > 0,
   };
@@ -452,15 +462,26 @@ function pickLabeledSeed(profile) {
   for (const s of profile.seedIds) {
     if (s.score >= 8) {
       const meta = seedMetaForKey(s.type, s.id);
-      if (meta?.title) return { id: s.id, type: s.type, title: meta.title, genres: meta.genres, reason: 'liked' };
+      if (meta?.title) return { id: s.id, type: s.type, title: meta.title, genres: meta.genres, poster: meta.poster || '', reason: 'liked' };
     }
   }
   const r = state.recentlyViewed[0];
-  return r ? { id: r.id, type: r.type, title: r.title, genres: r.genres || [], reason: 'viewed' } : null;
+  return r ? { id: r.id, type: r.type, title: r.title, genres: r.genres || [], poster: r.poster || '', reason: 'viewed' } : null;
 }
 
 function shell(d) {
-  return `<div class="section reveal"><div class="section-head"><h2 class="section-title"><span>${d.icon}</span> ${esc(d.title)}</h2></div><div class="row" id="${d.id}">${skelCards(8)}</div></div>`;
+  const art = d.art
+    ? (d.art.kind === 'face'
+      ? `<a class="rail-face" href="/person/${d.art.personId}" data-action="open-person" data-id="${d.art.personId}" aria-label="${esc(d.art.alt)}"><img src="${d.art.src}" alt="" loading="lazy"></a>`
+      : `<a class="rail-poster" href="/${d.art.type}/${d.art.id}" data-action="open-detail" data-id="${d.art.id}" data-type="${d.art.type}" aria-label="${esc(d.art.alt)}"><img src="${d.art.src}" alt="" loading="lazy"></a>`)
+    : `<span class="rail-glyph" aria-hidden="true">${d.icon}</span>`;
+  return `<div class="section reveal rec-section"><div class="section-head rec-head">
+      ${art}
+      <div class="rec-head-copy">
+        <h2 class="section-title">${esc(d.title)}</h2>
+        ${d.kicker ? `<p class="rec-kicker">${esc(d.kicker)}</p>` : ''}
+      </div>
+    </div><div class="row" id="${d.id}">${skelCards(8)}</div></div>`;
 }
 
 function feedbackState() {
@@ -634,12 +655,25 @@ export async function renderRecommendations() {
   const topKeyword = (profile.topKeywords || [])[0];
   const genreId = profile.topGenres.find(g => MOVIE_GENRES.has(g));
 
-  const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You' }];
-  if (seed) descriptors.push({ id: 'rowSeed', icon: seed.reason === 'liked' ? '⭐' : '🍿', title: `Because you ${seed.reason} ${seed.title}` });
-  if (topActor) descriptors.push({ id: 'rowActor', icon: '🌟', title: `Starring ${topActor.name}` });
-  if (topDirector) descriptors.push({ id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}` });
-  if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}` });
-  if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
+  const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You', kicker: 'Ranked from everything you have watched, saved, and rated' }];
+  if (seed) descriptors.push({
+    id: 'rowSeed', icon: seed.reason === 'liked' ? '⭐' : '🍿',
+    title: `Because you ${seed.reason} ${seed.title}`,
+    kicker: seed.reason === 'liked' ? 'Titles with real overlap, not just a shared genre' : 'Following the last thing you opened',
+    art: seed.poster ? { kind: 'poster', src: `${IMG}w154${seed.poster}`, alt: seed.title, id: seed.id, type: seed.type } : null,
+  });
+  if (topActor) descriptors.push({
+    id: 'rowActor', icon: '🌟', title: `Starring ${topActor.name}`,
+    kicker: 'Appears across your watch history',
+    art: topActor.image ? { kind: 'face', src: `${IMG}w185${topActor.image}`, alt: topActor.name, personId: topActor.id } : null,
+  });
+  if (topDirector) descriptors.push({
+    id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}`,
+    kicker: 'A filmmaker you keep returning to',
+    art: topDirector.image ? { kind: 'face', src: `${IMG}w185${topDirector.image}`, alt: topDirector.name, personId: topDirector.id } : null,
+  });
+  if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}`, kicker: 'A story theme, not a genre — the sharper signal of the two' });
+  if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}`, kicker: 'Your strongest genre by weight' });
 
   wrap.innerHTML = descriptors.map(shell).join('');
   observeReveals(wrap);

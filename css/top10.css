@@ -1,0 +1,157 @@
+/* ===== TOP 10 THIS WEEK ===== */
+/* A countdown, not a grid. One title earns the space at the top; nine follow in
+   descending order, read like a chart. The oversized numerals are the structure
+   of the page rather than decoration — the position IS the information. */
+
+.t10-top{padding:calc(var(--nav-h) + 26px) clamp(16px,5vw,60px) 6px;max-width:1060px;margin:0 auto}
+.t10-eyebrow{
+  display:block;font-size:.68rem;font-weight:800;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--red2);margin-bottom:9px;
+}
+.t10-top h1{
+  font-family:var(--font-display);font-size:clamp(2.1rem,6vw,3.2rem);
+  font-weight:900;letter-spacing:-.025em;line-height:1.05;text-wrap:balance;
+}
+.t10-top p{font-size:.88rem;line-height:1.65;color:var(--text2);margin-top:10px;max-width:62ch}
+
+.t10-wrap{padding:0 clamp(16px,5vw,60px) 100px;max-width:1060px;margin:0 auto}
+
+/* ---------- the leader ---------- */
+.t10-hero{
+  position:relative;overflow:hidden;margin:26px 0 34px;
+  border-radius:var(--radius-xl);border:1px solid var(--glass-border);
+  background:var(--bg2);
+}
+.t10-hero-art{position:absolute;inset:0}
+.t10-hero-art img{width:100%;height:100%;object-fit:cover;opacity:.55}
+.t10-hero-fade{
+  position:absolute;inset:0;
+  background:
+    linear-gradient(90deg,var(--bg2) 6%,rgba(12,12,20,.86) 40%,rgba(12,12,20,.28) 78%,rgba(12,12,20,.05) 100%),
+    linear-gradient(to top,var(--bg2) 0%,transparent 52%);
+}
+.t10-hero-inner{
+  position:relative;display:flex;align-items:center;gap:clamp(20px,4vw,38px);
+  padding:clamp(22px,4vw,38px);
+}
+
+.t10-hero-poster{
+  flex:0 0 auto;position:relative;display:block;width:clamp(120px,16vw,186px);
+  aspect-ratio:2/3;border-radius:14px;overflow:hidden;background:var(--bg4);
+  box-shadow:0 22px 52px rgba(0,0,0,.62);
+  transition:transform .32s var(--ease-out);
+}
+.t10-hero-poster img{width:100%;height:100%;object-fit:cover;display:block}
+.t10-hero-poster:hover{transform:translateY(-4px) scale(1.02)}
+.t10-hero-poster:focus-visible{outline:2px solid var(--red2);outline-offset:4px}
+
+.t10-hero-copy{min-width:0;flex:1}
+.t10-hero-rank{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+/* The numeral is set in the display face at a size no other element uses, so the
+   rank reads before anything else on the page. */
+.t10-hero-rank>span{
+  font-family:var(--font-display);font-size:clamp(3rem,7vw,4.6rem);font-weight:900;
+  line-height:.82;letter-spacing:-.05em;
+  background:linear-gradient(160deg,#fff 18%,var(--red2) 96%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 6px 18px rgba(229,9,20,.32));
+}
+.t10-hero-rank>b{
+  font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--text3);
+}
+.t10-hero-copy h2{
+  font-family:var(--font-display);font-size:clamp(1.5rem,3.6vw,2.4rem);
+  font-weight:900;letter-spacing:-.02em;line-height:1.1;text-wrap:balance;
+}
+.t10-hero-meta{
+  display:flex;flex-wrap:wrap;align-items:center;gap:7px 14px;margin-top:11px;
+  font-size:.8rem;color:var(--text2);font-variant-numeric:tabular-nums;
+}
+.t10-score{display:inline-flex;align-items:center;gap:5px;color:var(--gold);font-weight:800}
+.t10-score svg{width:13px;height:13px}
+.t10-hero-overview{
+  font-size:.9rem;line-height:1.68;color:var(--text2);margin-top:13px;max-width:60ch;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+}
+.t10-hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:18px}
+.t10-hero-actions .btn-primary svg,.t10-trailer svg{width:15px;height:15px;margin-right:2px}
+.t10-hero-tools{display:inline-flex;align-items:center;gap:10px;position:relative}
+
+/* ---------- the countdown ---------- */
+.t10-list{list-style:none;display:flex;flex-direction:column;gap:8px;margin:0;padding:0;counter-reset:none}
+.t10-row-link{
+  display:grid;grid-template-columns:clamp(58px,7vw,92px) 68px 1fr auto;
+  align-items:center;gap:clamp(12px,2vw,22px);
+  padding:12px 16px 12px 6px;border-radius:var(--radius-lg);color:inherit;
+  border:1px solid transparent;
+  transition:background .2s var(--ease),border-color .2s var(--ease),transform .2s var(--ease-out);
+}
+.t10-row-link:hover{background:var(--glass);border-color:var(--glass-border);transform:translateX(4px)}
+.t10-row-link:focus-visible{outline:2px solid var(--red2);outline-offset:-2px}
+
+.t10-rank{
+  font-family:var(--font-display);font-size:clamp(2.6rem,6vw,4.1rem);font-weight:900;
+  line-height:.85;text-align:center;letter-spacing:-.06em;
+  color:transparent;-webkit-text-stroke:1.6px rgba(255,255,255,.22);
+  transition:-webkit-text-stroke-color .25s var(--ease),color .25s var(--ease);
+}
+.t10-row-link:hover .t10-rank{-webkit-text-stroke-color:var(--red2)}
+
+.t10-poster{
+  position:relative;display:block;width:68px;aspect-ratio:2/3;overflow:hidden;
+  border-radius:8px;background:var(--bg4);box-shadow:0 8px 22px rgba(0,0,0,.44);
+  transition:transform .25s var(--ease-out);
+}
+.t10-poster img{width:100%;height:100%;object-fit:cover;display:block}
+.t10-row-link:hover .t10-poster{transform:scale(1.05)}
+
+.t10-row-copy{min-width:0}
+.t10-row-copy>b{
+  display:block;font-size:1.02rem;font-weight:750;letter-spacing:-.01em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.t10-row-meta{display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:5px;font-size:.75rem;color:var(--text3)}
+.t10-row-meta i{font-style:normal;font-variant-numeric:tabular-nums}
+.t10-score-sm{color:var(--gold);font-weight:700}
+.t10-row-blurb{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  margin-top:6px;font-size:.78rem;line-height:1.55;color:var(--text3);
+}
+.t10-row-side{flex:0 0 auto}
+
+/* ---------- movement ---------- */
+/* Arrow, sign, and number all carry the direction, so the chip reads correctly
+   with no colour vision at all. Colour is the fourth channel, not the only one. */
+.t10-move{
+  display:inline-flex;align-items:center;gap:3px;
+  padding:4px 9px;border-radius:999px;white-space:nowrap;
+  font-size:.7rem;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.02em;
+  border:1px solid var(--glass-border);background:rgba(255,255,255,.05);color:var(--text3);
+}
+.t10-move.up{color:var(--cyan2);background:rgba(6,182,212,.13);border-color:rgba(34,211,238,.34)}
+.t10-move.down{color:var(--gold2);background:rgba(245,158,11,.13);border-color:rgba(251,191,36,.32)}
+.t10-move.new{color:var(--red2);background:rgba(229,9,20,.14);border-color:rgba(255,32,48,.36);letter-spacing:.08em}
+.t10-move.hold{opacity:.7}
+
+@media (max-width:820px){
+  .t10-hero-inner{flex-direction:column;align-items:flex-start;gap:18px}
+  .t10-hero-fade{background:linear-gradient(to top,var(--bg2) 22%,rgba(12,12,20,.72) 68%,rgba(12,12,20,.38) 100%)}
+  .t10-hero-poster{width:120px}
+  .t10-hero-overview{-webkit-line-clamp:4}
+}
+@media (max-width:620px){
+  .t10-row-link{grid-template-columns:46px 52px 1fr;gap:11px;padding:10px 10px 10px 2px}
+  .t10-poster{width:52px}
+  .t10-rank{font-size:2.2rem;-webkit-text-stroke-width:1.2px}
+  .t10-row-copy>b{font-size:.92rem}
+  .t10-row-blurb{display:none}
+  /* The chip moves under the title rather than being squeezed out of the row. */
+  .t10-row-side{grid-column:3;justify-self:start;margin-top:6px}
+  .t10-hero-actions{width:100%}
+  .t10-hero-actions .btn-primary{flex:1;justify-content:center}
+}
+@media (prefers-reduced-motion:reduce){
+  .t10-row-link:hover{transform:none}
+  .t10-hero-poster:hover,.t10-row-link:hover .t10-poster{transform:none}
+}

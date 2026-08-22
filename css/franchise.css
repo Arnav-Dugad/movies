@@ -102,7 +102,7 @@
   display:block;font-size:.66rem;font-weight:800;letter-spacing:.14em;
   text-transform:uppercase;color:var(--gold);margin-bottom:6px;
 }
-.franchise-row{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x proximity;padding:4px 0 12px}
+.franchise-row{gap:16px;padding-top:4px;padding-bottom:12px}
 .fr-card{
   flex:0 0 270px;width:270px;scroll-snap-align:start;
   background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-lg);
@@ -282,7 +282,8 @@
 
 /* The "one more episode" nudge above Continue Watching. */
 .continue-chase{
-  display:flex;align-items:center;gap:11px;margin:0 0 14px;padding:11px 15px;
+  display:flex;align-items:center;gap:11px;padding:11px 15px;
+  margin:0 clamp(16px,5vw,60px) 14px;
   border-radius:var(--radius-lg);font-size:.85rem;line-height:1.5;
   color:var(--text);background:linear-gradient(135deg,rgba(251,191,36,.13),var(--glass));
   border:1px solid rgba(251,191,36,.28);
@@ -304,4 +305,45 @@
 }
 @media (prefers-reduced-motion:reduce){
   .fp-skel-row{animation:none}
+}
+
+/* ===== RECOMMENDATION RAIL HEADERS ===== */
+/* A face is round, a poster is a poster: the shape says what kind of thing the
+   row is about before a word is read. The emoji glyph is the fallback for rows
+   with no artwork — a theme or a genre has no picture, and neither does an
+   account whose metadata backfill has not landed yet. */
+.rec-head{align-items:center;justify-content:flex-start;gap:14px}
+.rec-head-copy{min-width:0}
+.rec-head .section-title{font-size:1.25rem;letter-spacing:-.3px}
+.rec-kicker{
+  font-size:.78rem;line-height:1.45;color:var(--text3);margin-top:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62ch;
+}
+
+.rail-face,.rail-poster{
+  flex:0 0 auto;display:block;overflow:hidden;background:var(--bg4);
+  box-shadow:0 3px 14px rgba(0,0,0,.45);
+  transition:transform .24s var(--ease-out),box-shadow .24s var(--ease-out);
+}
+.rail-face{width:46px;height:46px;border-radius:50%;border:2px solid rgba(255,255,255,.14)}
+.rail-poster{width:40px;height:60px;border-radius:7px;border:1px solid rgba(255,255,255,.12)}
+.rail-face img,.rail-poster img{width:100%;height:100%;object-fit:cover;display:block}
+.rail-face:hover,.rail-poster:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 8px 22px rgba(0,0,0,.6)}
+.rail-face:focus-visible,.rail-poster:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.rail-glyph{
+  flex:0 0 auto;width:44px;height:44px;display:grid;place-items:center;
+  border-radius:13px;font-size:1.2rem;
+  background:var(--glass);border:1px solid var(--glass-border);
+}
+
+@media (max-width:600px){
+  .rec-head{gap:11px}
+  .rail-face{width:38px;height:38px}
+  .rail-poster{width:32px;height:48px}
+  .rail-glyph{width:36px;height:36px;font-size:1rem;border-radius:11px}
+  .rec-head .section-title{font-size:1.05rem}
+  .rec-kicker{font-size:.72rem}
+}
+@media (prefers-reduced-motion:reduce){
+  .rail-face:hover,.rail-poster:hover{transform:none}
 }
