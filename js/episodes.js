@@ -40,6 +40,18 @@ const cleanLog = value => (Array.isArray(value) ? value : [])
   .sort((a, b) => a[2] - b[2])
   .slice(-LOG_CAP);
 
+// How many times each season has been seen, keyed by season number. Absent means
+// "once, if it is complete" — exactly the rule the show-level count uses, so no
+// migration is needed and a season only grows a number once it is rewatched.
+const cleanSeasonPlays = value => {
+  const out = {};
+  for (const [season, count] of Object.entries(value && typeof value === 'object' ? value : {})) {
+    const s = +season, n = Math.floor(+count);
+    if (s > 0 && n > 1) out[String(s)] = Math.min(n, 999);
+  }
+  return out;
+};
+
 function sanitizeEntry(value) {
   if (!value || typeof value !== 'object') return null;
   const seasons = {}, structure = {};
@@ -58,6 +70,7 @@ function sanitizeEntry(value) {
     status: String(value.status || ''), seasons, structure, aired,
     lastWatched: value.lastWatched && +value.lastWatched.at ? { season: +value.lastWatched.season, episode: +value.lastWatched.episode, at: +value.lastWatched.at } : null,
     log: cleanLog(value.log),
+    seasonPlays: cleanSeasonPlays(value.seasonPlays),
     completedAt: +value.completedAt || 0,
     legacy: !!value.legacy,
     updatedAt: +value.updatedAt || 0,
@@ -107,6 +120,19 @@ function persist(key) {
   }, 600));
 }
 
+// Structure and aired-marker only, merged rather than replaced. `persist` writes
+// the WHOLE document, so using it for a metadata refresh could overwrite the
+// seasons another device just ticked with this device's older copy. This path
+// cannot: it never sends `seasons`.
+function persistMeta(key, fields) {
+  mirror();
+  document.dispatchEvent(new CustomEvent('cv:episode-progress', { detail: { key } }));
+  if (!state.user) return;
+  const uid = state.user.uid;
+  col().doc(key).set({ ...fields, updatedAt: Date.now(), serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+    .catch(error => { if (state.user?.uid === uid) console.warn('episode structure sync', error); });
+}
+
 export function resetEpisodeProgressForAuth() {
   writeTimers.forEach(clearTimeout); writeTimers.clear();
   state.episodeProgress = {};
@@ -144,6 +170,108 @@ export function seasonWatchedCount(id, season) {
   return showEntry(id)?.seasons?.[String(season)]?.length || 0;
 }
 
+// How many episodes of one season have aired. Every bulk action caps at this, so
+// progress can never claim a completion the viewer could not have reached.
+// Previously computed inline in three places, which is three chances to disagree.
+export function seasonAiredCount(id, season) {
+  return airedCapFor(showEntry(id), season);
+}
+
+function airedCapFor(entry, season) {
+  const cap = +(entry?.structure || {})[String(+season)] || 0;
+  if (cap <= 0) return 0;
+  const aired = entry.aired;
+  if (!aired) return cap;
+  if (+season < aired.season) return cap;
+  if (+season === aired.season) return Math.max(0, Math.min(cap, aired.episode));
+  return 0;                                   // the season has not started airing
+}
+
+/** Every aired episode of this season ticked. */
+export function isSeasonComplete(id, season) {
+  const need = seasonAiredCount(id, season);
+  if (!need) return false;
+  const done = new Set(showEntry(id)?.seasons?.[String(+season)] || []);
+  for (let episode = 1; episode <= need; episode++) if (!done.has(episode)) return false;
+  return true;
+}
+
+// ===== SEASON REWATCHES =====
+// Rewatching one season is the common case for TV — nobody restarts a 60-episode
+// run to see their favourite year again — so the show-level count in
+// js/rewatch.js is the wrong unit here. A season carries its own tally, and only
+// once it is complete: there is no such thing as a rewatch of something you have
+// not finished.
+
+/** Times this season has been seen. 0 until it is complete, then at least 1. */
+export function seasonPlayCount(id, season) {
+  if (!isSeasonComplete(id, season)) return 0;
+  const n = Math.floor(+(showEntry(id)?.seasonPlays || {})[String(+season)] || 0);
+  return n > 0 ? n : 1;
+}
+
+export function seasonPlayLabel(id, season) {
+  const n = seasonPlayCount(id, season);
+  if (n <= 1) return n === 1 ? 'Seen once' : '';
+  return n === 2 ? 'Seen twice' : `Seen ${n} times`;
+}
+
+/**
+ * Log another viewing of a finished season. Returns the new count, `null` if
+ * signed out, or 0 when the season is not complete — you cannot rewatch what you
+ * have not watched, and the caller should say so rather than silently counting.
+ */
+export function logSeasonRewatch(id, season, meta = {}) {
+  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
+  if (!isSeasonComplete(id, season)) return 0;
+  const next = seasonPlayCount(id, season) + 1;
+  apply(id, meta, entry => {
+    entry.seasonPlays = { ...(entry.seasonPlays || {}), [String(+season)]: next };
+    // A rewatch is viewing activity, so the show surfaces as recently watched —
+    // but it adds no episodes, and therefore no rows to the episode log.
+    markLast(entry, season, seasonAiredCount(id, season) || 1);
+  });
+  return next;
+}
+
+/** Undo the most recent season rewatch. Never drops below the original viewing. */
+export function removeSeasonRewatch(id, season, meta = {}) {
+  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
+  const current = seasonPlayCount(id, season);
+  if (current <= 1) return current;
+  const next = current - 1;
+  apply(id, meta, entry => {
+    const plays = { ...(entry.seasonPlays || {}) };
+    if (next > 1) plays[String(+season)] = next; else delete plays[String(+season)];
+    entry.seasonPlays = plays;
+  });
+  return next;
+}
+
+/** Repeat viewings of finished seasons across every tracked show. */
+export function seasonRewatchTotals() {
+  let extraSeasons = 0, seasonsRewatched = 0, extraMinutes = 0;
+  const rows = [];
+  for (const entry of Object.values(state.episodeProgress || {})) {
+    const id = entry.tmdbId;
+    if (!id) continue;
+    for (const [season, count] of Object.entries(entry.seasonPlays || {})) {
+      const plays = seasonPlayCount(id, season);
+      if (plays < 2) continue;               // dropped out of completion since
+      const extra = plays - 1;
+      seasonsRewatched++; extraSeasons += extra;
+      const episodes = seasonAiredCount(id, season);
+      if (entry.episodeRuntime > 0) extraMinutes += episodes * entry.episodeRuntime * extra;
+      rows.push({
+        id, season: +season, plays, extra, episodes,
+        title: entry.title || 'TV show', poster: entry.poster || '',
+      });
+    }
+  }
+  rows.sort((a, b) => b.plays - a.plays || a.title.localeCompare(b.title) || a.season - b.season);
+  return { extraSeasons, seasonsRewatched, extraMinutes, rows };
+}
+
 // How many episodes of this show have actually aired. Seasons before the current
 // one are counted in full; the airing season only up to the last aired episode.
 function airedTotal(entry) {
@@ -162,21 +290,42 @@ function airedTotal(entry) {
 
 export function showProgress(id) {
   const entry = showEntry(id);
-  if (!entry) return { watched: 0, total: 0, aired: 0, percent: 0, started: false, complete: false, lastWatched: null };
+  if (!entry) return { watched: 0, ticked: 0, total: 0, aired: 0, percent: 0, started: false, complete: false, lastWatched: null };
   const structure = entry.structure || {};
-  let watched = 0;
-  for (const [season, episodes] of Object.entries(entry.seasons || {})) {
-    // A season the show no longer lists (a re-numbering, a removed special) must
-    // not push the count above the total and produce a >100% bar.
-    const cap = structure[season];
-    watched += cap ? episodes.filter(episode => episode <= cap).length : episodes.length;
+  // Two counts, because they answer different questions. `ticked` is every box
+  // the viewer has checked. `watched` is the subset that counts toward this
+  // show's progress: inside a season the show still lists, and at or before the
+  // last episode to have aired. A season the show dropped in a re-numbering must
+  // not be able to satisfy "complete" on its own.
+  const known = Object.keys(structure).length > 0;
+  let ticked = 0, watched = 0;
+  for (const [seasonKey, episodes] of Object.entries(entry.seasons || {})) {
+    const cap = +structure[seasonKey] || 0;
+    if (!cap) {
+      // The show does not list this season. Either the structure has never been
+      // synced — in which case the ticks are all we have and they count — or the
+      // show dropped the season in a re-numbering, in which case counting them
+      // would let a season that no longer exists complete the show on its own.
+      ticked += episodes.length;
+      if (!known) watched += episodes.length;
+      continue;
+    }
+    ticked += episodes.filter(episode => episode <= cap).length;
+    watched += episodes.filter(episode => episode <= cap).length;
   }
   const total = Object.values(structure).reduce((sum, count) => sum + count, 0);
-  const aired = airedTotal(entry);
+  // TMDB's `aired` marker lags real releases. Every bulk action caps at it, so a
+  // tick beyond it can only have come from the viewer deliberately marking one
+  // episode — the stronger signal. The denominator therefore never falls below
+  // what they have marked; "11 of 10 aired" is a reporting bug, not a fact about
+  // their viewing. Only ever raised, never invented: with no aired data at all
+  // this stays 0 and nothing can read as complete.
+  const airedBase = airedTotal(entry);
+  const aired = airedBase > 0 ? Math.max(airedBase, watched) : 0;
   return {
-    watched, total, aired,
+    watched, ticked, total, aired,
     percent: aired ? Math.min(100, Math.round((watched / aired) * 100)) : 0,
-    started: watched > 0,
+    started: ticked > 0,
     complete: aired > 0 && watched >= aired,
     lastWatched: entry.lastWatched,
   };
@@ -256,8 +405,11 @@ export function episodeStats({ months = 12 } = {}) {
   const busiestEntry = [...perDay.entries()].sort((a, b) => b[1] - a[1])[0] || null;
   const logged = [...perDay.values()].reduce((sum, count) => sum + count, 0);
 
+  const seasonRewatches = seasonRewatchTotals();
+
   return {
     episodes, minutes, runtimeKnown,
+    seasonRewatches,
     runtimeCoverage: episodes ? Math.round(runtimeKnown / episodes * 100) : 0,
     shows: shows.length, completed, inProgress,
     completionRate: shows.length ? Math.round(completed / shows.length * 100) : 0,
@@ -275,6 +427,7 @@ export function episodeTotals() {
   let episodes = 0, minutes = 0, shows = 0, completed = 0;
   for (const entry of Object.values(state.episodeProgress || {})) {
     const id = entry.tmdbId;
+    if (!id) continue;                       // same guard episodeStats already had
     const progress = showProgress(id);
     if (!progress.started) continue;
     shows++;
@@ -314,8 +467,9 @@ export function syncShowStructure(id, meta) {
   const airedChanged = JSON.stringify(before.aired || null) !== JSON.stringify(meta.aired || null);
   if (!structureChanged && !airedChanged) return;
   ensure(id, meta);
-  state.episodeProgress[key].updatedAt = Date.now();
-  persist(key);
+  const entry = state.episodeProgress[key];
+  entry.updatedAt = Date.now();
+  persistMeta(key, { structure: entry.structure, aired: entry.aired });
 }
 
 function apply(id, meta, mutate) {
@@ -329,6 +483,17 @@ function apply(id, meta, mutate) {
   // `legacy` means "completed before per-episode tracking existed". The moment
   // real episode data is written the flag stops being true of the document.
   if (entry.legacy && entry.log.length) entry.legacy = false;
+  // Un-ticking has to be able to undo a completion. Without this a show stayed
+  // stamped as finished after its last episode was un-marked, and every surface
+  // reading `completedAt` kept reporting a finish date for a show in progress.
+  const after = showProgress(id);
+  if (!after.complete) {
+    entry.completedAt = 0;
+    // A rewatch count only means anything while the season is still complete.
+    for (const season of Object.keys(entry.seasonPlays || {})) {
+      if (!isSeasonComplete(id, season)) delete entry.seasonPlays[season];
+    }
+  }
   persist(key);
   return { key, entry };
 }
@@ -344,7 +509,13 @@ function unlogEpisode(entry, season, episode) {
   entry.log = (entry.log || []).filter(row => !(row[0] === +season && row[1] === +episode));
 }
 
+/**
+ * Returns the episode's new watched state, or `null` when the write was refused
+ * because nobody is signed in. Callers must treat null as "nothing happened" —
+ * returning `true` there painted a tick for an episode that was never saved.
+ */
 export function toggleEpisode(id, season, episode, meta = {}) {
+  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   const wasWatched = isEpisodeWatched(id, season, episode);
   apply(id, meta, entry => {
     const list = new Set(entry.seasons[String(season)] || []);
@@ -359,6 +530,7 @@ export function toggleEpisode(id, season, episode, meta = {}) {
 // "I've seen everything up to here" — the single most useful bulk action when
 // you start tracking a show you are already partway through.
 export function markUpTo(id, season, episode, meta = {}) {
+  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   let added = 0;
   apply(id, meta, entry => {
     const structure = entry.structure || {};
@@ -367,7 +539,12 @@ export function markUpTo(id, season, episode, meta = {}) {
     const stamp = Date.now();
     for (const current of Object.keys(structure).map(Number).sort((a, b) => a - b)) {
       if (current > +season) break;
-      const cap = current === +season ? +episode : structure[current];
+      // Capped at what has aired, exactly like "mark season watched" and "seen it
+      // all". Without this, "up to here" was the one bulk action that could mark
+      // episodes nobody could have watched yet.
+      const airedCap = airedCapFor(entry, current);
+      if (airedCap <= 0) continue;
+      const cap = Math.min(airedCap, current === +season ? +episode : structure[current]);
       const list = new Set(entry.seasons[String(current)] || []);
       for (let index = 1; index <= cap; index++) {
         if (list.has(index)) continue;
@@ -384,17 +561,16 @@ export function markUpTo(id, season, episode, meta = {}) {
 }
 
 export function setSeasonWatched(id, season, on, meta = {}) {
+  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   apply(id, meta, entry => {
     if (!on) {
       delete entry.seasons[String(season)];
       entry.log = (entry.log || []).filter(row => row[0] !== +season);
       return;
     }
-    const count = (entry.structure || {})[String(season)] || 0;
-    const aired = entry.aired;
     // Never mark episodes that have not aired: the progress bar would claim a
-    // completion the user cannot have.
-    const cap = aired && +season === aired.season ? Math.min(count, aired.episode) : (aired && +season > aired.season ? 0 : count);
+    // completion the user cannot have. Shared with every other bulk action.
+    const cap = airedCapFor(entry, season);
     const list = new Set(entry.seasons[String(season)] || []);
     const stamp = Date.now();
     for (let index = 1; index <= cap; index++) {
@@ -406,12 +582,13 @@ export function setSeasonWatched(id, season, on, meta = {}) {
     if (cap) markLast(entry, season, cap);
   });
   if (on) maybeCompleteShow(id, meta);
+  return true;
 }
 
 // Mark every AIRED episode of every season. `meta.structure` is optional: when a
 // card triggers this we have no show payload, so the structure is fetched first.
 export async function markShowWatched(id, meta = {}, { fetchStructure = fetchShowMeta, stampFrom = 0 } = {}) {
-  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return 0; }
+  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   let resolved = meta;
   const known = showEntry(id);
   if (!resolved.structure || !Object.keys(resolved.structure).length) {
@@ -427,10 +604,9 @@ export async function markShowWatched(id, meta = {}, { fetchStructure = fetchSho
   // finished three years ago does not land in this month's activity chart.
   const stamp = stampFrom > 0 ? stampFrom : Date.now();
   apply(id, resolved, entry => {
-    const structure = entry.structure || {}, aired = entry.aired;
+    const structure = entry.structure || {};
     for (const season of Object.keys(structure).map(Number).sort((a, b) => a - b)) {
-      const count = structure[season];
-      const cap = aired ? (season < aired.season ? count : season === aired.season ? Math.min(count, aired.episode) : 0) : count;
+      const cap = airedCapFor(entry, season);
       if (cap <= 0) continue;
       const list = new Set(entry.seasons[String(season)] || []);
       for (let index = 1; index <= cap; index++) {
@@ -464,7 +640,9 @@ function maybeCompleteShow(id, meta) {
   const progress = showProgress(id);
   if (!progress.complete || !progress.aired) return;
   const entry = showEntry(id);
-  if (entry && !entry.completedAt) { entry.completedAt = entry.lastWatched?.at || Date.now(); mirror(); }
+  // Persist explicitly rather than relying on the caller's pending debounce
+  // still being open — the stamp is what every "finished on" figure reads.
+  if (entry && !entry.completedAt) { entry.completedAt = entry.lastWatched?.at || Date.now(); persist(KEY(id)); }
   if (state.watched[`tv_${id}`]) return;
   completeHook?.(id, meta, progress);
 }

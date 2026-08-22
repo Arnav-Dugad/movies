@@ -14,10 +14,10 @@ import { social } from './social.js';
 import { tmdb } from './api.js';
 import { buildCard } from './cards.js';
 import { getProviderStats, getCatalogSeries } from './provider-history.js';
-import { episodeTotals, episodeStats, showProgress, showEntry } from './episodes.js';
+import { episodeTotals, episodeStats, showProgress, showEntry, seasonRewatchTotals } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 import { rewatchSummary, rewatchesSince, playCount } from './rewatch.js';
-import { franchiseSummary } from './franchise.js';
+import { franchiseSummary, tvFamilySummary } from './franchise.js';
 
 let statsScope = 'all';
 let latestSnapshot = null;
@@ -619,6 +619,9 @@ function tvTrackerPanel() {
       ${tile('Episode time', hours ? `${hours.toLocaleString()}h` : '—', tv.runtimeCoverage === 100 ? 'Runtime known for every episode' : `Runtime known for ${tv.runtimeCoverage}% of them${days ? ` · about ${days} days` : ''}`)}
       ${tile('Shows finished', tv.completed, tv.inProgress ? `${tv.inProgress} still in progress` : 'Nothing left open')}
       ${tile('Longest sitting', tv.binge ? `${tv.binge.count} eps` : '—', tv.binge ? `on ${new Date(`${tv.binge.day}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Counts episodes ticked one at a time')}
+      ${tv.seasonRewatches.extraSeasons
+        ? tile('Seasons rewatched', tv.seasonRewatches.extraSeasons, `${tv.seasonRewatches.rows[0].title} S${tv.seasonRewatches.rows[0].season} leads at ${tv.seasonRewatches.rows[0].plays}\u00d7${tv.seasonRewatches.extraMinutes ? ` \u00b7 ${Math.round(tv.seasonRewatches.extraMinutes / 60)}h on repeats` : ''}`)
+        : tile('Seasons rewatched', '\u2014', 'Finish a season and “Rewatched it” appears on its toolbar')}
     </div>
 
     <div class="tv-grid">
@@ -641,6 +644,11 @@ function activityPanel(stats) {
   // history rather than folded into it — a show counted once as watched must not
   // also be counted episode by episode.
   const episodes = episodeTotals();
+  // Repeat viewing is activity too, and it is invisible in a "titles watched"
+  // count by definition — a month spent rewatching reads as a month off.
+  const repeats30 = rewatchesSince(30);
+  const repeats365 = rewatchesSince(365);
+  const seasonRepeats = seasonRewatchTotals();
   const maxMonth = Math.max(1, ...stats.last12Months.map(item => item.count));
   const maxDay = Math.max(1, ...stats.heatDays.map(item => item.count));
   const heat = stats.heatDays.map(item => {
@@ -649,7 +657,7 @@ function activityPanel(stats) {
   }).join('');
   const monthBars = stats.last12Months.map(item => `<div class="activity-month"><div><i style="--month-height:${Math.max(item.count ? 8 : 1, Math.round(item.count / maxMonth * 100))}%"></i></div><span>${item.label}</span><b>${item.count || ''}</b></div>`).join('');
   return `<section class="stats-panel activity-section"><div class="stats-section-head"><div><span>Viewing rhythm</span><h2>Activity Pulse</h2><p>Your recent pace, streaks, and strongest viewing moments.</p></div></div>
-    <div class="activity-highlights"><div><span>Current streak</span><strong>${stats.currentStreak}<small> days</small></strong></div><div><span>Longest streak</span><strong>${stats.longestStreak}<small> days</small></strong></div><div><span>Best month</span><strong>${esc(stats.bestMonth)}</strong></div><div><span>Peak day</span><strong>${esc(stats.peakDay)}</strong></div>${episodes.episodes ? `<div><span>Episodes tracked</span><strong>${episodes.episodes}<small> across ${episodes.shows} show${episodes.shows === 1 ? '' : 's'}</small></strong></div><div><span>Episode hours</span><strong>${Math.round(episodes.minutes / 60)}<small> h${episodes.completed ? ` · ${episodes.completed} finished` : ''}</small></strong></div>` : ''}</div>
+    <div class="activity-highlights"><div><span>Current streak</span><strong>${stats.currentStreak}<small> days</small></strong></div><div><span>Longest streak</span><strong>${stats.longestStreak}<small> days</small></strong></div><div><span>Best month</span><strong>${esc(stats.bestMonth)}</strong></div><div><span>Peak day</span><strong>${esc(stats.peakDay)}</strong></div>${episodes.episodes ? `<div><span>Episodes tracked</span><strong>${episodes.episodes}<small> across ${episodes.shows} show${episodes.shows === 1 ? '' : 's'}</small></strong></div><div><span>Episode hours</span><strong>${Math.round(episodes.minutes / 60)}<small> h${episodes.completed ? ` · ${episodes.completed} finished` : ''}</small></strong></div>` : ''}${repeats365 || seasonRepeats.extraSeasons ? `<div><span>Rewatched</span><strong>${repeats365}<small> title${repeats365 === 1 ? '' : 's'} this year${repeats30 ? ` · ${repeats30} in 30 days` : ''}</small></strong></div>${seasonRepeats.extraSeasons ? `<div><span>Seasons revisited</span><strong>${seasonRepeats.extraSeasons}<small> across ${seasonRepeats.rows.length} show${seasonRepeats.rows.length === 1 ? '' : 's'}</small></strong></div>` : ''}` : ''}</div>
     <div class="activity-grid"><div class="activity-chart"><div class="mini-panel-title"><span>Last 12 months</span><b>${stats.thisYear} this year</b></div><div class="activity-months">${monthBars}</div></div><div class="activity-chart"><div class="mini-panel-title"><span>52-week watch map</span><b>${stats.last30} in 30 days</b></div><div class="activity-heat-wrap"><div class="activity-heatmap">${heat}</div><div class="activity-legend"><span>Less</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>More</span></div></div></div></div>
   </section>`;
 }
@@ -988,7 +996,7 @@ export function renderStats() {
   // so the request would be pure waste.
   if (!isCollapsed('directors')) loadDirectorLoyalty(fullStats, generation);
   if (!isCollapsed('smartwatch')) loadSmartWatchList(stats, generation);
-  if (!isCollapsed('franchises')) loadFranchises(generation);
+  if (!isCollapsed('franchises')) loadFranchises(generation).then(() => loadTvFamilies(generation));
   ensureWatchedMeta();
 }
 
@@ -1037,7 +1045,40 @@ function franchisePanel() {
   return `<section class="stats-panel franchise-panel">
     <div class="stats-section-head"><div><span>Collection completion</span><h2>Franchises</h2><p>How far through each film series you are. Measured against released entries only &mdash; an announced sequel cannot count against you.</p></div></div>
     <div id="franchiseBody"><div class="network-empty">Working out where you stand&hellip;</div></div>
+    <div id="tvFamilyBody"></div>
   </section>`;
+}
+
+// Television has no TMDB collections, so its families are derived from titles
+// and labelled as such. Loaded after the film franchises so the authoritative
+// half of the panel is never waiting on the approximate half.
+async function loadTvFamilies(generation) {
+  const host = $('tvFamilyBody');
+  if (!host) return;
+  let summary;
+  try { summary = await tvFamilySummary({ limit: 8 }); }
+  catch (error) { console.warn('tvFamilySummary', error); return; }
+  if (generation !== insightGeneration || !$('tvFamilyBody')) return;
+  if (!summary.rows.length) { $('tvFamilyBody').innerHTML = ''; return; }
+
+  const row = item => `<button class="fr-row${item.complete ? ' done' : item.unseen.length === 1 ? ' almost' : ''}" data-action="open-detail" data-id="${item.nextUp?.id || 0}" data-type="tv"${item.nextUp ? '' : ' disabled'} aria-label="${esc(item.name)}, ${item.seen} of ${item.found} seen">
+      <img class="fr-poster" src="${item.poster ? `${IMG}w92${item.poster}` : PH}" alt="" loading="lazy">
+      <span>
+        <span class="fr-name">${esc(item.name)}</span>
+        <span class="fr-bar"><i style="width:${Math.round(item.percent)}%"></i></span>
+        <span class="fr-meta">${item.seen} of ${item.found} found${item.nextUp ? ` &middot; next: ${esc(item.nextUp.title)}` : ''}</span>
+      </span>
+      <span class="fr-badge">${item.complete ? 'All found' : item.unseen.length === 1 ? '1 to go' : `${item.unseen.length} left`}</span>
+    </button>`;
+
+  $('tvFamilyBody').innerHTML = `
+    <div class="fr-tv">
+      <div class="fr-tv-head">
+        <h3>Television families</h3>
+        <p>TMDB has no collections for TV, so these are grouped by name &mdash; a show that declares its franchise before a colon or a dash. The total is what TMDB search returns for that name, so read it as <b>found</b>, not as everything that exists.</p>
+      </div>
+      <div class="fr-list">${[...summary.inProgress, ...summary.complete].map(row).join('')}</div>
+    </div>`;
 }
 
 async function loadFranchises(generation) {
@@ -1054,7 +1095,7 @@ async function loadFranchises(generation) {
 
   if (!summary.rows.length) {
     $('franchiseBody').innerHTML = '<div class="network-empty">No film series in your history yet. Watch two entries from the same collection and this fills in.</div>';
-    return;
+    return;                                  // the TV half still renders below
   }
 
   // Closest to finishing first: the panel exists to tell you what to watch next,

@@ -103,4 +103,50 @@ check('a group carries the keys it was built from',
 state.watched = {};
 check('an empty history produces no franchises', fr.watchedCollections().length === 0);
 
+// ================= TV FAMILIES =================
+// Name-derived, so the tests that matter are the ones about what it REFUSES to
+// group. A false family is worse than a missed one: it invents a franchise and
+// then reports the viewer as behind on it.
+check('a colon declares a stem', fr.titleStem('Star Trek: Discovery') === 'Star Trek', fr.titleStem('Star Trek: Discovery'));
+check('an em dash declares a stem', fr.titleStem('Fargo — Year Two') === 'Fargo');
+check('a spaced hyphen declares a stem', fr.titleStem('Doctor Who - Series 1') === 'Doctor Who');
+check('a plain title declares nothing', fr.titleStem('Breaking Bad') === '');
+check('a hyphenated word is not a separator', fr.titleStem('Spider-Man') === '');
+check('a comma is not a separator', fr.titleStem('Love, Death & Robots') === '');
+check('a two-character stem is rejected', fr.titleStem('A: Something') === '');
+check('an empty or missing title is handled', fr.titleStem('') === '' && fr.titleStem(null) === '' && fr.titleStem(undefined) === '');
+check('a colon with nothing after it is not a stem', fr.titleStem('Weird:') === '');
+check('a one-word stem is allowed when it is long enough', fr.titleStem('Alien: Earth') === 'Alien');
+
+const tvWatched = {
+  tv_1: { tmdbId: 1, type: 'tv', title: 'Star Trek: Discovery', poster: '/d.jpg' },
+  tv_2: { tmdbId: 2, type: 'tv', title: 'Star Trek: Picard' },
+  tv_3: { tmdbId: 3, type: 'tv', title: 'Star Trek' },              // joins by exact stem
+  tv_4: { tmdbId: 4, type: 'tv', title: 'Breaking Bad' },           // declares nothing
+  tv_5: { tmdbId: 5, type: 'tv', title: 'Fargo: Season Two' },      // only one member
+  movie_6: { tmdbId: 6, type: 'movie', title: 'Star Trek: Nemesis' }, // wrong medium
+};
+const families = fr.tvFamilies({ watched: tvWatched });
+check('a family forms from two declared members plus the bare title',
+  families.length === 1 && families[0].name === 'Star Trek' && families[0].seen.length === 3,
+  JSON.stringify(families.map(f => [f.name, f.seen.length])));
+check('a title declaring nothing stays out', !families[0].seen.some(s => s.title === 'Breaking Bad'));
+check('a film is never pulled into a TV family', !families[0].seen.some(s => s.key === 'movie_6'));
+check('a family of one is not a family', !families.some(f => f.name === 'Fargo'));
+check('a family carries the poster it has', families[0].seen.some(s => s.poster === '/d.jpg'));
+
+check('a library with no declared stems produces no families',
+  fr.tvFamilies({ watched: { tv_1: { tmdbId: 1, type: 'tv', title: 'Severance' }, tv_2: { tmdbId: 2, type: 'tv', title: 'Andor' } } }).length === 0);
+check('an empty library produces no families', fr.tvFamilies({ watched: {} }).length === 0);
+check('a bare title with no matching stem does not start a family',
+  fr.tvFamilies({ watched: { tv_1: { tmdbId: 1, type: 'tv', title: 'Star Trek' }, tv_2: { tmdbId: 2, type: 'tv', title: 'Star Trek' } } }).length === 0);
+
+// Case and punctuation must not split one family in two.
+const cased = fr.tvFamilies({ watched: {
+  tv_1: { tmdbId: 1, type: 'tv', title: 'Law & Order: SVU' },
+  tv_2: { tmdbId: 2, type: 'tv', title: 'LAW AND ORDER: Criminal Intent' },
+} });
+check('folding ignores case and punctuation when matching stems',
+  cased.length === 1 && cased[0].seen.length === 2, JSON.stringify(cased.map(f => [f.name, f.seen.length])));
+
 summary();

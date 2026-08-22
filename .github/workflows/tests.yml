@@ -1,0 +1,66 @@
+name: tests
+
+# CineVerse ships straight to Cloudflare from main, with no build step to fail
+# first. These are the only gate between a bad commit and production.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  logic:
+    name: logic suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # No install step on purpose: the logic suites run against the real
+      # application modules through a small browser shim and have no
+      # dependencies at all, so this job is only as slow as the tests.
+      - name: Logic suites
+        working-directory: tests
+        run: npm run test:logic
+
+      - name: Security-rule coverage
+        working-directory: tests
+        run: npm run coverage
+
+      # A syntax error in any module breaks the app instantly — there is no
+      # bundler to catch it — and a renamed export breaks it just as completely
+      # while parsing fine.
+      - name: Parse every module
+        run: for f in js/*.js; do node --check "$f"; done
+
+      - name: Resolve every import
+        run: node tests/imports.mjs
+
+  rules:
+    name: firestore rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+
+      # The Firestore emulator is a Java process.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install
+        working-directory: tests
+        run: npm ci --no-audit --no-fund
+
+      - name: Rules suite
+        working-directory: tests
+        run: npm run test:rules

@@ -1,12 +1,13 @@
 // ===== HOME SECTIONS (+ personalization) =====
 import { tmdb, pool } from './api.js';
-import { $, esc } from './ui.js';
+import { $, esc, debounce } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
 import { registerActions } from './events.js';
 import { renderRecommendations } from './recommend.js';
 import { getStreamingArrivals } from './provider-history.js';
 import { resumeQueue } from './episodes.js';
+import { franchiseSummary } from './franchise.js';
 import { IMG, PH, providerUrl, regionLabel } from './config.js';
 import { state } from './state.js';
 
@@ -78,6 +79,63 @@ export function renderStreamingArrivals() {
   observeReveals();
 }
 
+// ===== FINISH THE FRANCHISE =====
+// A series you are one film from completing is a better recommendation than
+// anything the scorer can produce: the interest is already proven and the gap is
+// a fact, not an inference. Ranked by how close to done each one is, so the top
+// of the rail is always the most finishable thing in the library.
+//
+// Everything it needs comes from `collectionId` stamped on watched documents plus
+// a cached collection lookup, so a repeat visit costs no requests at all.
+export async function renderFranchiseRail() {
+  const host = $('franchiseRow');
+  if (!host) return;
+  if (!state.user) { host.innerHTML = ''; return; }
+  let summary;
+  try { summary = await franchiseSummary({ limit: 10 }); }
+  catch (_) { host.innerHTML = ''; return; }
+  if (!$('franchiseRow')) return;
+
+  // Only series with something left, and only the actual next film — listing a
+  // whole collection you have half-seen is the collection page's job.
+  const rows = summary.inProgress.filter(item => item.nextUp).slice(0, 12);
+  if (!rows.length) { host.innerHTML = ''; return; }
+
+  const almost = rows.filter(item => item.unseen.length === 1).length;
+  const lede = almost
+    ? `${almost} ${almost === 1 ? 'series is' : 'series are'} one film from complete.`
+    : `Carry on with ${rows.length} film series you have already started.`;
+
+  host.innerHTML = `<section class="section reveal franchise-section">
+    <div class="section-head"><div>
+      <span class="franchise-eyebrow">From your own collection</span>
+      <h2 class="section-title"><span>&#9678;</span> Finish the Franchise</h2>
+      <p>${esc(lede)}</p>
+    </div><button class="section-see-all" data-action="show-page" data-page="stats">All franchises<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div>
+    <div class="row franchise-row">${rows.map(franchiseCard).join('')}</div>
+  </section>`;
+  observeReveals();
+  requestAnimationFrame(() => host.querySelectorAll('.fr-card-bar i').forEach(bar => { bar.style.width = `${+bar.dataset.w || 0}%`; }));
+}
+
+function franchiseCard(item) {
+  const next = item.nextUp;
+  const left = item.unseen.length;
+  const art = next.poster ? `${IMG}w342${next.poster}` : item.poster ? `${IMG}w342${item.poster}` : PH;
+  return `<article class="fr-card${left === 1 ? ' almost' : ''}">
+    <a class="fr-card-art" href="/movie/${next.id}" data-action="open-detail" data-id="${next.id}" data-type="movie" aria-label="Open ${esc(next.title)}">
+      <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
+      <span class="fr-card-flag">${left === 1 ? 'Last one' : `${left} left`}</span>
+    </a>
+    <div class="fr-card-body">
+      <a class="fr-card-series" href="/collection/${item.id}" data-action="go-collection" data-cid="${item.id}">${esc(item.name)}</a>
+      <h3>${esc(next.title)}</h3>
+      <div class="fr-card-bar"><i style="width:0" data-w="${Math.round(item.percent)}"></i></div>
+      <div class="fr-card-meta"><span>${item.seen} of ${item.released} seen</span><b>${Math.round(item.percent)}%</b></div>
+    </div>
+  </article>`;
+}
+
 // Build a row's cards from a TMDB result set, honoring t10 / wide / person / multi.
 function cardsFor(s, results) {
   const items = results.slice(0, s.t10 ? 10 : 20).filter(x => s.type === 'person' ? x.profile_path : x.poster_path);
@@ -107,7 +165,17 @@ export function initHomeActions() {
   // A tick anywhere — the rail's own button or the detail page — re-orders the
   // queue, so the rail always rebuilds rather than trying to patch itself.
   document.addEventListener('cv:episode-progress', renderContinueWatching);
+  document.addEventListener('cv:auth', renderFranchiseRail);
+  // Marking a film watched can finish a series or shorten the gap in one, so the
+  // rail rebuilds on any library change. Collection lookups are cached, so a
+  // rebuild is usually free.
+  document.addEventListener('cv:wl-changed', debouncedFranchiseRail);
+  document.addEventListener('cv:meta-backfilled', debouncedFranchiseRail);
 }
+
+// A burst of list edits (a CSV import, a season marked watched) fires many
+// changes; the rail only needs to settle once.
+const debouncedFranchiseRail = debounce(() => renderFranchiseRail(), 700);
 
 // Genre ids: 16 Animation, 27 Horror, 35 Comedy, 878 Sci-Fi, 10751 Family.
 // Exported so the curated collection page (js/collection.js) can re-run the exact
@@ -151,6 +219,7 @@ export async function initHome() {
   // of their signals and scoring instead of duplicating the same cards there.
   renderRecommendations();
   renderContinueWatching();
+  renderFranchiseRail();
   renderStreamingArrivals();
 
   await Promise.allSettled(SECTIONS.map(async s => {

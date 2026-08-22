@@ -43,8 +43,6 @@ function readJSON(key) {
 const isDirty = uid => { try { return localStorage.getItem(dirtyKey(uid)) === '1'; } catch (_) { return true; } };
 const setDirty = (uid, on) => { try { on ? localStorage.setItem(dirtyKey(uid), '1') : localStorage.removeItem(dirtyKey(uid)); } catch (_) {} };
 
-/** Drop this device's cache. Called on sign-out, on a version mismatch we cannot
- *  reconcile, and by the manual refresh in Settings. */
 /** Forget the in-memory counters without deleting the stored snapshot. Used when
  *  a session ends on its own: the cache is still valid for the next sign-in. */
 export function resetLibraryRuntime() {
@@ -52,6 +50,8 @@ export function resetLibraryRuntime() {
   pendingBump = 0; localVersion = 0; cacheDisabled = false;
 }
 
+/** Drop this device's cache entirely. Called on an explicit sign-out and by
+ *  "Refresh library from cloud" in Settings. */
 export function clearLibraryCache(uid) {
   cacheDisabled = false; localVersion = 0; pendingBump = 0;
   clearTimeout(bumpTimer); bumpTimer = null;

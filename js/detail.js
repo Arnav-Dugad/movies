@@ -9,7 +9,8 @@ import { observeReveals, observeCountUps } from './effects.js';
 import { mountAmbientVideo } from './video-bg.js';
 import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
-import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta } from './episodes.js';
+import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
+  seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
@@ -1020,7 +1021,25 @@ function seasonToolbar(id, season, episodes, meta) {
   return `<div class="season-toolbar">
     <span><b>${done}</b> of ${aired} aired episode${aired === 1 ? '' : 's'} watched</span>
     <button data-action="ep-season" data-tid="${id}" data-sn="${season}" data-on="${all ? '0' : '1'}" data-meta="${meta}">${all ? 'Unmark whole season' : 'Mark season watched'}</button>
+    <span class="season-rewatch" id="seasonRewatch_${id}_${season}">${seasonRewatchHTML(id, season, meta)}</span>
   </div>`;
+}
+
+// Rewatching one season is the normal way people revisit television — nobody
+// restarts a sixty-episode run to see their favourite year again — so the count
+// lives beside the season it belongs to, and only once that season is finished.
+function seasonRewatchHTML(id, season, meta) {
+  if (!isSeasonComplete(id, season)) return '';
+  const plays = seasonPlayCount(id, season);
+  return `${plays > 1 ? `<b class="season-plays" title="${esc(seasonPlayLabel(id, season))}">${plays}&times;</b>` : ''}
+    <button class="season-rw-btn" data-action="season-rewatch" data-tid="${id}" data-sn="${season}" data-meta="${meta}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>${plays > 1 ? 'Again' : 'Rewatched it'}</button>
+    ${plays > 1 ? `<button class="season-rw-undo" data-action="season-rewatch-undo" data-tid="${id}" data-sn="${season}" data-meta="${meta}">Undo</button>` : ''}`;
+}
+
+function paintSeasonRewatch(id, season, meta) {
+  const host = $(`seasonRewatch_${id}_${season}`);
+  if (host) host.innerHTML = seasonRewatchHTML(id, season, meta);
 }
 
 function readEpisodeMeta(el) {
@@ -1029,19 +1048,22 @@ function readEpisodeMeta(el) {
 
 // The toolbar carries the season's own counts, so it has to be recomputed
 // separately from the show-level chrome.
-function syncSeasonToolbar(tid, sn) {
+function syncSeasonToolbar(tid, sn, meta = '{}') {
   const toolbar = document.querySelector('.season-toolbar');
   if (!toolbar) return;
   const aired = document.querySelectorAll('.ep-card:not(.unaired)').length;
   const done = seasonWatchedCount(tid, sn);
   const count = toolbar.querySelector('b');
   if (count) count.textContent = String(done);
-  const button = toolbar.querySelector('button');
+  const button = toolbar.querySelector('[data-action="ep-season"]');
   if (button) {
     const all = aired > 0 && done >= aired;
     button.dataset.on = all ? '0' : '1';
     button.textContent = all ? 'Unmark whole season' : 'Mark season watched';
   }
+  // Finishing the last episode of a season is exactly when the rewatch control
+  // becomes meaningful, so it appears (and disappears) with the completion.
+  paintSeasonRewatch(tid, sn, meta);
 }
 
 async function loadEps(tid, sn) {
@@ -1220,7 +1242,9 @@ export function initDetail() {
     'ep-toggle': el => {
       const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
       const watched = toggleEpisode(tid, sn, en, readEpisodeMeta(el));
-      if (!state.user) return;
+      // null means the write was refused (signed out). Painting a tick for an
+      // episode that was never saved is worse than doing nothing.
+      if (watched === null) return;
       const card = document.querySelector(`.ep-card[data-ep="${sn}-${en}"]`);
       if (card) {
         card.classList.toggle('watched', watched);
@@ -1233,12 +1257,12 @@ export function initDetail() {
         }
       }
       refreshEpisodeUI(tid);
-      syncSeasonToolbar(tid, sn);
+      syncSeasonToolbar(tid, sn, el.dataset.meta || '{}');
     },
     'ep-mark-upto': el => {
       const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
       const added = markUpTo(tid, sn, en, readEpisodeMeta(el));
-      if (!state.user) return;
+      if (added === null) return;
       toast(added ? `Marked ${added} episode${added === 1 ? '' : 's'} watched` : 'Already up to date', added ? 'success' : 'info');
       loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
     },
@@ -1250,8 +1274,7 @@ export function initDetail() {
     },
     'ep-season': el => {
       const tid = +el.dataset.tid, sn = +el.dataset.sn, on = el.dataset.on === '1';
-      setSeasonWatched(tid, sn, on, readEpisodeMeta(el));
-      if (!state.user) return;
+      if (setSeasonWatched(tid, sn, on, readEpisodeMeta(el)) === null) return;
       toast(on ? `Season ${sn} marked watched` : `Season ${sn} cleared`, on ? 'success' : 'info');
       loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
     },
@@ -1262,9 +1285,25 @@ export function initDetail() {
       el.textContent = 'Marking…';
       const added = await markShowWatched(tid, readEpisodeMeta(el));
       el.disabled = false; el.textContent = before;
+      if (added === null) return;              // refused: the auth modal is opening
       if (!added) { toast('Every aired episode is already marked', 'info'); return; }
       toast(`Marked ${added} episode${added === 1 ? '' : 's'} watched`, 'success');
       openDetail(tid, 'tv');
+    },
+    'season-rewatch': el => {
+      const tid = +el.dataset.tid, sn = +el.dataset.sn;
+      const plays = logSeasonRewatch(tid, sn, readEpisodeMeta(el));
+      if (plays === null) return;
+      if (!plays) { toast('Finish the season first', 'info'); return; }
+      paintSeasonRewatch(tid, sn, el.dataset.meta || '{}');
+      toast(plays === 2 ? `Season ${sn} seen twice` : `Season ${sn} seen ${plays} times`, 'success');
+    },
+    'season-rewatch-undo': el => {
+      const tid = +el.dataset.tid, sn = +el.dataset.sn;
+      const plays = removeSeasonRewatch(tid, sn, readEpisodeMeta(el));
+      if (plays === null) return;
+      paintSeasonRewatch(tid, sn, el.dataset.meta || '{}');
+      toast(plays > 1 ? `Back to ${plays} viewings` : 'Back to one viewing', 'info');
     },
     'ep-reset': el => {
       const tid = +el.dataset.tid;

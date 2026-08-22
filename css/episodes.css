@@ -138,3 +138,29 @@
   .tv-month span{font-size:.38rem}
 }
 @media(prefers-reduced-motion:reduce){.tv-month i,.tv-row-bar i{transition:none}}
+
+/* ===== SEASON REWATCHES ===== */
+/* Appears only once a season is finished — the toolbar's own completion state is
+   what gates it, so the control never invites an action that would be refused. */
+.season-rewatch{display:inline-flex;align-items:center;gap:8px}
+.season-rewatch:empty{display:none}
+.season-toolbar>span.season-rewatch b.season-plays{
+  display:inline-grid;place-items:center;min-width:26px;height:22px;padding:0 6px;
+  border-radius:999px;font-family:var(--font-mono);font-size:.62rem;font-weight:800;
+  color:#1a1200;background:linear-gradient(135deg,var(--gold),var(--gold2));
+}
+.season-rw-btn,.season-rw-undo{
+  display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 12px;
+  border-radius:50px;font-family:inherit;font-size:.55rem;font-weight:800;cursor:pointer;
+  letter-spacing:.02em;transition:background .18s var(--ease),border-color .18s var(--ease);
+}
+.season-rw-btn{border:1px solid rgba(251,191,36,.26);background:rgba(251,191,36,.08);color:var(--gold)}
+.season-rw-btn:hover{background:rgba(251,191,36,.17);border-color:rgba(251,191,36,.42)}
+.season-rw-btn svg{width:12px;height:12px}
+.season-rw-undo{border:1px solid transparent;background:transparent;color:var(--text3)}
+.season-rw-undo:hover{color:var(--text2)}
+.season-rw-btn:focus-visible,.season-rw-undo:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media(max-width:640px){
+  .season-rewatch{width:100%;justify-content:flex-start}
+  .season-rw-btn{flex:1;justify-content:center}
+}

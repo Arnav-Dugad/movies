@@ -7,8 +7,11 @@
 // taste profile (js/recommend.js) with a weight small enough that real viewing
 // history overtakes them within a handful of titles.
 //
-// It shows once, for an account with nothing in it. Skipping counts as answering:
-// nobody is asked twice.
+// It shows once, for anyone with nothing in their library — including a visitor
+// who has not signed up, because that is exactly who is looking at the emptiest
+// version of the app. Their answers are kept on the device and adopted by the
+// account the moment they create one, so nobody is asked the same three questions
+// twice. Skipping counts as answering.
 import { db, firebase } from './firebase.js';
 import { state } from './state.js';
 import { $, esc, toast, trapFocus, lockScroll, unlockScroll } from './ui.js';
@@ -18,6 +21,7 @@ import { REGIONS, mGenreList, regionLabel } from './config.js';
 const MIN_GENRES = 2;
 const MAX_GENRES = 6;
 const STEPS = 3;
+const GUEST_KEY = 'cv_onboarding_guest_v1';
 
 let flow = null;         // { step, genres:Set, region } while open
 let releaseFocus = null;
@@ -25,14 +29,68 @@ let checked = false;     // one attempt per page load
 
 const overlay = () => $('onboardOverlay');
 
-/** An account with nothing in it — the only state this flow makes sense for. */
+/** Nothing in the library — the only state this flow makes sense for. */
 const libraryIsEmpty = () =>
   !state.watchlist.length &&
   !Object.keys(state.watched).length &&
   !Object.keys(state.ratings).length;
 
+function readGuest() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(GUEST_KEY) || 'null');
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+      done: !!raw.done,
+      region: typeof raw.region === 'string' ? raw.region : '',
+      seedGenres: Array.isArray(raw.seedGenres) ? raw.seedGenres.map(Number).filter(Number.isFinite).slice(0, MAX_GENRES) : [],
+    };
+  } catch (_) { return null; }
+}
+
+function writeGuest(value) {
+  try { localStorage.setItem(GUEST_KEY, JSON.stringify(value)); } catch (_) {}
+}
+
 export function shouldOnboard() {
-  return !!state.user && !state.profile?.onboarded && libraryIsEmpty();
+  if (!libraryIsEmpty()) return false;
+  if (state.user) return !state.profile?.onboarded;
+  // A signed-out visitor who has already answered, or who has clearly been
+  // browsing for a while, is not a first run.
+  return !readGuest()?.done && (state.recentlyViewed || []).length === 0;
+}
+
+/**
+ * Put a guest's answers into the running state so recommendations and provider
+ * lookups use them before there is any account to store them on. Called on boot.
+ */
+export function hydrateGuestOnboarding() {
+  const guest = readGuest();
+  if (!guest) return;
+  if (guest.seedGenres.length) state.profile = { ...state.profile, seedGenres: guest.seedGenres };
+  if (guest.region && REGIONS.some(([code]) => code === guest.region)) state.region = guest.region;
+}
+
+/**
+ * Hand a guest's answers to the account they just created. Only ever fills a gap:
+ * an account that already answered keeps its own, and the guest copy is dropped
+ * either way so a shared device cannot leak one person's answers into the next
+ * account signed in on it.
+ */
+export async function adoptGuestOnboarding() {
+  const guest = readGuest();
+  if (!state.user || !guest?.done) return;
+  try { localStorage.removeItem(GUEST_KEY); } catch (_) {}
+  if (state.profile?.onboarded) return;
+  state.profile.onboarded = true;
+  state.profile.seedGenres = guest.seedGenres;
+  try {
+    await db.collection('users').doc(state.user.uid).set({
+      onboarded: true,
+      onboardedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      seedGenres: guest.seedGenres,
+      ...(guest.region ? { experiencePrefs: { region: guest.region } } : {}),
+    }, { merge: true });
+  } catch (error) { console.warn('adopt onboarding', error); }
 }
 
 export function maybeStartOnboarding() {
@@ -88,19 +146,32 @@ function genreStep() {
 
 function finishStep() {
   const names = mGenreList.filter(g => flow.genres.has(g.id)).map(g => g.n);
-  return `
-    <h2>You're set up</h2>
-    <p class="ob-lede">${names.length ? `Recommendations will start from <b>${esc(names.join(', '))}</b> in ${esc(regionLabel(flow.region))}.` : `Recommendations will start from what you watch, in ${esc(regionLabel(flow.region))}.`}</p>
-    <div class="ob-paths">
-      <button type="button" class="ob-path" data-action="ob-finish" data-go="import">
+  const lede = names.length
+    ? `Recommendations will start from <b>${esc(names.join(', '))}</b> in ${esc(regionLabel(flow.region))}.`
+    : `Recommendations will start from what you watch, in ${esc(regionLabel(flow.region))}.`;
+  // A visitor with no account gets the honest version: nothing they mark can be
+  // kept until there is somewhere to keep it.
+  const paths = state.user
+    ? `<button type="button" class="ob-path" data-action="ob-finish" data-go="import">
         <b>I already track films elsewhere</b>
         <small>Import a Letterboxd, Trakt, or IMDb CSV — watched titles and ratings come across, nothing is overwritten.</small>
       </button>
       <button type="button" class="ob-path" data-action="ob-finish" data-go="home">
         <b>Start from scratch</b>
         <small>Browse, and mark things watched as you go. The rails fill in from the first title.</small>
+      </button>`
+    : `<button type="button" class="ob-path" data-action="ob-finish" data-go="signup">
+        <b>Create an account</b>
+        <small>Needed to keep a watchlist, ratings, or episode progress. These answers come with you.</small>
       </button>
-    </div>`;
+      <button type="button" class="ob-path" data-action="ob-finish" data-go="home">
+        <b>Just look around first</b>
+        <small>Browse and search freely. Your picks are remembered on this device until you sign up.</small>
+      </button>`;
+  return `
+    <h2>${state.user ? "You're set up" : "Ready when you are"}</h2>
+    <p class="ob-lede">${lede}</p>
+    <div class="ob-paths">${paths}</div>`;
 }
 
 function paint() {
@@ -129,12 +200,19 @@ function paint() {
 // here must not trap someone in the flow, so the modal closes either way and the
 // worst case is being asked once more on the next sign-in.
 async function persist(seedGenres) {
-  if (!state.user) return;
+  const region = flow?.region || state.region;
+  if (!state.user) {
+    // No account to write to. Keep the answers on the device and use them now —
+    // they are adopted by the first account created here (adoptGuestOnboarding).
+    writeGuest({ done: true, region, seedGenres });
+    state.profile = { ...state.profile, seedGenres };
+    return;
+  }
   const payload = {
     onboarded: true,
     onboardedAt: firebase.firestore.FieldValue.serverTimestamp(),
     seedGenres,
-    experiencePrefs: { region: flow?.region || state.region },
+    experiencePrefs: { region },
   };
   state.profile.onboarded = true;
   state.profile.seedGenres = seedGenres;
@@ -182,6 +260,7 @@ export function initOnboarding() {
       persist(seed);
       closeOnboarding();
       if (go === 'import') document.dispatchEvent(new CustomEvent('cv:go', { detail: '/settings' }));
+      else if (go === 'signup') document.dispatchEvent(new Event('cv:open-auth'));
       toast('Welcome to CineVerse', 'success');
     },
     'ob-skip': () => {
@@ -193,7 +272,13 @@ export function initOnboarding() {
     },
   });
 
-  document.addEventListener('cv:auth', () => { checked = false; maybeStartOnboarding(); });
+  hydrateGuestOnboarding();
+  document.addEventListener('cv:auth', async () => {
+    // A brand-new account inherits whatever the visitor answered before signing up.
+    if (state.user) await adoptGuestOnboarding();
+    checked = false;
+    maybeStartOnboarding();
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && flow) { e.preventDefault(); persist([...flow.genres]); closeOnboarding(); }
   });

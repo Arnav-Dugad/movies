@@ -76,6 +76,29 @@ possible. Ticking the final aired episode marks the show itself watched, and
 marking a show watched anywhere fills its episodes — the two directions stay in
 agreement instead of a "watched" show sitting at 0%.
 
+### What the tracker refuses to get wrong
+
+Several defects were fixed together, and each has a named regression test:
+
+- A season the show **dropped** in a re-numbering could push the watched count
+  past the aired total and read as complete. Ticks in a season the structure no
+  longer lists are still reported, but cannot satisfy completion on their own.
+- A show whose structure had **never synced** could read as 100% finished. With no
+  aired total there is no completion, only progress.
+- TMDB's aired marker **lags real releases**, producing "11 of 10 aired". Every
+  bulk action caps at the marker, so a tick beyond it can only be a deliberate
+  single mark — the stronger signal — and the denominator rises to match.
+- Un-ticking the last episode left `completedAt` stamped, so a show in progress
+  kept reporting a finish date.
+- **Up to here** was the one bulk action that did not cap at the aired marker, so
+  it could mark episodes nobody could have watched yet.
+- Every write **returned a success value while signed out**, so a tap painted a
+  tick, toasted "marked watched", and saved nothing. They return `null` now, and
+  the UI treats that as "nothing happened".
+- A metadata refresh went through the whole-document writer, so opening a show
+  could overwrite the episodes another device had just ticked. Structure and the
+  aired marker are now merged on their own and never carry `seasons`.
+
 ### Shows watched before episode tracking existed
 
 They have a `watched` document and no progress document, so they would read as 0%
@@ -202,24 +225,45 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 250 assertions, no dependencies and no Java
-npm install && npm test   # adds the Firestore rules suite (needs a JDK)
+npm run test:logic    # 350+ assertions, no dependencies and no Java
+npm run coverage      # proves the rules suite is complete
+npm install && npm run test:rules   # the emulator suite (needs a JDK)
 ```
+
+All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
+check and an import-resolution check over all 62 modules. There is no build step
+to catch a syntax error or a renamed export before Cloudflare would.
 
 `tests/logic/` runs the real application modules against a small browser shim —
 list locking, the episode ledger, CSV import, every stats figure, rewatch
 counting, and collection completion. It needs nothing installed.
+`episodes-integrity.test.mjs` is regression cover specifically: every block names
+the wrong behaviour it exists to prevent, so a change that reintroduces one fails
+with the reason attached rather than a bare assert.
 
 `tests/rules.test.mjs` loads the real `firestore.rules` into the Firestore
 emulator and covers every `match` path: owner-only collections, the deliberately
 shared `users/{uid}/shared/` surface, friend discovery, the friend graph, and
-default-deny for anything undeclared. The emulator is a Java process, so this
-half needs a JDK on `PATH` (on Windows, `JAVA_HOME` usually has to be set
-explicitly — see `tests/README.md`). 29 tests, all passing.
+rewatch history, the sign-in cache counter, and default-deny for anything
+undeclared. The emulator is a Java process, so this half needs a JDK on `PATH`
+(on Windows, `JAVA_HOME` usually has to be set explicitly — see
+`tests/README.md`). 33 tests, all passing.
 
 `coverage.mjs` is the cheap half: it proves the suite is *complete* by checking
 that every rule path is named in the tests, so adding a collection without a test
 fails immediately. No Java needed.
+
+### Publishing the rules
+
+**Firebase Console → Firestore Database → Rules →** paste `firestore.rules` **→ Publish.**
+
+Sharing a list does not work until these are published: a friend has to be able to
+read the owner's shared snapshot at `users/{uid}/shared/list_{listId}`. Raw
+watchlist, ratings, watched, list, and episode-progress data stay owner-only — the
+only cross-user readable documents are the derived ones under `users/{uid}/shared/`.
+
+If a list action fails, the toast carries the Firestore error code (usually
+`permission-denied`), which normally means the rules are not published yet.
 
 ## Rewatch tracking
 
@@ -235,7 +279,18 @@ fields once it is actually rewatched. Dates are capped at 60 per title while
 
 The Rewatches stats block measures repeat time with the *same* runtime model as
 headline watch time (`runtimeOf`), so the two figures can be compared without a
-caveat.
+caveat. The Activity Pulse reports repeat viewing beside new titles, because a
+month spent rewatching otherwise reads as a month off.
+
+### Television counts by season
+
+Nobody restarts a sixty-episode run to see their favourite year again, so the
+show-level count is the wrong unit for TV. A finished season's toolbar gains a
+rewatch control and its own tally; an unfinished season does not have one, since
+there is no such thing as a rewatch of something you have not watched. Un-ticking
+an episode retires the count along with the completion it belonged to, and a
+season rewatch adds no episodes and no rows to the episode log — it is a repeat,
+not new viewing.
 
 ## Franchise completion
 
@@ -250,9 +305,26 @@ episode tracker caps at the last aired episode: a series with an announced seque
 is not 80% complete, it is complete with more coming, and counting a film nobody
 can watch yet against you produces a number that can never reach 100.
 
+Home carries a **Finish the Franchise** rail built from the same data, ranked by
+what is actually finishable — a series one film from complete is a better
+recommendation than anything the scorer can produce, because the interest is
+already proven and the gap is a fact rather than an inference.
+
 Membership costs no extra request — `belongs_to_collection` is stamped onto
 watched documents by the metadata backfill that already fetches runtime, credits,
-and keywords.
+and keywords. Collection lookups are cached on the device for a month, so a
+repeat visit costs nothing at all.
+
+### Television has no collections
+
+TMDB publishes collections for film only. TV families are therefore derived from
+titles — a show that declares its franchise before a colon or a dash — and the
+interface says so plainly. The rule is deliberately strict (an explicit
+separator, or a whole title matching a stem another show declared) because a
+loose one would put *Love, Death & Robots* in a family with *Love Island* and
+invent a franchise nobody is in. The denominator is what TMDB search returned for
+that name, labelled **found**, never "exists"; a show you have demonstrably
+watched counts as seen even when search fails to return it.
 
 ## Fewer reads on sign-in
 
@@ -287,20 +359,14 @@ profile with a weight of 1.4 each — enough to decide the first session, and
 outvoted within a dozen titles by actual viewing, which contributes 1.5 or more
 apiece.
 
-It appears once, only for an account with an empty library, and skipping counts
-as answering. Whatever was chosen before the skip is still kept.
-
-### Publishing them
-
-**Firebase Console → Firestore Database → Rules →** paste `firestore.rules` **→ Publish.**
-
-Sharing a list does not work until these are published: a friend has to be able to
-read the owner's shared snapshot at `users/{uid}/shared/list_{listId}`. Raw
-watchlist, ratings, watched, list, and episode-progress data stay owner-only — the
-only cross-user readable documents are the derived ones under `users/{uid}/shared/`.
-
-If a list action fails, the toast carries the Firestore error code (usually
-`permission-denied`), which normally means the rules are not published yet.
+It appears once, for anyone with an empty library — including a visitor who has
+not signed up, since that is exactly who is looking at the emptiest version of the
+app. A guest's answers live on the device, steer recommendations and provider
+lookups immediately, and are adopted by the first account created there, so nobody
+answers the same three questions twice. The guest copy is dropped on adoption, so
+a shared device cannot leak one person's answers into the next account signed in
+on it. Skipping counts as answering, and whatever was chosen before the skip is
+still kept.
 
 ## Voice search
 

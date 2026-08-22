@@ -50,6 +50,28 @@ describe('users/{uid} profile document', () => {
     await assertSucceeds(getDoc(doc(asOwner(), `users/${OWNER}`)));
   });
 
+  // The sign-in cache (js/library-cache.js) decides whether to skip five
+  // collection reads by comparing a counter on this document. Someone able to
+  // write it could pin another account's cache — freezing it on stale data by
+  // holding the number still, or forcing a full read every load by inflating it.
+  // Owner-only is what makes that optimisation safe to rely on.
+  it('nobody else can write the libraryVersion the sign-in cache trusts', async () => {
+    await seed(db => setDoc(doc(db, `users/${OWNER}`), { libraryVersion: 12 }));
+    await assertFails(setDoc(doc(asOther(), `users/${OWNER}`), { libraryVersion: 999 }, { merge: true }));
+    await assertFails(setDoc(doc(asGuest(), `users/${OWNER}`), { libraryVersion: 0 }, { merge: true }));
+    await assertFails(getDoc(doc(asOther(), `users/${OWNER}`)));
+    await assertSucceeds(setDoc(doc(asOwner(), `users/${OWNER}`), { libraryVersion: 13 }, { merge: true }));
+  });
+
+  // Declared at sign-up and folded into the taste profile. Writable by a stranger,
+  // it becomes a way to steer somebody else's recommendations.
+  it('nobody else can write the onboarding seed', async () => {
+    await seed(db => setDoc(doc(db, `users/${OWNER}`), { onboarded: true, seedGenres: [18, 27] }));
+    await assertFails(setDoc(doc(asOther(), `users/${OWNER}`), { seedGenres: [10749] }, { merge: true }));
+    await assertFails(setDoc(doc(asOther(), `users/${OWNER}`), { onboarded: false }, { merge: true }));
+    await assertSucceeds(setDoc(doc(asOwner(), `users/${OWNER}`), { seedGenres: [878] }, { merge: true }));
+  });
+
   it('another signed-in user cannot read or write it', async () => {
     await seed(db => setDoc(doc(db, `users/${OWNER}`), { headline: 'private' }));
     await assertFails(getDoc(doc(asOther(), `users/${OWNER}`)));
@@ -84,6 +106,32 @@ describe('private subcollections', () => {
       await assertFails(getDoc(doc(asGuest(), `users/${OWNER}/${name}/item1`)));
     });
   }
+});
+
+describe('rewatch history', () => {
+  // `plays` and `playDates` are viewing history at a finer grain than the watched
+  // flag itself — how often and when, not just whether. They inherit the watched
+  // collection's owner-only rule; this is the test that says so out loud, so a
+  // later rule change that loosens `watched` fails here with the reason attached.
+  it('a rewatch count is as private as the watched entry carrying it', async () => {
+    await seed(db => setDoc(doc(db, `users/${OWNER}/watched/movie_1`), {
+      tmdbId: 1, type: 'movie', title: 'A', plays: 4, playDates: [1, 2, 3, 4],
+    }));
+    await assertFails(getDoc(doc(asOther(), `users/${OWNER}/watched/movie_1`)));
+    await assertFails(getDoc(doc(asGuest(), `users/${OWNER}/watched/movie_1`)));
+    await assertFails(setDoc(doc(asOther(), `users/${OWNER}/watched/movie_1`), { plays: 99 }, { merge: true }));
+    await assertSucceeds(getDoc(doc(asOwner(), `users/${OWNER}/watched/movie_1`)));
+    await assertSucceeds(setDoc(doc(asOwner(), `users/${OWNER}/watched/movie_1`), { plays: 5 }, { merge: true }));
+  });
+
+  it('season rewatch counts stay owner-only with the rest of the episode ledger', async () => {
+    await seed(db => setDoc(doc(db, `users/${OWNER}/progress/tv_1399`), {
+      tmdbId: 1399, seasons: { 1: [1, 2, 3] }, seasonPlays: { 1: 3 },
+    }));
+    await assertFails(getDoc(doc(asOther(), `users/${OWNER}/progress/tv_1399`)));
+    await assertFails(setDoc(doc(asOther(), `users/${OWNER}/progress/tv_1399`), { seasonPlays: { 1: 99 } }, { merge: true }));
+    await assertSucceeds(setDoc(doc(asOwner(), `users/${OWNER}/progress/tv_1399`), { seasonPlays: { 1: 4 } }, { merge: true }));
+  });
 });
 
 describe('users/{uid}/shared — the deliberate publication surface', () => {

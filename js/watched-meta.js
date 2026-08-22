@@ -17,8 +17,32 @@ export const META_V = 7;   // 7: collection membership, for franchise completion
 const REPAIR_V = 1;
 
 let running = false, done = false, repairing = false;
+let continueTimer = null;
 
-export function resetWatchedMeta() { running = false; done = false; }
+// A schema bump makes every watched document stale at once. Fetching a
+// 500-title library in one sitting is a burst of 500 TMDB requests on somebody's
+// phone, so a run does a slice and hands back. Progress is durable without a
+// cursor file: each document records the `metaV` it was written at, so a run
+// that is interrupted — by a closed tab, a dead connection, a sign-out — simply
+// finds fewer stale documents next time and picks up exactly where it stopped.
+const BATCH = 50;
+const BATCH_GAP = 4000;   // pace between slices, so this never fights the UI
+
+export function resetWatchedMeta() {
+  running = false; done = false;
+  clearTimeout(continueTimer); continueTimer = null;
+}
+
+/** How many watched documents still need enriching. Drives the Stats progress note. */
+export function pendingMetaCount() {
+  return staleDocs().length;
+}
+
+function staleDocs() {
+  return Object.entries(state.watched)
+    .map(([key, doc]) => ({ key, doc, ...identity(key, doc) }))
+    .filter(item => item.id && item.type && (item.doc.metaV !== META_V || !item.doc.poster || !(item.doc.genres && item.doc.genres.length) || !item.doc.tmdbId || !item.doc.type));
+}
 
 function movieMeta(det) {
   const d = (det.credits?.crew || []).find(c => c.job === 'Director');
@@ -161,18 +185,20 @@ export async function repairCollectionMeta(onProgress = () => {}) {
   return { total: pending.length, repaired, failed };
 }
 
-export async function ensureWatchedMeta() {
+export async function ensureWatchedMeta({ batch = BATCH } = {}) {
   if (running || done || !state.user) return;
   const uid = state.user.uid;
-  const stale = Object.entries(state.watched)
-    .map(([key, doc]) => ({ key, doc, ...identity(key, doc) }))
-    .filter(item => item.id && item.type && (item.doc.metaV !== META_V || !item.doc.poster || !(item.doc.genres && item.doc.genres.length) || !item.doc.tmdbId || !item.doc.type));
+  const stale = staleDocs();
   if (!stale.length) { done = true; return; }
+
+  const slice = stale.slice(0, Math.max(1, batch));
+  const remaining = stale.length - slice.length;
+  document.dispatchEvent(new CustomEvent('cv:meta-progress', { detail: { pending: stale.length, batch: slice.length } }));
 
   running = true;
   let wrote = 0;
   try {
-    await pool(stale, async ({ key, doc: d, type, id }) => {
+    await pool(slice, async ({ key, doc: d, type, id }) => {
       // Re-check identity per item: a sign-out/switch mid-flight must never write
       // one account's data into another's docs.
       if (!state.user || state.user.uid !== uid) return;
@@ -216,12 +242,30 @@ export async function ensureWatchedMeta() {
       if (state.watched[key]) state.watched[key] = { ...state.watched[key], ...patch };
       wrote++;
     }, 6);
-    // Latch `done` only on a COMPLETE run. A partial run (network blip, TMDB 404)
-    // must stay retryable on the next visit rather than wedging the flag.
-    done = wrote === stale.length;
+    // Latch `done` only when this run finished the whole backlog. A partial run
+    // (network blip, TMDB 404, or simply a slice) must stay retryable rather
+    // than wedging the flag.
+    done = wrote === slice.length && remaining === 0;
   } finally {
     running = false;
-    if (wrote) document.dispatchEvent(new Event('cv:meta-backfilled'));
+    if (wrote) {
+      document.dispatchEvent(new Event('cv:meta-backfilled'));
+      // These are real writes to the watched collection, so the sign-in cache has
+      // to advance with them (js/library-cache.js). Without this the enrichment
+      // landed in Firestore while every device kept serving the pre-enrichment
+      // snapshot, and this one re-ran the whole backfill on the next visit.
+      document.dispatchEvent(new Event('cv:wl-changed'));
+    }
+    // Keep going on a paced timer rather than in one burst. Only while the tab is
+    // visible: a backgrounded tab has no reason to spend somebody's data.
+    if (wrote && remaining > 0 && state.user?.uid === uid) {
+      clearTimeout(continueTimer);
+      continueTimer = setTimeout(() => {
+        continueTimer = null;
+        if (document.visibilityState === 'hidden') return;   // resumes on the next call
+        ensureWatchedMeta({ batch });
+      }, BATCH_GAP);
+    }
   }
 }
 
@@ -229,4 +273,9 @@ export function initWatchedMeta() {
   // cv:auth fires on sign-in AND sign-out, so this also covers switching accounts
   // in one tab — otherwise the second account never gets ITS docs backfilled.
   document.addEventListener('cv:auth', resetWatchedMeta);
+  // A tab brought back to the foreground picks the backlog up again, since a
+  // hidden tab deliberately drops its continuation.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !running && !done && state.user) ensureWatchedMeta();
+  });
 }

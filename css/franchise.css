@@ -94,3 +94,62 @@
   .fr-poster{width:36px;height:54px}
   .fr-badge{grid-column:2;justify-self:start;margin-top:4px}
 }
+
+/* ===== FINISH THE FRANCHISE (home rail) ===== */
+/* Same shape as Continue Watching, because it makes the same promise: something
+   already started, with a concrete next step. */
+.franchise-eyebrow{
+  display:block;font-size:.66rem;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--gold);margin-bottom:6px;
+}
+.franchise-row{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x proximity;padding:4px 0 12px}
+.fr-card{
+  flex:0 0 270px;width:270px;scroll-snap-align:start;
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-lg);
+  overflow:hidden;transition:border-color .22s var(--ease),transform .22s var(--ease);
+}
+.fr-card:hover{border-color:rgba(255,255,255,.14);transform:translateY(-2px)}
+.fr-card.almost{border-color:rgba(251,191,36,.32)}
+.fr-card-art{display:block;position:relative;aspect-ratio:16/9;background:var(--bg4)}
+.fr-card-art img{width:100%;height:100%;object-fit:cover}
+.fr-card-flag{
+  position:absolute;top:8px;right:8px;padding:4px 9px;border-radius:999px;
+  font-size:.64rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase;
+  color:#fff;background:rgba(8,8,14,.78);backdrop-filter:blur(6px);
+}
+.fr-card.almost .fr-card-flag{color:#1a1200;background:linear-gradient(135deg,var(--gold),var(--gold2))}
+.fr-card-body{padding:12px 14px 14px}
+.fr-card-series{
+  display:block;font-size:.68rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text3);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  transition:color .18s var(--ease);
+}
+.fr-card-series:hover{color:var(--gold)}
+.fr-card-body h3{
+  font-size:.94rem;font-weight:700;letter-spacing:-.01em;line-height:1.3;margin-bottom:10px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.fr-card-bar{height:4px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+.fr-card-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .8s var(--ease-out)}
+.fr-card.almost .fr-card-bar i{background:linear-gradient(90deg,var(--gold),var(--gold2))}
+.fr-card-meta{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;
+  font-size:.72rem;color:var(--text2);font-variant-numeric:tabular-nums;
+}
+.fr-card-meta b{color:var(--text);font-weight:800}
+@media (max-width:600px){
+  .fr-card{flex-basis:230px;width:230px}
+}
+@media (prefers-reduced-motion:reduce){
+  .fr-card:hover{transform:none}
+  .fr-card-bar i{transition:none}
+}
+
+/* --- television families (name-derived, so visually secondary) --- */
+.fr-tv{margin-top:26px;padding-top:22px;border-top:1px solid var(--glass-border)}
+.fr-tv-head{margin-bottom:14px}
+.fr-tv-head h3{font-size:1.02rem;font-weight:800;letter-spacing:-.01em;margin-bottom:6px}
+.fr-tv-head p{font-size:.8rem;line-height:1.6;color:var(--text2);max-width:68ch}
+.fr-tv-head p b{color:var(--text);font-weight:700}
+.fr-row:disabled{cursor:default;opacity:.75}
+.fr-row:disabled:hover{border-color:var(--glass-border);background:var(--glass)}
