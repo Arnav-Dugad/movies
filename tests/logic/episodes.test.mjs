@@ -27,7 +27,12 @@ check('aired total counts full seasons plus the airing one', ep.showProgress(1).
 check('nextUp is S1E2', JSON.stringify(ep.nextUp(1)) === JSON.stringify({ season: 1, episode: 2 }), JSON.stringify(ep.nextUp(1)));
 
 check('toggle is reversible', ep.toggleEpisode(1, 1, 1, META) === false && !ep.isEpisodeWatched(1, 1, 1));
-check('emptying the entry removes it', ep.showEntry(1) === null);
+// The document survives with a tombstone rather than being deleted: another
+// device holding a stale copy would otherwise re-add the episode on its next
+// merge, silently undoing the un-tick.
+check('emptying the entry leaves nothing watched', ep.showProgress(1).watched === 0 && ep.showProgress(1).started === false);
+check('and records the un-tick so it survives a merge',
+  (ep.showEntry(1).removed || {})['1']?.includes(1) === true, JSON.stringify(ep.showEntry(1)?.removed));
 
 // markUpTo fills every prior season too.
 const added = ep.markUpTo(1, 2, 5, META);

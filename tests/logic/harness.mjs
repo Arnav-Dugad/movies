@@ -40,11 +40,24 @@ Object.defineProperty(globalThis, 'navigator', { value: { language: 'en-US', med
 globalThis.location = { pathname: '/watchlist', href: 'https://x.test/watchlist', origin: 'https://x.test', search: '' };
 
 const docStub = () => ({ set: async () => {}, get: async () => ({ exists: false }), delete: async () => {} });
-const firestoreStub = { collection: () => ({ doc: () => ({ ...docStub(), collection: () => ({ doc: docStub, get: async () => ({ empty: true, docs: [] }) }) }) }), batch: () => ({ set() {}, delete() {}, commit: async () => {} }) };
+const firestoreStub = {
+  collection: () => ({ doc: () => ({ ...docStub(), collection: () => ({ doc: docStub, get: async () => ({ empty: true, docs: [] }) }) }) }),
+  batch: () => ({ set() {}, delete() {}, commit: async () => {} }),
+  // episodes.js merges through a transaction. An empty server document is the
+  // right stand-in here: these suites test the merge function directly.
+  runTransaction: async fn => fn({ get: async () => ({ exists: false, data: () => ({}) }), set() {}, delete() {} }),
+};
 globalThis.window.firebase = {
   initializeApp() {},
   auth: () => ({ onAuthStateChanged() {} }),
-  firestore: Object.assign(() => firestoreStub, { FieldValue: { serverTimestamp: () => 'TS', delete: () => 'DELETE' } }),
+  firestore: Object.assign(() => firestoreStub, {
+    FieldValue: {
+      serverTimestamp: () => 'TS', delete: () => 'DELETE',
+      increment: n => ({ __increment: n }),
+      arrayUnion: (...v) => ({ __arrayUnion: v }),
+      arrayRemove: (...v) => ({ __arrayRemove: v }),
+    },
+  }),
 };
 
 const green = s => `\x1b[32m${s}\x1b[0m`, red = s => `\x1b[31m${s}\x1b[0m`;

@@ -31,6 +31,7 @@ import { initParty } from './party.js';
 import { initProfile } from './profile.js';
 import { initSettings } from './settings.js';
 import { initOnboarding } from './onboarding.js';
+import { initFranchisePage } from './franchise-page.js';
 import { initReleaseReminders } from './release-reminders.js';
 import { initRouter } from './router.js';
 import { initEffects } from './effects.js';
@@ -93,6 +94,7 @@ async function init() {
   initProfile();
   initSettings();
   initOnboarding();
+  initFranchisePage();
   initBackups();
   initImportCSV();
   initAwards();

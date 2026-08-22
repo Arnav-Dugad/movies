@@ -33,12 +33,25 @@ const numbers = value => [...new Set((Array.isArray(value) ? value : []).map(Num
 // Only the most recent LOG_CAP survive per show: an unbounded array would
 // eventually outgrow both the document limit and localStorage.
 const LOG_CAP = 400;
-const cleanLog = value => (Array.isArray(value) ? value : [])
-  .filter(row => Array.isArray(row) && row.length >= 3 && row.slice(0, 3).every(cell => Number.isFinite(+cell)))
-  .map(row => [+row[0], +row[1], +row[2], row[3] ? 1 : 0])
-  .filter(row => row[0] > 0 && row[1] > 0 && row[2] > 0)
-  .sort((a, b) => a[2] - b[2])
-  .slice(-LOG_CAP);
+
+// Rows are deduplicated by episode, keeping the EARLIEST stamp: after a merge two
+// devices can each hold a row for the same episode with different moments, and
+// the first time it was marked is the true one. Without this, one episode could
+// appear twice in the episodes-over-time chart.
+function cleanLog(value) {
+  const rows = (Array.isArray(value) ? value : [])
+    .filter(row => Array.isArray(row) && row.length >= 3 && row.slice(0, 3).every(cell => Number.isFinite(+cell)))
+    .map(row => [+row[0], +row[1], +row[2], row[3] ? 1 : 0])
+    .filter(row => row[0] > 0 && row[1] > 0 && row[2] > 0);
+  const byEpisode = new Map();
+  for (const row of rows) {
+    const key = `${row[0]}_${row[1]}`;
+    const held = byEpisode.get(key);
+    // Earliest stamp wins; a single tick outranks a bulk mark at the same moment.
+    if (!held || row[2] < held[2] || (row[2] === held[2] && !row[3])) byEpisode.set(key, row);
+  }
+  return [...byEpisode.values()].sort((a, b) => a[2] - b[2]).slice(-LOG_CAP);
+}
 
 // How many times each season has been seen, keyed by season number. Absent means
 // "once, if it is complete" — exactly the rule the show-level count uses, so no
@@ -54,10 +67,19 @@ const cleanSeasonPlays = value => {
 
 function sanitizeEntry(value) {
   if (!value || typeof value !== 'object') return null;
-  const seasons = {}, structure = {};
+  const seasons = {}, structure = {}, removed = {};
   for (const [season, list] of Object.entries(value.seasons || {})) {
     const episodes = numbers(list);
     if (episodes.length) seasons[String(+season)] = episodes;
+  }
+  // Episodes explicitly UN-ticked. Without these, merging two devices could only
+  // union their watched sets, which resurrects every deliberate un-tick — see
+  // mergeEntries.
+  for (const [season, list] of Object.entries(value.removed || {})) {
+    const key = String(+season);
+    const watched = new Set(seasons[key] || []);
+    const gone = numbers(list).filter(episode => !watched.has(episode));
+    if (gone.length) removed[key] = gone;
   }
   for (const [season, count] of Object.entries(value.structure || {})) {
     if (+count > 0) structure[String(+season)] = +count;
@@ -69,6 +91,7 @@ function sanitizeEntry(value) {
     backdrop: String(value.backdrop || ''), episodeRuntime: +value.episodeRuntime || 0,
     status: String(value.status || ''), seasons, structure, aired,
     lastWatched: value.lastWatched && +value.lastWatched.at ? { season: +value.lastWatched.season, episode: +value.lastWatched.episode, at: +value.lastWatched.at } : null,
+    removed,
     log: cleanLog(value.log),
     seasonPlays: cleanSeasonPlays(value.seasonPlays),
     completedAt: +value.completedAt || 0,
@@ -103,6 +126,99 @@ export async function loadEpisodeProgress() {
   } catch (error) { console.warn('loadEpisodeProgress', error); }
 }
 
+// ===== MERGING TWO DEVICES =====
+// The document used to be written whole, with merge:false. Two devices ticking
+// different episodes of the same show inside the debounce window each sent a
+// complete document, and the second one silently erased the first one's tick.
+//
+// Unioning the watched sets is not a fix: it cannot tell "this device has not
+// seen that tick yet" from "this device deliberately un-ticked it", so every
+// un-tick would come back from the dead. Each season therefore carries a second
+// set — `removed` — and every episode is in exactly one of three states: watched,
+// removed, or never touched.
+//
+// That makes the merge total and, for the case that actually happens, lossless:
+//
+//   watched + never touched  -> watched   (the other device simply had not seen it)
+//   removed + never touched  -> removed
+//   watched + watched        -> watched
+//   removed + removed        -> removed
+//   watched + removed        -> the more recently edited document wins
+//
+// Only the last line is a real conflict, and it needs two devices to disagree
+// about the SAME episode at the same time. Different episodes never collide.
+const setOf = (map, season) => new Set((map || {})[String(season)] || []);
+const earliest = (...values) => {
+  const real = values.map(Number).filter(value => value > 0);
+  return real.length ? Math.min(...real) : 0;
+};
+
+export function mergeEntries(server, local) {
+  if (!server) return local;
+  if (!local) return server;
+  // Ties go to the local copy: it is the one holding the edit being written.
+  const localWins = (+local.updatedAt || 0) >= (+server.updatedAt || 0);
+  const tied = (+local.updatedAt || 0) === (+server.updatedAt || 0);
+  const newer = localWins ? local : server;
+  const older = localWins ? server : local;
+
+  const seasons = {}, removed = {};
+  const allSeasons = new Set([
+    ...Object.keys(server.seasons || {}), ...Object.keys(local.seasons || {}),
+    ...Object.keys(server.removed || {}), ...Object.keys(local.removed || {}),
+  ]);
+  for (const season of allSeasons) {
+    const newWatched = setOf(newer.seasons, season), newGone = setOf(newer.removed, season);
+    const oldWatched = setOf(older.seasons, season), oldGone = setOf(older.removed, season);
+    const watched = [], gone = [];
+    for (const episode of new Set([...newWatched, ...newGone, ...oldWatched, ...oldGone])) {
+      const inNew = newWatched.has(episode) ? 'w' : newGone.has(episode) ? 'r' : '';
+      const inOld = oldWatched.has(episode) ? 'w' : oldGone.has(episode) ? 'r' : '';
+      // A side with no opinion never overrules one that has one. When both have
+      // an opinion and they agree, that is the answer. When they disagree the
+      // newer document decides — unless the two were edited in the same
+      // millisecond, where there is no "newer" and removal wins. That tie-break
+      // is what makes the merge symmetric (merging A into B and B into A give the
+      // same document), and it errs toward the safer mistake: an un-tick the
+      // viewer has to redo beats an episode reappearing after they removed it.
+      const verdict = !inOld ? inNew : !inNew ? inOld : inNew === inOld ? inNew : (tied ? 'r' : inNew);
+      (verdict === 'w' ? watched : gone).push(episode);
+    }
+    if (watched.length) seasons[String(+season)] = watched.sort((a, b) => a - b);
+    if (gone.length) removed[String(+season)] = gone.sort((a, b) => a - b);
+  }
+
+  // Rewatch counts only ever go up, so the higher number is the one that has seen
+  // more of the history.
+  const seasonPlays = {};
+  for (const season of new Set([...Object.keys(server.seasonPlays || {}), ...Object.keys(local.seasonPlays || {})])) {
+    const value = Math.max(+(server.seasonPlays || {})[season] || 0, +(local.seasonPlays || {})[season] || 0);
+    if (value > 1) seasonPlays[String(+season)] = value;
+  }
+
+  return sanitizeEntry({
+    ...older, ...newer,                          // metadata from the newer document
+    tmdbId: newer.tmdbId || older.tmdbId || 0,
+    title: newer.title || older.title || '',
+    poster: newer.poster || older.poster || '',
+    backdrop: newer.backdrop || older.backdrop || '',
+    episodeRuntime: newer.episodeRuntime || older.episodeRuntime || 0,
+    // Structure and the aired marker come from whichever document has more of
+    // them: a device that has opened the show recently knows more than one that
+    // has not, regardless of which wrote last.
+    structure: Object.keys(newer.structure || {}).length >= Object.keys(older.structure || {}).length ? newer.structure : older.structure,
+    aired: newer.aired || older.aired || null,
+    seasons, removed, seasonPlays,
+    log: cleanLog([...(server.log || []), ...(local.log || [])]),
+    // Earliest genuine finish, so a merge cannot postpone a completion date.
+    // Guarded because Math.min() with nothing to compare returns Infinity.
+    completedAt: earliest(server.completedAt, local.completedAt),
+    lastWatched: (+newer.lastWatched?.at || 0) >= (+older.lastWatched?.at || 0) ? newer.lastWatched : older.lastWatched,
+    legacy: !!(server.legacy && local.legacy),
+    updatedAt: Math.max(+server.updatedAt || 0, +local.updatedAt || 0),
+  });
+}
+
 // One debounced write per show: marking a whole season episode-by-episode still
 // costs a single document write instead of one per tick.
 function persist(key) {
@@ -115,8 +231,7 @@ function persist(key) {
     if (state.user?.uid !== uid) return;
     const entry = state.episodeProgress[key];
     if (!entry) { col().doc(key).delete().catch(error => console.warn('episode progress delete', error)); return; }
-    col().doc(key).set({ ...entry, serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: false })
-      .catch(error => console.warn('episode progress sync', error));
+    writeMerged(key, entry, uid).catch(error => console.warn('episode progress sync', error));
   }, 600));
 }
 
@@ -131,6 +246,28 @@ function persistMeta(key, fields) {
   const uid = state.user.uid;
   col().doc(key).set({ ...fields, updatedAt: Date.now(), serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
     .catch(error => { if (state.user?.uid === uid) console.warn('episode structure sync', error); });
+}
+
+// A transaction rather than a plain write: it reads what is actually on the
+// server and merges this device's edit into it, so a tick made on a phone thirty
+// seconds ago survives a tick made on a laptop now. One extra document read per
+// debounced batch — a rounding error next to the reads the library cache saves.
+async function writeMerged(key, entry, uid) {
+  const ref = col().doc(key);
+  await db.runTransaction(async transaction => {
+    const snapshot = await transaction.get(ref);
+    const server = snapshot.exists ? sanitizeEntry(snapshot.data()) : null;
+    const merged = mergeEntries(server, entry) || entry;
+    transaction.set(ref, { ...merged, serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    // Adopt the merged result locally so this device immediately reflects what
+    // the other one did, rather than waiting for the next full load.
+    if (state.user?.uid === uid && state.episodeProgress[key]) {
+      state.episodeProgress[key] = merged;
+    }
+  });
+  if (state.user?.uid !== uid) return;
+  mirror();
+  document.dispatchEvent(new CustomEvent('cv:episode-progress', { detail: { key, merged: true } }));
 }
 
 export function resetEpisodeProgressForAuth() {
@@ -157,7 +294,38 @@ export function tvShowMeta(det) {
 
 // Fetches a show's structure for callers that have no TMDB payload — a card, the
 // watched toggle, the legacy back-fill.
-export async function fetchShowMeta(id) { return tvShowMeta(await tmdb(`/tv/${id}`)); }
+//
+// Cached on the device for a week, because the same shows get asked for again:
+// a legacy back-fill that is interrupted and resumed, a show marked watched from
+// a card after being opened earlier, a second pass after a reload. Kept short
+// because a structure goes stale the moment a new season is announced — and the
+// detail page refreshes it from live data on every view anyway
+// (syncShowStructure), so a stale copy can never survive being looked at.
+const META_CACHE_KEY = 'cv_show_meta_v1';
+const META_TTL = 7 * 86400000;
+let metaMemo = null;
+
+function metaStore() {
+  if (metaMemo) return metaMemo;
+  try { metaMemo = JSON.parse(localStorage.getItem(META_CACHE_KEY) || '{}') || {}; }
+  catch (_) { metaMemo = {}; }
+  return metaMemo;
+}
+
+export async function fetchShowMeta(id) {
+  const key = String(+id || 0);
+  const cached = metaStore()[key];
+  if (cached && Date.now() - (cached.at || 0) < META_TTL && Object.keys(cached.meta?.structure || {}).length) {
+    return cached.meta;
+  }
+  const meta = tvShowMeta(await tmdb(`/tv/${id}`));
+  try {
+    metaMemo[key] = { at: Date.now(), meta };
+    const rows = Object.entries(metaMemo).sort((a, b) => (b[1].at || 0) - (a[1].at || 0)).slice(0, 200);
+    localStorage.setItem(META_CACHE_KEY, JSON.stringify(Object.fromEntries(rows)));
+  } catch (_) {}
+  return meta;
+}
 
 // ---------- reads ----------
 export const showEntry = id => state.episodeProgress?.[KEY(id)] || null;
@@ -402,6 +570,12 @@ export function episodeStats({ months = 12 } = {}) {
   }
 
   const bingeEntry = [...soloPerDay.entries()].sort((a, b) => b[1] - a[1])[0] || null;
+  // Today's own count, in the same units as the record: episodes ticked ONE AT A
+  // TIME. A bulk mark is bookkeeping, and a record you set by pressing "mark
+  // season watched" would not be worth chasing.
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todaySolo = soloPerDay.get(todayKey) || 0;
   const busiestEntry = [...perDay.entries()].sort((a, b) => b[1] - a[1])[0] || null;
   const logged = [...perDay.values()].reduce((sum, count) => sum + count, 0);
 
@@ -415,7 +589,24 @@ export function episodeStats({ months = 12 } = {}) {
     completionRate: shows.length ? Math.round(completed / shows.length * 100) : 0,
     series,
     logged,
+    // The per-episode log is capped at LOG_CAP rows per show, so a long-running
+    // series eventually loses its oldest entries. Every total above still counts
+    // the episode; only its PLACE ON THE TIMELINE is gone. Reporting the gap is
+    // the difference between a chart that is incomplete and one that is wrong.
+    logCoverage: episodes ? Math.min(100, Math.round(logged / episodes * 100)) : 100,
+    undated: Math.max(0, episodes - logged),
     binge: bingeEntry ? { day: bingeEntry[0], count: bingeEntry[1] } : null,
+    todaySolo,
+    // "One more and today is your best day." Deliberately narrow: it needs a
+    // record that today does not already hold, at least one episode watched
+    // today, and a gap of one or two. Anything looser would be nagging.
+    recordChase: (() => {
+      if (!bingeEntry || !todaySolo) return null;
+      const [recordDay, record] = bingeEntry;
+      if (recordDay === todayKey) return null;          // today already holds it
+      const needed = record + 1 - todaySolo;
+      return needed >= 1 && needed <= 2 ? { record, todaySolo, needed } : null;
+    })(),
     busiest: busiestEntry ? { day: busiestEntry[0], count: busiestEntry[1] } : null,
     activeDays: perDay.size,
     byShow: shows.sort((a, b) => b.percent - a.percent || b.watched - a.watched),
@@ -479,7 +670,11 @@ function apply(id, meta, mutate) {
   for (const [season, episodes] of Object.entries(entry.seasons)) if (!episodes.length) delete entry.seasons[season];
   entry.log = cleanLog(entry.log);
   entry.updatedAt = Date.now();
-  if (!Object.keys(entry.seasons).length) { delete state.episodeProgress[key]; persist(key); return { key, entry: null }; }
+  // A document with nothing watched but tombstones still has something to say —
+  // deleting it would let another device's stale copy re-add every episode on the
+  // next merge. Only a genuinely empty document is dropped.
+  const hasTombstones = Object.keys(entry.removed || {}).length > 0;
+  if (!Object.keys(entry.seasons).length && !hasTombstones) { delete state.episodeProgress[key]; persist(key); return { key, entry: null }; }
   // `legacy` means "completed before per-episode tracking existed". The moment
   // real episode data is written the flag stops being true of the document.
   if (entry.legacy && entry.log.length) entry.legacy = false;
@@ -500,6 +695,29 @@ function apply(id, meta, mutate) {
 
 const markLast = (entry, season, episode) => { entry.lastWatched = { season: +season, episode: +episode, at: Date.now() }; };
 
+// Watched and removed are kept strictly disjoint by these two, which are the ONLY
+// places either set is edited. An episode moving between them is what lets two
+// devices merge without resurrecting an un-tick — see mergeEntries.
+function setWatched(entry, season, episodes) {
+  const key = String(+season);
+  const list = new Set(entry.seasons[key] || []);
+  const gone = new Set(entry.removed?.[key] || []);
+  for (const episode of episodes) { list.add(+episode); gone.delete(+episode); }
+  entry.seasons[key] = [...list].sort((a, b) => a - b);
+  entry.removed = entry.removed || {};
+  if (gone.size) entry.removed[key] = [...gone].sort((a, b) => a - b); else delete entry.removed[key];
+}
+
+function setUnwatched(entry, season, episodes) {
+  const key = String(+season);
+  const list = new Set(entry.seasons[key] || []);
+  const gone = new Set(entry.removed?.[key] || []);
+  for (const episode of episodes) { list.delete(+episode); gone.add(+episode); }
+  entry.seasons[key] = [...list].sort((a, b) => a - b);
+  entry.removed = entry.removed || {};
+  if (gone.size) entry.removed[key] = [...gone].sort((a, b) => a - b); else delete entry.removed[key];
+}
+
 // One log row per newly-watched episode. Un-ticking removes its row so the
 // episodes-over-time chart always matches what is actually marked.
 function logEpisode(entry, season, episode, at = Date.now(), bulk = 0) {
@@ -518,10 +736,8 @@ export function toggleEpisode(id, season, episode, meta = {}) {
   if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   const wasWatched = isEpisodeWatched(id, season, episode);
   apply(id, meta, entry => {
-    const list = new Set(entry.seasons[String(season)] || []);
-    if (wasWatched) { list.delete(+episode); unlogEpisode(entry, season, episode); }
-    else { list.add(+episode); markLast(entry, season, episode); logEpisode(entry, season, episode); }
-    entry.seasons[String(season)] = [...list].sort((a, b) => a - b);
+    if (wasWatched) { setUnwatched(entry, season, [episode]); unlogEpisode(entry, season, episode); }
+    else { setWatched(entry, season, [episode]); markLast(entry, season, episode); logEpisode(entry, season, episode); }
   });
   if (!wasWatched) maybeCompleteShow(id, meta);
   return !wasWatched;
@@ -546,13 +762,14 @@ export function markUpTo(id, season, episode, meta = {}) {
       if (airedCap <= 0) continue;
       const cap = Math.min(airedCap, current === +season ? +episode : structure[current]);
       const list = new Set(entry.seasons[String(current)] || []);
+      const fresh = [];
       for (let index = 1; index <= cap; index++) {
         if (list.has(index)) continue;
-        list.add(index);
+        fresh.push(index);
         logEpisode(entry, current, index, stamp, 1);
         added++;
       }
-      entry.seasons[String(current)] = [...list].sort((a, b) => a - b);
+      if (fresh.length) setWatched(entry, current, fresh);
     }
     markLast(entry, season, episode);
   });
@@ -564,6 +781,10 @@ export function setSeasonWatched(id, season, on, meta = {}) {
   if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   apply(id, meta, entry => {
     if (!on) {
+      // Every episode that WAS ticked becomes a tombstone, so another device
+      // merging this document learns the season was deliberately cleared rather
+      // than assuming this copy is simply behind.
+      setUnwatched(entry, season, entry.seasons[String(season)] || []);
       delete entry.seasons[String(season)];
       entry.log = (entry.log || []).filter(row => row[0] !== +season);
       return;
@@ -573,12 +794,14 @@ export function setSeasonWatched(id, season, on, meta = {}) {
     const cap = airedCapFor(entry, season);
     const list = new Set(entry.seasons[String(season)] || []);
     const stamp = Date.now();
+    const fresh = [];
     for (let index = 1; index <= cap; index++) {
       if (list.has(index)) continue;
-      list.add(index);
+      fresh.push(index);
       logEpisode(entry, season, index, stamp, 1);
     }
-    entry.seasons[String(season)] = [...list].sort((a, b) => a - b);
+    // Re-ticking clears the tombstones the previous un-mark left behind.
+    setWatched(entry, season, [...list, ...fresh]);
     if (cap) markLast(entry, season, cap);
   });
   if (on) maybeCompleteShow(id, meta);
@@ -609,13 +832,14 @@ export async function markShowWatched(id, meta = {}, { fetchStructure = fetchSho
       const cap = airedCapFor(entry, season);
       if (cap <= 0) continue;
       const list = new Set(entry.seasons[String(season)] || []);
+      const fresh = [];
       for (let index = 1; index <= cap; index++) {
         if (list.has(index)) continue;
-        list.add(index);
+        fresh.push(index);
         logEpisode(entry, season, index, stamp, 1);
         added++;
       }
-      entry.seasons[String(season)] = [...list].sort((a, b) => a - b);
+      if (fresh.length) setWatched(entry, season, fresh);
       markLast(entry, season, cap);
     }
     if (stampFrom > 0) entry.lastWatched = { season: entry.lastWatched?.season || 1, episode: entry.lastWatched?.episode || 1, at: stampFrom };
@@ -626,8 +850,18 @@ export async function markShowWatched(id, meta = {}, { fetchStructure = fetchSho
 
 export function clearShowProgress(id) {
   const key = KEY(id);
-  if (!state.episodeProgress[key]) return;
-  delete state.episodeProgress[key];
+  const entry = state.episodeProgress[key];
+  if (!entry) return;
+  // Reset is an intent, not an absence. Deleting the document would let another
+  // device's copy re-create every episode on its next merge, so the reset is
+  // recorded as tombstones instead — the same mechanism a single un-tick uses.
+  for (const [season, episodes] of Object.entries(entry.seasons || {})) setUnwatched(entry, season, episodes);
+  entry.seasons = {};
+  entry.log = [];
+  entry.seasonPlays = {};
+  entry.completedAt = 0;
+  entry.lastWatched = null;
+  entry.updatedAt = Date.now();
   persist(key);
 }
 

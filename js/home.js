@@ -6,8 +6,9 @@ import { observeReveals } from './effects.js';
 import { registerActions } from './events.js';
 import { renderRecommendations } from './recommend.js';
 import { getStreamingArrivals } from './provider-history.js';
-import { resumeQueue } from './episodes.js';
-import { franchiseSummary } from './franchise.js';
+import { resumeQueue, episodeStats } from './episodes.js';
+import { applyContinuePrefs, togglePinned, toggleHidden, moveContinue, isPinned, isHidden, resetContinuePrefs, hasContinueEdits } from './continue-prefs.js';
+import { franchiseSummary, toggleFranchiseDismissed, restoreAllFranchises } from './franchise.js';
 import { IMG, PH, providerUrl, regionLabel } from './config.js';
 import { state } from './state.js';
 
@@ -20,21 +21,66 @@ export function renderPersonalRows() { return renderRecommendations(); }
 // first frame with no network round-trip. The episode still and title are then
 // filled in asynchronously — a missing image never delays the rail, and a failed
 // lookup just leaves the poster in place.
+// Edit mode is per page-load, not stored: it is a thing you are doing, not a
+// setting. The pins and hides it produces are what persist.
+let continueEditing = false;
+
 export function renderContinueWatching() {
   const host = $('continueWatchingRow'); if (!host) return;
-  const queue = state.user ? resumeQueue(10) : [];
-  if (!queue.length) { host.innerHTML = ''; return; }
+  // Pull deeper than the rail shows, so hidden shows do not eat visible slots.
+  const all = state.user ? applyContinuePrefs(resumeQueue(50)) : [];
+  const queue = all.slice(0, 12);
+  // While editing, keep the section up even if everything has been hidden —
+  // otherwise the control to unhide disappears with the last card.
+  if (!queue.length && !continueEditing) { host.innerHTML = ''; continueEditing = false; return; }
+  if (!state.user) { host.innerHTML = ''; return; }
 
-  host.innerHTML = `<section class="section reveal continue-section">
-    <div class="section-head"><div><span class="continue-eyebrow">Pick up where you left off</span><h2 class="section-title"><span>▶</span> Continue Watching</h2><p>Your next unwatched episode across ${queue.length} show${queue.length === 1 ? '' : 's'}.</p></div></div>
-    <div class="row continue-row">${queue.map(continueCard).join('')}</div>
+  const hiddenCount = resumeQueue(50).length - all.length;
+  host.innerHTML = `<section class="section reveal continue-section${continueEditing ? ' editing' : ''}">
+    <div class="section-head"><div><span class="continue-eyebrow">Pick up where you left off</span><h2 class="section-title"><span>▶</span> Continue Watching</h2><p>${continueEditing
+      ? 'Pin a show to keep it at the front, or hide one you have stopped watching. Hiding never touches your episode progress.'
+      : `Your next unwatched episode across ${queue.length} show${queue.length === 1 ? '' : 's'}.${hiddenCount ? ` ${hiddenCount} hidden.` : ''}`}</p></div>
+      <div class="continue-tools">
+        ${continueEditing && hasContinueEdits() ? '<button class="continue-tool" data-action="continue-reset">Reset all</button>' : ''}
+        <button class="continue-tool${continueEditing ? ' on' : ''}" data-action="continue-edit" aria-pressed="${continueEditing}">${continueEditing ? 'Done' : 'Edit'}</button>
+      </div>
+    </div>
+    ${continueEditing ? '' : recordChaseHTML()}
+    <div class="row continue-row">${queue.map((row, index) => continueCard(row, index, queue.length)).join('')}${continueEditing ? hiddenCardsHTML() : ''}</div>
   </section>`;
   observeReveals();
   requestAnimationFrame(() => host.querySelectorAll('.continue-bar i').forEach(bar => { bar.style.width = `${+bar.dataset.w || 0}%`; }));
   hydrateContinueStills(queue);
 }
 
-function continueCard({ id, entry, progress, next }) {
+// The one line worth interrupting for: you are one or two episodes from your own
+// best day. Counted in single ticks only, like the record itself — a personal
+// best you could set by pressing "mark season watched" would be worth nothing.
+function recordChaseHTML() {
+  const chase = episodeStats({ months: 1 }).recordChase;
+  if (!chase) return '';
+  return `<div class="continue-chase" role="status">
+    <span class="continue-chase-mark" aria-hidden="true">&#9889;</span>
+    <span><b>${chase.needed === 1 ? 'One more episode' : `${chase.needed} more episodes`}</b> and today beats your best day of ${chase.record}. You are on ${chase.todaySolo}.</span>
+  </div>`;
+}
+
+// Hidden shows are only listed while editing — visible enough to bring back,
+// invisible the rest of the time, which is the point of hiding them.
+function hiddenCardsHTML() {
+  const hidden = resumeQueue(50).filter(row => isHidden(row.id));
+  if (!hidden.length) return '';
+  return hidden.map(row => `<article class="continue-card hidden-card">
+    <div class="continue-art muted"><img src="${row.entry.poster ? `${IMG}w342${row.entry.poster}` : PH}" alt="" loading="lazy"></div>
+    <div class="continue-body">
+      <h3>${esc(row.entry.title || 'TV show')}</h3>
+      <p class="continue-next">Hidden from this rail</p>
+      <button class="continue-mark" data-action="continue-hide" data-tid="${row.id}">Show again</button>
+    </div>
+  </article>`).join('');
+}
+
+function continueCard({ id, entry, progress, next }, index = 0, total = 1) {
   const art = entry.backdrop ? `${IMG}w500${entry.backdrop}` : entry.poster ? `${IMG}w342${entry.poster}` : PH;
   const meta = esc(JSON.stringify({ title: entry.title, poster: entry.poster, backdrop: entry.backdrop, episodeRuntime: entry.episodeRuntime, structure: entry.structure, aired: entry.aired, status: entry.status }));
   return `<article class="continue-card" data-continue="${id}">
@@ -49,6 +95,12 @@ function continueCard({ id, entry, progress, next }) {
       <div class="continue-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
       <div class="continue-meta"><span>${progress.watched}/${progress.aired} watched</span><b>${progress.percent}%</b></div>
       <button class="continue-mark" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail">Mark watched</button>
+      ${continueEditing ? `<div class="continue-edit-bar">
+        <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Move ${esc(entry.title || 'show')} earlier">&#8592;</button>
+        <button class="ce-btn${isPinned(id) ? ' on' : ''}" data-action="continue-pin" data-tid="${id}" aria-pressed="${isPinned(id)}" aria-label="${isPinned(id) ? 'Unpin' : 'Pin'} ${esc(entry.title || 'show')}">${isPinned(id) ? '&#9733; Pinned' : '&#9734; Pin'}</button>
+        <button class="ce-btn" data-action="continue-hide" data-tid="${id}" aria-label="Hide ${esc(entry.title || 'show')}">Hide</button>
+        <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="1" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${esc(entry.title || 'show')} later">&#8594;</button>
+      </div>` : ''}
     </div>
   </article>`;
 }
@@ -111,7 +163,7 @@ export async function renderFranchiseRail() {
       <span class="franchise-eyebrow">From your own collection</span>
       <h2 class="section-title"><span>&#9678;</span> Finish the Franchise</h2>
       <p>${esc(lede)}</p>
-    </div><button class="section-see-all" data-action="show-page" data-page="stats">All franchises<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div>
+    </div><button class="section-see-all" data-action="show-page" data-page="franchises">All franchises<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div>
     <div class="row franchise-row">${rows.map(franchiseCard).join('')}</div>
   </section>`;
   observeReveals();
@@ -127,6 +179,7 @@ function franchiseCard(item) {
       <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
       <span class="fr-card-flag">${left === 1 ? 'Last one' : `${left} left`}</span>
     </a>
+    <button class="fr-card-dismiss" data-action="franchise-dismiss" data-cid="${item.id}" aria-label="Stop suggesting ${esc(item.name)}" data-tip="Not interested in this series">&#10005;</button>
     <div class="fr-card-body">
       <a class="fr-card-series" href="/collection/${item.id}" data-action="go-collection" data-cid="${item.id}">${esc(item.name)}</a>
       <h3>${esc(next.title)}</h3>
@@ -165,6 +218,22 @@ export function initHomeActions() {
   // A tick anywhere — the rail's own button or the detail page — re-orders the
   // queue, so the rail always rebuilds rather than trying to patch itself.
   document.addEventListener('cv:episode-progress', renderContinueWatching);
+  registerActions({
+    'continue-edit': () => { continueEditing = !continueEditing; renderContinueWatching(); },
+    'continue-pin': (el) => { togglePinned(+el.dataset.tid); renderContinueWatching(); },
+    'continue-hide': (el) => { toggleHidden(+el.dataset.tid); renderContinueWatching(); },
+    'continue-move': (el) => {
+      const visible = [...document.querySelectorAll('.continue-row .continue-card[data-continue]')].map(node => +node.dataset.continue);
+      if (moveContinue(+el.dataset.tid, +el.dataset.dir, visible)) renderContinueWatching();
+    },
+    'continue-reset': () => { resetContinuePrefs(); renderContinueWatching(); },
+    'franchise-dismiss': (el, e) => {
+      if (e) e.stopPropagation();
+      toggleFranchiseDismissed(+el.dataset.cid);
+      renderFranchiseRail();
+    },
+    'franchise-restore-all': () => { restoreAllFranchises(); renderFranchiseRail(); },
+  });
   document.addEventListener('cv:auth', renderFranchiseRail);
   // Marking a film watched can finish a series or shorten the gap in one, so the
   // rail rebuilds on any library change. Collection lookups are cached, so a

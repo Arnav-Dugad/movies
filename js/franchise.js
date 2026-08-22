@@ -8,6 +8,7 @@
 // sequel is not 80% complete, it is complete, with more coming. Counting a film
 // nobody can watch yet against you produces a number that can never reach 100.
 import { tmdb } from './api.js';
+import { db } from './firebase.js';
 import { state } from './state.js';
 
 const CACHE_KEY = 'cv_collections_v1';
@@ -122,22 +123,69 @@ export async function franchiseSummary({ limit = 12, now = Date.now() } = {}) {
       id: group.id,
       name: data.name || group.name,
       poster: data.poster || group.poster,
+      // The whole running order, so a caller can show every entry and its state
+      // without fetching the collection a second time.
+      parts: [...data.parts].sort((a, b) =>
+        (a.release_date || '9999').localeCompare(b.release_date || '9999')),
       ...progress,
     });
   }
   const complete = rows.filter(r => r.complete);
-  const inProgress = rows.filter(r => !r.complete)
+  const inProgress = rows.filter(r => !r.complete && !isFranchiseDismissed(r.id))
     // Closest to done first, then fewest films left — the ones actually finishable.
     .sort((a, b) => b.percent - a.percent || a.unseen.length - b.unseen.length);
   return {
     rows,
     complete,
+    // The rail respects dismissals; the Stats block deliberately does not, so a
+    // series you set aside is still visible somewhere and can be brought back.
+    dismissed: rows.filter(row => isFranchiseDismissed(row.id)),
     inProgress,
     // One film from finishing: the single most satisfying thing to surface.
     almost: inProgress.filter(r => r.unseen.length === 1),
     trackedParts: rows.reduce((sum, r) => sum + r.released, 0),
     seenParts: rows.reduce((sum, r) => sum + r.seen, 0),
   };
+}
+
+// ===== DISMISSED SERIES =====
+// A franchise you have deliberately abandoned is not a recommendation, and the
+// rail has no way to learn that from watch history — not finishing something is
+// exactly what "still in progress" looks like. So it is asked, once, per series.
+// Stored on the profile document, which sign-in already reads.
+let dismissSaveTimer = null;
+const dismissed = () => (state.franchisePrefs ||= { dismissed: [] }).dismissed;
+
+export function hydrateFranchisePrefs(cloud) {
+  const list = Array.isArray(cloud?.dismissed) ? cloud.dismissed.map(Number).filter(id => id > 0) : [];
+  state.franchisePrefs = { dismissed: [...new Set(list)].slice(0, 80) };
+}
+
+export const isFranchiseDismissed = id => dismissed().includes(+id);
+
+export function toggleFranchiseDismissed(id) {
+  const list = dismissed(), index = list.indexOf(+id);
+  if (index >= 0) list.splice(index, 1); else list.unshift(+id);
+  state.franchisePrefs.dismissed = list.slice(0, 80);
+  saveFranchisePrefs();
+  return isFranchiseDismissed(id);
+}
+
+export function restoreAllFranchises() {
+  state.franchisePrefs = { dismissed: [] };
+  saveFranchisePrefs();
+}
+
+function saveFranchisePrefs() {
+  document.dispatchEvent(new Event('cv:franchise-prefs'));
+  const uid = state.user?.uid;
+  if (!uid) return;
+  clearTimeout(dismissSaveTimer);
+  dismissSaveTimer = setTimeout(() => {
+    if (state.user?.uid !== uid) return;
+    db.collection('users').doc(uid).set({ franchisePrefs: state.franchisePrefs }, { merge: true })
+      .catch(error => console.warn('franchise prefs save', error));
+  }, 900);
 }
 
 /** "3 of 6 seen" / "Complete" — one honest phrase for a progress meter. */

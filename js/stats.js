@@ -626,7 +626,7 @@ function tvTrackerPanel() {
 
     <div class="tv-grid">
       <figure class="tv-card">
-        <figcaption><strong>Episodes marked per month</strong><span>Last 12 months${busiestMonth?.count ? ` · busiest ${busiestMonth.label} ${busiestMonth.year} with ${busiestMonth.count}` : ''}</span></figcaption>
+        <figcaption><strong>Episodes marked per month</strong><span>Last 12 months${busiestMonth?.count ? ` · busiest ${busiestMonth.label} ${busiestMonth.year} with ${busiestMonth.count}` : ''}${tv.undated ? ` · ${tv.undated.toLocaleString()} older episode${tv.undated === 1 ? '' : 's'} counted but not dated` : ''}</span></figcaption>
         <div class="tv-months">${months}</div>
       </figure>
       <figure class="tv-card">
@@ -1043,7 +1043,7 @@ function rewatchPanel() {
 // so the panel opens with its own skeleton rather than blocking the page.
 function franchisePanel() {
   return `<section class="stats-panel franchise-panel">
-    <div class="stats-section-head"><div><span>Collection completion</span><h2>Franchises</h2><p>How far through each film series you are. Measured against released entries only &mdash; an announced sequel cannot count against you.</p></div></div>
+    <div class="stats-section-head"><div><span>Collection completion</span><h2>Franchises</h2><p>How far through each film series you are. Measured against released entries only &mdash; an announced sequel cannot count against you.</p></div><button class="btn-glass" data-action="show-page" data-page="franchises">Open Franchises</button></div>
     <div id="franchiseBody"><div class="network-empty">Working out where you stand&hellip;</div></div>
     <div id="tvFamilyBody"></div>
   </section>`;

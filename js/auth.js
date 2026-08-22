@@ -14,6 +14,8 @@ import { hydrateProviderHistory, resetProviderHistoryForAuth } from './provider-
 import { hydrateStatsSections } from './stats.js';
 import { loadEpisodeProgress, resetEpisodeProgressForAuth, hydrateEpisodeProgressFromCache } from './episodes.js';
 import { hydrateFromCache, writeCache, clearLibraryCache, resetLibraryRuntime, ensureLibraryVersion, initLibraryCache, flushLibraryVersion } from './library-cache.js';
+import { hydrateContinuePrefs } from './continue-prefs.js';
+import { hydrateFranchisePrefs } from './franchise.js';
 
 let authMode = 'login';
 let delRelease = null;
@@ -32,6 +34,8 @@ async function loadProfile() {
   state.statsSnapshot = null;
   hydrateStatsSections(null);
   resetEpisodeProgressForAuth();
+  hydrateContinuePrefs(null);
+  hydrateFranchisePrefs(null);
   if (!state.user) return 0;
   let localFeedback = {};
   try { localFeedback = JSON.parse(localStorage.getItem(`cv_rec_feedback_${state.user.uid}`) || '{}'); } catch (_) {}
@@ -66,6 +70,8 @@ async function loadProfile() {
         }
         hydrateProviderHistory(x.providerHistory);
         hydrateStatsSections(x.statsSections);
+        hydrateContinuePrefs(x.continueWatching);
+        hydrateFranchisePrefs(x.franchisePrefs);
       state.profile = {
         avatar: x.avatar || null, created: x.created || null,
         headline: String(x.headline || '').slice(0, 70), bio: String(x.bio || '').slice(0, 220),

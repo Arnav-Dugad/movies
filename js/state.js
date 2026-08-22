@@ -41,6 +41,11 @@ export const state = {
   // on sign-in and mirrored to localStorage so the Continue Watching rail can
   // paint before the network answers. See js/episodes.js.
   episodeProgress: {},
+  // Which Continue Watching cards are pinned to the front and which are hidden.
+  // Loaded with the profile document, so the rail's layout follows the account.
+  continuePrefs: { pinned: [], hidden: [] },
+  // Film series the user has set aside, so the Home rail stops offering them.
+  franchisePrefs: { dismissed: [] },
 };
 
 // ===== LOOKUP HELPERS =====

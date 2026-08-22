@@ -98,6 +98,42 @@ Several defects were fixed together, and each has a named regression test:
 - A metadata refresh went through the whole-document writer, so opening a show
   could overwrite the episodes another device had just ticked. Structure and the
   aired marker are now merged on their own and never carry `seasons`.
+- The per-episode log is capped at 400 rows per show, so a long-running series
+  quietly lost its oldest entries and the chart under-reported. Every total still
+  counts those episodes — only their place on the timeline is gone — and the
+  chart now says how many are counted but not dated.
+
+### Two devices, one show
+
+The progress document used to be written whole. Two devices ticking different
+episodes inside the debounce window each sent a complete copy, and the second one
+silently erased the first one's tick.
+
+Unioning the two watched sets is not a fix: a union cannot tell "this device has
+not seen that tick yet" from "this device deliberately un-ticked it", so every
+un-tick would come back from the dead. Each season therefore carries a second
+set — `removed` — and every episode is in exactly one of three states: watched,
+removed, or never touched. Writes go through a transaction that merges the
+server's document with this device's edit:
+
+| this device | the server | result |
+|---|---|---|
+| watched | never touched | watched |
+| removed | never touched | removed |
+| watched | watched | watched |
+| removed | removed | removed |
+| watched | removed | the more recently edited document wins |
+
+Only the last row is a real conflict, and it needs two devices to disagree about
+the *same* episode at the same time. Edits to different episodes never collide.
+On an exact timestamp tie removal wins, which makes the merge symmetric and errs
+toward the safer mistake: a tick you have to redo beats an episode reappearing
+after you removed it.
+
+Clearing a season or resetting a show records tombstones rather than deleting
+anything, so those are intents that propagate too — a stale copy on another
+device cannot re-create what you cleared. The cost is one document read per
+debounced batch of ticks.
 
 ### Shows watched before episode tracking existed
 
@@ -225,7 +261,7 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 350+ assertions, no dependencies and no Java
+npm run test:logic    # 400+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # the emulator suite (needs a JDK)
 ```
@@ -264,6 +300,23 @@ only cross-user readable documents are the derived ones under `users/{uid}/share
 
 If a list action fails, the toast carries the Firestore error code (usually
 `permission-denied`), which normally means the rules are not published yet.
+
+## Continue Watching
+
+The rail ordered itself strictly by what was watched most recently: a good
+default and a bad rule. **Edit** turns on pinning, hiding, and reordering.
+
+Two lists do all of it — `pinned` (ordered ids that come first) and `hidden` (ids
+the rail never shows). Moving a card *is* pinning it to that position, so
+arbitrary ordering and "keep this at the front" are one concept rather than two;
+unpin and a show returns to the automatic order in the right place. Hiding never
+touches episode progress, and hidden shows are listed while editing so bringing
+one back is a single tap. Both lists live on the profile document, which sign-in
+already reads.
+
+When you are one or two episodes from your own best day, the rail says so. It
+counts single ticks only, like the record itself — a personal best you could set
+by pressing "mark season watched" would be worth nothing.
 
 ## Rewatch tracking
 
@@ -305,10 +358,25 @@ episode tracker caps at the last aired episode: a series with an announced seque
 is not 80% complete, it is complete with more coming, and counting a film nobody
 can watch yet against you produces a number that can never reach 100.
 
+**`/franchises`** is where the whole picture lives. Every series in one place,
+each expandable to its full running order with what you have seen marked, what a
+finish would cost in hours, and — separately — which entries you *skipped* rather
+than simply not reached yet. "You have three left" and "you skipped the third
+one" are different problems and are reported as such.
+
+Runtime is not on a TMDB collection payload, so a finish time can only be
+estimated: it averages the entries in that series you have already watched, which
+is the most relevant sample available, and it is always labelled approximate and
+never shown with nothing to average.
+
 Home carries a **Finish the Franchise** rail built from the same data, ranked by
 what is actually finishable — a series one film from complete is a better
 recommendation than anything the scorer can produce, because the interest is
-already proven and the gap is a fact rather than an inference.
+already proven and the gap is a fact rather than an inference. A series you have
+deliberately abandoned can be set aside from the rail; watch history alone can
+never learn that, because not finishing something is exactly what "in progress"
+looks like. Set-aside series stay counted on the Franchises page, so nothing
+disappears.
 
 Membership costs no extra request — `belongs_to_collection` is stamped onto
 watched documents by the metadata backfill that already fetches runtime, credits,

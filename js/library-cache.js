@@ -69,7 +69,11 @@ export function hydrateFromCache(uid) {
   const cached = readJSON(cacheKey(uid));
   if (!cached || cached.uid !== uid) return 0;
   if (!(cached.version > 0)) return 0;
-  if (!(Date.now() - +cached.at < MAX_AGE_MS)) return 0;   // also rejects a clock that jumped back
+  // A future-dated snapshot means the device clock moved backwards, and the
+  // snapshot could be arbitrarily stale against the new clock — so it is refused
+  // rather than trusted. A minute of tolerance covers ordinary clock skew.
+  const age = Date.now() - +cached.at;
+  if (!(age > -60000 && age < MAX_AGE_MS)) return 0;
 
   state.watchlist = Array.isArray(cached.watchlist) ? cached.watchlist : [];
   state.watched = cached.watched && typeof cached.watched === 'object' ? cached.watched : {};

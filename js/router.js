@@ -7,6 +7,7 @@ import { renderWatched } from './watched.js';
 import { initDiscover } from './discover.js';
 import { renderStats } from './stats.js';
 import { renderPersonalRows } from './home.js';
+import { renderFranchisePage } from './franchise-page.js';
 import { openSearch } from './search.js';
 import { stopVoiceSearch } from './voice.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
@@ -41,6 +42,7 @@ const ROUTES = [
   { test: /^\/tv\/?$/, page: 'tvPage', render: () => loadTV() },
   { test: /^\/discover\/?$/, page: 'discoverPage', render: () => initDiscover() },
   { test: /^\/reminders\/?$/, page: 'remindersPage', render: () => renderReleaseReminders() },
+  { test: /^\/franchises\/?$/, page: 'franchisesPage', render: () => renderFranchisePage() },
   { test: /^\/notifications\/?$/, page: 'notificationsPage', render: () => renderNotifications() },
   { test: /^\/watchlist\/?$/, page: 'wlPage', render: () => renderWL() },
   { test: /^\/watched\/?$/, page: 'watchedPage', render: () => renderWatched() },
@@ -68,6 +70,7 @@ const TITLES = {
   tvPage: 'TV Shows — CineVerse',
   discoverPage: 'Discover — CineVerse',
   remindersPage: 'Release Reminders — CineVerse',
+  franchisesPage: 'Franchises — CineVerse',
   notificationsPage: 'Notifications — CineVerse',
   wlPage: 'My List — CineVerse',
   watchedPage: 'Watched — CineVerse',
@@ -84,7 +87,7 @@ const TITLES = {
   sharedListPage: 'Shared List — CineVerse',
 };
 
-const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', notifications: '/notifications', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
+const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', franchises: '/franchises', notifications: '/notifications', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
 
 let currentPath = null;
 

@@ -153,3 +153,155 @@
 .fr-tv-head p b{color:var(--text);font-weight:700}
 .fr-row:disabled{cursor:default;opacity:.75}
 .fr-row:disabled:hover{border-color:var(--glass-border);background:var(--glass)}
+
+/* ===== /franchises PAGE ===== */
+.franchise-page{padding:calc(var(--nav-h) + 28px) clamp(16px,4vw,44px) 110px;max-width:1080px;margin:0 auto}
+
+.fp-hero{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:28px;flex-wrap:wrap;
+  padding-bottom:24px;margin-bottom:22px;border-bottom:1px solid var(--glass-border);
+}
+.fp-eyebrow{
+  display:block;font-size:.68rem;font-weight:800;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--gold);margin-bottom:8px;
+}
+.fp-hero h1{font-family:var(--font-display);font-size:clamp(2rem,5vw,2.7rem);font-weight:900;letter-spacing:-.02em;text-wrap:balance}
+.fp-hero p{font-size:.88rem;line-height:1.65;color:var(--text2);margin-top:8px;max-width:56ch}
+.fp-hero-stats{display:flex;gap:26px;flex-wrap:wrap}
+.fp-hero-stats strong{
+  display:block;font-size:1.5rem;font-weight:900;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;line-height:1.1;
+}
+.fp-hero-stats span{
+  display:block;font-size:.68rem;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--text3);margin-top:4px;
+}
+
+.fp-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.fp-tab{
+  display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 15px;
+  border-radius:50px;cursor:pointer;font-family:inherit;font-size:.8rem;font-weight:700;
+  background:var(--glass);color:var(--text2);border:1px solid var(--glass-border);
+  transition:color .18s var(--ease),background .18s var(--ease),border-color .18s var(--ease);
+}
+.fp-tab b{
+  font-size:.68rem;font-weight:800;padding:2px 6px;border-radius:999px;
+  background:rgba(255,255,255,.07);font-variant-numeric:tabular-nums;
+}
+.fp-tab:hover{color:var(--text);border-color:rgba(255,255,255,.16)}
+.fp-tab.on{background:var(--accent);border-color:transparent;color:#fff}
+.fp-tab.on b{background:rgba(0,0,0,.22)}
+.fp-tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.fp-note{font-size:.8rem;line-height:1.6;color:var(--text2);margin-bottom:16px;max-width:70ch}
+.fp-note b{color:var(--text)}
+
+.fp-list{display:flex;flex-direction:column;gap:12px}
+.fp-row{
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-lg);
+  overflow:hidden;transition:border-color .2s var(--ease);
+}
+.fp-row:hover{border-color:rgba(255,255,255,.13)}
+.fp-row.done{border-color:rgba(16,185,129,.26)}
+.fp-row.aside{opacity:.62}
+.fp-row.aside:hover{opacity:1}
+
+.fp-row-head{
+  display:grid;grid-template-columns:52px 1fr auto auto;align-items:center;gap:16px;
+  width:100%;padding:14px 16px;text-align:left;cursor:pointer;
+  background:none;border:0;color:inherit;font-family:inherit;
+}
+.fp-row-head.static{cursor:default}
+.fp-row-head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.fp-poster{width:52px;height:78px;border-radius:var(--radius-sm);object-fit:cover;background:var(--bg4)}
+.fp-row-body{min-width:0}
+.fp-row-title{display:block;font-size:1rem;font-weight:800;letter-spacing:-.01em;margin-bottom:8px}
+.fp-bar{display:block;height:6px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;max-width:420px}
+.fp-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.fp-row.done .fp-bar i{background:linear-gradient(90deg,var(--green),var(--green2))}
+.fp-row-meta{
+  display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:7px;
+  font-size:.76rem;color:var(--text2);font-variant-numeric:tabular-nums;
+}
+.fp-row-meta b{color:var(--text);font-weight:700}
+.fp-gap{color:var(--gold)}
+.fp-row-pct{font-size:1.05rem;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.fp-chev{color:var(--text3);font-size:.8rem}
+
+.fp-row-detail{padding:0 16px 16px;border-top:1px solid var(--glass-border)}
+.fp-parts{display:flex;flex-direction:column;gap:2px;margin:12px 0 14px}
+.fp-part{
+  display:grid;grid-template-columns:26px 40px 1fr auto;align-items:center;gap:12px;
+  padding:8px 10px;border-radius:var(--radius-sm);color:inherit;
+  transition:background .16s var(--ease);
+}
+.fp-part:hover{background:var(--surface2)}
+.fp-part:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.fp-part-no{
+  font-size:.72rem;font-weight:800;color:var(--text3);text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+.fp-part img{width:40px;height:60px;border-radius:4px;object-fit:cover;background:var(--bg4)}
+.fp-part-body{min-width:0}
+.fp-part-body b{display:block;font-size:.86rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fp-part-body small{display:block;font-size:.72rem;color:var(--text3);margin-top:2px}
+.fp-part-mark{font-size:.9rem;color:var(--text3)}
+/* Seen, skipped, and unreleased are told apart by weight and a mark as well as
+   colour, so the state survives a colour-blind reading. */
+.fp-part.seen b{color:var(--green2)}
+.fp-part.seen .fp-part-mark{color:var(--green2)}
+.fp-part.gap{background:rgba(251,191,36,.06);box-shadow:inset 2px 0 0 var(--gold)}
+.fp-part.gap small{color:var(--gold)}
+.fp-part.future{opacity:.55}
+
+.fp-row-actions{display:flex;flex-wrap:wrap;gap:8px}
+.fp-dismissed{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  margin-top:26px;padding:16px 18px;border-radius:var(--radius-lg);
+  background:var(--glass);border:1px solid var(--glass-border);
+}
+.fp-dismissed p{font-size:.84rem;color:var(--text2);margin:0}
+.fp-dismissed b{color:var(--text)}
+
+.fp-skeleton{display:flex;flex-direction:column;gap:12px;padding-top:40px}
+.fp-skel-row{height:106px;border-radius:var(--radius-lg);background:var(--glass);animation:fpPulse 1.4s var(--ease) infinite}
+@keyframes fpPulse{0%,100%{opacity:.5}50%{opacity:.9}}
+
+/* Dismiss control on the Home rail card. */
+.fr-card{position:relative}
+.fr-card-dismiss{
+  position:absolute;top:8px;left:8px;z-index:3;
+  width:26px;height:26px;border-radius:50%;cursor:pointer;
+  display:grid;place-items:center;font-size:.7rem;line-height:1;
+  color:#fff;background:rgba(8,8,14,.72);border:1px solid rgba(255,255,255,.14);
+  opacity:0;transition:opacity .18s var(--ease),background .18s var(--ease);
+}
+.fr-card:hover .fr-card-dismiss,.fr-card-dismiss:focus-visible{opacity:1}
+.fr-card-dismiss:hover{background:var(--red)}
+.fr-card-dismiss:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* The "one more episode" nudge above Continue Watching. */
+.continue-chase{
+  display:flex;align-items:center;gap:11px;margin:0 0 14px;padding:11px 15px;
+  border-radius:var(--radius-lg);font-size:.85rem;line-height:1.5;
+  color:var(--text);background:linear-gradient(135deg,rgba(251,191,36,.13),var(--glass));
+  border:1px solid rgba(251,191,36,.28);
+}
+.continue-chase b{font-weight:800;color:var(--gold)}
+.continue-chase-mark{font-size:1.1rem;flex:0 0 auto}
+
+@media (max-width:640px){
+  .fp-hero{gap:18px}
+  .fp-hero-stats{gap:18px}
+  .fp-hero-stats strong{font-size:1.25rem}
+  .fp-row-head{grid-template-columns:44px 1fr auto;gap:12px;padding:12px}
+  .fp-poster{width:44px;height:66px}
+  .fp-chev{display:none}
+  .fp-part{grid-template-columns:22px 34px 1fr auto;gap:9px}
+  .fp-part img{width:34px;height:51px}
+  .fp-row-actions .btn-primary,.fp-row-actions .btn-glass{flex:1 1 100%;justify-content:center}
+  .fr-card-dismiss{opacity:1}
+}
+@media (prefers-reduced-motion:reduce){
+  .fp-skel-row{animation:none}
+}
