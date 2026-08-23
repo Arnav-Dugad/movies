@@ -7,12 +7,12 @@
 // episode tracker caps at the last aired episode: a collection with an announced
 // sequel is not 80% complete, it is complete, with more coming. Counting a film
 // nobody can watch yet against you produces a number that can never reach 100.
-import { tmdb } from './api.js';
+import { tmdb, pool } from './api.js';
 import { db } from './firebase.js';
 import { state } from './state.js';
 
 const CACHE_KEY = 'cv_collections_v1';
-const CACHE_TTL = 30 * 86400000;   // parts lists barely change; a month is plenty
+const CACHE_TTL = 7 * 86400000;    // new parts and release dates should surface promptly
 const CACHE_MAX = 120;
 
 let memo = null;
@@ -29,19 +29,28 @@ function persist() {
   } catch (_) {}
 }
 
-const isReleased = (part, now) => {
+/** Forget cached collection shapes so newly announced/released parts appear now. */
+export function clearFranchiseCache() {
+  memo = {};
+  try { localStorage.removeItem(CACHE_KEY); } catch (_) {}
+  familyMemo = {};
+  try { localStorage.removeItem(FAMILY_CACHE); } catch (_) {}
+}
+
+const releaseState = (part, now, watched) => {
   const raw = part?.release_date;
-  if (!raw) return true;                     // no date on record: don't punish it
+  if (!raw) return watched?.[`movie_${part?.id}`] ? 'released' : 'unknown';
   const t = Date.parse(`${raw}T00:00:00`);
-  return Number.isNaN(t) ? true : t <= now;
+  if (Number.isNaN(t)) return watched?.[`movie_${part?.id}`] ? 'released' : 'unknown';
+  return t <= now ? 'released' : 'upcoming';
 };
 
 /** Collection parts, from the device cache when it is fresh. */
-export async function collectionParts(collectionId) {
+export async function collectionParts(collectionId, { force = false } = {}) {
   const id = +collectionId;
   if (!id) return null;
   const cached = store()[id];
-  if (cached && Date.now() - (cached.at || 0) < CACHE_TTL) return cached;
+  if (!force && cached && Date.now() - (cached.at || 0) < CACHE_TTL) return cached;
   try {
     const d = await tmdb(`/collection/${id}`);
     const entry = {
@@ -49,7 +58,7 @@ export async function collectionParts(collectionId) {
       name: d.name || '',
       poster: d.poster_path || '',
       backdrop: d.backdrop_path || '',
-      parts: (d.parts || []).filter(p => p && p.id).map(p => ({
+      parts: [...new Map((d.parts || []).filter(p => p && +p.id > 0).map(p => [+p.id, p])).values()].map(p => ({
         id: p.id, title: p.title || p.name || '',
         poster: p.poster_path || '', release_date: p.release_date || '',
         vote: +(p.vote_average || 0),
@@ -65,8 +74,10 @@ export async function collectionParts(collectionId) {
  * `parts` is the raw TMDB array or our cached shape — both carry id + release_date.
  */
 export function collectionProgress(parts, { now = Date.now(), watched = state.watched } = {}) {
-  const list = (parts || []).filter(p => p && p.id);
-  const released = list.filter(p => isReleased(p, now));
+  const list = [...new Map((parts || []).filter(p => p && +p.id > 0).map(p => [+p.id, p])).values()];
+  const released = list.filter(p => releaseState(p, now, watched) === 'released');
+  const upcomingParts = list.filter(p => releaseState(p, now, watched) === 'upcoming');
+  const unknownParts = list.filter(p => releaseState(p, now, watched) === 'unknown');
   const seenIds = new Set();
   for (const p of released) if (watched[`movie_${p.id}`]) seenIds.add(p.id);
 
@@ -77,7 +88,10 @@ export function collectionProgress(parts, { now = Date.now(), watched = state.wa
   return {
     total: list.length,
     released: released.length,
-    upcoming: list.length - released.length,
+    upcoming: upcomingParts.length,
+    unknown: unknownParts.length,
+    upcomingParts,
+    unknownParts,
     seen: seenIds.size,
     unseen,
     // The earliest released part not yet watched — "carry on from here".
@@ -102,7 +116,8 @@ export function watchedCollections({ watched = state.watched } = {}) {
     const group = groups.get(cid);
     if (!group.name && doc.collectionName) group.name = doc.collectionName;
     if (!group.poster && doc.collectionPoster) group.poster = doc.collectionPoster;
-    group.seen.push({ key, id: +(doc.tmdbId || 0), title: doc.title || '' });
+    const mediaId = +(doc.tmdbId || String(key).split('_').at(-1) || 0);
+    if (mediaId && !group.seen.some(item => item.id === mediaId)) group.seen.push({ key, id: mediaId, title: doc.title || '' });
   }
   return [...groups.values()].sort((a, b) => b.seen.length - a.seen.length || a.name.localeCompare(b.name));
 }
@@ -112,24 +127,27 @@ export function watchedCollections({ watched = state.watched } = {}) {
  * finishing. Bounded, because each collection not already cached is one request.
  */
 export async function franchiseSummary({ limit = 12, now = Date.now() } = {}) {
-  const groups = watchedCollections().slice(0, limit);
+  const watched = { ...(state.watched || {}) };
+  const groups = watchedCollections({ watched }).slice(0, Math.max(1, Math.min(80, limit)));
   const rows = [];
-  for (const group of groups) {
+  await pool(groups, async group => {
     const data = await collectionParts(group.id);
-    if (!data || !data.parts.length) continue;
-    const progress = collectionProgress(data.parts, { now });
-    if (progress.released < 2) continue;   // a "collection" of one is not a franchise
+    if (!data || !data.parts.length) return;
+    const progress = collectionProgress(data.parts, { now, watched });
+    if (progress.released < 2) return;   // a "collection" of one is not a franchise
     rows.push({
       id: group.id,
-      name: data.name || group.name,
-      poster: data.poster || group.poster,
+      name: data.name || group.name || 'Untitled collection',
+      poster: data.poster || group.poster || data.parts.find(part => part.poster)?.poster || '',
+      backdrop: data.backdrop || '',
       // The whole running order, so a caller can show every entry and its state
       // without fetching the collection a second time.
       parts: [...data.parts].sort((a, b) =>
-        (a.release_date || '9999').localeCompare(b.release_date || '9999')),
+        (a.release_date || '9999').localeCompare(b.release_date || '9999') || a.id - b.id),
       ...progress,
     });
-  }
+  }, 5);
+  rows.sort((a, b) => b.seen - a.seen || a.name.localeCompare(b.name));
   const complete = rows.filter(r => r.complete);
   const inProgress = rows.filter(r => !r.complete && !isFranchiseDismissed(r.id))
     // Closest to done first, then fewest films left — the ones actually finishable.

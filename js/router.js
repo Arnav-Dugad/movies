@@ -8,6 +8,7 @@ import { initDiscover } from './discover.js';
 import { renderStats } from './stats.js';
 import { renderPersonalRows } from './home.js';
 import { renderFranchisePage } from './franchise-page.js';
+import { renderBoxOfficePage } from './box-office-page.js';
 import { openSearch } from './search.js';
 import { stopVoiceSearch } from './voice.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
@@ -44,6 +45,7 @@ const ROUTES = [
   { test: /^\/discover\/?$/, page: 'discoverPage', render: () => initDiscover() },
   { test: /^\/reminders\/?$/, page: 'remindersPage', render: () => renderReleaseReminders() },
   { test: /^\/franchises\/?$/, page: 'franchisesPage', render: () => renderFranchisePage() },
+  { test: /^\/box-office\/?$/, page: 'boxOfficePage', render: () => renderBoxOfficePage() },
   { test: /^\/notifications\/?$/, page: 'notificationsPage', render: () => renderNotifications() },
   { test: /^\/watchlist\/?$/, page: 'wlPage', render: () => renderWL() },
   { test: /^\/watched\/?$/, page: 'watchedPage', render: () => renderWatched() },
@@ -72,6 +74,7 @@ const TITLES = {
   discoverPage: 'Discover — CineVerse',
   remindersPage: 'Release Reminders — CineVerse',
   franchisesPage: 'Franchises — CineVerse',
+  boxOfficePage: 'Highest Grossing Movies — CineVerse',
   notificationsPage: 'Notifications — CineVerse',
   wlPage: 'My List — CineVerse',
   watchedPage: 'Watched — CineVerse',
@@ -88,7 +91,7 @@ const TITLES = {
   sharedListPage: 'Shared List — CineVerse',
 };
 
-const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', franchises: '/franchises', notifications: '/notifications', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
+const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', franchises: '/franchises', 'box-office': '/box-office', notifications: '/notifications', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
 
 let currentPath = null;
 

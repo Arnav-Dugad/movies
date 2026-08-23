@@ -35,6 +35,56 @@ const numbers = value => [...new Set((Array.isArray(value) ? value : []).map(Num
 // Only the most recent LOG_CAP survive per show: an unbounded array would
 // eventually outgrow both the document limit and localStorage.
 const LOG_CAP = 400;
+const EPISODE_MODEL_V = 2;
+
+const orderedSeasons = structure => Object.keys(structure || {}).map(Number).filter(n => n > 0).sort((a, b) => a - b);
+
+// Most shows restart episode numbers at 1 each season. A few long-running shows
+// (One Piece is the important example) use one global number even though TMDB
+// divides the show into arc-like seasons. The old tracker only stored a count,
+// then generated 1..count, so One Piece's S22 E1107 became sixty-seven fake
+// episodes and the next button jumped to S23 E1.
+function numberingModeFor(value, structure, aired) {
+  if (value?.numberingMode === 'absolute') return 'absolute';
+  if (value?.numberingMode === 'season' && +value?.episodeModelV >= EPISODE_MODEL_V) return 'season';
+  const seasonSize = +(structure || {})[String(+aired?.season)] || 0;
+  return seasonSize > 0 && +aired?.episode > seasonSize ? 'absolute' : 'season';
+}
+
+function episodeNumbersFor(entry, season) {
+  const structure = entry?.structure || {};
+  const count = +structure[String(+season)] || 0;
+  if (!count) return [];
+  if (entry.numberingMode !== 'absolute') return Array.from({ length: count }, (_, index) => index + 1);
+  let before = 0;
+  for (const current of orderedSeasons(structure)) {
+    if (current >= +season) break;
+    before += +structure[String(current)] || 0;
+  }
+  return Array.from({ length: count }, (_, index) => before + index + 1);
+}
+
+function normalizeEpisodeList(value, season, structure, numberingMode) {
+  const raw = numbers(value);
+  if (numberingMode !== 'absolute') return raw;
+  const probe = { structure, numberingMode };
+  const valid = episodeNumbersFor(probe, season);
+  const validSet = new Set(valid);
+  // Old documents contain local placeholders (1..season size). Translate only
+  // values that are not already valid global episode numbers, making this
+  // migration idempotent across cache, Firestore and transaction reads.
+  return numbers(raw.map(episode => validSet.has(episode) ? episode : (episode <= valid.length ? valid[episode - 1] : episode)));
+}
+
+function normalizeLog(value, structure, numberingMode) {
+  const mapped = (Array.isArray(value) ? value : []).map(row => {
+    if (!Array.isArray(row) || numberingMode !== 'absolute') return row;
+    const [season, episode, ...rest] = row;
+    const translated = normalizeEpisodeList([episode], season, structure, numberingMode)[0];
+    return translated ? [+season, translated, ...rest] : row;
+  });
+  return cleanLog(mapped);
+}
 
 // Rows are deduplicated by episode, keeping the EARLIEST stamp: after a merge two
 // devices can each hold a row for the same episode with different moments, and
@@ -69,9 +119,16 @@ const cleanSeasonPlays = value => {
 
 function sanitizeEntry(value) {
   if (!value || typeof value !== 'object') return null;
-  const seasons = {}, structure = {}, removed = {};
+  let seasons = {}, removed = {};
+  const structure = {};
+  for (const [season, count] of Object.entries(value.structure || {})) {
+    if (+season > 0 && +count > 0) structure[String(+season)] = +count;
+  }
+  const aired = value.aired && +value.aired.season > 0 && +value.aired.episode > 0
+    ? { season: +value.aired.season, episode: +value.aired.episode } : null;
+  const numberingMode = numberingModeFor(value, structure, aired);
   for (const [season, list] of Object.entries(value.seasons || {})) {
-    const episodes = numbers(list);
+    const episodes = normalizeEpisodeList(list, +season, structure, numberingMode);
     if (episodes.length) seasons[String(+season)] = episodes;
   }
   // Episodes explicitly UN-ticked. Without these, merging two devices could only
@@ -80,21 +137,50 @@ function sanitizeEntry(value) {
   for (const [season, list] of Object.entries(value.removed || {})) {
     const key = String(+season);
     const watched = new Set(seasons[key] || []);
-    const gone = numbers(list).filter(episode => !watched.has(episode));
+    const gone = normalizeEpisodeList(list, +season, structure, numberingMode).filter(episode => !watched.has(episode));
     if (gone.length) removed[key] = gone;
   }
-  for (const [season, count] of Object.entries(value.structure || {})) {
-    if (+count > 0) structure[String(+season)] = +count;
+  const lastWatched = value.lastWatched && +value.lastWatched.at
+    ? { season: +value.lastWatched.season, episode: +value.lastWatched.episode, at: +value.lastWatched.at } : null;
+
+  // Recover the exact intent behind the old One Piece failure. `markUpTo` saved
+  // the real target in lastWatched (for example S22 E1107), but filled the whole
+  // arc using local placeholders 1..67. A full local run plus a valid global
+  // anchor is an unambiguous signature, so rebuild the contiguous position up to
+  // that anchor and explicitly remove only the accidental overrun.
+  if (numberingMode === 'absolute' && +value.episodeModelV < EPISODE_MODEL_V && lastWatched) {
+    const anchorRange = episodeNumbersFor({ structure, numberingMode }, lastWatched.season);
+    const rawAnchor = new Set(numbers(value.seasons?.[String(lastWatched.season)] || []));
+    const fullLegacyRun = anchorRange.length > 0 && Array.from({ length: anchorRange.length }, (_, i) => i + 1).every(n => rawAnchor.has(n));
+    if (fullLegacyRun && anchorRange.includes(lastWatched.episode)) {
+      const previous = seasons;
+      seasons = {};
+      for (const season of orderedSeasons(structure)) {
+        const wanted = episodeNumbersFor({ structure, numberingMode }, season)
+          .filter(episode => season < lastWatched.season || (season === lastWatched.season && episode <= lastWatched.episode));
+        if (wanted.length) seasons[String(season)] = wanted;
+      }
+      for (const [season, list] of Object.entries(previous)) {
+        const overrun = list.filter(episode => +season > lastWatched.season || (+season === lastWatched.season && episode > lastWatched.episode));
+        if (overrun.length) removed[String(+season)] = numbers([...(removed[String(+season)] || []), ...overrun]);
+      }
+    }
   }
-  const aired = value.aired && +value.aired.season > 0 && +value.aired.episode > 0
-    ? { season: +value.aired.season, episode: +value.aired.episode } : null;
+
+  // Watched always wins inside one sanitized document.
+  for (const [season, list] of Object.entries(removed)) {
+    const watched = new Set(seasons[season] || []);
+    const gone = list.filter(episode => !watched.has(episode));
+    if (gone.length) removed[season] = gone; else delete removed[season];
+  }
   return {
     tmdbId: +value.tmdbId || 0, title: String(value.title || ''), poster: String(value.poster || ''),
     backdrop: String(value.backdrop || ''), episodeRuntime: +value.episodeRuntime || 0,
-    status: String(value.status || ''), seasons, structure, aired,
-    lastWatched: value.lastWatched && +value.lastWatched.at ? { season: +value.lastWatched.season, episode: +value.lastWatched.episode, at: +value.lastWatched.at } : null,
+    status: String(value.status || ''), seasons, structure, aired, numberingMode,
+    episodeModelV: EPISODE_MODEL_V,
+    lastWatched,
     removed,
-    log: cleanLog(value.log),
+    log: normalizeLog(value.log, structure, numberingMode),
     seasonPlays: cleanSeasonPlays(value.seasonPlays),
     caughtUpAt: +value.caughtUpAt || 0,
     completedAt: +value.completedAt || 0,
@@ -129,8 +215,13 @@ export async function loadEpisodeProgress() {
   try {
     const snap = await col(uid).get();
     if (state.user?.uid !== uid) return;
-    const server = {};
-    snap.docs.forEach(doc => { const entry = sanitizeEntry(doc.data()); if (entry) server[doc.id] = entry; });
+    const server = {}, migrations = new Set();
+    snap.docs.forEach(doc => {
+      const raw = doc.data();
+      const entry = sanitizeEntry(raw);
+      if (entry) server[doc.id] = entry;
+      if (entry && +raw?.episodeModelV < EPISODE_MODEL_V) migrations.add(doc.id);
+    });
     const out = {};
     for (const key of new Set([...Object.keys(server), ...Object.keys(local)])) {
       const entry = mergeEntries(server[key], local[key]);
@@ -140,7 +231,7 @@ export async function loadEpisodeProgress() {
     mirror();
     // A newer offline/local edit is reconciled after the read. Transactions keep
     // a simultaneous edit on another device intact.
-    const dirty = Object.keys(out).filter(key => syncComparable(out[key]) !== syncComparable(server[key] || null));
+    const dirty = Object.keys(out).filter(key => migrations.has(key) || syncComparable(out[key]) !== syncComparable(server[key] || null));
     await Promise.all(dirty.map(key => writeMerged(key, out[key], uid).catch(error => console.warn('episode progress reconcile', error))));
   } catch (error) { console.warn('loadEpisodeProgress', error); }
 }
@@ -239,6 +330,8 @@ export function mergeEntries(server, local) {
     backdrop: newer.backdrop || older.backdrop || '',
     episodeRuntime: newer.episodeRuntime || older.episodeRuntime || 0,
     status: newer.status || older.status || '',
+    numberingMode: newer.numberingMode === 'absolute' || older.numberingMode === 'absolute' ? 'absolute' : 'season',
+    episodeModelV: EPISODE_MODEL_V,
     // Merge every season independently. Counting season keys was not enough: a
     // returning series can gain S2E9 while both documents still have two keys.
     structure: mergeStructure(server.structure, local.structure),
@@ -323,11 +416,13 @@ export function tvShowMeta(det) {
   }
   const last = det?.last_episode_to_air;
   const next = det?.next_episode_to_air;
+  const aired = last?.season_number ? { season: last.season_number, episode: last.episode_number } : null;
   return {
     title: det?.name || '', poster: det?.poster_path || '', backdrop: det?.backdrop_path || '',
     episodeRuntime: (det?.episode_run_time || [])[0] || 0, status: det?.status || '',
-    structure,
-    aired: last?.season_number ? { season: last.season_number, episode: last.episode_number } : null,
+    structure, aired,
+    numberingMode: numberingModeFor({}, structure, aired),
+    episodeModelV: EPISODE_MODEL_V,
     nextEpisode: next?.season_number ? { season_number: +next.season_number, episode_number: +next.episode_number, air_date: next.air_date || '' } : null,
   };
 }
@@ -388,12 +483,14 @@ export async function fetchHistoricalShowMeta(id, { cutoff = Date.now() } = {}) 
   let aired = null;
   for (const season of results) {
     const available = (season.episodes || []).filter(episode => isEpisodeAvailable(episode, { showId: id, now: cutoff }));
-    const cap = Math.max(0, ...available.map(episode => +episode.episode_number || 0));
-    if (!cap) continue;
-    structure[String(+season.season_number)] = cap;
-    aired = laterAired(aired, { season: +season.season_number, episode: cap });
+    const lastNumber = Math.max(0, ...available.map(episode => +episode.episode_number || 0));
+    if (!available.length || !lastNumber) continue;
+    // Count, never max episode number. They are the same for ordinary seasons,
+    // but One Piece's 67-episode Egghead arc ends at global episode 1155.
+    structure[String(+season.season_number)] = available.length;
+    aired = laterAired(aired, { season: +season.season_number, episode: lastNumber });
   }
-  return { ...tvShowMeta(detail), structure, aired, historicalCutoff: cutoff };
+  return { ...tvShowMeta(detail), structure, aired, numberingMode: numberingModeFor({}, structure, aired), historicalCutoff: cutoff };
 }
 
 // ---------- reads ----------
@@ -404,24 +501,65 @@ export function isEpisodeWatched(id, season, episode) {
 }
 
 export function seasonWatchedCount(id, season) {
-  return showEntry(id)?.seasons?.[String(season)]?.length || 0;
+  const entry = showEntry(id);
+  if (!entry) return 0;
+  const valid = new Set(episodeNumbersFor(entry, season));
+  return (entry.seasons?.[String(season)] || []).filter(episode => !valid.size || valid.has(episode)).length;
+}
+
+/** One-based position across the whole series, independent of TMDB season cuts. */
+export function absoluteEpisodePosition(entryOrId, season, episode) {
+  const entry = typeof entryOrId === 'object' ? entryOrId : showEntry(entryOrId);
+  if (!entry) return 0;
+  let position = 0;
+  for (const current of orderedSeasons(entry.structure)) {
+    const list = episodeNumbersFor(entry, current);
+    if (current === +season) {
+      const index = list.indexOf(+episode);
+      return index >= 0 ? position + index + 1 : 0;
+    }
+    position += list.length;
+  }
+  return 0;
+}
+
+/** Where a one-based whole-series position lives in TMDB's season structure. */
+export function episodeAtPosition(entryOrId, position, { airedOnly = false } = {}) {
+  const entry = typeof entryOrId === 'object' ? entryOrId : showEntry(entryOrId);
+  let target = Math.floor(+position);
+  if (!entry || target < 1) return null;
+  for (const season of orderedSeasons(entry.structure)) {
+    const list = airedOnly ? airedEpisodesFor(entry, season) : episodeNumbersFor(entry, season);
+    if (target <= list.length) return { season, episode: list[target - 1], absolute: Math.floor(+position), numberingMode: entry.numberingMode || 'season' };
+    target -= list.length;
+  }
+  return null;
+}
+
+/** Human-readable next-up label. Absolute-numbered anime should never say S23E1. */
+export function episodeLabel(entryOrId, point, { compact = false } = {}) {
+  const entry = typeof entryOrId === 'object' ? entryOrId : showEntry(entryOrId);
+  if (!entry || !point) return '';
+  const position = point.absolute || absoluteEpisodePosition(entry, point.season, point.episode);
+  if (entry.numberingMode === 'absolute') return compact ? `EP ${point.episode}` : `Episode ${point.episode}`;
+  return compact ? `S${point.season}:E${point.episode}` : `S${point.season} · E${point.episode}${position ? ` · Episode ${position} overall` : ''}`;
 }
 
 // How many episodes of one season have aired. Every bulk action caps at this, so
 // progress can never claim a completion the viewer could not have reached.
 // Previously computed inline in three places, which is three chances to disagree.
 export function seasonAiredCount(id, season) {
-  return airedCapFor(showEntry(id), season);
+  return airedEpisodesFor(showEntry(id), season).length;
 }
 
-function airedCapFor(entry, season) {
-  const cap = +(entry?.structure || {})[String(+season)] || 0;
-  if (cap <= 0) return 0;
+function airedEpisodesFor(entry, season) {
+  const candidates = episodeNumbersFor(entry, season);
+  if (!candidates.length) return [];
   const aired = entry.aired;
-  if (!aired) return 0;
-  if (+season < aired.season) return cap;
-  if (+season === aired.season) return Math.max(0, Math.min(cap, aired.episode));
-  return 0;                                   // the season has not started airing
+  if (!aired) return [];
+  if (+season < aired.season) return candidates;
+  if (+season === aired.season) return candidates.filter(episode => episode <= aired.episode);
+  return [];                                   // the season has not started airing
 }
 
 /** Separate the two meanings the old "complete" flag mixed together. */
@@ -431,7 +569,7 @@ export function seasonState(id, season) {
   const aired = seasonAiredCount(id, season);
   const done = new Set(showEntry(id)?.seasons?.[String(+season)] || []);
   let watchedAired = 0;
-  for (let episode = 1; episode <= aired; episode++) if (done.has(episode)) watchedAired++;
+  for (const episode of airedEpisodesFor(entry, season)) if (done.has(episode)) watchedAired++;
   return {
     total, aired, watched: watchedAired,
     caughtUp: aired > 0 && watchedAired >= aired,
@@ -526,19 +664,12 @@ function airedTotal(entry) {
   const structure = entry?.structure || {};
   const seasons = Object.keys(structure).map(Number).sort((a, b) => a - b);
   if (!seasons.length) return 0;
-  const aired = entry.aired;
-  if (!aired) return 0;
-  let total = 0;
-  for (const season of seasons) {
-    if (season < aired.season) total += structure[season];
-    else if (season === aired.season) total += Math.min(aired.episode, structure[season]);
-  }
-  return total;
+  return seasons.reduce((total, season) => total + airedEpisodesFor(entry, season).length, 0);
 }
 
 export function showProgress(id) {
   const entry = showEntry(id);
-  if (!entry) return { watched: 0, ticked: 0, total: 0, aired: 0, percent: 0, started: false, caughtUp: false, seasonCompleted: false, completedSeasons: [], seriesCompleted: false, complete: false, lastWatched: null };
+  if (!entry) return { watched: 0, ticked: 0, total: 0, aired: 0, percent: 0, position: 0, started: false, caughtUp: false, seasonCompleted: false, completedSeasons: [], seriesCompleted: false, complete: false, lastWatched: null, numberingMode: 'season' };
   const structure = entry.structure || {};
   // Two counts, because they answer different questions. `ticked` is every box
   // the viewer has checked. `watched` is the subset that counts toward this
@@ -548,8 +679,8 @@ export function showProgress(id) {
   const known = Object.keys(structure).length > 0;
   let ticked = 0, watched = 0;
   for (const [seasonKey, episodes] of Object.entries(entry.seasons || {})) {
-    const cap = +structure[seasonKey] || 0;
-    if (!cap) {
+    const valid = episodeNumbersFor(entry, +seasonKey);
+    if (!valid.length) {
       // The show does not list this season. Either the structure has never been
       // synced — in which case the ticks are all we have and they count — or the
       // show dropped the season in a re-numbering, in which case counting them
@@ -558,8 +689,13 @@ export function showProgress(id) {
       if (!known) watched += episodes.length;
       continue;
     }
-    ticked += episodes.filter(episode => episode <= cap).length;
-    watched += episodes.filter(episode => episode <= cap).length;
+    const validSet = new Set(valid);
+    const availableSet = new Set(airedEpisodesFor(entry, +seasonKey));
+    ticked += episodes.filter(episode => validSet.has(episode)).length;
+    // A deliberate single tick can be newer than TMDB's last_episode marker.
+    // Keep that stronger user signal, matching the old behavior without relying
+    // on local 1..count episode numbers.
+    watched += episodes.filter(episode => validSet.has(episode) && (availableSet.has(episode) || !entry.aired || +seasonKey <= entry.aired.season)).length;
   }
   const total = Object.values(structure).reduce((sum, count) => sum + count, 0);
   // TMDB's `aired` marker lags real releases. Every bulk action caps at it, so a
@@ -575,6 +711,14 @@ export function showProgress(id) {
   const seriesCompleted = caughtUp && total > 0 && watched >= total && ended;
   const completedSeasons = Object.keys(structure).map(Number).filter(season => seasonState(id, season).completed);
   const seasonCompleted = completedSeasons.length > 0;
+  let position = 0, foundGap = false;
+  for (const season of orderedSeasons(structure)) {
+    const done = new Set(entry.seasons?.[String(season)] || []);
+    for (const episode of airedEpisodesFor(entry, season)) {
+      if (!foundGap && done.has(episode)) position++;
+      else foundGap = true;
+    }
+  }
   return {
     watched, ticked, total, aired,
     percent: aired ? Math.min(100, Math.round((watched / aired) * 100)) : 0,
@@ -583,6 +727,8 @@ export function showProgress(id) {
     // Compatibility for older callers: "complete" now has one precise meaning.
     complete: seriesCompleted,
     lastWatched: entry.lastWatched,
+    numberingMode: entry.numberingMode || 'season',
+    position,
   };
 }
 
@@ -593,7 +739,7 @@ export function nextUp(id) {
   const structure = entry.structure || {}, aired = entry.aired;
   for (const season of Object.keys(structure).map(Number).sort((a, b) => a - b)) {
     const done = new Set(entry.seasons?.[String(season)] || []);
-    for (let episode = 1; episode <= structure[season]; episode++) {
+    for (const episode of episodeNumbersFor(entry, season)) {
       if (done.has(episode)) continue;
       if (aired && (season > aired.season || (season === aired.season && episode > aired.episode))) return null;
       return { season, episode };
@@ -724,7 +870,7 @@ export function episodeTotals() {
 function ensure(id, meta = {}) {
   const key = KEY(id);
   const existing = state.episodeProgress[key];
-  const entry = existing || sanitizeEntry({ tmdbId: id, seasons: {}, structure: {} });
+  let entry = existing || sanitizeEntry({ tmdbId: id, seasons: {}, structure: {} });
   // Metadata always refreshes: a show that gained a season must not keep serving
   // a stale structure that hides the new episodes from "next up".
   if (meta.title) entry.title = meta.title;
@@ -734,6 +880,11 @@ function ensure(id, meta = {}) {
   if (meta.status) entry.status = meta.status;
   if (meta.structure && Object.keys(meta.structure).length) entry.structure = meta.structure;
   if (meta.aired !== undefined) entry.aired = meta.aired;
+  if (meta.numberingMode) entry.numberingMode = meta.numberingMode;
+  // Re-sanitize after metadata changes. This is where an old One Piece document
+  // learns that its arc seasons use absolute numbering and repairs itself from
+  // the saved lastWatched anchor.
+  entry = sanitizeEntry(entry);
   entry.tmdbId = id;
   state.episodeProgress[key] = entry;
   return { key, entry };
@@ -748,9 +899,10 @@ export function syncShowStructure(id, meta) {
   const structureChanged = JSON.stringify(before.structure || {}) !== JSON.stringify(meta.structure || {});
   const airedChanged = JSON.stringify(before.aired || null) !== JSON.stringify(meta.aired || null);
   const statusChanged = !!meta.status && before.status !== meta.status;
+  const numberingChanged = !!meta.numberingMode && before.numberingMode !== meta.numberingMode;
   const stale = Date.now() - (+before.metaCheckedAt || 0) >= DAY;
-  if (!structureChanged && !airedChanged && !statusChanged && !stale) return false;
-  if (!structureChanged && !airedChanged && !statusChanged) {
+  if (!structureChanged && !airedChanged && !statusChanged && !numberingChanged && !stale) return false;
+  if (!structureChanged && !airedChanged && !statusChanged && !numberingChanged) {
     // "Checked" is device cache data, not collection history. Mirroring it
     // locally avoids one Firestore write per tracked show every day while still
     // making each device perform its own daily freshness check.
@@ -769,11 +921,18 @@ export function syncShowStructure(id, meta) {
     entry.completedAt = progress.seriesCompleted ? (entry.completedAt || entry.caughtUpAt) : 0;
   }
   entry.updatedAt = now;
+  if (numberingChanged) {
+    // The numbering migration changes watched episode ids as well as metadata;
+    // a metadata-only merge would leave Firestore holding the broken local ids.
+    persist(key);
+    return true;
+  }
   persistMeta(key, {
     title: entry.title, poster: entry.poster, backdrop: entry.backdrop,
     episodeRuntime: entry.episodeRuntime, status: entry.status,
     structure: entry.structure, aired: entry.aired, metaCheckedAt: entry.metaCheckedAt,
     caughtUpAt: entry.caughtUpAt, completedAt: entry.completedAt,
+    numberingMode: entry.numberingMode, episodeModelV: EPISODE_MODEL_V,
   });
   return true;
 }
@@ -928,15 +1087,15 @@ export function markUpTo(id, season, episode, meta = {}) {
       // Capped at what has aired, exactly like "mark season watched" and "seen it
       // all". Without this, "up to here" was the one bulk action that could mark
       // episodes nobody could have watched yet.
-      const airedCap = airedCapFor(entry, current);
-      if (airedCap <= 0) continue;
-      const cap = Math.min(airedCap, current === +season ? +episode : structure[current]);
+      const available = airedEpisodesFor(entry, current)
+        .filter(candidate => current < +season || candidate <= +episode);
+      if (!available.length) continue;
       const list = new Set(entry.seasons[String(current)] || []);
       const fresh = [];
-      for (let index = 1; index <= cap; index++) {
-        if (list.has(index)) continue;
-        fresh.push(index);
-        logEpisode(entry, current, index, stamp, 1);
+      for (const candidate of available) {
+        if (list.has(candidate)) continue;
+        fresh.push(candidate);
+        logEpisode(entry, current, candidate, stamp, 1);
         added++;
       }
       if (fresh.length) setWatched(entry, current, fresh);
@@ -961,18 +1120,18 @@ export function setSeasonWatched(id, season, on, meta = {}) {
     }
     // Never mark episodes that have not aired: the progress bar would claim a
     // completion the user cannot have. Shared with every other bulk action.
-    const cap = airedCapFor(entry, season);
+    const available = airedEpisodesFor(entry, season);
     const list = new Set(entry.seasons[String(season)] || []);
     const stamp = Date.now();
     const fresh = [];
-    for (let index = 1; index <= cap; index++) {
-      if (list.has(index)) continue;
-      fresh.push(index);
-      logEpisode(entry, season, index, stamp, 1);
+    for (const episode of available) {
+      if (list.has(episode)) continue;
+      fresh.push(episode);
+      logEpisode(entry, season, episode, stamp, 1);
     }
     // Re-ticking clears the tombstones the previous un-mark left behind.
     setWatched(entry, season, [...list, ...fresh]);
-    if (cap) markLast(entry, season, cap);
+    if (available.length) markLast(entry, season, available.at(-1));
   });
   if (on) maybeCompleteShow(id, meta);
   return true;
@@ -999,23 +1158,63 @@ export async function markShowWatched(id, meta = {}, { fetchStructure = fetchSho
   apply(id, resolved, entry => {
     const structure = entry.structure || {};
     for (const season of Object.keys(structure).map(Number).sort((a, b) => a - b)) {
-      const cap = airedCapFor(entry, season);
-      if (cap <= 0) continue;
+      const available = airedEpisodesFor(entry, season);
+      if (!available.length) continue;
       const list = new Set(entry.seasons[String(season)] || []);
       const fresh = [];
-      for (let index = 1; index <= cap; index++) {
-        if (list.has(index)) continue;
-        fresh.push(index);
-        logEpisode(entry, season, index, stamp, 1);
+      for (const episode of available) {
+        if (list.has(episode)) continue;
+        fresh.push(episode);
+        logEpisode(entry, season, episode, stamp, 1);
         added++;
       }
       if (fresh.length) setWatched(entry, season, fresh);
-      markLast(entry, season, cap);
+      markLast(entry, season, available.at(-1));
     }
     if (stampFrom > 0) entry.lastWatched = { season: entry.lastWatched?.season || 1, episode: entry.lastWatched?.episode || 1, at: stampFrom };
   });
   maybeCompleteShow(id, resolved);
   return added;
+}
+
+/**
+ * Set a whole-series position in one atomic local mutation. This is the safest
+ * repair and onboarding action for long anime: entering 1107 marks exactly the
+ * first 1107 aired episodes, removes accidental later ticks, and produces one
+ * debounced Firestore transaction rather than 1,107 writes.
+ */
+export function setEpisodePosition(id, requested, meta = {}) {
+  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
+  const raw = Math.floor(+requested);
+  if (!Number.isFinite(raw) || raw < 0) return { error: 'invalid', requested };
+  let result = null;
+  apply(id, meta, entry => {
+    const aired = [];
+    for (const season of orderedSeasons(entry.structure)) {
+      for (const episode of airedEpisodesFor(entry, season)) aired.push({ season, episode });
+    }
+    const target = Math.min(raw, aired.length);
+    const desired = new Set(aired.slice(0, target).map(point => `${point.season}_${point.episode}`));
+    let added = 0, removedCount = 0;
+    const stamp = Date.now();
+    for (const season of orderedSeasons(entry.structure)) {
+      const valid = episodeNumbersFor(entry, season);
+      const watched = new Set(entry.seasons[String(season)] || []);
+      const add = [], remove = [];
+      for (const episode of valid) {
+        const shouldWatch = desired.has(`${season}_${episode}`);
+        if (shouldWatch && !watched.has(episode)) { add.push(episode); logEpisode(entry, season, episode, stamp, 1); added++; }
+        else if (!shouldWatch && watched.has(episode)) { remove.push(episode); unlogEpisode(entry, season, episode); removedCount++; }
+      }
+      if (add.length) setWatched(entry, season, add);
+      if (remove.length) setUnwatched(entry, season, remove);
+    }
+    const location = target ? aired[target - 1] : null;
+    entry.lastWatched = location ? { ...location, at: stamp } : null;
+    result = { requested: raw, position: target, capped: raw > aired.length, aired: aired.length, added, removed: removedCount, location };
+  });
+  if (result?.position) maybeCompleteShow(id, meta);
+  return result;
 }
 
 export function clearShowProgress(id) {
@@ -1152,8 +1351,8 @@ export async function repairEpisodeProgress({ concurrency = 2, onProgress, fetch
             .filter(([, , at, bulk]) => bulk && Math.abs(at - cutoff) < 60000)
             .map(([season, episode]) => `${season}_${episode}`));
           for (const [season, episodes] of Object.entries(entry.seasons || {})) {
-            const allowed = +(historical.structure || {})[season] || 0;
-            const bad = episodes.filter(episode => episode > allowed && legacyRows.has(`${season}_${episode}`));
+            const allowed = new Set(episodeNumbersFor(historical, +season));
+            const bad = episodes.filter(episode => !allowed.has(episode) && legacyRows.has(`${season}_${episode}`));
             if (bad.length) {
               setUnwatched(entry, +season, bad);
               bad.forEach(episode => unlogEpisode(entry, +season, episode));

@@ -170,6 +170,51 @@ check('and the new aired marker', ep.showEntry(30).aired.season === 3);
 check('a show with no progress document is not created by a sync',
   (ep.syncShowStructure(31, SHOW), ep.showEntry(31)) === null);
 
+// ================= global episode numbering (One Piece shape) =============
+// TMDB splits some anime into arc seasons while keeping one global episode
+// number. The old 1..episode_count loop turned "up to E1107" into the entire arc.
+reset();
+const ABSOLUTE = {
+  title: 'Long Anime', status: 'Returning Series', numberingMode: 'absolute',
+  structure: { '1': 3, '2': 2, '3': 2 }, aired: { season: 3, episode: 6 },
+};
+localStorage.setItem('cv_episode_progress_u1', JSON.stringify({ tv_99: {
+  tmdbId: 99, ...ABSOLUTE,
+  // Legacy local placeholders: season two was wrongly filled as [1,2], while
+  // lastWatched retained the viewer's real target, global episode 4.
+  episodeModelV: 0, seasons: { '1': [1, 2, 3], '2': [1, 2] }, removed: {},
+  lastWatched: { season: 2, episode: 4, at: Date.now() }, updatedAt: Date.now(),
+} }));
+ep.hydrateEpisodeProgressFromCache();
+p = ep.showProgress(99);
+check('legacy absolute-number progress repairs from its real saved anchor', p.watched === 4 && p.position === 4, JSON.stringify(ep.showEntry(99)));
+check('the repaired next episode keeps its global number', ep.nextUp(99)?.season === 2 && ep.nextUp(99)?.episode === 5, JSON.stringify(ep.nextUp(99)));
+check('absolute anime labels never fall back to a fake S3E1', ep.episodeLabel(99, ep.nextUp(99)) === 'Episode 5');
+check('the repaired document stores global ids inside every arc', JSON.stringify(ep.showEntry(99).seasons) === JSON.stringify({ '1': [1, 2, 3], '2': [4] }), JSON.stringify(ep.showEntry(99).seasons));
+
+let positioned = ep.setEpisodePosition(99, 6, ABSOLUTE);
+check('setting a whole-series position is one exact operation', positioned.position === 6 && positioned.location.season === 3 && positioned.location.episode === 6, JSON.stringify(positioned));
+check('position six marks exactly six episodes', ep.showProgress(99).watched === 6 && ep.nextUp(99) === null);
+positioned = ep.setEpisodePosition(99, 4, ABSOLUTE);
+check('moving a position backwards clears later ticks', positioned.removed === 2 && ep.showProgress(99).watched === 4);
+check('a position beyond today caps at the aired total', ep.setEpisodePosition(99, 999, ABSOLUTE).capped === true && ep.showProgress(99).watched === 6);
+
+// Exact production regression: TMDB TV 37854 divides One Piece into arcs but
+// reports E1107 inside season 22. This is the user's broken document shape.
+const onePieceCounts = [61, 16, 14, 39, 13, 52, 33, 35, 73, 45, 26, 14, 101, 58, 62, 50, 56, 55, 74, 14, 197, 67, 26];
+const onePieceStructure = Object.fromEntries(onePieceCounts.map((count, index) => [String(index + 1), count]));
+const oldOnePieceSeasons = Object.fromEntries(onePieceCounts.slice(0, 22).map((count, index) => [String(index + 1), Array.from({ length: count }, (_, n) => n + 1)]));
+localStorage.setItem('cv_episode_progress_u1', JSON.stringify({ tv_37854: {
+  tmdbId: 37854, title: 'One Piece', status: 'Returning Series', episodeModelV: 0,
+  structure: onePieceStructure, aired: { season: 23, episode: 1174 }, seasons: oldOnePieceSeasons,
+  lastWatched: { season: 22, episode: 1107, at: Date.now() }, updatedAt: Date.now(),
+} }));
+ep.hydrateEpisodeProgressFromCache();
+p = ep.showProgress(37854);
+check('One Piece automatically returns to the real saved episode 1107', p.watched === 1107 && p.position === 1107, JSON.stringify(p));
+check('One Piece continues at global episode 1108 inside Egghead', ep.nextUp(37854)?.season === 22 && ep.nextUp(37854)?.episode === 1108, JSON.stringify(ep.nextUp(37854)));
+check('One Piece no longer invents S23E1 as next up', ep.episodeLabel(37854, ep.nextUp(37854)) === 'Episode 1108');
+
 // ================= sanitisation ===========================================
 reset();
 ep.setSeasonWatched(40, 1, true, SHOW);

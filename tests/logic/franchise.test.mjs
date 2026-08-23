@@ -70,13 +70,14 @@ check('an empty collection is never "complete"', fr.collectionProgress([], { now
 check('progressLabel on an empty collection is blank', fr.progressLabel(fr.collectionProgress([], { now })) === '');
 check('a missing progress object does not throw', fr.progressLabel(null) === '');
 
-// A part with no release date at all: treated as out, rather than hidden.
+// A watched part with no release date is direct evidence that it is out. An
+// unseen undated/invalid sequel stays unknown and cannot lower completion.
 const undated = [{ id: 201, title: 'Undated' }, { id: 202, title: 'Old', release_date: '1999-01-01' }];
 state.watched = { movie_201: {}, movie_202: {} };
-check('an entry with no date counts as released', fr.collectionProgress(undated, { now }).released === 2);
+check('a watched entry with no date counts as released', fr.collectionProgress(undated, { now }).released === 2);
 check('and a fully-seen undated collection is complete', fr.collectionProgress(undated, { now }).complete === true);
-check('an unparseable date is treated as released',
-  fr.collectionProgress([{ id: 301, release_date: 'not-a-date' }], { now }).released === 1);
+check('an unparseable unseen date is excluded rather than counted against completion',
+  fr.collectionProgress([{ id: 301, release_date: 'not-a-date' }], { now }).unknown === 1);
 
 // A same-day release is out, not pending.
 check('a release dated today counts as released',

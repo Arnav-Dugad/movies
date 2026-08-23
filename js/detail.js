@@ -9,7 +9,7 @@ import { observeReveals, observeCountUps } from './effects.js';
 import { mountAmbientVideo } from './video-bg.js';
 import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone, isEpisodeAvailable } from './episode-times.js';
-import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
+import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setEpisodePosition, episodeLabel, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
   seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
@@ -995,16 +995,21 @@ const EP_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 function showProgressPanel(id, det, progress, next) {
   if (!state.user) return '';
   const meta = esc(JSON.stringify(showMeta(det)));
+  const positionControl = `<div class="episode-position" role="group" aria-label="Set whole-series episode position">
+    <span><b>Series position</b><small>Best for anime and long-running shows</small></span>
+    <label><span>Episode</span><input type="number" min="0" max="${progress.aired || det.number_of_episodes || 0}" step="1" inputmode="numeric" value="${progress.position || ''}" data-episode-position aria-label="Last episode watched overall"></label>
+    <button class="btn-glass" data-action="ep-set-position" data-tid="${id}" data-meta="${meta}">Update</button>
+  </div>`;
   if (!progress.started) {
     return `<section class="show-progress idle">
       <div class="show-progress-copy"><span>Episode tracking</span><strong>Track ${esc(det.name || 'this show')} episode by episode</strong><p>Tick episodes as you watch, mark everything up to where you are, or mark the whole show at once.</p></div>
       <div class="show-progress-actions">
         <button class="btn-primary" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">I have seen it all</button>
-        <button class="btn-glass" data-action="ep-mark-upto-prompt" data-tid="${id}">Catch me up</button>
       </div>
+      ${positionControl}
     </section>`;
   }
-  const nextLabel = next ? `S${next.season} · E${next.episode}` : (progress.seriesCompleted ? 'Series completed' : 'All caught up');
+  const nextLabel = next ? episodeLabel(id, next) : (progress.seriesCompleted ? 'Series completed' : 'All caught up');
   const stateLabel = progress.seriesCompleted ? 'Series completed' : progress.caughtUp ? 'Caught up' : progress.seasonCompleted ? 'Season completed' : 'Continue watching';
   return `<section class="show-progress${progress.caughtUp ? ' complete' : ''}">
     <div class="show-progress-copy">
@@ -1015,10 +1020,11 @@ function showProgressPanel(id, det, progress, next) {
     </div>
     <div class="show-progress-actions">
       <b>${progress.percent}%</b>
-      ${next ? `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark S${next.season}E${next.episode} watched</button>` : ''}
+      ${next ? `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark ${esc(episodeLabel(id, next, { compact: true }))} watched</button>` : ''}
       ${progress.caughtUp ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all ${progress.aired - progress.watched} remaining</button>`}
       <button class="btn-glass" data-action="ep-reset" data-tid="${id}">Reset</button>
     </div>
+    ${positionControl}
   </section>`;
 }
 
@@ -1286,6 +1292,18 @@ export function initDetail() {
       if (added === null) return;
       toast(added ? `Marked ${added} episode${added === 1 ? '' : 's'} watched` : 'Already up to date', added ? 'success' : 'info');
       loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
+    },
+    'ep-set-position': el => {
+      const tid = +el.dataset.tid;
+      const input = el.closest('.episode-position')?.querySelector('[data-episode-position]');
+      const result = setEpisodePosition(tid, input?.value, readEpisodeMeta(el));
+      if (result === null) return;
+      if (result?.error) { toast('Enter a whole episode number', 'info'); input?.focus(); return; }
+      const location = result.location;
+      const suffix = location ? ` · S${location.season}E${location.episode}` : '';
+      toast(`Progress set to episode ${result.position}${suffix}${result.capped ? ' (latest aired)' : ''}`, 'success');
+      refreshEpisodeUI(tid);
+      if (location) loadSeason(tid, location.season);
     },
     'ep-mark-upto-prompt': el => {
       // Nothing to pre-fill from: send the reader to the season list, where every

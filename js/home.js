@@ -5,16 +5,33 @@ import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
 import { registerActions } from './events.js';
 import { renderRecommendations } from './recommend.js';
-import { getStreamingArrivals } from './provider-history.js';
-import { resumeQueue, episodeStats } from './episodes.js';
+import { resumeQueue, episodeStats, episodeLabel } from './episodes.js';
 import { applyContinuePrefs, togglePinned, toggleHidden, moveContinue, isPinned, isHidden, resetContinuePrefs, hasContinueEdits } from './continue-prefs.js';
 import { franchiseSummary, toggleFranchiseDismissed, restoreAllFranchises } from './franchise.js';
-import { IMG, PH, providerUrl, regionLabel } from './config.js';
+import { IMG, PH } from './config.js';
 import { state } from './state.js';
+import { grossingMoviesPage, formatGross } from './box-office.js';
 
 // Re-exported so router.js (cv:auth / cv:wl-changed) and initHome can refresh the
 // personalized rows. The advanced logic lives in recommend.js.
 export function renderPersonalRows() { return renderRecommendations(); }
+
+// ===== ALL-TIME BOX OFFICE =====
+export async function renderBoxOfficeRail() {
+  const host = $('boxOfficeRow'); if (!host) return;
+  host.innerHTML = `<section class="section reveal home-boxoffice"><div class="section-head"><div><span class="boxoffice-eyebrow">Worldwide theatrical revenue</span><h2 class="section-title"><span>$</span> Highest Grossing Movies Ever</h2><p>The biggest reported worldwide box-office totals, ranked by money earned.</p></div><a class="section-see-all" href="/box-office" data-action="show-page" data-page="box-office">Full chart<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></a></div><div class="row boxoffice-home-row">${skelCards(8, 210)}</div></section>`;
+  try {
+    const data = await grossingMoviesPage(1);
+    if (!$('boxOfficeRow')) return;
+    const rows = data.rows.slice(0, 12);
+    host.querySelector('.boxoffice-home-row').innerHTML = rows.map((movie, index) => `<a class="bo-home-card" href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie" aria-label="Number ${index + 1}, ${esc(movie.title)}, ${formatGross(movie.revenue)} worldwide">
+      <img src="${movie.backdrop_path ? `${IMG}w500${movie.backdrop_path}` : movie.poster_path ? `${IMG}w342${movie.poster_path}` : PH}" alt="" loading="lazy">
+      <span class="bo-home-scrim"></span><b class="bo-home-rank">${String(index + 1).padStart(2, '0')}</b>
+      <span class="bo-home-copy"><small>${esc((movie.release_date || '').slice(0, 4))} · Worldwide gross</small><strong>${esc(movie.title)}</strong><em>${formatGross(movie.revenue, { compact: true })}</em></span>
+    </a>`).join('');
+    observeReveals(host);
+  } catch (_) { host.innerHTML = ''; }
+}
 
 // ===== CONTINUE WATCHING =====
 // Built entirely from the local progress documents, so the rail paints on the
@@ -86,24 +103,25 @@ function hiddenCardsHTML() {
 
 function continueCard({ id, entry, progress, next }, index = 0, total = 1) {
   const art = entry.backdrop ? `${IMG}w500${entry.backdrop}` : entry.poster ? `${IMG}w342${entry.poster}` : PH;
-  const meta = esc(JSON.stringify({ title: entry.title, poster: entry.poster, backdrop: entry.backdrop, episodeRuntime: entry.episodeRuntime, structure: entry.structure, aired: entry.aired, status: entry.status }));
+  const meta = esc(JSON.stringify({ title: entry.title, poster: entry.poster, backdrop: entry.backdrop, episodeRuntime: entry.episodeRuntime, structure: entry.structure, aired: entry.aired, status: entry.status, numberingMode: entry.numberingMode, episodeModelV: entry.episodeModelV }));
   const title = esc(entry.title || 'TV show');
   const left = Math.max(0, progress.aired - progress.watched);
+  const nextCompact = episodeLabel(entry, next, { compact: true });
   return `<article class="continue-card${isPinned(id) ? ' pinned' : ''}" data-continue="${id}">
     <a class="continue-art" href="/tv/${id}" data-action="open-detail" data-id="${id}" data-type="tv" aria-label="Open ${title}">
       <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
       <span class="continue-scrim" aria-hidden="true"></span>
       <span class="continue-play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
-      <span class="continue-badge">S${next.season}<i>:</i>E${next.episode}</span>
+      <span class="continue-badge">${esc(nextCompact)}</span>
       ${isPinned(id) ? '<span class="continue-pin-mark" aria-hidden="true">&#9733;</span>' : ''}
       <span class="continue-left">${left} left</span>
       <span class="continue-bar"><i style="width:0" data-w="${progress.percent}"></i></span>
     </a>
     <div class="continue-body">
       <h3>${title}</h3>
-      <p class="continue-next" data-continue-title="${id}">S${next.season}:E${next.episode}</p>
+      <p class="continue-next" data-continue-title="${id}">${esc(nextCompact)}</p>
       <div class="continue-meta"><span>${progress.watched} of ${progress.aired} watched</span><b>${progress.percent}%</b></div>
-      <button class="continue-mark" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail" aria-label="Mark S${next.season} E${next.episode} of ${title} watched">
+      <button class="continue-mark" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail" aria-label="Mark ${esc(nextCompact)} of ${title} watched">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6L9 17l-5-5"/></svg>Mark watched</button>
       ${continueEditing ? `<div class="continue-edit-bar">
         <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Move ${title} earlier">&#8592;</button>
@@ -133,7 +151,7 @@ async function hydrateContinueStills(queue, from = 0, count = 8) {
     if (!card) return;
     const label = card.querySelector(`[data-continue-title="${row.id}"]`);
     // Keep the season/episode prefix: the title alone loses where you are.
-    if (label && episode.name) label.textContent = `S${row.next.season}:E${row.next.episode} ${episode.name}`;
+    if (label && episode.name) label.textContent = `${episodeLabel(row.entry, row.next, { compact: true })} · ${episode.name}`;
     if (episode.still_path) {
       const image = card.querySelector('.continue-art img');
       if (image) image.src = `${IMG}w500${episode.still_path}`;
@@ -155,14 +173,6 @@ function watchContinueScroll(queue) {
     if (visibleEnd + 4 > filled) { hydrateContinueStills(queue, filled, 8); filled += 8; }
   }, 200);
   row.addEventListener('scroll', onScroll, { passive: true });
-}
-
-export function renderStreamingArrivals() {
-  const host = $('streamingArrivalRows'); if (!host) return;
-  const arrivals = state.user ? getStreamingArrivals(18) : [];
-  if (!arrivals.length) { host.innerHTML = ''; return; }
-  host.innerHTML = `<section class="section reveal streaming-arrival-section"><div class="section-head"><div><span class="arrival-eyebrow">Subscription intelligence · ${esc(regionLabel(state.region))}</span><h2 class="section-title"><span>✦</span> Streaming Arrival Spotlight</h2><p>Newly detected on services you can stream with a subscription.</p></div><button class="section-see-all" data-action="show-page" data-page="notifications">View history<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div><div class="row arrival-row">${arrivals.map(change => `<div class="arrival-card">${buildCard({ id: change.id, title: change.title, name: change.title, poster_path: change.poster, release_date: change.year ? `${change.year}-01-01` : '', media_type: change.type }, change.type)}<a class="arrival-provider" href="${esc(providerUrl(change.provider?.name, change.title, change.regionLink))}" target="_blank" rel="noopener"><img src="${IMG}w92${change.provider?.logo}" alt="${esc(change.provider?.name || '')}"><span><small>${change.change === 'first_seen' ? 'First detected on' : 'Just arrived on'}</small><strong>${esc(change.provider?.name || 'Streaming')}</strong></span><i>↗</i></a></div>`).join('')}</div></section>`;
-  observeReveals();
 }
 
 // ===== FINISH THE FRANCHISE =====
@@ -207,16 +217,20 @@ export async function renderFranchiseRail() {
 function franchiseCard(item) {
   const next = item.nextUp;
   const left = item.unseen.length;
-  const art = next.poster ? `${IMG}w342${next.poster}` : item.poster ? `${IMG}w342${item.poster}` : PH;
+  const art = item.backdrop ? `${IMG}w780${item.backdrop}` : next.poster ? `${IMG}w342${next.poster}` : item.poster ? `${IMG}w342${item.poster}` : PH;
+  const stack = (item.parts || []).filter(part => part.poster).slice(0, 4);
   return `<article class="fr-card${left === 1 ? ' almost' : ''}">
     <a class="fr-card-art" href="/movie/${next.id}" data-action="open-detail" data-id="${next.id}" data-type="movie" aria-label="Open ${esc(next.title)}">
       <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
+      <span class="fr-card-scrim" aria-hidden="true"></span>
+      <span class="fr-card-play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
       <span class="fr-card-flag">${left === 1 ? 'Last one' : `${left} left`}</span>
     </a>
     <button class="fr-card-dismiss" data-action="franchise-dismiss" data-cid="${item.id}" aria-label="Stop suggesting ${esc(item.name)}" data-tip="Not interested in this series">&#10005;</button>
     <div class="fr-card-body">
       <a class="fr-card-series" href="/collection/${item.id}" data-action="go-collection" data-cid="${item.id}">${esc(item.name)}</a>
       <h3>${esc(next.title)}</h3>
+      <div class="fr-card-line"><span class="fr-card-stack">${stack.map(part => `<img src="${IMG}w92${part.poster}" alt="" loading="lazy">`).join('')}</span><span>Continue series <b>→</b></span></div>
       <div class="fr-card-bar"><i style="width:0" data-w="${Math.round(item.percent)}"></i></div>
       <div class="fr-card-meta"><span>${item.seen} of ${item.released} seen</span><b>${Math.round(item.percent)}%</b></div>
     </div>
@@ -245,9 +259,6 @@ export function initHomeActions() {
       } catch (e) { target.innerHTML = rowError(el.dataset.path, el.dataset.target, s, params); }
     },
   });
-  document.addEventListener('cv:provider-history', renderStreamingArrivals);
-  document.addEventListener('cv:auth', renderStreamingArrivals);
-  document.addEventListener('cv:region', renderStreamingArrivals);
   document.addEventListener('cv:auth', renderContinueWatching);
   // A tick anywhere — the rail's own button or the detail page — re-orders the
   // queue, so the rail always rebuilds rather than trying to patch itself.
@@ -324,8 +335,7 @@ export async function initHome() {
   renderRecommendations();
   renderContinueWatching();
   renderFranchiseRail();
-  renderStreamingArrivals();
-
+  renderBoxOfficeRail();
   await Promise.allSettled(SECTIONS.map(async s => {
     const el = $('row_' + s.id);
     try {
