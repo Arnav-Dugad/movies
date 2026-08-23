@@ -48,7 +48,7 @@ function countdownGrid(id) {
 }
 
 function countdownPanel(id, { eyebrow, title, localHTML = '' }) {
-  return `<section class="countdown" data-countdown-shell="${id}"><header class="countdown-head"><div><span class="countdown-signal"><i></i>${esc(eyebrow)}</span><h2>${esc(title)}</h2></div>${localHTML}</header><div class="countdown-stage">${countdownGrid(id)}</div><div class="countdown-foot" id="cd_target_${id}">Checking time…</div></section>`;
+  return `<section class="countdown" data-countdown-shell="${id}" style="--minute-sweep:0%"><header class="countdown-head"><div><span class="countdown-signal"><i></i>${esc(eyebrow)}</span><h2>${esc(title)}</h2></div>${localHTML}</header><div class="countdown-stage">${countdownGrid(id)}<div class="countdown-horizon" aria-hidden="true"><i></i></div></div><time class="countdown-foot" id="cd_target_${id}">Checking time…</time></section>`;
 }
 
 export async function openDetail(id, type) {
@@ -961,6 +961,11 @@ function startCD(id, ds, doneMsg = 'Available now') {
       return;
     }
     const d = Math.floor(df / 864e5), h = Math.floor(df % 864e5 / 36e5), m = Math.floor(df % 36e5 / 6e4), s = Math.floor(df % 6e4 / 1e3);
+    if (shell) {
+      shell.style.setProperty('--minute-sweep', `${((59 - s) / 59 * 100).toFixed(2)}%`);
+      shell.classList.toggle('countdown-near', df < 7 * 864e5);
+      shell.classList.toggle('countdown-imminent', df < 864e5);
+    }
     const de = $(`cd_d_${id}`), he = $(`cd_h_${id}`), me = $(`cd_m_${id}`), se = $(`cd_s_${id}`);
     paintDigit(de, String(d).padStart(2, '0')); paintDigit(he, String(h).padStart(2, '0')); paintDigit(me, String(m).padStart(2, '0')); paintDigit(se, String(s).padStart(2, '0'));
   }

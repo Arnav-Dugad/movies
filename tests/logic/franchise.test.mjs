@@ -70,6 +70,18 @@ check('an empty collection is never "complete"', fr.collectionProgress([], { now
 check('progressLabel on an empty collection is blank', fr.progressLabel(fr.collectionProgress([], { now })) === '');
 check('a missing progress object does not throw', fr.progressLabel(null) === '');
 
+// ---------- release and story orders ----------
+state.franchisePrefs = { dismissed: [], orderMode: 'release', storyOrders: {} };
+const skywalker = [
+  { id: 11, title: 'A New Hope', release_date: '1977-05-25' },
+  { id: 1891, title: 'The Empire Strikes Back', release_date: '1980-05-20' },
+  { id: 1893, title: 'The Phantom Menace', release_date: '1999-05-19' },
+];
+check('release mode follows release dates', fr.orderedFranchiseParts(10, skywalker, 'release').map(item => item.id).join(',') === '11,1891,1893');
+check('story mode applies curated chronology', fr.orderedFranchiseParts(10, skywalker, 'story').map(item => item.id).join(',') === '1893,11,1891');
+state.franchisePrefs.storyOrders[10] = [1891, 1893, 11];
+check('a personal story order overrides the curated order', fr.orderedFranchiseParts(10, skywalker, 'story').map(item => item.id).join(',') === '1891,1893,11');
+
 // A watched part with no release date is direct evidence that it is out. An
 // unseen undated/invalid sequel stays unknown and cannot lower completion.
 const undated = [{ id: 201, title: 'Undated' }, { id: 202, title: 'Old', release_date: '1999-01-01' }];

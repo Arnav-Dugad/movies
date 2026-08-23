@@ -1,13 +1,13 @@
 import { check, summary } from './harness.mjs';
 
 const SRC = new URL('../../js/', import.meta.url).href;
-const { aggregateDirectorRanking } = await import(SRC + 'box-office.js');
+const { aggregateDirectorRanking, directorEraBreakdown } = await import(SRC + 'box-office.js');
 const { collectionOf } = await import(SRC + 'watched-meta.js');
 
 const films = [
-  { id: 1, title: 'Alpha', revenue: 800 },
-  { id: 2, title: 'Beta', revenue: 500 },
-  { id: 3, title: 'Gamma', revenue: 200 },
+  { id: 1, title: 'Alpha', revenue: 800, budget: 200, release_date: '2001-01-01' },
+  { id: 2, title: 'Beta', revenue: 500, budget: 300, release_date: '2011-01-01' },
+  { id: 3, title: 'Gamma', revenue: 200, budget: 0, release_date: '2021-01-01' },
 ];
 const credits = new Map([
   [1, [{ id: 10, name: 'Director A', job: 'Director', profile_path: '/a.jpg' }]],
@@ -19,6 +19,9 @@ check('directors are ranked by combined worldwide revenue', ranking.map(row => r
 check('a director receives every directed film exactly once', ranking[0].revenue === 1300 && ranking[0].films === 2, JSON.stringify(ranking[0]));
 check('the top film is retained for context', ranking[0].topFilm.id === 1, JSON.stringify(ranking[0].topFilm));
 check('non-director crew are excluded', !ranking.some(row => row.id === 30));
+check('director hit rate excludes films with unknown budgets', ranking[0].knownBudgets === 2 && ranking[0].hits === 1 && ranking[0].hitRate === 50, JSON.stringify(ranking[0]));
+check('director eras retain early and recent revenue', ranking[0].eras.map(era => era.label).join(',') === 'Early,Recent', JSON.stringify(ranking[0].eras));
+check('three-film careers split into early, middle, and recent eras', directorEraBreakdown(films).map(era => era.label).join(',') === 'Early,Middle,Recent');
 
 const member = collectionOf({ belongs_to_collection: { id: 99, name: 'Series', poster_path: '/p.jpg' } });
 check('watched metadata stores collection identity', member.collectionId === 99 && member.collectionName === 'Series' && member.collectionChecked === true, JSON.stringify(member));

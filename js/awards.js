@@ -30,7 +30,7 @@ const PROGRAMS = [
   ['naacp', /naacp image/i, 'NAACP Image Awards', 'NAACP Image Awards logo'],
 ];
 
-const cacheKey = imdbId => `cv_awards_v6_${imdbId}`;
+const cacheKey = imdbId => `cv_awards_v7_${imdbId}`;
 function readCache(imdbId) {
   try { const value = JSON.parse(localStorage.getItem(cacheKey(imdbId)) || 'null'); return value && Date.now() - value.ts < CACHE_MS ? value.items : null; }
   catch (_) { return null; }
@@ -79,15 +79,22 @@ async function commonsLogo(programme) {
 
 async function fetchAwards(imdbId) {
   const query = `PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+  PREFIX p: <http://www.wikidata.org/prop/>
+  PREFIX ps: <http://www.wikidata.org/prop/statement/>
+  PREFIX pq: <http://www.wikidata.org/prop/qualifier/>
   PREFIX wikibase: <http://wikiba.se/ontology#>
   PREFIX bd: <http://www.bigdata.com/rdf#>
-  SELECT DISTINCT ?kind ?honor ?honorLabel ?logo ?image ?parentLogo ?parentImage ?grandLogo ?grandImage ?issuerLogo ?issuerImage WHERE {
+  SELECT DISTINCT ?kind ?honor ?honorLabel ?date ?logo ?image ?parentLogo ?parentImage ?grandLogo ?grandImage ?issuerLogo ?issuerImage WHERE {
     ?work wdt:P345 "${imdbId}".
-    { ?work wdt:P166 ?honor. BIND("win" AS ?kind) } UNION { ?work wdt:P1411 ?honor. BIND("nomination" AS ?kind) }
+    { ?work p:P166 ?statement. ?statement ps:P166 ?honor. BIND("win" AS ?kind) }
+    UNION { ?work p:P1411 ?statement. ?statement ps:P1411 ?honor. BIND("nomination" AS ?kind) }
+    OPTIONAL { ?statement pq:P585 ?statementDate. }
+    OPTIONAL { ?honor wdt:P585 ?honorDate. }
     OPTIONAL { ?honor wdt:P154 ?logo. } OPTIONAL { ?honor wdt:P18 ?image. }
-    OPTIONAL { ?honor wdt:P361 ?parent. OPTIONAL { ?parent wdt:P154 ?parentLogo. } OPTIONAL { ?parent wdt:P18 ?parentImage. }
-      OPTIONAL { ?parent wdt:P361 ?grandParent. OPTIONAL { ?grandParent wdt:P154 ?grandLogo. } OPTIONAL { ?grandParent wdt:P18 ?grandImage. } } }
+    OPTIONAL { ?honor wdt:P361 ?parent. OPTIONAL { ?parent wdt:P154 ?parentLogo. } OPTIONAL { ?parent wdt:P18 ?parentImage. } OPTIONAL { ?parent wdt:P585 ?parentDate. }
+      OPTIONAL { ?parent wdt:P361 ?grandParent. OPTIONAL { ?grandParent wdt:P154 ?grandLogo. } OPTIONAL { ?grandParent wdt:P18 ?grandImage. } OPTIONAL { ?grandParent wdt:P585 ?grandDate. } } }
     OPTIONAL { ?honor wdt:P1027 ?issuer. OPTIONAL { ?issuer wdt:P154 ?issuerLogo. } OPTIONAL { ?issuer wdt:P18 ?issuerImage. } }
+    BIND(COALESCE(?statementDate, ?honorDate, ?parentDate, ?grandDate) AS ?date)
     SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
   } LIMIT 160`;
   const response = await fetch(`https://query.wikidata.org/sparql?format=json&origin=*&query=${encodeURIComponent(query)}`, { headers: { Accept: 'application/sparql-results+json' } });
@@ -95,18 +102,23 @@ async function fetchAwards(imdbId) {
   const data = await response.json();
   return (data.results?.bindings || []).map(row => ({
     kind: row.kind?.value || '', label: row.honorLabel?.value || '', url: row.honor?.value || '',
+    date: row.date?.value || '',
     art: row.logo?.value || row.parentLogo?.value || row.grandLogo?.value || row.issuerLogo?.value || row.image?.value || row.parentImage?.value || row.grandImage?.value || row.issuerImage?.value || '',
   })).filter(item => item.label && item.kind);
 }
 
-async function groupAwards(items) {
+function uniqueAwards(items) {
   const deduped = new Map();
   items.forEach(item => {
     const key = `${item.kind}|${item.label}`, old = deduped.get(key);
     if (!old || (!old.art && item.art)) deduped.set(key, item);
   });
   const wonLabels = new Set([...deduped.values()].filter(item => item.kind === 'win').map(item => item.label));
-  const unique = [...deduped.values()].filter(item => item.kind !== 'nomination' || !wonLabels.has(item.label));
+  return [...deduped.values()].filter(item => item.kind !== 'nomination' || !wonLabels.has(item.label));
+}
+
+async function groupAwards(items) {
+  const unique = uniqueAwards(items);
   const groups = new Map();
   unique.forEach(item => {
     const programme = programmeFor(item);
@@ -118,6 +130,19 @@ async function groupAwards(items) {
   const rows = [...groups.values()].sort((a, b) => Number(b.major) - Number(a.major) || b.wins - a.wins || b.items.length - a.items.length || a.label.localeCompare(b.label)).slice(0, 12);
   await Promise.all(rows.map(async row => { row.art = await commonsLogo(row) || row.art; }));
   return rows;
+}
+
+function awardTimeline(items) {
+  const years = new Map();
+  uniqueAwards(items).forEach(item => {
+    const match = String(item.date || item.label || '').match(/\b(19|20)\d{2}\b/);
+    const key = match ? match[0] : 'Undated';
+    if (!years.has(key)) years.set(key, { key, wins: 0, nominations: 0 });
+    years.get(key)[item.kind === 'win' ? 'wins' : 'nominations']++;
+  });
+  const rows = [...years.values()].sort((a, b) => a.key === 'Undated' ? 1 : b.key === 'Undated' ? -1 : +a.key - +b.key);
+  if (!rows.length) return '';
+  return `<div class="award-timeline" aria-label="Awards timeline">${rows.map(row => `<div><time>${row.key}</time><span>${row.wins ? `<b>${row.wins}</b> win${row.wins === 1 ? '' : 's'}` : ''}${row.wins && row.nominations ? '<i>·</i>' : ''}${row.nominations ? `<em>${row.nominations} nom${row.nominations === 1 ? '' : 's'}</em>` : ''}</span></div>`).join('')}</div>`;
 }
 
 function programmeMark(group, compact = false) {
@@ -144,7 +169,7 @@ async function renderAwards(scope, items) {
       <span class="awards-toggle-copy"><strong>Awards</strong><em>${wins} wins · ${nominations} nominations</em></span>
       <span class="awards-toggle-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>
-    <div class="awards-body" hidden><div class="awards-list">${groups.map(programmeCard).join('')}</div><a class="awards-source" href="https://www.wikidata.org/" target="_blank" rel="noopener noreferrer">Wikidata</a></div>`;
+    <div class="awards-body" hidden>${awardTimeline(items)}<div class="awards-list">${groups.map(programmeCard).join('')}</div><a class="awards-source" href="https://www.wikidata.org/" target="_blank" rel="noopener noreferrer">Wikidata</a></div>`;
   scope.querySelectorAll('img[data-award-logo]').forEach(image => image.addEventListener('error', () => {
     const mark = image.closest('.award-programme-mark'); if (!mark) return;
     mark.classList.add('wordmark'); mark.innerHTML = `<span>${esc(image.alt.replace(/ logo$/i, ''))}</span>`;

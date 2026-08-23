@@ -105,6 +105,29 @@ test('episode search finds title, season number, episode number, and description
   await expect(page.locator('.episode-empty')).toHaveText('No episodes found');
 });
 
+test('desktop episodes use page scrolling and both season rails can navigate horizontally', async ({ page }) => {
+  await fixture(page);
+  await page.evaluate(() => cvTest.open());
+  await page.evaluate(() => {
+    const tabs = document.querySelector('.season-tabs'), cards = document.querySelector('.season-scroll');
+    for (let season = 3; season <= 18; season++) {
+      const tab = tabs.firstElementChild.cloneNode(true);
+      tab.dataset.sn = season; tab.classList.remove('active'); tab.textContent = `Long season name ${season}`; tabs.appendChild(tab);
+      const card = cards.firstElementChild.cloneNode(true);
+      card.dataset.sn = season; card.classList.remove('active'); card.querySelector('.season-nm').textContent = `Season ${season}`; cards.appendChild(card);
+    }
+  });
+  await expect(page.locator('.hs-wrap:has(> .season-tabs) .hs-next')).toBeVisible();
+  const tabs = page.locator('.season-tabs');
+  expect(await tabs.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  await page.locator('.hs-wrap:has(> .season-tabs) .hs-next').click();
+  await expect.poll(() => tabs.evaluate(element => element.scrollLeft)).toBeGreaterThan(20);
+  await expect(page.locator('.hs-wrap:has(> .season-scroll) .hs-next')).toBeVisible();
+  const listStyle = await page.locator('.ep-list').evaluate(element => ({ maxHeight: getComputedStyle(element).maxHeight, overflowY: getComputedStyle(element).overflowY }));
+  expect(listStyle.maxHeight).toBe('none');
+  expect(listStyle.overflowY).toBe('visible');
+});
+
 test('awards stay collapsed and use real remote programme artwork without generated seals', async ({ page }) => {
   await page.route('https://upload.wikimedia.org/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') }));
   await fixture(page);
@@ -113,9 +136,9 @@ test('awards stay collapsed and use real remote programme artwork without genera
     window.fetch = async input => {
       const url = String(input);
       if (url.includes('query.wikidata.org')) return new Response(JSON.stringify({ results: { bindings: [
-        { kind: { value: 'win' }, honor: { value: 'https://www.wikidata.org/wiki/Q1' }, honorLabel: { value: 'Academy Award for Best Picture' } },
-        { kind: { value: 'win' }, honor: { value: 'https://www.wikidata.org/wiki/Q2' }, honorLabel: { value: 'Academy Award for Best Director' } },
-        { kind: { value: 'nomination' }, honor: { value: 'https://www.wikidata.org/wiki/Q3' }, honorLabel: { value: 'Golden Globe Award for Best Motion Picture' } },
+        { kind: { value: 'win' }, honor: { value: 'https://www.wikidata.org/wiki/Q1' }, honorLabel: { value: 'Academy Award for Best Picture' }, date: { value: '2024-03-10T00:00:00Z' } },
+        { kind: { value: 'win' }, honor: { value: 'https://www.wikidata.org/wiki/Q2' }, honorLabel: { value: 'Academy Award for Best Director' }, date: { value: '2024-03-10T00:00:00Z' } },
+        { kind: { value: 'nomination' }, honor: { value: 'https://www.wikidata.org/wiki/Q3' }, honorLabel: { value: 'Golden Globe Award for Best Motion Picture' }, date: { value: '2023-12-12T00:00:00Z' } },
       ] } }), { headers: { 'content-type': 'application/json' } });
       if (url.includes('commons.wikimedia.org/w/api.php')) return new Response(JSON.stringify({ query: { pages: { 1: { title: 'File:Official award logo.svg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/JavaScript-logo.png' }] } } } }), { headers: { 'content-type': 'application/json' } });
       return original(input);
@@ -134,4 +157,5 @@ test('awards stay collapsed and use real remote programme artwork without genera
   await expect(section.locator('.award-seal')).toHaveCount(0);
   await section.locator('.awards-toggle').click();
   await expect(section.locator('.awards-body')).toBeVisible();
+  await expect(section.locator('.award-timeline time')).toHaveText(['2023', '2024']);
 });

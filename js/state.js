@@ -44,8 +44,9 @@ export const state = {
   // Which Continue Watching cards are pinned to the front and which are hidden.
   // Loaded with the profile document, so the rail's layout follows the account.
   continuePrefs: { pinned: [], hidden: [] },
-  // Film series the user has set aside, so the Home rail stops offering them.
-  franchisePrefs: { dismissed: [] },
+  // Film-series display choices follow the account. Story orders only store TMDB
+  // ids, so even a heavily customised library stays well below the profile limit.
+  franchisePrefs: { dismissed: [], orderMode: 'release', storyOrders: {} },
 };
 
 // ===== LOOKUP HELPERS =====

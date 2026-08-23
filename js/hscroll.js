@@ -10,7 +10,7 @@
 // references means nothing leaks when a render blows the DOM away.
 import { isTouch, prefersReducedMotion } from './ui.js';
 
-const SEL = '.row, .cast-scroll, .vid-scroll, .similar-row, .gal-scroll, .genre-scroll, .season-scroll';
+const SEL = '.row, .cast-scroll, .vid-scroll, .similar-row, .gal-scroll, .genre-scroll, .season-scroll, .season-tabs, .fp-parts';
 
 const ARROW = {
   prev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>',
@@ -71,6 +71,18 @@ function enhance(el) {
     if (raf) return;
     raf = requestAnimationFrame(() => { raf = null; sync(el, prev, next); });
   }, { passive: true });
+
+  // A mouse wheel should be enough to navigate the two episode rails. Only take
+  // the event while there is content in that direction; at either edge the page
+  // resumes its normal vertical scroll immediately.
+  if (el.matches('.season-scroll,.season-tabs')) el.addEventListener('wheel', event => {
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const canMove = event.deltaY < 0 ? el.scrollLeft > 1 : el.scrollLeft < max - 1;
+    if (!canMove) return;
+    event.preventDefault();
+    el.scrollBy({ left: event.deltaY, behavior: 'auto' });
+  }, { passive: false });
 
   sync(el, prev, next);
 }

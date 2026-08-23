@@ -16,8 +16,10 @@ import { ensureWatchedMeta } from './watched-meta.js';
 import {
   franchiseSummary, tvFamilySummary,
   isFranchiseDismissed, toggleFranchiseDismissed, restoreAllFranchises,
-  clearFranchiseCache,
+  clearFranchiseCache, franchiseOrderMode, setFranchiseOrderMode,
+  orderedFranchiseParts, moveFranchiseStoryPart,
 } from './franchise.js';
+import { collectionRevenueTimeline, clearBoxOfficeCache, formatGross } from './box-office.js';
 
 let filter = 'progress';            // progress | complete | skipped | all | tv
 let sort = 'closest';               // closest | recent | name | remaining
@@ -95,8 +97,9 @@ function gapsIn(row, ordered) {
 
 function paint(host) {
   const { films, tv } = cached;
+  const orderMode = franchiseOrderMode();
   const dismissedRows = films.rows.filter(row => isFranchiseDismissed(row.id));
-  const skipped = films.rows.filter(row => !row.complete && row.parts && gapsIn(row, row.parts).length);
+  const skipped = films.rows.filter(row => !row.complete && row.parts && gapsIn(row, orderedFranchiseParts(row.id, row.parts, orderMode)).length);
 
   const counts = {
     progress: films.inProgress.length,
@@ -141,6 +144,7 @@ function paint(host) {
 
     <div class="fp-toolbar">
       <div class="watched-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input id="franchiseSearch" value="${esc(search)}" placeholder="Search franchises or films…" aria-label="Search franchises"></div>
+      <div class="fp-order-switch" role="group" aria-label="Franchise watch order"><button class="${orderMode === 'release' ? 'on' : ''}" data-action="fp-order" data-order="release" aria-pressed="${orderMode === 'release'}">Release</button><button class="${orderMode === 'story' ? 'on' : ''}" data-action="fp-order" data-order="story" aria-pressed="${orderMode === 'story'}">Story</button></div>
       <select class="watched-select" data-action="fp-sort" aria-label="Sort franchises"><option value="closest"${sort === 'closest' ? ' selected' : ''}>Closest to complete</option><option value="remaining"${sort === 'remaining' ? ' selected' : ''}>Fewest films left</option><option value="recent"${sort === 'recent' ? ' selected' : ''}>Newest collection</option><option value="name"${sort === 'name' ? ' selected' : ''}>Name A–Z</option></select>
     </div>
     <div class="fp-tabs" role="tablist">
@@ -160,6 +164,7 @@ function paint(host) {
     </div>` : ''}`;
   const input = $('franchiseSearch'); if (input) input.addEventListener('input', searchInput);
   observeReveals(host);
+  loadExpandedRevenue();
 }
 
 const searchInput = debounce(event => {
@@ -184,7 +189,7 @@ function filmSection(rows) {
 
 function filmRow(row) {
   const open = expanded.has(row.id);
-  const ordered = row.parts || [];
+  const ordered = orderedFranchiseParts(row.id, row.parts || []);
   const gaps = gapsIn(row, ordered);
   const left = estimateRemaining(row);
   const percent = Math.round(row.percent);
@@ -202,6 +207,7 @@ function filmRow(row) {
           ${row.unknown ? `<span>${row.unknown} awaiting a date</span>` : ''}
           ${gaps.length ? `<span class="fp-gap">${gaps.length} skipped</span>` : ''}
           ${left ? `<span>about ${hours(left)} left</span>` : ''}
+          ${row.updatedAt ? `<time title="${esc(new Date(row.updatedAt).toLocaleString())}">${esc(freshness(row.updatedAt))}</time>` : ''}
         </span>
       </span>
       <span class="fp-row-pct">${percent}%</span>
@@ -215,29 +221,60 @@ function filmRow(row) {
 
 function partsHTML(row, ordered, gaps) {
   const gapIds = new Set(gaps.map(part => part.id));
+  const story = franchiseOrderMode() === 'story';
   const items = ordered.map((part, index) => {
     const seen = row.seenIds?.has(part.id);
     const year = (part.release_date || '').slice(0, 4);
     const future = !!part.release_date && Date.parse(`${part.release_date}T00:00:00`) > Date.now();
     const unknown = !part.release_date && !seen;
     const label = future ? 'Not out yet' : unknown ? 'Release date unknown' : seen ? 'Watched' : gapIds.has(part.id) ? 'Skipped' : 'Not seen';
-    return `<a class="fp-part${seen ? ' seen' : ''}${future ? ' future' : ''}${unknown ? ' unknown' : ''}${gapIds.has(part.id) ? ' gap' : ''}" href="/movie/${part.id}" data-action="open-detail" data-id="${part.id}" data-type="movie">
-      <span class="fp-part-no">${index + 1}</span>
-      <img src="${part.poster ? `${IMG}w92${part.poster}` : PH}" alt="" loading="lazy">
-      <span class="fp-part-body">
-        <b>${esc(part.title)}</b>
-        <small>${year || 'Undated'} &middot; ${label}</small>
-      </span>
-      <span class="fp-part-mark" aria-hidden="true">${seen ? '&#10003;' : future ? '&#8987;' : ''}</span>
-    </a>`;
+    return `<article class="fp-part${seen ? ' seen' : ''}${future ? ' future' : ''}${unknown ? ' unknown' : ''}${gapIds.has(part.id) ? ' gap' : ''}">
+      <a class="fp-part-main" href="/movie/${part.id}" data-action="open-detail" data-id="${part.id}" data-type="movie">
+        <span class="fp-part-no">${index + 1}</span>
+        <img src="${part.poster ? `${IMG}w185${part.poster}` : PH}" alt="" loading="lazy">
+        <span class="fp-part-body"><b>${esc(part.title)}</b><small>${year || 'Undated'} &middot; ${label}</small></span>
+        <span class="fp-part-mark" aria-hidden="true">${seen ? '&#10003;' : future ? '&#8987;' : ''}</span>
+      </a>
+      ${story ? `<span class="fp-story-controls"><button data-action="fp-story-move" data-cid="${row.id}" data-mid="${part.id}" data-dir="-1" aria-label="Move ${esc(part.title)} earlier"${index === 0 ? ' disabled' : ''}>‹</button><button data-action="fp-story-move" data-cid="${row.id}" data-mid="${part.id}" data-dir="1" aria-label="Move ${esc(part.title)} later"${index === ordered.length - 1 ? ' disabled' : ''}>›</button></span>` : ''}
+    </article>`;
   }).join('');
 
-  return `<div class="fp-parts">${items}</div>
+  return `<div class="fp-detail-meta"><span>${story ? 'Story order' : 'Release order'}</span>${gaps.length ? `<b>${gaps.length} gap${gaps.length === 1 ? '' : 's'}</b>` : '<b class="clear">No gaps</b>'}</div>
+    <div class="fp-parts" aria-label="${esc(row.name)} ${story ? 'story' : 'release'} timeline">${items}</div>
+    <section class="fp-revenue-timeline" data-franchise-revenue="${row.id}"><div class="fp-revenue-loading"></div></section>
     <div class="fp-row-actions">
       ${row.nextUp ? `<button class="btn-primary" data-action="open-detail" data-id="${row.nextUp.id}" data-type="movie">Carry on with ${esc(row.nextUp.title)}</button>` : ''}
       <button class="btn-glass" data-action="go-collection" data-cid="${row.id}">Open the collection</button>
       <button class="btn-glass" data-action="fp-dismiss" data-cid="${row.id}">${isFranchiseDismissed(row.id) ? 'Show on Home again' : 'Not interested'}</button>
     </div>`;
+}
+
+function freshness(timestamp) {
+  const age = Math.max(0, Date.now() - (+timestamp || 0));
+  if (age < 3600000) return 'Fresh';
+  if (age < 86400000) return `${Math.max(1, Math.floor(age / 3600000))}h old`;
+  return `${Math.max(1, Math.floor(age / 86400000))}d old`;
+}
+
+function revenueTimelineHTML(data) {
+  if (!data?.films) return '<div class="fp-revenue-empty">Revenue unavailable</div>';
+  const max = Math.max(...data.entries.map(entry => entry.revenue), 1);
+  return `<div class="fp-revenue-head"><span>Revenue</span><strong>${formatGross(data.revenue, { compact: true })}</strong><b>${data.coverage}% coverage</b><time title="${esc(new Date(data.updatedAt).toLocaleString())}">${esc(freshness(data.updatedAt))}</time></div>
+    <div class="fp-revenue-bars" aria-label="Revenue by film">${data.entries.map(entry => `<a href="/movie/${entry.id}" data-action="open-detail" data-id="${entry.id}" data-type="movie" title="${esc(entry.title)} — ${esc(formatGross(entry.revenue))}"><i style="--revenue-height:${entry.revenue ? Math.max(8, Math.round(entry.revenue / max * 100)) : 3}%"></i><span>${(entry.releaseDate || '').slice(0, 4) || '—'}</span></a>`).join('')}</div>`;
+}
+
+async function loadExpandedRevenue() {
+  const targets = [...document.querySelectorAll('[data-franchise-revenue]:not([data-loaded])')];
+  await Promise.all(targets.map(async target => {
+    const id = +target.dataset.franchiseRevenue;
+    target.dataset.loaded = 'loading';
+    try {
+      const data = await collectionRevenueTimeline(id);
+      if (target.isConnected && +target.dataset.franchiseRevenue === id) { target.innerHTML = revenueTimelineHTML(data); target.dataset.loaded = '1'; }
+    } catch (_) {
+      if (target.isConnected) { target.innerHTML = '<div class="fp-revenue-empty">Revenue unavailable</div>'; target.dataset.loaded = 'error'; }
+    }
+  }));
 }
 
 function tvSection(tv) {
@@ -263,6 +300,14 @@ export function initFranchisePage() {
   registerActions({
     'fp-filter': (el) => { filter = el.dataset.filter; paint($('franchisesContent')); },
     'fp-sort': el => { sort = el.value; paint($('franchisesContent')); },
+    'fp-order': el => { setFranchiseOrderMode(el.dataset.order); paint($('franchisesContent')); },
+    'fp-story-move': (el, event) => {
+      event?.preventDefault(); event?.stopPropagation();
+      const row = cached?.films?.rows?.find(item => item.id === +el.dataset.cid);
+      if (!row) return;
+      moveFranchiseStoryPart(row.id, +el.dataset.mid, +el.dataset.dir, row.parts);
+      paint($('franchisesContent'));
+    },
     'fp-toggle': (el) => {
       const id = +el.dataset.cid;
       expanded.has(id) ? expanded.delete(id) : expanded.add(id);
@@ -279,7 +324,7 @@ export function initFranchisePage() {
     },
     'franchise-refresh': async el => {
       el.disabled = true; el.textContent = 'Refreshing…';
-      clearFranchiseCache(); invalidateFranchisePage();
+      clearFranchiseCache(); clearBoxOfficeCache(); invalidateFranchisePage();
       await renderFranchisePage();
       toast('Franchise data refreshed', 'success');
     },

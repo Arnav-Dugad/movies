@@ -14,6 +14,11 @@ import { state } from './state.js';
 const CACHE_KEY = 'cv_collections_v1';
 const CACHE_TTL = 7 * 86400000;    // new parts and release dates should surface promptly
 const CACHE_MAX = 240;
+const STORY_ORDER_HINTS = {
+  // Skywalker saga chronology. Collection parts not listed here are kept after
+  // the curated sequence in release order, so a newly added film never vanishes.
+  10: [1893, 1894, 1895, 11, 1891, 1892, 140607, 181808, 181812],
+};
 
 let memo = null;
 function store() {
@@ -145,6 +150,7 @@ export async function franchiseSummary({ limit = Infinity, now = Date.now() } = 
       // without fetching the collection a second time.
       parts: [...data.parts].sort((a, b) =>
         (a.release_date || '9999').localeCompare(b.release_date || '9999') || a.id - b.id),
+      updatedAt: data.at || 0,
       ...progress,
     });
   }, 5);
@@ -173,11 +179,28 @@ export async function franchiseSummary({ limit = Infinity, now = Date.now() } = 
 // exactly what "still in progress" looks like. So it is asked, once, per series.
 // Stored on the profile document, which sign-in already reads.
 let dismissSaveTimer = null;
-const dismissed = () => (state.franchisePrefs ||= { dismissed: [] }).dismissed;
+const franchisePrefs = () => {
+  const value = (state.franchisePrefs ||= {});
+  if (!Array.isArray(value.dismissed)) value.dismissed = [];
+  if (!['release', 'story'].includes(value.orderMode)) value.orderMode = 'release';
+  if (!value.storyOrders || typeof value.storyOrders !== 'object' || Array.isArray(value.storyOrders)) value.storyOrders = {};
+  return value;
+};
+const dismissed = () => franchisePrefs().dismissed;
 
 export function hydrateFranchisePrefs(cloud) {
   const list = Array.isArray(cloud?.dismissed) ? cloud.dismissed.map(Number).filter(id => id > 0) : [];
-  state.franchisePrefs = { dismissed: [...new Set(list)].slice(0, 80) };
+  const storyOrders = {};
+  Object.entries(cloud?.storyOrders || {}).slice(0, 40).forEach(([collectionId, ids]) => {
+    const id = +collectionId;
+    if (!id || !Array.isArray(ids)) return;
+    storyOrders[id] = [...new Set(ids.map(Number).filter(value => value > 0))].slice(0, 80);
+  });
+  state.franchisePrefs = {
+    dismissed: [...new Set(list)].slice(0, 80),
+    orderMode: cloud?.orderMode === 'story' ? 'story' : 'release',
+    storyOrders,
+  };
 }
 
 export const isFranchiseDismissed = id => dismissed().includes(+id);
@@ -191,8 +214,44 @@ export function toggleFranchiseDismissed(id) {
 }
 
 export function restoreAllFranchises() {
-  state.franchisePrefs = { dismissed: [] };
+  franchisePrefs().dismissed = [];
   saveFranchisePrefs();
+}
+
+export const franchiseOrderMode = () => franchisePrefs().orderMode;
+
+export function setFranchiseOrderMode(mode) {
+  franchisePrefs().orderMode = mode === 'story' ? 'story' : 'release';
+  saveFranchisePrefs();
+  return franchisePrefs().orderMode;
+}
+
+const releaseOrdered = parts => [...(parts || [])].sort((a, b) =>
+  (a.release_date || '9999').localeCompare(b.release_date || '9999') || (+a.id || 0) - (+b.id || 0));
+
+/** Release order, or the account's story sequence with a curated safe default. */
+export function orderedFranchiseParts(collectionId, parts, mode = franchiseOrderMode()) {
+  const released = releaseOrdered(parts);
+  if (mode !== 'story') return released;
+  const ids = franchisePrefs().storyOrders?.[collectionId] || STORY_ORDER_HINTS[collectionId] || [];
+  if (!ids.length) return released;
+  const rank = new Map(ids.map((id, index) => [+id, index]));
+  return released.map((part, releaseIndex) => ({ part, releaseIndex }))
+    .sort((a, b) => (rank.get(+a.part.id) ?? (ids.length + a.releaseIndex)) - (rank.get(+b.part.id) ?? (ids.length + b.releaseIndex)))
+    .map(entry => entry.part);
+}
+
+/** Move one entry in the user's story sequence without changing watch history. */
+export function moveFranchiseStoryPart(collectionId, partId, direction, parts) {
+  const prefs = franchisePrefs();
+  const current = orderedFranchiseParts(collectionId, parts, 'story').map(part => +part.id);
+  const index = current.indexOf(+partId), next = Math.max(0, Math.min(current.length - 1, index + Math.sign(+direction || 0)));
+  if (index < 0 || next === index) return current;
+  [current[index], current[next]] = [current[next], current[index]];
+  prefs.storyOrders[collectionId] = current.slice(0, 80);
+  prefs.orderMode = 'story';
+  saveFranchisePrefs();
+  return current;
 }
 
 function saveFranchisePrefs() {
