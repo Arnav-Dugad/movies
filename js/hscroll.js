@@ -10,7 +10,7 @@
 // references means nothing leaks when a render blows the DOM away.
 import { isTouch, prefersReducedMotion } from './ui.js';
 
-const SEL = '.row, .cast-scroll, .vid-scroll, .similar-row, .gal-scroll, .genre-scroll';
+const SEL = '.row, .cast-scroll, .vid-scroll, .similar-row, .gal-scroll, .genre-scroll, .season-scroll';
 
 const ARROW = {
   prev: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>',

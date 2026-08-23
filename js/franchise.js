@@ -13,7 +13,7 @@ import { state } from './state.js';
 
 const CACHE_KEY = 'cv_collections_v1';
 const CACHE_TTL = 7 * 86400000;    // new parts and release dates should surface promptly
-const CACHE_MAX = 120;
+const CACHE_MAX = 240;
 
 let memo = null;
 function store() {
@@ -124,11 +124,12 @@ export function watchedCollections({ watched = state.watched } = {}) {
 
 /**
  * Resolve the user's franchises against TMDB and rank them by what is worth
- * finishing. Bounded, because each collection not already cached is one request.
+ * finishing. Collection requests use bounded concurrency and the shared cache.
  */
-export async function franchiseSummary({ limit = 12, now = Date.now() } = {}) {
+export async function franchiseSummary({ limit = Infinity, now = Date.now() } = {}) {
   const watched = { ...(state.watched || {}) };
-  const groups = watchedCollections({ watched }).slice(0, Math.max(1, Math.min(80, limit)));
+  const allGroups = watchedCollections({ watched });
+  const groups = Number.isFinite(limit) ? allGroups.slice(0, Math.max(1, Math.floor(limit))) : allGroups;
   const rows = [];
   await pool(groups, async group => {
     const data = await collectionParts(group.id);

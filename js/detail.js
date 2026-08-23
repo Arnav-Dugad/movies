@@ -1,5 +1,5 @@
 // ===== DETAIL PAGE =====
-import { tmdb } from './api.js';
+import { tmdb, pool } from './api.js';
 import { IMG, PH, REGIONS, pickLogo, providerUrl, regionLabel } from './config.js';
 import { state, pushRecentlyViewed } from './state.js';
 import { esc, fmt, debounce, $, prefersReducedMotion, toast } from './ui.js';
@@ -28,6 +28,8 @@ let reqGen = 0;                // bumped on every openDetail/openCollection call
 // that empty library, and nothing corrected them afterwards.
 let renderedFor = { uid: null, kind: null, id: 0 };
 let epGen = 0;                 // same idea, scoped to the season-episode list (season tabs can be clicked faster than they load)
+const episodeSearchCache = new Map();
+const episodeSearchGeneration = new Map();
 const countdownTimers = new Map(); // one precision clock per title; exact airtimes replace date-only estimates
 
 const DETAIL_SECTION_ICONS = {
@@ -42,11 +44,11 @@ function detailAccordion(prefKey, eyebrow, title, summary, body, tone = '') {
 }
 
 function countdownGrid(id) {
-  return `<div class="countdown-grid" aria-label="Time remaining"><div class="cd-unit"><span class="cd-index">01</span><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">Days</div></div><span class="cd-separator">:</span><div class="cd-unit"><span class="cd-index">02</span><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">Hours</div></div><span class="cd-separator">:</span><div class="cd-unit"><span class="cd-index">03</span><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">Minutes</div></div><span class="cd-separator">:</span><div class="cd-unit"><span class="cd-index">04</span><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">Seconds</div></div></div>`;
+  return `<div class="countdown-grid" aria-label="Time remaining"><div class="cd-unit"><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">days</div></div><span class="cd-separator">:</span><div class="cd-unit"><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">hours</div></div><span class="cd-separator">:</span><div class="cd-unit"><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">minutes</div></div><span class="cd-separator">:</span><div class="cd-unit"><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">seconds</div></div></div>`;
 }
 
-function countdownPanel(id, { eyebrow, title, note, localHTML = '' }) {
-  return `<section class="countdown" data-countdown-shell="${id}" style="--cd-progress:0deg"><div class="countdown-gridlines"></div><div class="countdown-beam"></div><header class="countdown-head"><div><span class="countdown-signal"><i></i>${esc(eyebrow)}</span><h2>${esc(title)}</h2><p>${esc(note)}</p></div><span class="countdown-live-chip"><i></i>Live clock</span></header><div class="countdown-stage"><div class="countdown-context">${localHTML}</div>${countdownGrid(id)}<div class="countdown-orbit"><div><strong id="cd_pct_${id}">0%</strong><span>journey</span></div><small>Auto-synced</small></div></div><div class="countdown-foot"><span><i></i>Your local timezone</span><span id="cd_target_${id}">Target synchronising</span><span>Precision: 1 second</span></div></section>`;
+function countdownPanel(id, { eyebrow, title, localHTML = '' }) {
+  return `<section class="countdown" data-countdown-shell="${id}"><header class="countdown-head"><div><span class="countdown-signal"><i></i>${esc(eyebrow)}</span><h2>${esc(title)}</h2></div>${localHTML}</header><div class="countdown-stage">${countdownGrid(id)}</div><div class="countdown-foot" id="cd_target_${id}">Checking time…</div></section>`;
 }
 
 export async function openDetail(id, type) {
@@ -123,16 +125,16 @@ export async function openDetail(id, type) {
     let cdHTML = '', cdDate = null, cdDoneMsg = '';
     if (type === 'tv' && det.next_episode_to_air && !isEpisodeAvailable(det.next_episode_to_air, { showId: id })) {
       const ne = det.next_episode_to_air;
-      cdDate = `${ne.air_date}T00:00:00`; cdDoneMsg = '🎉 Now Airing!';
+      cdDate = `${ne.air_date}T00:00:00`; cdDoneMsg = 'Available now';
       const episode = `S${ne.season_number}E${ne.episode_number}${ne.name ? ` · ${ne.name}` : ''}`;
-      cdHTML = countdownPanel(id, { eyebrow: 'Next episode intelligence', title: episode, note: 'A precision countdown that automatically upgrades when an exact network time is confirmed.', localHTML: `<div class="detail-local-airtime pending" id="nextAirTime_${id}"><i></i><span><b>Confirming local drop</b><small>Checking the broadcaster schedule…</small></span></div>` });
+      cdHTML = countdownPanel(id, { eyebrow: 'Next episode', title: episode, localHTML: `<div class="detail-local-airtime pending" id="nextAirTime_${id}"><span>Checking local time…</span></div>` });
     } else if (!out) {
       const relRaw = type === 'tv' ? det.first_air_date : det.release_date;
       const rd = relRaw ? new Date(relRaw + 'T00:00:00') : null;
       if (rd && !isNaN(rd) && rd.getTime() > Date.now()) {
-        cdDate = relRaw; cdDoneMsg = type === 'tv' ? '🎉 Now Airing!' : '🎉 Now Released!';
+        cdDate = relRaw; cdDoneMsg = type === 'tv' ? 'Available now' : 'Released';
         const nice = rd.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
-        cdHTML = countdownPanel(id, { eyebrow: type === 'tv' ? 'Premiere intelligence' : 'Release intelligence', title: `${type === 'tv' ? 'Premieres' : 'Releases'} ${nice}`, note: 'The calendar target is shown in your local timezone and updates every second.', localHTML: `<div class="detail-local-airtime release"><i></i><span><b>${esc(nice)}</b><small>Local calendar date · ${esc(localTimeZone())}</small></span></div>` });
+        cdHTML = countdownPanel(id, { eyebrow: type === 'tv' ? 'Premiere' : 'Release', title: nice, localHTML: `<div class="detail-local-airtime release"><span>${esc(localTimeZone())}</span></div>` });
       }
     }
 
@@ -159,9 +161,9 @@ export async function openDetail(id, type) {
         </div>`;
       }).join('');
 
-      seasHTML = `<div style="margin-bottom:32px">${showProgressPanel(id, det, progress, next)}
+      seasHTML = `<div class="episode-browser">${showProgressPanel(id, det, progress, next)}
         <div class="d-sec-title">Seasons</div><div class="season-scroll">${seasonCards}</div>
-        <div class="d-sec-title" style="margin-top:24px">Episodes</div>
+        <div class="episode-browser-head"><div class="d-sec-title">Episodes</div><label class="episode-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="episodeSearch_${id}" placeholder="Search episodes" aria-label="Search episodes by title, number, or description"></label></div>
         <div class="season-tabs">${vs.map(s => `<div class="s-tab ${s.season_number === openSeason ? 'active' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}">${esc(s.name)}</div>`).join('')}</div>
         <div class="ep-list" id="epList_${id}"><div class="skel" style="height:80px;width:100%"></div></div></div>`;
     }
@@ -245,6 +247,7 @@ export async function openDetail(id, type) {
 
     if (cdDate) startCD(id, cdDate, cdDoneMsg);
     if (type === 'tv' && det.next_episode_to_air) hydrateNextEpisodeTime(det, id, gen);
+    if (type === 'tv' && det.seasons?.length) bindEpisodeSearch(id, det.seasons.filter(season => season.season_number > 0));
     if (type === 'tv' && initialSeason) loadEps(id, initialSeason);
     observeReveals(ct); observeCountUps(ct);
     // Animate the Box Office bar widths after paint (horizontal %-widths resolve
@@ -516,13 +519,13 @@ async function hydrateNextEpisodeTime(show, id, gen) {
   }
   if (!time?.airstamp) {
     label.className = 'detail-local-airtime';
-    label.innerHTML = '<i></i><span><b>Exact time not announced</b><small>The confirmed episode date is shown above.</small></span>';
+    label.innerHTML = '<span>Date confirmed</span>';
     return;
   }
   label.className = 'detail-local-airtime exact';
-  label.innerHTML = `<i></i><span><b>${esc(localEpisodeTime(time.airstamp))}</b><small>Exact drop · converted to ${esc(localTimeZone())} · <a href="https://www.tvmaze.com" target="_blank" rel="noopener">TVmaze</a></small></span>`;
+  label.innerHTML = `<span>${esc(localEpisodeTime(time.airstamp))} · <a href="https://www.tvmaze.com" target="_blank" rel="noopener">TVmaze</a></span>`;
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = []; countdownTimers.clear();
-  startCD(id, time.airstamp, '🎉 Now Airing!');
+  startCD(id, time.airstamp, 'Available now');
   // A confirmed time can turn today's date-only episode back into "upcoming".
   // Repaint the active season so its controls use the same shared decision.
   const activeSeason = +document.querySelector('.s-tab.active')?.dataset.sn;
@@ -932,15 +935,14 @@ function getCert(d, t) {
   return d.content_ratings?.results?.find(r => r.iso_3166_1 === 'US')?.rating || '';
 }
 
-function startCD(id, ds, doneMsg = '🎉 Now Airing!') {
+function startCD(id, ds, doneMsg = 'Available now') {
   if (countdownTimers.has(id)) {
     const previous = countdownTimers.get(id); clearInterval(previous);
     state.cdIntervals = state.cdIntervals.filter(timer => timer !== previous);
   }
   const tg = new Date(ds).getTime();
   const shell = document.querySelector(`[data-countdown-shell="${id}"]`);
-  const startedAt = Date.now(), span = Math.max(1000, tg - startedAt);
-  if (shell) { shell.dataset.countdownTarget = String(tg); shell.dataset.countdownStarted = String(startedAt); }
+  if (shell) shell.dataset.countdownTarget = String(tg);
   const targetLabel = $(`cd_target_${id}`);
   if (targetLabel && Number.isFinite(tg)) targetLabel.textContent = new Date(tg).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
   let timer = null;
@@ -954,17 +956,13 @@ function startCD(id, ds, doneMsg = '🎉 Now Airing!') {
     if (df <= 0) {
       if (timer) { clearInterval(timer); countdownTimers.delete(id); state.cdIntervals = state.cdIntervals.filter(value => value !== timer); }
       const e = $(`cd_d_${id}`), grid = e?.closest('.countdown-grid');
-      if (grid) grid.innerHTML = `<div class="countdown-arrived"><i>✓</i><span><strong>${esc(doneMsg)}</strong><small>The countdown reached its confirmed target.</small></span></div>`;
-      if (shell) { shell.classList.add('arrived'); shell.style.setProperty('--cd-progress', '360deg'); }
-      const pct = $(`cd_pct_${id}`); if (pct) pct.textContent = '100%';
+      if (grid) grid.innerHTML = `<div class="countdown-arrived"><i>✓</i><strong>${esc(doneMsg)}</strong></div>`;
+      if (shell) shell.classList.add('arrived');
       return;
     }
     const d = Math.floor(df / 864e5), h = Math.floor(df % 864e5 / 36e5), m = Math.floor(df % 36e5 / 6e4), s = Math.floor(df % 6e4 / 1e3);
     const de = $(`cd_d_${id}`), he = $(`cd_h_${id}`), me = $(`cd_m_${id}`), se = $(`cd_s_${id}`);
     paintDigit(de, String(d).padStart(2, '0')); paintDigit(he, String(h).padStart(2, '0')); paintDigit(me, String(m).padStart(2, '0')); paintDigit(se, String(s).padStart(2, '0'));
-    const progress = Math.max(0, Math.min(1, 1 - df / span));
-    if (shell) shell.style.setProperty('--cd-progress', `${progress * 360}deg`);
-    const pct = $(`cd_pct_${id}`); if (pct) pct.textContent = `${Math.floor(progress * 100)}%`;
   }
   up();
   if (tg <= Date.now()) return;
@@ -976,6 +974,9 @@ async function loadSeason(tid, sn, el) {
   // by season number rather than assuming the clicked element is the tab itself.
   const ct = $('detailContent');
   if (ct) {
+    episodeSearchGeneration.set(tid, (episodeSearchGeneration.get(tid) || 0) + 1);
+    const search = $(`episodeSearch_${tid}`); if (search) search.value = '';
+    ct.querySelector('.episode-browser')?.classList.remove('searching');
     ct.querySelectorAll('.s-tab').forEach(t => t.classList.toggle('active', +t.dataset.sn === sn));
     ct.querySelectorAll('.season-card').forEach(c => c.classList.toggle('active', +c.dataset.sn === sn));
   }
@@ -996,15 +997,15 @@ function showProgressPanel(id, det, progress, next) {
   if (!state.user) return '';
   const meta = esc(JSON.stringify(showMeta(det)));
   const positionControl = `<div class="episode-position" role="group" aria-label="Set whole-series episode position">
-    <span><b>Series position</b><small>Best for anime and long-running shows</small></span>
+    <span><b>Episode</b></span>
     <label><span>Episode</span><input type="number" min="0" max="${progress.aired || det.number_of_episodes || 0}" step="1" inputmode="numeric" value="${progress.position || ''}" data-episode-position aria-label="Last episode watched overall"></label>
-    <button class="btn-glass" data-action="ep-set-position" data-tid="${id}" data-meta="${meta}">Update</button>
+    <button class="btn-glass" data-action="ep-set-position" data-tid="${id}" data-meta="${meta}">Set</button>
   </div>`;
   if (!progress.started) {
     return `<section class="show-progress idle">
-      <div class="show-progress-copy"><span>Episode tracking</span><strong>Track ${esc(det.name || 'this show')} episode by episode</strong><p>Tick episodes as you watch, mark everything up to where you are, or mark the whole show at once.</p></div>
+      <div class="show-progress-copy"><span>Episode progress</span><strong>Not started</strong></div>
       <div class="show-progress-actions">
-        <button class="btn-primary" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">I have seen it all</button>
+        <button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all</button>
       </div>
       ${positionControl}
     </section>`;
@@ -1015,14 +1016,14 @@ function showProgressPanel(id, det, progress, next) {
     <div class="show-progress-copy">
       <span>${stateLabel}</span>
       <strong>${esc(nextLabel)}</strong>
-      <p>${progress.watched} of ${progress.aired} aired episode${progress.aired === 1 ? '' : 's'} watched${progress.total > progress.aired ? ` · ${progress.total} total` : ''}</p>
+      <p>${progress.watched}/${progress.aired} watched${progress.total > progress.aired ? ` · ${progress.total} total` : ''}</p>
       <div class="show-progress-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
     </div>
     <div class="show-progress-actions">
       <b>${progress.percent}%</b>
-      ${next ? `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark ${esc(episodeLabel(id, next, { compact: true }))} watched</button>` : ''}
-      ${progress.caughtUp ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all ${progress.aired - progress.watched} remaining</button>`}
-      <button class="btn-glass" data-action="ep-reset" data-tid="${id}">Reset</button>
+      ${next ? `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark next</button>` : ''}
+      ${progress.caughtUp ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all</button>`}
+      <button class="btn-glass icon-only" data-action="ep-reset" data-tid="${id}" aria-label="Reset episode progress" data-tip="Reset">↻</button>
     </div>
     ${positionControl}
   </section>`;
@@ -1033,7 +1034,7 @@ function showProgressPanel(id, det, progress, next) {
 function episodeControls(id, ep, meta, watched) {
   if (!state.user) return '';
   return `<div class="ep-actions">
-    <button class="ep-check${watched ? ' on' : ''}" data-action="ep-toggle" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-air-date="${esc(ep.air_date || '')}" data-meta="${meta}" aria-pressed="${watched}" aria-label="${watched ? 'Unmark' : 'Mark'} episode ${ep.episode_number} watched">${EP_CHECK}<span>${watched ? 'Watched' : 'Mark watched'}</span></button>
+    <button class="ep-check${watched ? ' on' : ''}" data-action="ep-toggle" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-air-date="${esc(ep.air_date || '')}" data-meta="${meta}" aria-pressed="${watched}" aria-label="${watched ? 'Unmark' : 'Mark'} episode ${ep.episode_number} watched" data-tip="${watched ? 'Watched' : 'Mark watched'}">${EP_CHECK}</button>
     <button class="ep-upto" data-action="ep-mark-upto" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-air-date="${esc(ep.air_date || '')}" data-meta="${meta}" data-tip="Mark everything up to and including this episode">Up to here</button>
   </div>`;
 }
@@ -1044,8 +1045,8 @@ function seasonToolbar(id, season, episodes, meta) {
   const done = seasonWatchedCount(id, season);
   const all = aired > 0 && done >= aired;
   return `<div class="season-toolbar">
-    <span><b>${done}</b> of ${aired} aired episode${aired === 1 ? '' : 's'} watched</span>
-    <button data-action="ep-season" data-tid="${id}" data-sn="${season}" data-on="${all ? '0' : '1'}" data-meta="${meta}">${all ? 'Unmark whole season' : 'Mark season watched'}</button>
+    <span><b>${done}</b>/${aired} watched</span>
+    <button data-action="ep-season" data-tid="${id}" data-sn="${season}" data-on="${all ? '0' : '1'}" data-meta="${meta}">${all ? 'Unmark season' : 'Mark season'}</button>
     <span class="season-rewatch" id="seasonRewatch_${id}_${season}">${seasonRewatchHTML(id, season, meta)}</span>
   </div>`;
 }
@@ -1089,11 +1090,107 @@ function syncSeasonToolbar(tid, sn, meta = '{}') {
   if (button) {
     const all = aired > 0 && done >= aired;
     button.dataset.on = all ? '0' : '1';
-    button.textContent = all ? 'Unmark whole season' : 'Mark season watched';
+    button.textContent = all ? 'Unmark season' : 'Mark season';
   }
   // Finishing the last episode of a season is exactly when the rewatch control
   // becomes meaningful, so it appears (and disappears) with the completion.
   paintSeasonRewatch(tid, sn, meta);
+}
+
+function episodeCardHTML(tid, ep, meta, { search = false } = {}) {
+  const watched = isEpisodeWatched(tid, ep.season_number, ep.episode_number);
+  const future = !isEpisodeAvailable(ep, { showId: tid });
+  const number = search ? `S${ep.season_number} · E${ep.episode_number}` : `E${ep.episode_number}`;
+  return `<article class="ep-card${watched ? ' watched' : ''}${future ? ' unaired' : ''}" data-ep="${ep.season_number}-${ep.episode_number}">
+    <div class="ep-still">${ep.still_path ? `<img src="${IMG}w300${ep.still_path}" alt="" loading="lazy">` : ''}<div class="ep-num">${number}</div>${watched ? `<div class="ep-seen" aria-hidden="true">${EP_CHECK}</div>` : ''}</div>
+    <div class="ep-body">
+      <div class="ep-title">${esc(ep.name) || `Episode ${ep.episode_number}`}</div>
+      <div class="ep-meta">${ep.air_date ? `<span>${new Date(`${ep.air_date}T00:00:00`).toLocaleDateString()}</span>` : ''}${ep.runtime ? `<span>${ep.runtime}m</span>` : ''}${ep.vote_average ? `<span>★ ${ep.vote_average.toFixed(1)}</span>` : ''}${future ? '<span class="ep-soon">Upcoming</span>' : ''}</div>
+      ${ep.overview ? `<div class="ep-desc">${esc(ep.overview)}</div>` : ''}
+      ${future ? '' : episodeControls(tid, ep, meta, watched)}
+    </div>
+  </article>`;
+}
+
+const cleanEpisodeQuery = value => String(value || '').trim().toLowerCase().replace(/[._-]+/g, ' ').replace(/\s+/g, ' ');
+
+export function episodeMatchesQuery(ep, value) {
+  const query = cleanEpisodeQuery(value);
+  if (!query) return true;
+  const compact = query.replace(/\s+/g, '');
+  const season = +ep.season_number || 0, number = +ep.episode_number || 0;
+  const coordinate = String(value || '').match(/\b(?:s)?(\d+)\s*(?:e|x|-)\s*(\d+)\b/i);
+  if (coordinate) {
+    if (+coordinate[1] !== season || +coordinate[2] !== number) return false;
+    const remaining = cleanEpisodeQuery(String(value).replace(coordinate[0], ''));
+    const copy = cleanEpisodeQuery(`${ep.name || ''} ${ep.overview || ''}`);
+    return !remaining || remaining.split(' ').every(term => copy.includes(term));
+  }
+  if (compact === String(number) || compact === `e${number}` || compact === `episode${number}` || compact === `s${season}e${number}` || compact === `${season}x${number}`) return true;
+  const haystack = cleanEpisodeQuery(`${ep.name || ''} ${ep.overview || ''} season ${season} episode ${number} s${season}e${number} ${season}x${number}`);
+  return query.split(' ').every(term => haystack.includes(term));
+}
+
+function episodeSearchScore(ep, value) {
+  const query = cleanEpisodeQuery(value), compact = query.replace(/\s+/g, '');
+  const name = cleanEpisodeQuery(ep.name), number = +ep.episode_number || 0, season = +ep.season_number || 0;
+  if ([String(number), `e${number}`, `episode${number}`, `s${season}e${number}`, `${season}x${number}`].includes(compact)) return 1000;
+  if (name === query) return 900;
+  if (name.startsWith(query)) return 700;
+  if (name.includes(query)) return 500;
+  return 100;
+}
+
+async function allEpisodesFor(tid, seasons) {
+  const signature = seasons.map(season => `${season.season_number}:${season.episode_count || 0}`).join('|');
+  const cached = episodeSearchCache.get(tid);
+  if (cached && cached.signature === signature && Date.now() - cached.at < 5 * 60 * 1000) return cached.request;
+  const request = (async () => {
+    const rows = [];
+    let loaded = 0;
+    await pool(seasons, async season => {
+      const data = await tmdb(`/tv/${tid}/season/${season.season_number}`);
+      loaded += 1;
+      rows.push(...(data.episodes || []));
+    }, 4);
+    if (seasons.length && !loaded) throw new Error('Episode search unavailable');
+    return rows.sort((a, b) => a.season_number - b.season_number || a.episode_number - b.episode_number);
+  })();
+  episodeSearchCache.set(tid, { at: Date.now(), signature, request });
+  try { return await request; } catch (error) { episodeSearchCache.delete(tid); throw error; }
+}
+
+function bindEpisodeSearch(tid, seasons) {
+  const input = $(`episodeSearch_${tid}`); if (!input) return;
+  input.addEventListener('input', debounce(async event => {
+    const query = event.target.value.trim(), list = $(`epList_${tid}`), browser = event.target.closest('.episode-browser');
+    if (!list) return;
+    const run = (episodeSearchGeneration.get(tid) || 0) + 1;
+    episodeSearchGeneration.set(tid, run);
+    if (!query) {
+      browser?.classList.remove('searching');
+      const active = +document.querySelector('.s-tab.active')?.dataset.sn;
+      if (active) loadEps(tid, active);
+      return;
+    }
+    if (!/^\d+$/.test(query) && query.length < 2) {
+      browser?.classList.remove('searching');
+      const active = +document.querySelector('.s-tab.active')?.dataset.sn;
+      if (active) loadEps(tid, active);
+      return;
+    }
+    browser?.classList.add('searching');
+    list.innerHTML = '<div class="episode-searching"><i></i><i></i><i></i></div>';
+    try {
+      const episodes = await allEpisodesFor(tid, seasons);
+      if (run !== episodeSearchGeneration.get(tid) || !$(`epList_${tid}`)) return;
+      const results = episodes.filter(ep => episodeMatchesQuery(ep, query)).sort((a, b) => episodeSearchScore(b, query) - episodeSearchScore(a, query) || a.season_number - b.season_number || a.episode_number - b.episode_number).slice(0, 100);
+      const meta = esc(JSON.stringify(curDet ? showMeta(curDet) : {}));
+      list.innerHTML = results.length ? `<div class="episode-result-count">${results.length}${results.length === 100 ? '+' : ''}</div>${results.map(ep => episodeCardHTML(tid, ep, meta, { search: true })).join('')}` : '<div class="episode-empty">No episodes found</div>';
+    } catch (_) {
+      if (run === episodeSearchGeneration.get(tid)) list.innerHTML = '<div class="episode-empty">Search unavailable</div>';
+    }
+  }, 220));
 }
 
 async function loadEps(tid, sn) {
@@ -1111,19 +1208,7 @@ async function loadEps(tid, sn) {
     const meta = esc(JSON.stringify(show ? showMeta(show) : {}));
     const episodes = season.episodes || [];
     if (!episodes.length) { el.innerHTML = '<p style="color:var(--text3);padding:12px">No episodes yet</p>'; return; }
-    el.innerHTML = seasonToolbar(tid, sn, episodes, meta) + episodes.map(ep => {
-      const watched = isEpisodeWatched(tid, ep.season_number, ep.episode_number);
-      const future = !isEpisodeAvailable(ep, { showId: tid });
-      return `<div class="ep-card${watched ? ' watched' : ''}${future ? ' unaired' : ''}" data-ep="${ep.season_number}-${ep.episode_number}">
-        <div class="ep-still">${ep.still_path ? `<img src="${IMG}w300${ep.still_path}" alt="" loading="lazy">` : ''}<div class="ep-num">E${ep.episode_number}</div>${watched ? `<div class="ep-seen" aria-hidden="true">${EP_CHECK}</div>` : ''}</div>
-        <div class="ep-body">
-          <div class="ep-title">${esc(ep.name) || `Episode ${ep.episode_number}`}</div>
-          <div class="ep-meta">${ep.air_date ? `<span>${new Date(ep.air_date).toLocaleDateString()}</span>` : ''}${ep.runtime ? `<span>${ep.runtime}m</span>` : ''}${ep.vote_average ? `<span>⭐ ${ep.vote_average.toFixed(1)}</span>` : ''}${future ? '<span class="ep-soon">Not aired yet</span>' : ''}</div>
-          <div class="ep-desc">${esc(ep.overview || '')}</div>
-          ${future ? '' : episodeControls(tid, ep, meta, watched)}
-        </div>
-      </div>`;
-    }).join('');
+    el.innerHTML = seasonToolbar(tid, sn, episodes, meta) + episodes.map(ep => episodeCardHTML(tid, ep, meta)).join('');
   } catch (e) {
     if (gen !== epGen) return;
     el.innerHTML = '<p style="color:var(--text3);padding:12px">Failed to load</p>';
@@ -1291,7 +1376,9 @@ export function initDetail() {
       const added = markUpTo(tid, sn, en, readEpisodeMeta(el));
       if (added === null) return;
       toast(added ? `Marked ${added} episode${added === 1 ? '' : 's'} watched` : 'Already up to date', added ? 'success' : 'info');
-      loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
+      const search = $(`episodeSearch_${tid}`);
+      if (search?.value.trim()) { search.dispatchEvent(new Event('input', { bubbles: true })); refreshEpisodeUI(tid); }
+      else loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
     },
     'ep-set-position': el => {
       const tid = +el.dataset.tid;

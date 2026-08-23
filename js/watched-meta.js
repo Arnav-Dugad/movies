@@ -13,7 +13,7 @@ import { db } from './firebase.js';
 import { state } from './state.js';
 
 // Bump to re-backfill every doc after a schema change.
-export const META_V = 7;   // 7: collection membership, for franchise completion
+export const META_V = 8;   // 8: automatic collection membership audit
 const REPAIR_V = 1;
 
 let running = false, done = false, repairing = false;
@@ -41,7 +41,7 @@ export function pendingMetaCount() {
 function staleDocs() {
   return Object.entries(state.watched)
     .map(([key, doc]) => ({ key, doc, ...identity(key, doc) }))
-    .filter(item => item.id && item.type && (item.doc.metaV !== META_V || !item.doc.poster || !(item.doc.genres && item.doc.genres.length) || !item.doc.tmdbId || !item.doc.type));
+    .filter(item => item.id && item.type && (item.doc.metaV !== META_V || !item.doc.poster || !(item.doc.genres && item.doc.genres.length) || !item.doc.tmdbId || !item.doc.type || (item.type === 'movie' && !item.doc.collectionChecked)));
 }
 
 function movieMeta(det) {
@@ -66,10 +66,10 @@ const releaseOf = det => det.release_date || det.first_air_date || '';
 // Only movies belong to a TMDB collection. Stamping it here means franchise
 // completion costs no extra request — it rides the enrichment fetch that already
 // happens for runtime, credits, and keywords.
-const collectionOf = (det, old = {}) => {
+export const collectionOf = (det, old = {}) => {
   const c = det.belongs_to_collection;
-  if (!c || !c.id) return { collectionId: +(old.collectionId || 0), collectionName: old.collectionName || '', collectionPoster: old.collectionPoster || '' };
-  return { collectionId: +c.id, collectionName: c.name || '', collectionPoster: c.poster_path || '' };
+  if (!c || !c.id) return { collectionId: 0, collectionName: '', collectionPoster: '', collectionChecked: true };
+  return { collectionId: +c.id, collectionName: c.name || '', collectionPoster: c.poster_path || '', collectionChecked: true };
 };
 const keywordsOf = det => (det.keywords?.keywords || det.keywords?.results || [])
   .slice(0, 15).map(keyword => ({ id: +keyword.id, name: keyword.name || '' }))
@@ -236,6 +236,7 @@ export async function ensureWatchedMeta({ batch = BATCH } = {}) {
         // Store names alongside ids so "10 titles with Bryan Cranston" renders
         // without a /person round-trip per actor. Top 5 keeps the doc small.
         cast: cs.length ? cs : (d.cast || []),
+        ...(type === 'movie' ? collectionOf(det, d) : {}),
         metaV: META_V,
       };
       await db.collection('users').doc(uid).collection('watched').doc(key).set(patch, { merge: true });

@@ -83,3 +83,55 @@ test('a daily refresh discovers a newly arrived episode', async ({ page }) => {
   expect(await page.evaluate(() => cvTest.next())).toEqual({ season: 2, episode: 3 });
   expect(await page.evaluate(() => cvTest.progress().caughtUp)).toBe(false);
 });
+
+test('episode search finds title, season number, episode number, and description', async ({ page }) => {
+  await fixture(page);
+  await page.evaluate(() => { cvTest.setVersion(3); return cvTest.open(); });
+  const search = page.getByRole('searchbox', { name: 'Search episodes by title, number, or description' });
+
+  await search.fill('S2E3');
+  await expect(page.locator('.ep-card')).toHaveCount(1);
+  await expect(page.locator('.ep-card')).toHaveAttribute('data-ep', '2-3');
+
+  await search.fill('Fixture episode 1-2');
+  await expect(page.locator('.ep-card')).toHaveCount(1);
+  await expect(page.locator('.ep-card')).toHaveAttribute('data-ep', '1-2');
+
+  await search.fill('Season 1 Episode 3');
+  await expect(page.locator('.ep-card')).toHaveCount(1);
+  await expect(page.locator('.ep-card')).toHaveAttribute('data-ep', '1-3');
+
+  await search.fill('not in this show');
+  await expect(page.locator('.episode-empty')).toHaveText('No episodes found');
+});
+
+test('awards stay collapsed and use real remote programme artwork without generated seals', async ({ page }) => {
+  await page.route('https://upload.wikimedia.org/**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') }));
+  await fixture(page);
+  await page.evaluate(async () => {
+    const original = window.fetch;
+    window.fetch = async input => {
+      const url = String(input);
+      if (url.includes('query.wikidata.org')) return new Response(JSON.stringify({ results: { bindings: [
+        { kind: { value: 'win' }, honor: { value: 'https://www.wikidata.org/wiki/Q1' }, honorLabel: { value: 'Academy Award for Best Picture' } },
+        { kind: { value: 'win' }, honor: { value: 'https://www.wikidata.org/wiki/Q2' }, honorLabel: { value: 'Academy Award for Best Director' } },
+        { kind: { value: 'nomination' }, honor: { value: 'https://www.wikidata.org/wiki/Q3' }, honorLabel: { value: 'Golden Globe Award for Best Motion Picture' } },
+      ] } }), { headers: { 'content-type': 'application/json' } });
+      if (url.includes('commons.wikimedia.org/w/api.php')) return new Response(JSON.stringify({ query: { pages: { 1: { title: 'File:Official award logo.svg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/JavaScript-logo.png' }] } } } }), { headers: { 'content-type': 'application/json' } });
+      return original(input);
+    };
+    const section = document.createElement('section'); section.id = 'awardFixture'; section.className = 'awards-section'; section.hidden = true;
+    document.body.appendChild(section);
+    const { loadAwardsSection, initAwards } = await import('/js/awards.js');
+    initAwards();
+    await loadAwardsSection('tt7654321', 'awardFixture');
+  });
+  const section = page.locator('#awardFixture');
+  await expect(section.locator('.awards-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect(section.locator('.awards-body')).toBeHidden();
+  await expect(section.locator('.award-programme-card')).toHaveCount(2);
+  await expect(section.locator('img[data-award-logo]')).toHaveCount(4);
+  await expect(section.locator('.award-seal')).toHaveCount(0);
+  await section.locator('.awards-toggle').click();
+  await expect(section.locator('.awards-body')).toBeVisible();
+});

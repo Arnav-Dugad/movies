@@ -12,6 +12,7 @@ import { $, esc, toast, debounce } from './ui.js';
 import { registerActions } from './events.js';
 import { IMG, PH } from './config.js';
 import { observeReveals } from './effects.js';
+import { ensureWatchedMeta } from './watched-meta.js';
 import {
   franchiseSummary, tvFamilySummary,
   isFranchiseDismissed, toggleFranchiseDismissed, restoreAllFranchises,
@@ -40,13 +41,14 @@ export async function renderFranchisePage() {
     host.innerHTML = `<div class="wl-empty"><h3>Sign in to track franchises</h3><p>Completion is worked out from the films you have marked watched.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
+  ensureWatchedMeta();
   const run = ++generation;
   if (!cached) {
     if (loading) return;
     loading = true;
     host.innerHTML = skeleton();
     try {
-      const [films, tv] = await Promise.all([franchiseSummary({ limit: 80 }), tvFamilySummary({ limit: 24 })]);
+      const [films, tv] = await Promise.all([franchiseSummary(), tvFamilySummary({ limit: 24 })]);
       if (run !== generation) return;
       cached = { films, tv };
     } catch (error) {
@@ -125,9 +127,8 @@ function paint(host) {
   host.innerHTML = `
     <div class="fp-hero${films.rows.length ? ' has-art' : ''}"${films.rows.find(row => row.backdrop)?.backdrop ? ` style="--fp-art:url('${IMG}original${films.rows.find(row => row.backdrop).backdrop}')"` : ''}>
       <div>
-        <span class="fp-eyebrow">Collection completion</span>
         <h1>Franchises</h1>
-        <p>Every film series in your watch history, measured against entries that have actually been released. An announced sequel never counts against you.</p>
+        <p>Every film series in your history.</p>
       </div>
       <div class="fp-hero-stats">
         ${stat(films.rows.length, films.rows.length === 1 ? 'series' : 'series')}
@@ -175,7 +176,7 @@ function filmSection(rows) {
     const message = filter === 'complete' ? 'No series finished yet — the first one is usually closer than it looks.'
       : filter === 'skipped' ? 'No gaps. Everything you have started, you have watched in order.'
       : filter === 'near' ? 'Nothing is within two films of completion yet.'
-      : 'No film series in your history yet. Watch two entries from the same TMDB collection and they appear here.';
+      : 'No film series in your history yet.';
     return `<div class="wl-empty"><h3>Nothing to show</h3><p>${esc(message)}</p></div>`;
   }
   return `<div class="fp-list">${rows.map(filmRow).join('')}</div>`;
