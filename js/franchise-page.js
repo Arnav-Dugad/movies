@@ -251,6 +251,12 @@ export function initFranchisePage() {
   // summary is dropped and rebuilt rather than left to go stale.
   const refresh = debounce(() => { invalidateFranchisePage(); if (location.pathname === '/franchises') renderFranchisePage(); }, 700);
   document.addEventListener('cv:wl-changed', refresh);
-  document.addEventListener('cv:auth', () => { invalidateFranchisePage(); expanded.clear(); });
+  document.addEventListener('cv:auth', () => {
+    invalidateFranchisePage();
+    expanded.clear();
+    // Signing in (or out) while this page is open has to repaint it. Dropping the
+    // cache alone left whoever just signed in staring at the sign-in prompt.
+    if (location.pathname.replace(/\/$/, '') === '/franchises') renderFranchisePage();
+  });
   document.addEventListener('cv:meta-backfilled', refresh);
 }

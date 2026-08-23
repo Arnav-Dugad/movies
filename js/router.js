@@ -14,6 +14,7 @@ import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
 import { openStudio } from './studio.js';
 import { openCollection2 } from './collection.js';
+import { SECTIONS } from './home.js';
 import { openSharedList } from './shared-list.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeListPicker, isListPickerOpen } from './lists.js';
@@ -218,6 +219,17 @@ export function initRouter() {
     else if (currentPath === '/profile') renderProfile();
     else if (currentPath === '/settings') renderSettings();
     else if (currentPath === '/notifications') renderNotifications(true);
+    else if (currentPath === '/reminders') renderReleaseReminders();
+    // A curated page opened straight from a URL renders before Firebase has
+    // resolved the account, so its watched marks describe an empty library. The
+    // Top 10 countdown draws its own rows rather than standard cards, so the
+    // shared card-mark refresh cannot reach them — the page has to rebuild.
+    // Every TMDB response behind it is cached, so this costs no network.
+    else if (currentPath.startsWith('/collection/')) {
+      const id = currentPath.split('/')[2] || '';
+      if (SECTIONS.some(section => section.id === id)) openCollection2(id);
+      else if (/^\d+$/.test(id)) openCollection(+id);
+    }
     // Only rebuild the home rows when they're actually on screen; otherwise flag
     // them so home's own render picks it up on arrival. Home's route render is a
     // no-op by design, which is why this can't simply be dropped.

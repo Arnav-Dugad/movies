@@ -2,6 +2,20 @@
 
 https://arnav-dugad.github.io/movies/
 
+## Opening a page by URL
+
+Firebase resolves the signed-in account asynchronously, so any page reached
+directly — a shared link, a refresh, "open in new tab" — renders before the
+library exists. Everything computed from it at render time was therefore wrong
+and stayed wrong: a film you had watched showed an empty tick, no rating, and no
+rewatch history until you navigated away and back.
+
+Pages now rebuild when the account arrives. The detail and collection pages track
+which account their current render was built for and re-run it once that changes;
+the router does the same for the curated, countdown, and reminder pages. Every
+TMDB response behind them is already cached, so the correction costs a re-render
+and no network, and it happens once, within a second of load.
+
 ## Deploying
 
 CineVerse is a static SPA with clean URLs (`/movie/693134`, `/stats`, …). Every
@@ -241,16 +255,22 @@ while closed.
 
 ## Top 10 This Week
 
-A countdown, not a grid with numbers bolted on. The leader gets the space it
-earns — backdrop, poster, overview, and a trailer fetched after paint — and the
-other nine read downward as a chart.
+Two charts — films and series — each a countdown rather than a grid with numbers
+bolted on. The leader gets the space it earns (backdrop, poster, overview, and a
+trailer fetched after paint) and the other nine read downward as a chart.
 
 Movement is the half of a chart nobody can fake, and no free API publishes last
 week's ranking. So CineVerse keeps its own: the ten ids and the week they were
-seen, on the device. A chip appears only when there is a snapshot from a
-genuinely **earlier** week to compare against — never on a first visit, never on
-a reload in the same week, and never invented. Direction is carried by an arrow
-and a number as well as colour.
+seen, on the device, **per chart** — one shared record would have each chart
+reporting movement against the other's ranking. A chip appears only when there is
+a snapshot from a genuinely **earlier** week to compare against: never on a first
+visit, never on a reload in the same week, and never invented. Direction is
+carried by an arrow and a number as well as colour.
+
+Recording this week's ranking destroys last week's, so the comparison is made
+once per chart per page load and reused. Without that, anything that re-renders
+the page would compare the chart against the copy it had just written and quietly
+drop every chip — on exactly the visit they existed for.
 
 ## Recommendations
 
@@ -280,7 +300,7 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 400+ assertions, no dependencies and no Java
+npm run test:logic    # 430+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # the emulator suite (needs a JDK)
 ```

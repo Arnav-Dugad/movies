@@ -16,10 +16,11 @@ import { state } from './state.js';
 import { observeReveals } from './effects.js';
 import { rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 
-const SNAP_KEY = 'cv_top10_history_v1';
+const SNAP_PREFIX = 'cv_top10_history_v1_';
+const snapKey = chart => SNAP_PREFIX + String(chart || 'movie');
 
 /** ISO-ish week key, so "a different week" is a fact rather than a guess. */
-function weekKey(date = new Date()) {
+export function weekKey(date = new Date()) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));      // nearest Thursday
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -27,9 +28,9 @@ function weekKey(date = new Date()) {
   return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
-function readSnapshot() {
+function readSnapshot(chart) {
   try {
-    const raw = JSON.parse(localStorage.getItem(SNAP_KEY) || 'null');
+    const raw = JSON.parse(localStorage.getItem(snapKey(chart)) || 'null');
     return raw && Array.isArray(raw.ids) && typeof raw.week === 'string' ? raw : null;
   } catch (_) { return null; }
 }
@@ -39,18 +40,33 @@ function readSnapshot() {
  * current one. Returns a map of id -> movement, empty when there is nothing
  * honest to say.
  */
-function movementFor(ids) {
+// Recording this week's chart is a one-way door: the moment it is written, last
+// week's ranking is gone. So the answer is computed once per chart per page load
+// and reused. Without this, anything that re-renders the page — the account
+// arriving, a filter, a re-navigation — would compare the chart against the copy
+// it had just written and report no movement at all, silently erasing the chips
+// on exactly the visit they were meant for.
+const decided = new Map();
+
+/** Test seam: forget what this page load already decided. */
+export function resetMovementMemo() { decided.clear(); }
+
+export function movementFor(ids, chart) {
   const week = weekKey();
-  const previous = readSnapshot();
+  const signature = `${chart}|${week}|${ids.join(',')}`;
+  if (decided.has(signature)) return decided.get(signature);
+
+  const previous = readSnapshot(chart);
   const moves = new Map();
   // Only a snapshot from a DIFFERENT week is a comparison. Re-opening the page
   // an hour later must not report movement against itself.
   if (previous && previous.week !== week) {
     previous.ids.forEach((id, index) => moves.set(+id, index));
   }
-  try { localStorage.setItem(SNAP_KEY, JSON.stringify({ week, ids, at: Date.now() })); } catch (_) {}
+  try { localStorage.setItem(snapKey(chart), JSON.stringify({ week, ids, at: Date.now() })); } catch (_) {}
 
   const out = new Map();
+  decided.set(signature, out);
   if (!moves.size) return out;
   ids.forEach((id, index) => {
     const before = moves.get(+id);
@@ -75,9 +91,9 @@ const yearOf = item => (item.release_date || item.first_air_date || '').slice(0,
 const titleOf = item => item.title || item.name || '';
 const genresOf = item => (item.genre_ids || []).map(id => genreMap[id]).filter(Boolean).slice(0, 3);
 
-export function top10HTML(items, type = 'movie') {
+export function top10HTML(items, type = 'movie', chart = type) {
   if (!items.length) return '<p style="color:var(--text3);padding:20px 0">Nothing charting right now.</p>';
-  const moves = movementFor(items.map(item => item.id));
+  const moves = movementFor(items.map(item => item.id), chart);
   const [lead, ...rest] = items;
   return `<div class="t10-wrap">
     ${heroHTML(lead, type, moves.get(lead.id))}

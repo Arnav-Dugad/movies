@@ -174,7 +174,11 @@ export function renderProfile() {
 
   const quick = `<section class="profile-panel profile-quick"><div class="profile-panel-head"><div><span>One-tap navigation</span><h2>Quick launch</h2></div></div><div class="profile-quick-grid">${[[PROFILE_ICONS.calendar, 'Release calendar', 'reminders'], [PROFILE_ICONS.watched, 'Watch history', 'watched'], [PROFILE_ICONS.users, 'Friends & family', 'friends'], [PROFILE_ICONS.chart, 'Cineprint stats', 'stats']].map(([icon, label, page]) => `<button data-action="show-page" data-page="${page}">${icon}<span>${label}</span><b>→</b></button>`).join('')}<button class="profile-intelligence-key" data-action="profile-toggle-intelligence">${PROFILE_ICONS.star}<span>Why these picks?</span><b>${intelligenceOpen ? '×' : '→'}</b></button></div></section>`;
 
-  const favoriteData = state.profile.favoriteFilmPoster ? state.profile : (favoritePreviewSource === state.profile.favoriteFilm ? favoritePreview : state.profile);
+  // The preview only stands in when a lookup has actually produced one FOR the
+  // current title. Comparing the two empty strings matched before a favourite was
+  // ever set, selected the null preview, and threw on the next line.
+  const usePreview = favoritePreview && favoritePreviewSource && favoritePreviewSource === state.profile.favoriteFilm;
+  const favoriteData = state.profile.favoriteFilmPoster ? state.profile : (usePreview ? favoritePreview : state.profile);
   const favoritePoster = favoriteData.favoriteFilmPoster ? `${IMG}w342${favoriteData.favoriteFilmPoster}` : PH;
   const favoriteFilm = favoriteData.favoriteFilm ? `${favoriteData.favoriteFilmId ? `<a class="profile-favorite-film" href="/movie/${favoriteData.favoriteFilmId}" data-action="open-detail" data-id="${favoriteData.favoriteFilmId}" data-type="movie">` : '<article class="profile-favorite-film">'}<img src="${esc(favoritePoster)}" alt="${esc(favoriteData.favoriteFilm)} poster" loading="lazy" data-ph="${PH}"><span><small>Favorite film</small><strong>${esc(favoriteData.favoriteFilm)}</strong><em>Always returning to this one</em></span>${favoriteData.favoriteFilmId ? '</a>' : '</article>'}` : '';
   const about = state.profile.bio || favoriteFilm ? `<section class="profile-panel profile-about"><div><span>Personal note</span><h2>${esc(state.profile.bio || 'A collection shaped by curiosity.')}</h2></div>${favoriteFilm}</section>` : '';

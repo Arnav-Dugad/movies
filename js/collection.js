@@ -29,7 +29,7 @@ export async function openCollection2(id) {
   curSec = s; page = 1;
   document.title = `${s.t} — CineVerse`;
   ct.innerHTML = s.t10
-    ? `<div class="t10-top"><span class="t10-eyebrow">Updated every week from TMDB</span><h1>${s.icon} ${s.t}</h1><p>The ten titles the world is actually watching, counted down. Movement is measured against the last week CineVerse saw on this device — never guessed.</p></div><div id="collGrid">${skelCards(10)}</div><div class="load-more" id="collMore"></div>`
+    ? `<div class="t10-top"><span class="t10-eyebrow">Updated every week from TMDB</span><h1>${s.icon} ${s.t}</h1><p>The ten ${s.type === 'tv' ? 'series' : 'films'} the world is actually watching, counted down. Movement is measured against the last week CineVerse saw on this device — never guessed.</p></div><div id="collGrid">${skelCards(10)}</div><div class="load-more" id="collMore"></div>`
     : `<div class="browse-top"><h1>${s.icon} ${s.t}</h1></div><div class="browse-grid" id="collGrid">${skelCards(12)}</div><div class="load-more" id="collMore"></div>`;
   try {
     const d = await tmdb(s.p, { ...(s.params || {}), page: 1 });
@@ -38,7 +38,7 @@ export async function openCollection2(id) {
     const grid = $('collGrid');
     const results = (d.results || []).filter(x => keep(s, x)).slice(0, s.t10 ? 10 : 20);
     if (s.t10) {
-      grid.innerHTML = top10HTML(results, s.type);
+      grid.innerHTML = top10HTML(results, s.type, s.id);
       if (results[0]) hydrateTop10Trailer(results[0], s.type);
     } else {
       grid.innerHTML = results.map((x, index) => cardFor(s, x, index)).join('') || '<p style="color:var(--text3);padding:20px 0">Nothing here right now.</p>';

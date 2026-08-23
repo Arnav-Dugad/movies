@@ -21,6 +21,12 @@ let navHint = null;           // instant-paint hint captured from the clicked ca
 let lastVTSource = null;      // element currently holding the shared view-transition-name
 let clampResize = null;       // window resize handler that re-measures the read-more toggles
 let reqGen = 0;                // bumped on every openDetail/openCollection call; guards against a slower, stale fetch overwriting a newer one
+// Which account the page on screen was built for. Firebase resolves auth
+// asynchronously, so a page opened straight from a URL — a shared link, a
+// refresh, "open in new tab" — renders while the library is still empty. The
+// watched tick, the rating, the rewatch strip and the episode panel all describe
+// that empty library, and nothing corrected them afterwards.
+let renderedFor = { uid: null, kind: null, id: 0 };
 let epGen = 0;                 // same idea, scoped to the season-episode list (season tabs can be clicked faster than they load)
 const countdownTimers = new Map(); // one precision clock per title; exact airtimes replace date-only estimates
 
@@ -77,6 +83,7 @@ export async function openDetail(id, type) {
     // faster, newer response has already rendered.
     if (gen !== reqGen) return;
     curDet = det; curType = type;
+    renderedFor = { uid: state.user?.uid || null, kind: 'detail', id: +id };
 
     const title = det.title || det.name || ''; const safeTitle = esc(title);
     const logoPath = pickLogo(det.images?.logos);
@@ -1139,6 +1146,7 @@ export async function openCollection(cid) {
   try {
     const d = await tmdb(`/collection/${cid}`);
     if (gen !== reqGen) return;
+    renderedFor = { uid: state.user?.uid || null, kind: 'collection', id: +cid };
     if (d.parts?.length) {
       const sorted = d.parts.sort((a, b) => new Date(a.release_date || '9999') - new Date(b.release_date || '9999'));
       const progress = collectionProgress(sorted);
@@ -1312,6 +1320,21 @@ export function initDetail() {
       openDetail(tid, 'tv');
     },
     'go-collection': (el) => document.dispatchEvent(new CustomEvent('cv:go', { detail: `/collection/${el.dataset.cid}` })),
+  });
+
+  // Rebuild once the account arrives. Every library-dependent thing on this page
+  // — the tick, the rating, the rewatch strip, the episode tracker, the
+  // collection standing — was computed at render time, so patching them one by
+  // one would be five chances to miss the sixth. The TMDB responses are cached,
+  // so this costs a re-render and no network, and it fires at most once per
+  // auth change, before anyone has had time to interact.
+  document.addEventListener('cv:auth', () => {
+    const uid = state.user?.uid || null;
+    if (uid === renderedFor.uid || !renderedFor.kind) return;
+    const page = document.getElementById('detailPage');
+    if (!page || getComputedStyle(page).display === 'none') { renderedFor = { uid: null, kind: null, id: 0 }; return; }
+    if (renderedFor.kind === 'collection') openCollection(renderedFor.id);
+    else openDetail(renderedFor.id, curType || 'movie');
   });
 
   // The watched tick and the rewatch strip are two views of one fact, so ticking

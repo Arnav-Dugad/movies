@@ -285,8 +285,9 @@ const debouncedFranchiseRail = debounce(() => renderFranchiseRail(), 700);
 // same endpoint + params behind a row's "See all".
 export const SECTIONS = [
   { id: 'pop_movies', t: 'Popular Movies', p: '/movie/popular', type: 'movie', icon: '🎬', page: 'movies' },
-  { id: 'top10', t: 'Top 10 This Week', p: '/trending/movie/week', type: 'movie', t10: true, icon: '🔥', page: 'movies' },
+  { id: 'top10', t: 'Top 10 Movies This Week', p: '/trending/movie/week', type: 'movie', t10: true, icon: '🔥', page: 'movies' },
   { id: 'pop_tv', t: 'Popular TV Shows', p: '/tv/popular', type: 'tv', icon: '📺', page: 'tv' },
+  { id: 'top10_tv', t: 'Top 10 Shows This Week', p: '/trending/tv/week', type: 'tv', t10: true, icon: '🔥', page: 'tv' },
   { id: 'acclaimed', t: 'Critically Acclaimed', p: '/discover/movie', params: { sort_by: 'vote_average.desc', 'vote_count.gte': 3000 }, type: 'movie', icon: '🏆', page: 'movies' },
   { id: 'now_playing', t: 'Now Playing', p: '/movie/now_playing', type: 'movie', icon: '🎞️', page: 'movies' },
   { id: 'trending_people', t: 'Trending People', p: '/trending/person/week', type: 'person', icon: '🎭' },
