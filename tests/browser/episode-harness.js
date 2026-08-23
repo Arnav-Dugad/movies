@@ -108,10 +108,12 @@ const episodes = await import('/js/episodes.js');
 const { initDelegation } = await import('/js/events.js');
 const detail = await import('/js/detail.js');
 const { initHScroll } = await import('/js/hscroll.js');
+const { initCardPreviews } = await import('/js/card-previews.js');
 
 initDelegation();
 detail.initDetail();
 initHScroll();
+initCardPreviews();
 
 async function signIn(uid) {
   episodes.resetEpisodeProgressForAuth();

@@ -46,6 +46,7 @@ import { initImportCSV } from './import-csv.js';
 import { initAwards } from './awards.js';
 import { initProviderBadges } from './provider-badges.js';
 import { initNotifications } from './notifications.js';
+import { initCardPreviews } from './card-previews.js';
 
 function hideLoader() { window.__cvBooted = true; const l = $('loader'); if (l) l.classList.add('hidden'); }
 
@@ -56,6 +57,7 @@ async function init() {
   initDelegation();
   initImageFallback();
   initCardSync();
+  initCardPreviews();
   initProviderBadges();
   initNotifications();
   initAuth();

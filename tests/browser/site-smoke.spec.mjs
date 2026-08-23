@@ -1,7 +1,26 @@
 import { test, expect } from '@playwright/test';
 
+async function bootGuest(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('cv_onboarding_guest_v1', JSON.stringify({ done: true, region: 'IN', seedGenres: [] }));
+    const snapshot = { exists: false, empty: true, docs: [], data: () => ({}), forEach() {} };
+    const ref = {
+      collection: () => ref, doc: () => ref, where: () => ref, orderBy: () => ref, limit: () => ref,
+      get: async () => snapshot, set: async () => {}, update: async () => {}, add: async () => ref, delete: async () => {},
+      onSnapshot: callback => { callback(snapshot); return () => {}; },
+    };
+    const authInstance = { onAuthStateChanged: callback => { queueMicrotask(() => callback(null)); return () => {}; }, signOut: async () => {} };
+    const auth = () => authInstance;
+    auth.GoogleAuthProvider = class {};
+    auth.EmailAuthProvider = { credential: () => ({}) };
+    const firestore = () => ({ collection: () => ref, batch: () => ({ set() {}, update() {}, delete() {}, commit: async () => {} }), runTransaction: async worker => worker({ get: ref2 => ref2.get(), set() {}, update() {}, delete() {} }) });
+    firestore.FieldValue = { serverTimestamp: () => Date.now(), increment: value => value, arrayUnion: (...values) => values, arrayRemove: (...values) => values, delete: () => null };
+    window.firebase = { initializeApp() {}, auth, firestore };
+  });
+}
+
 test('highest-grossing rail and dedicated page expose reported money', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('cv_onboarding_guest_v1', JSON.stringify({ done: true, region: 'IN', seedGenres: [] })));
+  await bootGuest(page);
   await page.route('https://api.themoviedb.org/3/discover/movie**', async route => {
     const url = new URL(route.request().url());
     if (url.searchParams.get('sort_by') !== 'revenue.desc') return route.continue();
@@ -53,6 +72,8 @@ test('highest-grossing rail and dedicated page expose reported money', async ({ 
   await expect(page.locator('.bo-league-row')).toContainText('$2,923,706,026');
   await expect(page.locator('.bo-league-row')).toContainText('100% hit rate');
   await expect(page.locator('.bo-director-eras')).toContainText('Career');
+  await expect(page.locator('.bo-director-consistency')).toContainText('Early sample');
+  await expect(page.locator('.bo-director-consistency')).toContainText('1 measured');
   const alignment = await page.evaluate(() => {
     const hero = document.querySelector('.bo-page-hero')?.getBoundingClientRect();
     const league = document.querySelector('.bo-league')?.getBoundingClientRect();
@@ -68,7 +89,7 @@ test('highest-grossing rail and dedicated page expose reported money', async ({ 
 });
 
 test('franchise page switches watch order and exposes gaps, timeline, coverage, and freshness', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('cv_onboarding_guest_v1', JSON.stringify({ done: true, region: 'IN', seedGenres: [] })));
+  await bootGuest(page);
   await page.route('https://api.themoviedb.org/3/**', async route => {
     const path = new URL(route.request().url()).pathname.replace('/3', '');
     if (path === '/collection/10') return route.fulfill({ json: {

@@ -30,7 +30,7 @@ const PROGRAMS = [
   ['naacp', /naacp image/i, 'NAACP Image Awards', 'NAACP Image Awards logo'],
 ];
 
-const cacheKey = imdbId => `cv_awards_v7_${imdbId}`;
+const cacheKey = imdbId => `cv_awards_v8_${imdbId}`;
 function readCache(imdbId) {
   try { const value = JSON.parse(localStorage.getItem(cacheKey(imdbId)) || 'null'); return value && Date.now() - value.ts < CACHE_MS ? value.items : null; }
   catch (_) { return null; }
@@ -58,19 +58,30 @@ function categoryFor(label, programme) {
 }
 
 async function commonsLogo(programme) {
-  const key = `cv_award_logo_v2_${programme.id}`;
+  const key = `cv_award_logo_v3_${programme.id}`;
   try {
     const cached = JSON.parse(localStorage.getItem(key) || 'null');
     if (cached && Date.now() - cached.ts < 30 * CACHE_MS) return cached.url || '';
   } catch (_) {}
   try {
-    const params = new URLSearchParams({ action: 'query', format: 'json', origin: '*', generator: 'search', gsrnamespace: '6', gsrlimit: '12', gsrsearch: programme.query, prop: 'imageinfo', iiprop: 'url', iiurlwidth: '320' });
+    const params = new URLSearchParams({ action: 'query', format: 'json', origin: '*', generator: 'search', gsrnamespace: '6', gsrlimit: '18', gsrsearch: programme.query, prop: 'imageinfo', iiprop: 'url', iiurlwidth: '512' });
     const response = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`);
     if (!response.ok) throw new Error(response.status);
     const pages = Object.values((await response.json()).query?.pages || {});
-    const suitable = pages.filter(page => /\.(svg|png|webp|jpe?g)$/i.test(page.title || ''));
-    suitable.sort((a, b) => Number(/logo|wordmark|emblem/i.test(b.title || '')) - Number(/logo|wordmark|emblem/i.test(a.title || '')));
-    const info = suitable[0]?.imageinfo?.[0];
+    const programmeWords = programme.label.toLowerCase().split(/[^a-z0-9]+/).filter(word => word.length > 3 && !/award|festival/.test(word));
+    const score = page => {
+      const title = String(page.title || '').toLowerCase();
+      let value = programmeWords.reduce((sum, word) => sum + (title.includes(word) ? 4 : 0), 0);
+      if (/logo|wordmark/i.test(title)) value += 14;
+      if (/emblem|mark|identity/i.test(title)) value += 6;
+      if (/official/i.test(title)) value += 3;
+      if (/\.svg$/i.test(title)) value += 5;
+      if (/\b(19|20)\d{2}\b|ceremony|red.?carpet|winner|arrival|poster|photograph|trophy presentation/i.test(title)) value -= 18;
+      return value;
+    };
+    const suitable = pages.filter(page => /\.(svg|png|webp|jpe?g)$/i.test(page.title || '')).sort((a, b) => score(b) - score(a));
+    const winner = suitable.find(page => score(page) >= 10);
+    const info = winner?.imageinfo?.[0];
     const url = commonsArt(info?.thumburl || info?.url || '');
     try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), url })); } catch (_) {}
     return url;
@@ -103,7 +114,8 @@ async function fetchAwards(imdbId) {
   return (data.results?.bindings || []).map(row => ({
     kind: row.kind?.value || '', label: row.honorLabel?.value || '', url: row.honor?.value || '',
     date: row.date?.value || '',
-    art: row.logo?.value || row.parentLogo?.value || row.grandLogo?.value || row.issuerLogo?.value || row.image?.value || row.parentImage?.value || row.grandImage?.value || row.issuerImage?.value || '',
+    logoArt: row.logo?.value || row.parentLogo?.value || row.grandLogo?.value || row.issuerLogo?.value || '',
+    imageArt: row.image?.value || row.parentImage?.value || row.grandImage?.value || row.issuerImage?.value || '',
   })).filter(item => item.label && item.kind);
 }
 
@@ -111,7 +123,7 @@ function uniqueAwards(items) {
   const deduped = new Map();
   items.forEach(item => {
     const key = `${item.kind}|${item.label}`, old = deduped.get(key);
-    if (!old || (!old.art && item.art)) deduped.set(key, item);
+    if (!old || (!old.logoArt && item.logoArt)) deduped.set(key, item);
   });
   const wonLabels = new Set([...deduped.values()].filter(item => item.kind === 'win').map(item => item.label));
   return [...deduped.values()].filter(item => item.kind !== 'nomination' || !wonLabels.has(item.label));
@@ -125,7 +137,7 @@ async function groupAwards(items) {
     if (!groups.has(programme.id)) groups.set(programme.id, { ...programme, items: [], wins: 0, nominations: 0, art: '' });
     const group = groups.get(programme.id);
     group.items.push(item); group[item.kind === 'win' ? 'wins' : 'nominations']++;
-    if (!group.art) group.art = commonsArt(item.art);
+    if (!group.art) group.art = commonsArt(item.logoArt);
   });
   const rows = [...groups.values()].sort((a, b) => Number(b.major) - Number(a.major) || b.wins - a.wins || b.items.length - a.items.length || a.label.localeCompare(b.label)).slice(0, 12);
   await Promise.all(rows.map(async row => { row.art = await commonsLogo(row) || row.art; }));

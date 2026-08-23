@@ -14,6 +14,7 @@ import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeW
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
+import { boxOfficeAssumptions } from './box-office.js';
 
 let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
@@ -95,7 +96,14 @@ export async function openDetail(id, type) {
       : `<h1 class="detail-title">${safeTitle}</h1>`;
     const year = (det.release_date || det.first_air_date || '').slice(0, 4);
     document.title = `${title}${year ? ' (' + year + ')' : ''} — CineVerse`;
-    const back = det.backdrop_path ? `${IMG}original${det.backdrop_path}` : ''; const poster = det.poster_path ? `${IMG}w500${det.poster_path}` : PH;
+    const backdropPath = det.backdrop_path || det.images?.backdrops?.find(image => image.file_path)?.file_path || '';
+    const posterPath = det.poster_path || det.images?.posters?.find(image => image.file_path)?.file_path || '';
+    const back = backdropPath ? `${IMG}original${backdropPath}` : posterPath ? `${IMG}original${posterPath}` : '';
+    const backdropMode = backdropPath ? '' : posterPath ? ' detail-back-portrait' : ' detail-back-empty';
+    const titleMark = title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase() || 'CV';
+    const posterHTML = posterPath
+      ? `<div class="detail-poster"><img src="${IMG}w500${posterPath}" alt="${safeTitle}" data-ph="${PH}"></div>`
+      : `<div class="detail-poster detail-poster-empty" role="img" aria-label="No poster available for ${safeTitle}"><b>${esc(titleMark)}</b><small>${safeTitle}</small></div>`;
     const rat = det.vote_average ? det.vote_average.toFixed(1) : 'N/A';
     const rt = det.runtime ? `${Math.floor(det.runtime / 60)}h ${det.runtime % 60}m` : (det.episode_run_time?.length ? `${det.episode_run_time[0]}m/ep` : '');
     const genres = (det.genres || []).map(g => g.name); const cert = getCert(det, type);
@@ -165,7 +173,7 @@ export async function openDetail(id, type) {
         <div class="d-sec-title">Seasons</div><div class="season-scroll">${seasonCards}</div>
         <div class="episode-browser-head"><div class="d-sec-title">Episodes</div><label class="episode-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="episodeSearch_${id}" placeholder="Search episodes" aria-label="Search episodes by title, number, or description"></label></div>
         <div class="season-tabs">${vs.map(s => `<div class="s-tab ${s.season_number === openSeason ? 'active' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}">${esc(s.name)}</div>`).join('')}</div>
-        <div class="ep-list" id="epList_${id}"><div class="skel" style="height:80px;width:100%"></div></div></div>`;
+        <div class="ep-list" id="epList_${id}" role="region" aria-label="Episodes" tabindex="0"><div class="skel" style="height:80px;width:100%"></div></div></div>`;
     }
 
     const allVids = (vids.results || []).filter(v => v.site === 'YouTube').slice(0, 10);
@@ -193,10 +201,10 @@ export async function openDetail(id, type) {
       collHTML = `<a class="coll-banner" href="/collection/${c.id}" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div><div class="coll-progress" id="collProg_${id}"></div></div></a><div id="collStrip_${id}"></div>`; }
 
     ct.innerHTML = `
-      ${back ? `<div class="detail-back"><img src="${back}" alt=""><div class="detail-back-grad"></div></div>` : '<div style="height:var(--nav-h)"></div>'}
+      <div class="detail-back${backdropMode}">${back ? `<img src="${back}" alt="">` : `<div class="detail-back-placeholder" aria-hidden="true"><b>${esc(titleMark)}</b><span>${safeTitle}</span></div>`}<div class="detail-back-grad"></div></div>
       <div class="detail-inner">
         <div class="detail-top">
-          <div class="detail-poster"><img src="${poster}" alt="${safeTitle}" data-ph="${PH}"></div>
+          ${posterHTML}
           <div class="detail-head">
             ${titleHTML}
             ${det.tagline ? `<p class="detail-tagline">"${esc(det.tagline)}"</p>` : ''}
@@ -245,6 +253,7 @@ export async function openDetail(id, type) {
         ${kwHTML}${vidsHTML}${castHTML}${crewHTML}${galHTML}${seasHTML}${revsHTML}${simHTML}
       </div>`;
 
+    ct.classList.toggle('no-detail-poster', !posterPath);
     if (cdDate) startCD(id, cdDate, cdDoneMsg);
     if (type === 'tv' && det.next_episode_to_air) hydrateNextEpisodeTime(det, id, gen);
     if (type === 'tv' && det.seasons?.length) bindEpisodeSearch(id, det.seasons.filter(season => season.season_number > 0));
@@ -267,7 +276,7 @@ export async function openDetail(id, type) {
     // The rest of the franchise, under the collection banner.
     if (det.belongs_to_collection) loadCollectionStrip(id, det.belongs_to_collection.id, gen);
     // Video-forward: fade a muted looping trailer in behind the backdrop (desktop + motion only).
-    if (back && trailer?.key) { const backEl = ct.querySelector('.detail-back'); if (backEl) ambientTeardown = mountAmbientVideo(backEl, trailer.key); }
+    if (trailer?.key) { const backEl = ct.querySelector('.detail-back'); if (backEl) ambientTeardown = mountAmbientVideo(backEl, trailer.key); }
   } catch (e) {
     console.error(e);
     ct.innerHTML = '<div style="text-align:center;padding:120px 20px"><p style="font-size:1.1rem;font-weight:600">Failed to load</p><p style="color:var(--text3);margin:8px 0 20px">Please try again</p><button class="btn-primary" data-action="back">Back</button></div>';
@@ -669,22 +678,22 @@ const money = value => `$${fmt(Math.round(value))}`;
 
 function boxOfficeModel(det) {
   const budget = +(det.budget || 0), revenue = +(det.revenue || 0);
-  const marketingLow = budget * .5, marketingHigh = budget;
+  const market = boxOfficeAssumptions(det);
+  const marketingLow = budget * market.marketingLowRate, marketingHigh = budget * market.marketingHighRate;
   const costLow = budget + marketingLow, costHigh = budget + marketingHigh;
-  // Studios keep roughly 40-55% of the worldwide gross, so break-even sits well
-  // above total cost. Both ends of that assumption are stated in the disclosure.
-  const beLow = budget ? costLow / .55 : 0, beHigh = budget ? costHigh / .4 : 0;
+  const beLow = budget ? costLow / market.returnHighRate : 0, beHigh = budget ? costHigh / market.returnLowRate : 0;
   return {
-    budget, revenue, marketingLow, marketingHigh, costLow, costHigh,
+    budget, revenue, market, marketingLow, marketingHigh, costLow, costHigh,
     beLow, beHigh, beMid: (beLow + beHigh) / 2,
     multiple: budget ? revenue / budget : 0,
     hasBoth: !!(budget && revenue),
-    studioLow: revenue * .4, studioHigh: revenue * .55,
+    studioLow: revenue * market.returnLowRate, studioHigh: revenue * market.returnHighRate,
   };
 }
 
 function boxOfficeVerdict(m) {
   if (!m.hasBoth) return { tone: 'neutral', line: m.budget ? 'Worldwide gross has not been reported yet.' : 'The production budget has not been reported.' };
+  if (m.market.id === 'india') return { tone: m.multiple >= m.market.hitThreshold ? 'strong' : m.multiple >= 1 ? 'ok' : 'weak', line: `Worldwide gross is ${m.multiple.toFixed(1)}x the production budget. An Indian trade verdict needs India nett and distributor-rights cost, which are not reported here.` };
   if (m.revenue >= m.beHigh) return { tone: 'strong', line: `Grossed ${m.multiple.toFixed(1)}x its budget and cleared even the most cautious break-even estimate.` };
   if (m.revenue >= m.beMid) return { tone: 'strong', line: `Grossed ${m.multiple.toFixed(1)}x its budget, past the middle of the modelled break-even band.` };
   if (m.revenue >= m.beLow) return { tone: 'ok', line: `Grossed ${m.multiple.toFixed(1)}x its budget — inside the modelled break-even band, so the real outcome turns on what marketing actually cost.` };
@@ -732,7 +741,7 @@ function boxOfficeChart(m, width) {
       <line x1="${right.toFixed(1)}" x2="${right.toFixed(1)}" y1="${top}" y2="${bottom}" stroke="${BO_BAND}" stroke-opacity=".3" stroke-width="1"/>
       <line class="bo3-band-rule" x1="${mid.toFixed(1)}" x2="${mid.toFixed(1)}" y1="${top}" y2="${bottom}" stroke="${BO_BAND}" stroke-width="1.5"/>
       <text x="${mid.toFixed(1)}" y="${(top - 5).toFixed(1)}" text-anchor="middle" fill="${BO_BAND}" font-size="9.5" font-weight="700">break-even</text>
-      <rect class="bo3-hit" x="${(left - 6).toFixed(1)}" y="${padT - 6}" width="${Math.max(24, right - left + 12).toFixed(1)}" height="${(H - padB + 12 - padT).toFixed(1)}" fill="transparent" data-tip="Modelled break-even ${money(m.beLow)} to ${money(m.beHigh)} — production plus 50-100% marketing, divided by a 40-55% studio share of the gross"></rect>
+      <rect class="bo3-hit" x="${(left - 6).toFixed(1)}" y="${padT - 6}" width="${Math.max(24, right - left + 12).toFixed(1)}" height="${(H - padB + 12 - padT).toFixed(1)}" fill="transparent" data-tip="Modelled break-even ${money(m.beLow)} to ${money(m.beHigh)} — production plus ${Math.round(m.market.marketingLowRate * 100)}-${Math.round(m.market.marketingHighRate * 100)}% marketing, divided by a ${Math.round(m.market.returnLowRate * 100)}-${Math.round(m.market.returnHighRate * 100)}% theatrical return"></rect>
     </g>`;
   })() : '';
 
@@ -767,25 +776,29 @@ function boxOfficeHTML(det) {
   if (!m.budget && !m.revenue) return '';
   const verdict = boxOfficeVerdict(m);
   const difference = m.revenue - m.budget;
+  const marketingRange = `${Math.round(m.market.marketingLowRate * 100)}–${Math.round(m.market.marketingHighRate * 100)}%`;
+  const returnRange = `${Math.round(m.market.returnLowRate * 100)}–${Math.round(m.market.returnHighRate * 100)}%`;
 
   const tiles = [
     m.budget ? ['Production budget', money(m.budget), 'Reported by TMDB'] : null,
     m.revenue ? ['Worldwide gross', money(m.revenue), 'Theatrical, all territories'] : null,
     m.hasBoth ? ['Gross above budget', `${difference >= 0 ? '+' : '−'}${money(Math.abs(difference))}`, 'Difference, not profit'] : null,
+    m.market.id === 'india' ? ['Market logic', 'India-aware', 'Distributor verdict kept separate'] : null,
   ].filter(Boolean);
 
   const tableRows = [
     m.budget ? ['Production budget', money(m.budget), 'Reported'] : null,
     m.revenue ? ['Worldwide gross', money(m.revenue), 'Reported'] : null,
-    m.budget ? ['Marketing', `${money(m.marketingLow)} – ${money(m.marketingHigh)}`, 'Modelled at 50–100% of production'] : null,
+    m.budget ? ['Marketing', `${money(m.marketingLow)} – ${money(m.marketingHigh)}`, `Modelled at ${marketingRange} of production`] : null,
     m.budget ? ['Total cost', `${money(m.costLow)} – ${money(m.costHigh)}`, 'Modelled: production plus marketing'] : null,
-    m.hasBoth ? ['Break-even gross', `${money(m.beLow)} – ${money(m.beHigh)}`, 'Modelled: cost ÷ a 40–55% studio share'] : null,
-    m.hasBoth ? ['Studio theatrical return', `${money(m.studioLow)} – ${money(m.studioHigh)}`, 'Modelled, before streaming and TV rights'] : null,
+    m.hasBoth ? ['Break-even gross', `${money(m.beLow)} – ${money(m.beHigh)}`, `Modelled: cost ÷ a ${returnRange} theatrical return`] : null,
+    m.hasBoth ? [m.market.id === 'india' ? 'Producer/distributor return' : 'Studio theatrical return', `${money(m.studioLow)} – ${money(m.studioHigh)}`, 'Modelled, before streaming and TV rights'] : null,
     m.hasBoth ? ['Gross ÷ budget', `${m.multiple.toFixed(2)}x`, 'Reported'] : null,
   ].filter(Boolean);
 
   const payload = esc(JSON.stringify(m));
   const core = `<div class="boxoffice3">
+    ${m.market.id === 'india' ? '<span class="bo3-market-chip">India-aware theatrical model</span>' : ''}
     <div class="bo3-lead ${verdict.tone}">
       ${m.hasBoth ? `<div class="bo3-hero"><strong data-count-decimal="${m.multiple.toFixed(2)}">0.00</strong><span>x budget</span></div>` : ''}
       <p>${esc(verdict.line)}</p>
@@ -813,7 +826,7 @@ function boxOfficeHTML(det) {
 
     <details class="bo3-model"><summary>How break-even is estimated</summary><div class="bo3-model-body">
       <p>TMDB reports two figures: the production budget and the worldwide gross. Studios publish neither their marketing spend nor their share of ticket sales, so everything labelled <em>modelled</em> below is an openly stated estimate — not accounting, and not profit.</p>
-      <ol><li>Marketing is assumed to cost 50–100% of the production budget.</li><li>Total cost is production plus that marketing range.</li><li>Studios keep roughly 40–55% of the worldwide gross, so break-even is total cost divided by that share.</li></ol>
+      <ol><li>Marketing is assumed to cost ${marketingRange} of the production budget.</li><li>Total cost is production plus that marketing range.</li><li>${m.market.id === 'india' ? `Producer and distributor return is modelled at ${returnRange} of worldwide gross. Indian Hit/Flop verdicts instead depend on India nett and distributor-rights cost, so this panel does not invent one.` : `Studios keep roughly ${returnRange} of worldwide gross, so break-even is total cost divided by that share.`}</li></ol>
     </div></details>
 
     <p class="bo3-note">Figures in USD, as reported to TMDB.</p>

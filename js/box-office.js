@@ -26,6 +26,49 @@ export const formatGross = (value, { compact = false } = {}) => {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 };
 
+const INDIAN_LANGUAGES = new Set(['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa', 'gu', 'ur', 'or', 'as']);
+
+/** True only for an Indian production (language is a fallback when country data is absent). */
+export function isIndianProduction(movie) {
+  const countries = [
+    ...(movie?.production_countries || []).map(country => country?.iso_3166_1 || country),
+    ...(movie?.origin_country || []), movie?.country,
+  ].filter(Boolean).map(value => String(value).toUpperCase());
+  if (countries.length) return countries.includes('IN');
+  return INDIAN_LANGUAGES.has(String(movie?.original_language || '').toLowerCase());
+}
+
+/**
+ * Market assumptions used only for clearly-labelled modelling. Indian trade
+ * verdicts are based on distributor recovery and India nett, neither of which
+ * TMDB supplies, so the Indian profile is deliberately kept separate from the
+ * standard worldwide studio model.
+ */
+export function boxOfficeAssumptions(movie) {
+  const india = isIndianProduction(movie);
+  return india
+    ? { id: 'india', label: 'India-aware model', marketingLowRate: .25, marketingHighRate: .75, returnLowRate: .4, returnHighRate: .5, hitThreshold: 2.5 }
+    : { id: 'worldwide', label: 'Worldwide studio model', marketingLowRate: .5, marketingHighRate: 1, returnLowRate: .4, returnHighRate: .55, hitThreshold: 2 };
+}
+
+export function directorConsistency(movies) {
+  const sample = (movies || []).filter(movie => +movie?.budget > 0 && +movie?.revenue > 0);
+  if (!sample.length) return { score: null, label: 'Not enough data', sample: 0, hitRate: null, stability: null, medianMultiple: null };
+  const multiples = sample.map(movie => +movie.revenue / +movie.budget);
+  const hits = sample.filter(movie => (+movie.revenue / +movie.budget) >= boxOfficeAssumptions(movie).hitThreshold).length;
+  const hitRate = hits / sample.length * 100;
+  const logs = multiples.map(value => Math.log2(Math.max(.05, value)));
+  const mean = logs.reduce((sum, value) => sum + value, 0) / logs.length;
+  const deviation = Math.sqrt(logs.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / logs.length);
+  const stability = Math.max(0, Math.round(100 - deviation * 42));
+  const score = Math.round(hitRate * .72 + stability * .28);
+  const ordered = [...multiples].sort((a, b) => a - b);
+  const middle = Math.floor(ordered.length / 2);
+  const medianMultiple = ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+  const label = sample.length < 3 ? 'Early sample' : score >= 85 ? 'Exceptional' : score >= 70 ? 'Reliable' : score >= 55 ? 'Steady' : score >= 40 ? 'Mixed' : 'Volatile';
+  return { score: sample.length < 3 ? null : score, label, sample: sample.length, hitRate: Math.round(hitRate), stability, medianMultiple };
+}
+
 async function movieDetail(movie, force) {
   const cached = detailCache.get(movie.id);
   if (!force && cached && Date.now() - cached.at < DAY) return cached.data;
@@ -160,8 +203,8 @@ export function aggregateDirectorRanking(movies, creditsByMovie) {
   });
   return [...directors.values()].filter(row => row.revenue > 0).map(row => {
     const budgeted = row.works.filter(movie => +movie.budget > 0 && +movie.revenue > 0);
-    const hits = budgeted.filter(movie => +movie.revenue >= +movie.budget * 2).length;
-    return { ...row, knownBudgets: budgeted.length, hits, hitRate: budgeted.length ? Math.round(hits / budgeted.length * 100) : null, eras: directorEraBreakdown(row.works) };
+    const hits = budgeted.filter(movie => (+movie.revenue / +movie.budget) >= boxOfficeAssumptions(movie).hitThreshold).length;
+    return { ...row, knownBudgets: budgeted.length, hits, hitRate: budgeted.length ? Math.round(hits / budgeted.length * 100) : null, consistency: directorConsistency(row.works), eras: directorEraBreakdown(row.works) };
   }).sort((a, b) => b.revenue - a.revenue || b.films - a.films || a.name.localeCompare(b.name));
 }
 

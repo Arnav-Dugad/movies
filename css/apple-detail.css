@@ -98,3 +98,43 @@
 .countdown-foot{padding:0!important;border:0!important;color:rgba(235,235,245,.34)!important;font-size:.49rem!important;text-align:right!important}
 @media(max-width:700px){.countdown{padding:18px 16px 14px!important}.countdown-head{align-items:center!important;flex-direction:row!important;gap:12px}.countdown-head h2{font-size:.78rem!important}.detail-local-airtime{max-width:48%;padding:6px 8px;font-size:.47rem}.countdown-stage{padding-top:23px!important}.cd-num{font-size:clamp(1.65rem,9.4vw,2.65rem)!important}.cd-txt{font-size:.36rem!important}.cd-separator{font-size:1.7rem!important}.countdown-horizon{margin-top:19px}.countdown-foot{text-align:right!important;font-size:.43rem!important}}
 @media(prefers-reduced-motion:reduce){.countdown-horizon>i{transition:none}}
+
+/* Episode library: bounded like a native media list, but never an invisible
+   scroll trap. The stable gutter and visible thumb make the second scroll
+   surface obvious on desktop; touch keeps momentum scrolling. */
+.ep-list{max-height:min(68vh,760px)!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior-y:contain;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:rgba(235,235,245,.26) rgba(255,255,255,.035);scroll-padding-block:10px;box-shadow:inset 0 1px rgba(255,255,255,.035),0 18px 55px rgba(0,0,0,.18)}
+.ep-list::-webkit-scrollbar{display:block;width:9px}.ep-list::-webkit-scrollbar-track{background:rgba(255,255,255,.025);border-radius:0 18px 18px 0}.ep-list::-webkit-scrollbar-thumb{min-height:52px;border:2px solid #111115;border-radius:999px;background:rgba(235,235,245,.28)}.ep-list::-webkit-scrollbar-thumb:hover{background:rgba(235,235,245,.48)}.ep-list:focus-visible{outline:2px solid rgba(125,211,252,.72);outline-offset:4px}
+.ep-list>.season-toolbar{position:sticky;z-index:6;top:0;margin:0;border-width:0 0 1px;border-radius:17px 17px 11px 11px;background:rgba(20,20,25,.9);box-shadow:0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
+
+/* Desktop-only Netflix-style poster previews. */
+@media (hover:hover) and (pointer:fine) and (min-width:901px){
+  .card[data-id][data-type]{transform-origin:center 46%}
+  .card[data-id][data-type]:hover{z-index:30;transform:translateY(-7px) scale(1.045)}
+  .card.card-previewing .card-img{border-color:rgba(255,255,255,.2);box-shadow:0 24px 65px rgba(0,0,0,.72),0 0 0 1px rgba(255,255,255,.09)}
+  .card-img .ambient-video{z-index:1;transform:scale(1.62);background:#07070a}
+  .card-img::after{z-index:1}
+}
+@media (hover:none),(pointer:coarse),(max-width:900px){.card-img .ambient-video{display:none!important}}
+
+/* Home posters get a little more presence without changing grid cards. */
+@media(min-width:769px){#homePage .row>.card:not(.card-w):not(.card-t10){width:172px}#homePage .row>.card-w{width:312px}#homePage .row>.card-t10{width:246px}#homePage .row>.card-t10 .card-img{width:130px}}
+@media(max-width:768px){#homePage .row>.card:not(.card-w):not(.card-t10){width:138px}}
+@media(max-width:380px){#homePage .row>.card:not(.card-w):not(.card-t10){width:120px}}
+
+/* Missing-media detail state. */
+.detail-back.detail-back-portrait>img{filter:blur(22px) saturate(.82);transform:scale(1.12);opacity:.54}
+.detail-back.detail-back-empty{height:clamp(340px,48vh,520px);aspect-ratio:auto;background:radial-gradient(circle at 72% 24%,rgba(125,211,252,.13),transparent 28%),radial-gradient(circle at 18% 82%,rgba(229,9,20,.14),transparent 31%),linear-gradient(145deg,#14141d,#08090e 70%)}
+.detail-back-placeholder{position:absolute;inset:0;display:grid;place-content:center;gap:10px;padding:80px 18vw 120px;color:rgba(255,255,255,.07);text-align:center}.detail-back-placeholder b{font-family:var(--font-display);font-size:clamp(4rem,12vw,10rem);font-weight:900;line-height:.7;letter-spacing:-.09em}.detail-back-placeholder span{overflow:hidden;font-size:.62rem;font-weight:750;letter-spacing:.26em;text-overflow:ellipsis;text-transform:uppercase;white-space:nowrap}
+.detail-poster-empty{aspect-ratio:2/3;display:flex;align-items:center;justify-content:flex-end;flex-direction:column;padding:24px 18px;background:radial-gradient(circle at 70% 20%,rgba(125,211,252,.18),transparent 33%),radial-gradient(circle at 12% 90%,rgba(229,9,20,.2),transparent 40%),linear-gradient(155deg,#20212c,#0d0e15);text-align:center}.detail-poster-empty b{font-family:var(--font-display);font-size:clamp(2.4rem,5vw,4.2rem);line-height:1;color:rgba(255,255,255,.88)}.detail-poster-empty small{width:100%;margin-top:auto;overflow:hidden;color:rgba(235,235,245,.55);font-size:.55rem;font-weight:700;letter-spacing:.08em;text-overflow:ellipsis;text-transform:uppercase;white-space:nowrap}
+.detail-page.no-detail-poster .detail-top{align-items:flex-end}.detail-page.no-detail-poster .detail-head{padding-bottom:10px}
+
+/* Awards: larger typography and artwork with room for real programme marks. */
+.awards-toggle{min-height:104px;gap:19px;padding:21px 24px!important}.awards-logo-stack{min-width:82px}.award-programme-mark.compact{width:50px;height:50px;padding:7px;border-radius:13px}.awards-toggle-copy strong{font-size:1.35rem!important}.awards-toggle-copy em{margin-top:5px!important;font-size:.76rem!important}
+.awards-body{padding:6px 24px 25px!important}.awards-list{gap:0 24px!important}.award-programme-card{min-height:112px;gap:19px;padding:20px 7px}.award-programme-mark{width:94px;height:70px;padding:10px;border-radius:16px}.award-programme-mark.wordmark>span{font-size:.76rem;font-weight:850;line-height:1.08}.award-programme-copy h3{font-size:1rem!important;line-height:1.2}.award-programme-copy p{margin-top:6px!important;font-size:.7rem!important}.award-categories{gap:6px;margin-top:11px}.award-categories span{max-width:190px;padding:5px 8px;font-size:.61rem}.award-timeline>div{min-width:108px;padding:11px 13px}.award-timeline time{font-size:.74rem}.award-timeline span{font-size:.59rem}
+
+/* Director consistency remains readable without turning each row into a dashboard. */
+.bo-director-consistency{max-width:480px;display:grid;grid-template-columns:auto minmax(90px,1fr) auto;align-items:center;gap:8px;margin-top:8px;color:var(--text3);font-size:.49rem}.bo-director-consistency>strong{color:#d8b4fe;font-size:.56rem}.bo-consistency-track{height:3px;overflow:hidden;border-radius:99px;background:rgba(255,255,255,.075)}.bo-consistency-track i{display:block;width:var(--consistency);height:100%;border-radius:inherit;background:linear-gradient(90deg,#7c3aed,#d8b4fe)}
+.bo-director-eras>.bo-director-consistency{grid-column:1/-1;max-width:none;margin-top:0}
+.bo-india-chip{display:inline-flex!important;align-items:center;width:max-content;margin-top:5px;padding:3px 7px;border:1px solid rgba(251,191,36,.17);border-radius:999px;background:rgba(251,191,36,.055);color:#fcd34d!important;font-size:.44rem!important;font-weight:750;letter-spacing:.04em;text-transform:uppercase}.bo3-market-chip{display:inline-flex;align-items:center;margin-bottom:9px;padding:5px 8px;border:1px solid rgba(251,191,36,.18);border-radius:999px;background:rgba(251,191,36,.055);color:#fcd34d;font-size:.51rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+
+@media(max-width:700px){.ep-list{max-height:min(62vh,580px)!important;scrollbar-gutter:auto}.detail-back.detail-back-empty{height:390px}.detail-back-placeholder{padding-inline:16px}.detail-page.no-detail-poster .detail-top{align-items:center}.awards-toggle{min-height:88px;padding:17px!important}.awards-logo-stack{min-width:64px}.award-programme-mark.compact{width:43px;height:43px}.award-programme-mark{width:78px;height:60px}.award-programme-card{min-height:96px;gap:14px;padding:17px 2px}.award-programme-copy h3{font-size:.9rem!important}.award-categories span{font-size:.57rem}.bo-director-consistency{grid-column:1/-1;max-width:none}}

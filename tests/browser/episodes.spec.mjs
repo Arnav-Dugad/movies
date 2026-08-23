@@ -105,7 +105,7 @@ test('episode search finds title, season number, episode number, and description
   await expect(page.locator('.episode-empty')).toHaveText('No episodes found');
 });
 
-test('desktop episodes use page scrolling and both season rails can navigate horizontally', async ({ page }) => {
+test('desktop episodes use a visible bounded scroller and both season rails navigate horizontally', async ({ page }) => {
   await fixture(page);
   await page.evaluate(() => cvTest.open());
   await page.evaluate(() => {
@@ -116,6 +116,8 @@ test('desktop episodes use page scrolling and both season rails can navigate hor
       const card = cards.firstElementChild.cloneNode(true);
       card.dataset.sn = season; card.classList.remove('active'); card.querySelector('.season-nm').textContent = `Season ${season}`; cards.appendChild(card);
     }
+    const list = document.querySelector('.ep-list'), episode = list.querySelector('.ep-card');
+    for (let copy = 0; copy < 20; copy++) list.appendChild(episode.cloneNode(true));
   });
   await expect(page.locator('.hs-wrap:has(> .season-tabs) .hs-next')).toBeVisible();
   const tabs = page.locator('.season-tabs');
@@ -123,9 +125,52 @@ test('desktop episodes use page scrolling and both season rails can navigate hor
   await page.locator('.hs-wrap:has(> .season-tabs) .hs-next').click();
   await expect.poll(() => tabs.evaluate(element => element.scrollLeft)).toBeGreaterThan(20);
   await expect(page.locator('.hs-wrap:has(> .season-scroll) .hs-next')).toBeVisible();
-  const listStyle = await page.locator('.ep-list').evaluate(element => ({ maxHeight: getComputedStyle(element).maxHeight, overflowY: getComputedStyle(element).overflowY }));
-  expect(listStyle.maxHeight).toBe('none');
-  expect(listStyle.overflowY).toBe('visible');
+  const episodeList = page.locator('.ep-list');
+  const listStyle = await episodeList.evaluate(element => ({ maxHeight: getComputedStyle(element).maxHeight, overflowY: getComputedStyle(element).overflowY, scrollable: element.scrollHeight > element.clientHeight, tabIndex: element.tabIndex }));
+  expect(listStyle.maxHeight).not.toBe('none');
+  expect(listStyle.overflowY).toBe('auto');
+  expect(listStyle.scrollable).toBe(true);
+  expect(listStyle.tabIndex).toBe(0);
+  await episodeList.evaluate(element => { element.scrollTop = 500; });
+  await expect.poll(() => episodeList.evaluate(element => element.scrollTop)).toBeGreaterThan(100);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(episodeList).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
+});
+
+test('poster trailers preview silently on desktop and never mount on mobile', async ({ page }) => {
+  await fixture(page);
+  await page.evaluate(() => {
+    document.documentElement.dataset.motion = 'full';
+    const card = document.createElement('a');
+    card.className = 'card'; card.dataset.id = '42'; card.dataset.type = 'movie'; card.dataset.yt = 'previewKey';
+    card.innerHTML = '<div class="card-img"><img alt="Preview title"></div><div class="card-info">Preview title</div>';
+    document.body.appendChild(card);
+  });
+  const card = page.locator('.card[data-id="42"]');
+  await card.hover();
+  const frame = card.locator('iframe.ambient-video');
+  await expect(frame).toHaveCount(1, { timeout: 2_500 });
+  await expect(frame).toHaveAttribute('src', /autoplay=1.*mute=1.*controls=0/);
+  await page.mouse.move(1200, 850);
+  await expect(frame).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await card.hover();
+  await page.waitForTimeout(700);
+  await expect(card.locator('iframe.ambient-video')).toHaveCount(0);
+});
+
+test('details without videos or images retain a complete aligned hero', async ({ page }) => {
+  await fixture(page);
+  await page.evaluate(() => cvTest.open());
+  await expect(page.locator('.detail-back-empty')).toBeVisible();
+  await expect(page.locator('.detail-poster-empty')).toBeVisible();
+  await expect(page.locator('.detail-title')).toContainText('Tracker Fixture');
+  await expect(page.getByRole('button', { name: 'Play Trailer' })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.detail-poster-empty')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
 });
 
 test('awards stay collapsed and use real remote programme artwork without generated seals', async ({ page }) => {
@@ -140,7 +185,7 @@ test('awards stay collapsed and use real remote programme artwork without genera
         { kind: { value: 'win' }, honor: { value: 'https://www.wikidata.org/wiki/Q2' }, honorLabel: { value: 'Academy Award for Best Director' }, date: { value: '2024-03-10T00:00:00Z' } },
         { kind: { value: 'nomination' }, honor: { value: 'https://www.wikidata.org/wiki/Q3' }, honorLabel: { value: 'Golden Globe Award for Best Motion Picture' }, date: { value: '2023-12-12T00:00:00Z' } },
       ] } }), { headers: { 'content-type': 'application/json' } });
-      if (url.includes('commons.wikimedia.org/w/api.php')) return new Response(JSON.stringify({ query: { pages: { 1: { title: 'File:Official award logo.svg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/JavaScript-logo.png' }] } } } }), { headers: { 'content-type': 'application/json' } });
+      if (url.includes('commons.wikimedia.org/w/api.php')) return new Response(JSON.stringify({ query: { pages: { 1: { title: 'File:Official Academy Awards Golden Globes logo.svg', imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/6/6a/JavaScript-logo.png' }] } } } }), { headers: { 'content-type': 'application/json' } });
       return original(input);
     };
     const section = document.createElement('section'); section.id = 'awardFixture'; section.className = 'awards-section'; section.hidden = true;
@@ -158,4 +203,6 @@ test('awards stay collapsed and use real remote programme artwork without genera
   await section.locator('.awards-toggle').click();
   await expect(section.locator('.awards-body')).toBeVisible();
   await expect(section.locator('.award-timeline time')).toHaveText(['2023', '2024']);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
 });
