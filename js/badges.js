@@ -279,6 +279,7 @@ export function initBadges() {
   // The ONLY celebratory path — a real user action, and it fires on any page, so
   // marking something watched from a home-page card still celebrates there.
   document.addEventListener('cv:wl-changed', () => syncBadges({ celebrate: true }));
+  document.addEventListener('cv:library-sync', () => syncBadges({ celebrate: false }));
   // A backfill unlock is a data-availability artifact, not an achievement.
   document.addEventListener('cv:meta-backfilled', () => syncBadges({ celebrate: false }));
 }

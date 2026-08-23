@@ -48,6 +48,9 @@ import { initProviderBadges } from './provider-badges.js';
 import { initNotifications } from './notifications.js';
 import { initCardPreviews } from './card-previews.js';
 import { initMovieProgress } from './movie-progress.js';
+import { initContinuePrefsSync } from './continue-prefs.js';
+import { initLibraryRealtime } from './library-sync.js';
+import { initHaptics } from './haptics.js';
 
 function hideLoader() { window.__cvBooted = true; const l = $('loader'); if (l) l.classList.add('hidden'); }
 
@@ -60,6 +63,9 @@ async function init() {
   initCardSync();
   initCardPreviews();
   initMovieProgress();
+  initContinuePrefsSync();
+  initLibraryRealtime();
+  initHaptics();
   initProviderBadges();
   initNotifications();
   initAuth();

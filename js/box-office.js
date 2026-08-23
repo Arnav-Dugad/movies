@@ -9,6 +9,8 @@ const detailCache = new Map();
 const collectionRevenueCache = new Map();
 const creditCache = new Map();
 const DAY = 86400000;
+const RATE_KEY = 'cv_usd_inr_rate_v1';
+let usdInrRecord = null;
 
 export function clearBoxOfficeCache() {
   pageCache.clear(); detailCache.clear(); collectionRevenueCache.clear(); creditCache.clear();
@@ -25,6 +27,40 @@ export const formatGross = (value, { compact = false } = {}) => {
   if (compact) return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 2 }).format(amount);
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 };
+
+/**
+ * TMDB reports revenue in USD. Indian titles are converted for display with a
+ * once-daily, no-key reference rate. The source USD remains authoritative and
+ * the approximation mark prevents a converted number looking like India nett.
+ */
+export async function getUsdInrRate({ force = false } = {}) {
+  if (!usdInrRecord) {
+    try { usdInrRecord = JSON.parse(localStorage.getItem(RATE_KEY) || 'null'); } catch (_) {}
+  }
+  if (!force && usdInrRecord?.rate > 0 && Date.now() - (+usdInrRecord.at || 0) < DAY) return usdInrRecord.rate;
+  try {
+    const response = await fetch('https://api.frankfurter.dev/v2/rate/USD/INR');
+    if (!response.ok) throw new Error(`FX ${response.status}`);
+    const payload = await response.json();
+    const rate = Math.max(1, +(payload?.rate || 0));
+    if (!rate) throw new Error('FX rate missing');
+    usdInrRecord = { rate, at: Date.now(), date: payload.date || '' };
+    try { localStorage.setItem(RATE_KEY, JSON.stringify(usdInrRecord)); } catch (_) {}
+    return rate;
+  } catch (_) {
+    // A conversion should never prevent the chart from loading. Prefer the last
+    // known value, then a conservative fallback, and keep the approximation mark.
+    return Math.max(1, +(usdInrRecord?.rate || 90));
+  }
+}
+
+export function formatIndianGross(value, { compact = false, rate = usdInrRecord?.rate || 90 } = {}) {
+  const usd = Math.max(0, +value || 0);
+  if (!usd) return 'Not reported';
+  const crore = usd * Math.max(1, +rate || 90) / 10000000;
+  if (compact) return `≈₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: crore >= 100 ? 0 : 1 }).format(crore)} Cr`;
+  return `≈ ₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(crore)} crore`;
+}
 
 const INDIAN_LANGUAGES = new Set(['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa', 'gu', 'ur', 'or', 'as']);
 
@@ -87,18 +123,23 @@ export function directorConsistency(movies) {
   const middle = median(performances);
   const deviation = median(performances.map(value => Math.abs(value - middle)));
   const stability = Math.round(clamp(100 - deviation * 2.15));
-  const successRate = Math.round(rows.filter(row => row.performance >= 60).length / rows.length * 100);
+  const successes = rows.filter(row => row.performance >= 60).length;
+  const successRate = Math.round(successes / rows.length * 100);
+  // A light beta prior stops 2/2 from looking more dependable than 18/22.
+  // Unlike a raw hit percentage this grows more decisive as the career sample
+  // grows, while the median/MAD pair makes the result resistant to one anomaly.
+  const confidenceAdjustedRate = (successes + 2) / (rows.length + 4) * 100;
   const confidence = 1 - Math.exp(-rows.length / 6);
-  const raw = successRate * .48 + middle * .34 + stability * .18;
+  const raw = confidenceAdjustedRate * .42 + middle * .40 + stability * .18;
   // Small samples regress towards neutral instead of ever displaying a fake 100.
   const score = Math.round(50 + (raw - 50) * confidence);
   const financialMultiples = rows.filter(row => row.multiple != null).map(row => row.multiple);
-  const label = rows.length < 3 ? 'Limited data' : score >= 82 ? 'Elite consistency' : score >= 70 ? 'Reliable' : score >= 58 ? 'Steady' : score >= 45 ? 'Mixed' : 'Volatile';
+  const label = rows.length < 3 ? 'Not enough comparable films' : score >= 82 ? 'Elite consistency' : score >= 70 ? 'Reliable' : score >= 58 ? 'Steady' : score >= 45 ? 'Mixed' : 'Volatile';
   return {
     score: rows.length < 3 ? null : score, label, sample: rows.length,
     financialSample: rows.filter(row => row.hasFinancial).length,
     audienceSample: rows.filter(row => row.hasAudience).length,
-    successRate, stability, medianPerformance: Math.round(middle),
+    successRate, confidence: Math.round(confidence * 100), stability, medianPerformance: Math.round(middle),
     medianMultiple: financialMultiples.length ? median(financialMultiples) : null,
   };
 }
@@ -106,7 +147,7 @@ export function directorConsistency(movies) {
 async function movieDetail(movie, force) {
   const cached = detailCache.get(movie.id);
   if (!force && cached && Date.now() - cached.at < DAY) return cached.data;
-  const detail = await tmdb(`/movie/${movie.id}`, {}, { cache: !force });
+  const detail = await tmdb(`/movie/${movie.id}`, { append_to_response: 'credits' }, { cache: !force });
   const data = {
     ...movie, ...detail,
     title: detail.title || movie.title || '',
@@ -136,7 +177,10 @@ export async function grossingMoviesPage(page = 1, { force = false } = {}) {
     } catch (_) { /* one incomplete film must not lose the whole chart */ }
   }, 5);
   rows.sort((a, b) => b.revenue - a.revenue || b.vote_count - a.vote_count || a.title.localeCompare(b.title));
-  const data = { page: number, totalPages: Math.min(3, +discover.total_pages || 1), rows, requested: candidates.length, updatedAt: Date.now() };
+  // Director and franchise rankings need a meaningfully deep chart. Sixty films
+  // omitted major careers (notably Steven Spielberg); ten pages covers roughly
+  // the top 200 while keeping hydration bounded and cached for a full day.
+  const data = { page: number, totalPages: Math.min(10, +discover.total_pages || 1), rows, requested: candidates.length, updatedAt: Date.now() };
   pageCache.set(number, { at: Date.now(), data });
   return data;
 }
@@ -246,6 +290,11 @@ export function aggregateDirectorRanking(movies, creditsByMovie) {
 export async function directorBoxOfficeRanking(movies, { force = false, limit = 30 } = {}) {
   const creditsByMovie = new Map();
   await pool(movies, async movie => {
+    if (movie?.credits?.crew?.length) {
+      creditsByMovie.set(+movie.id, movie.credits.crew);
+      creditCache.set(movie.id, { at: Date.now(), crew: movie.credits.crew });
+      return;
+    }
     let record = creditCache.get(movie.id);
     if (force || !record || Date.now() - record.at >= DAY) {
       const data = await tmdb(`/movie/${movie.id}/credits`, {}, { cache: !force });

@@ -1,28 +1,27 @@
-// ===== DESKTOP TITLE PREVIEWS =====
-// Netflix-style previews are separate landscape surfaces, never video squeezed
-// into a portrait poster. They are created only after deliberate mouse hover,
-// fetch at most one trailer per title, and are completely absent on touch UI.
+// ===== INLINE DESKTOP TITLE PREVIEWS =====
+// A card grows inside its own horizontal rail, so neighbouring posters glide
+// aside instead of being covered by a floating panel. The trailer is decorative:
+// cropped beyond YouTube's chrome, keyboard-disabled, caption-free and muted
+// until the viewer explicitly chooses sound.
 import { tmdb } from './api.js';
-import { IMG, PH } from './config.js';
+import { IMG } from './config.js';
 import { mountAmbientVideo } from './video-bg.js';
 
 const trailerCache = new Map();
 const DESKTOP_HOVER = '(hover:hover) and (pointer:fine) and (min-width:901px)';
-const HOVER_DELAY = 560;
-const CLOSE_DELAY = 120;
+const HOVER_DELAY = 520;
+const CLOSE_DELAY = 190;
 
 let hoverTimer = null;
 let closeTimer = null;
 let hoveredCard = null;
-let sourceCard = null;
-let surface = null;
-let previewTeardown = () => {};
+let activeCard = null;
+let teardown = () => {};
 let requestToken = 0;
 
 const desktopHoverOK = () => typeof window !== 'undefined'
-  && typeof window.matchMedia === 'function'
   && document.documentElement.dataset.posterPreview !== 'hide'
-  && window.matchMedia(DESKTOP_HOVER).matches;
+  && window.matchMedia?.(DESKTOP_HOVER).matches;
 
 function pickTrailer(videos) {
   const youtube = (videos || []).filter(video => video.site === 'YouTube' && video.key);
@@ -34,8 +33,7 @@ function pickTrailer(videos) {
 
 async function trailerFor(card) {
   if (card.dataset.yt) return card.dataset.yt;
-  const type = card.dataset.type === 'tv' ? 'tv' : 'movie';
-  const id = +card.dataset.id;
+  const type = card.dataset.type === 'tv' ? 'tv' : 'movie', id = +card.dataset.id;
   if (!id) return '';
   const key = `${type}_${id}`;
   if (trailerCache.has(key)) return trailerCache.get(key);
@@ -46,118 +44,106 @@ async function trailerFor(card) {
     if (trailer) card.dataset.yt = trailer;
     return trailer;
   } catch (_) {
-    trailerCache.set(key, '');
-    return '';
+    trailerCache.set(key, ''); return '';
   }
 }
 
-function ensureSurface() {
-  if (surface?.isConnected) return surface;
-  surface = document.createElement('article');
-  surface.className = 'card-hover-preview';
-  surface.setAttribute('aria-hidden', 'true');
-  surface.innerHTML = `<a class="card-hover-media" href="#" data-action="open-detail">
-      <img alt=""><span class="card-hover-scrim" aria-hidden="true"></span>
-    </a><div class="card-hover-info"><a class="card-hover-open" href="#" data-action="open-detail">
-      <span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
-      <span><strong></strong><small></small></span><b aria-hidden="true">&#8594;</b>
-    </a></div>`;
-  surface.addEventListener('pointerenter', () => clearTimeout(closeTimer));
-  surface.addEventListener('pointerleave', scheduleClose);
-  surface.addEventListener('click', closePreview);
-  document.body.appendChild(surface);
-  return surface;
-}
-
-function fillSurface(card) {
-  const preview = ensureSurface();
-  const id = card.dataset.id, type = card.dataset.type === 'tv' ? 'tv' : 'movie';
-  const title = card.dataset.title || card.getAttribute('aria-label') || card.querySelector('.card-title')?.textContent || 'Open title';
-  const year = card.dataset.year || card.querySelector('.card-sub span')?.textContent || '';
-  const rating = card.dataset.rating ? `★ ${card.dataset.rating}` : '';
-  const image = card.dataset.backdrop ? `${IMG}w780${card.dataset.backdrop}` : card.querySelector('.card-img img')?.src || PH;
-  preview.querySelector('.card-hover-media img').src = image;
-  preview.querySelector('.card-hover-media img').alt = title;
-  preview.querySelector('.card-hover-open strong').textContent = title;
-  preview.querySelector('.card-hover-open small').textContent = [year, type === 'tv' ? 'TV show' : 'Movie', rating].filter(Boolean).join(' · ');
-  preview.querySelectorAll('[data-action="open-detail"]').forEach(link => {
-    link.href = `/${type}/${id}`; link.dataset.id = id; link.dataset.type = type;
+function soundButton() {
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'card-preview-sound';
+  button.setAttribute('aria-label', 'Unmute preview');
+  button.innerHTML = '<svg class="sound-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18 6a9 9 0 0 1 0 12"/></svg><svg class="sound-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="m16 9 5 5M21 9l-5 5"/></svg>';
+  button.addEventListener('click', event => {
+    event.preventDefault(); event.stopPropagation();
+    const muted = !teardown.isMuted?.();
+    teardown.setMuted?.(muted);
+    button.classList.toggle('unmuted', !muted);
+    button.setAttribute('aria-label', muted ? 'Unmute preview' : 'Mute preview');
   });
-  return preview;
+  return button;
 }
 
-function positionSurface(preview, card) {
-  const rect = card.getBoundingClientRect();
-  const width = Math.min(460, Math.max(352, rect.width * 2.25));
-  const mediaHeight = width * 9 / 16;
-  const height = mediaHeight + 78;
-  const left = Math.min(innerWidth - width - 12, Math.max(12, rect.left + rect.width / 2 - width / 2));
-  const top = Math.min(innerHeight - height - 12, Math.max(70, rect.top + rect.height / 2 - height / 2));
-  preview.classList.remove('open');
-  preview.style.left = `${rect.left}px`; preview.style.top = `${rect.top}px`;
-  preview.style.width = `${rect.width}px`; preview.style.height = `${rect.height}px`;
-  preview.style.setProperty('--preview-media-height', `${mediaHeight}px`);
-  preview.getBoundingClientRect();
-  requestAnimationFrame(() => {
-    if (preview !== surface || card !== sourceCard) return;
-    preview.style.left = `${left}px`; preview.style.top = `${top}px`;
-    preview.style.width = `${width}px`; preview.style.height = `${height}px`;
-    preview.classList.add('open'); preview.setAttribute('aria-hidden', 'false');
-  });
+function glideIntoView(card) {
+  const row = card.parentElement;
+  if (!row || !row.classList.contains('row')) return;
+  const target = card.offsetLeft - (row.clientWidth - card.offsetWidth) / 2;
+  row.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
 }
 
-function closePreview() {
+function expand(card, trailer) {
+  closePreview(true);
+  activeCard = card;
+  const media = card.querySelector('.card-img');
+  if (!media) return;
+  const base = card.getBoundingClientRect().width;
+  const width = Math.min(460, Math.max(350, base * (card.classList.contains('card-w') ? 1.35 : 2.18)));
+  card.style.setProperty('--inline-preview-width', `${width}px`);
+  if (card.dataset.backdrop) {
+    const backdrop = document.createElement('img');
+    backdrop.className = 'card-preview-backdrop'; backdrop.alt = '';
+    backdrop.src = `${IMG}w780${card.dataset.backdrop}`;
+    media.prepend(backdrop);
+  }
+  card.appendChild(soundButton());
+  card.classList.add('card-preview-expanded');
+  teardown = mountAmbientVideo(media, trailer, { delay: 0, overlaySelector: '.card-preview-clean-mask', clean: true });
+  const mask = document.createElement('span'); mask.className = 'card-preview-clean-mask'; mask.setAttribute('aria-hidden', 'true');
+  media.appendChild(mask);
+  requestAnimationFrame(() => glideIntoView(card));
+}
+
+function closePreview(immediate = false) {
   requestToken++;
   clearTimeout(hoverTimer); clearTimeout(closeTimer);
-  hoverTimer = null; closeTimer = null; hoveredCard = null;
-  previewTeardown(); previewTeardown = () => {};
-  sourceCard?.classList.remove('card-preview-source');
-  sourceCard = null;
-  if (!surface) return;
-  surface.classList.remove('open'); surface.setAttribute('aria-hidden', 'true');
-  const old = surface;
-  setTimeout(() => { if (old === surface && !old.classList.contains('open')) { old.remove(); surface = null; } }, 330);
+  hoverTimer = null; closeTimer = null;
+  teardown(); teardown = () => {};
+  const card = activeCard; activeCard = null;
+  if (!card) return;
+  card.classList.remove('card-preview-expanded');
+  card.querySelector('.card-preview-sound')?.remove();
+  const cleanup = () => {
+    if (card.classList.contains('card-preview-expanded')) return;
+    card.querySelector('.card-preview-backdrop')?.remove();
+    card.querySelector('.card-preview-clean-mask')?.remove();
+    card.style.removeProperty('--inline-preview-width');
+  };
+  if (immediate) cleanup(); else setTimeout(cleanup, 460);
 }
 
 function scheduleClose() {
   clearTimeout(closeTimer);
-  closeTimer = setTimeout(closePreview, CLOSE_DELAY);
+  closeTimer = setTimeout(() => { hoveredCard = null; closePreview(); }, CLOSE_DELAY);
 }
 
 function enterCard(card) {
-  if (!desktopHoverOK() || hoveredCard === card) return;
-  closePreview();
+  if (!desktopHoverOK() || hoveredCard === card || !card.parentElement?.classList.contains('row')) return;
   hoveredCard = card;
+  clearTimeout(closeTimer); clearTimeout(hoverTimer);
   const token = ++requestToken;
   hoverTimer = setTimeout(async () => {
-    if (token !== requestToken || hoveredCard !== card || !card.isConnected || !desktopHoverOK()) return;
-    sourceCard = card; card.classList.add('card-preview-source');
-    const preview = fillSurface(card);
-    positionSurface(preview, card);
     const trailer = await trailerFor(card);
-    if (!trailer || token !== requestToken || sourceCard !== card || !preview.isConnected || !desktopHoverOK()) return;
-    previewTeardown = mountAmbientVideo(preview.querySelector('.card-hover-media'), trailer, { delay: 0, overlaySelector: '.card-hover-scrim' });
+    if (!trailer || token !== requestToken || hoveredCard !== card || !card.isConnected || !desktopHoverOK()) return;
+    expand(card, trailer);
   }, HOVER_DELAY);
 }
 
 export function initCardPreviews() {
   document.addEventListener('pointerover', event => {
-    const card = event.target.closest?.('.card[data-id][data-type]');
+    const card = event.target.closest?.('.row > .card[data-id][data-type]');
     if (!card || card.contains(event.relatedTarget)) return;
-    clearTimeout(closeTimer); enterCard(card);
+    enterCard(card);
   });
   document.addEventListener('pointerout', event => {
-    const card = event.target.closest?.('.card[data-id][data-type]');
+    const card = event.target.closest?.('.row > .card[data-id][data-type]');
     if (!card || card.contains(event.relatedTarget)) return;
-    if (hoveredCard === card) scheduleClose();
+    if (hoveredCard === card || activeCard === card) scheduleClose();
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) closePreview(); });
-  window.addEventListener('blur', closePreview);
-  window.addEventListener('resize', closePreview, { passive: true });
-  window.addEventListener('scroll', closePreview, { passive: true, capture: true });
-  window.matchMedia?.(DESKTOP_HOVER).addEventListener?.('change', event => { if (!event.matches) closePreview(); });
-  document.addEventListener('cv:prefs', () => { if (!desktopHoverOK()) closePreview(); });
-  document.addEventListener('cv:go', closePreview);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) closePreview(true); });
+  window.addEventListener('blur', () => closePreview(true));
+  window.addEventListener('resize', () => closePreview(true), { passive: true });
+  window.matchMedia?.(DESKTOP_HOVER).addEventListener?.('change', event => { if (!event.matches) closePreview(true); });
+  document.addEventListener('cv:prefs', () => { if (!desktopHoverOK()) closePreview(true); });
+  document.addEventListener('cv:go', () => closePreview(true));
 }
 
 export { pickTrailer };

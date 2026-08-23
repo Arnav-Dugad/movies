@@ -265,11 +265,12 @@ export function computeStats(scope) {
   // Total watch time uses a completed show's full runtime, while "average runtime"
   // compares equivalent viewing units: movie length or episode length. Mixing an
   // entire 80-episode series with a two-hour film made the old average meaningless.
+  const episodeUnitRuntime = row => +(row.episodeRuntime || showEntry(row.id)?.episodeRuntime || (row.episodeCount > 0 ? row.runtime / row.episodeCount : 0));
   const averageUnits = watched.map(row => row.type === 'tv'
-    ? +(row.episodeRuntime || (row.episodeCount > 0 ? row.runtime / row.episodeCount : 0))
+    ? episodeUnitRuntime(row)
     : +row.runtime).filter(value => value > 0 && value < 1000);
   const movieRuntimes = watched.filter(row => row.type === 'movie').map(row => +row.runtime).filter(value => value > 0 && value < 1000);
-  const episodeRuntimes = watched.filter(row => row.type === 'tv').map(row => +(row.episodeRuntime || (row.episodeCount > 0 ? row.runtime / row.episodeCount : 0))).filter(value => value > 0 && value < 1000);
+  const episodeRuntimes = watched.filter(row => row.type === 'tv').map(episodeUnitRuntime).filter(value => value > 0 && value < 1000);
   const enriched = rows.filter(row => row.runtime > 0 && row.language && row.year && row.genres?.length);
   const totalMinutes = runtimes.reduce((sum, value) => sum + value, 0);
   const years = rows.map(row => +(row.year || 0)).filter(year => year > 1800 && year < 2200).sort((a, b) => a - b);
@@ -1200,6 +1201,13 @@ export function initStats() {
   });
   document.addEventListener('cv:wl-changed', queueCurrentSnapshot);
   document.addEventListener('cv:meta-backfilled', queueCurrentSnapshot);
+  const refreshLiveStats = debounce(() => {
+    latestDirectorLoyalty = null; insightGeneration++;
+    queueCurrentSnapshot();
+    if (location.pathname === '/stats') renderStats();
+  }, 240);
+  document.addEventListener('cv:episode-progress', refreshLiveStats);
+  document.addEventListener('cv:library-sync', refreshLiveStats);
   document.addEventListener('cv:provider-history', () => { if (location.pathname === '/stats') renderStats(); });
   document.addEventListener('cv:recommendation-feedback', () => {
     if (location.pathname === '/stats') renderStats();

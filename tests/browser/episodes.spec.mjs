@@ -142,33 +142,39 @@ test('poster trailers preview silently on desktop and never mount on mobile', as
   await fixture(page);
   await page.evaluate(() => {
     document.documentElement.dataset.motion = 'full';
+    const row = document.createElement('div'); row.className = 'row'; row.style.width = '1100px';
     const card = document.createElement('a');
     card.className = 'card'; card.dataset.id = '42'; card.dataset.type = 'movie'; card.dataset.yt = 'previewKey';
     card.dataset.title = 'Preview title'; card.dataset.backdrop = '/landscape.jpg'; card.dataset.year = '2026'; card.dataset.rating = '8.4';
     card.innerHTML = '<div class="card-img"><img alt="Preview title"></div><div class="card-info">Preview title</div>';
-    document.body.appendChild(card);
+    const sibling = document.createElement('a'); sibling.className = 'card'; sibling.innerHTML = '<div class="card-img"></div>';
+    row.append(card, sibling); document.body.appendChild(row);
   });
   const card = page.locator('.card[data-id="42"]');
   const sourceWidth = await card.evaluate(element => element.getBoundingClientRect().width);
+  const siblingLeft = await page.locator('.row>.card').nth(1).evaluate(element => element.getBoundingClientRect().left);
   await card.hover();
-  const preview = page.locator('.card-hover-preview');
-  const frame = preview.locator('iframe.ambient-video');
+  const frame = card.locator('iframe.ambient-video-clean');
   await expect(frame).toHaveCount(1, { timeout: 2_500 });
   await expect(frame).toHaveAttribute('src', /autoplay=1.*mute=1.*controls=0/);
-  await expect(preview).toHaveClass(/open/);
-  const geometry = await preview.evaluate(element => {
-    const media = element.querySelector('.card-hover-media').getBoundingClientRect();
+  await expect(card).toHaveClass(/card-preview-expanded/);
+  const geometry = await card.evaluate(element => {
+    const media = element.querySelector('.card-img').getBoundingClientRect();
     const box = element.getBoundingClientRect();
     return { width: box.width, ratio: media.width / media.height };
   });
   expect(geometry.width).toBeGreaterThan(sourceWidth * 1.8);
   expect(Math.abs(geometry.ratio - 16 / 9)).toBeLessThan(.04);
+  await expect.poll(() => page.locator('.row>.card').nth(1).evaluate(element => element.getBoundingClientRect().left)).toBeGreaterThan(siblingLeft + 100);
+  await card.getByRole('button', { name: 'Unmute preview' }).click();
+  await expect(card.getByRole('button', { name: 'Mute preview' })).toBeVisible();
+  await expect(page.locator('.card-hover-preview')).toHaveCount(0);
   await page.mouse.move(1200, 850);
   await expect(frame).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await card.hover();
   await page.waitForTimeout(700);
-  await expect(page.locator('.card-hover-preview')).toHaveCount(0);
+  await expect(card.locator('iframe')).toHaveCount(0);
 });
 
 test('details without videos or images retain a complete aligned hero', async ({ page }) => {

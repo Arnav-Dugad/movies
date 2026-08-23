@@ -180,7 +180,7 @@ export function refreshCardMarks() {
 // Cards can be on screen before the user's lists/ratings/watched arrive, and the
 // watched-meta backfill lands later still — re-sync on each of those.
 export function initCardSync() {
-  ['cv:auth', 'cv:wl-changed', 'cv:meta-backfilled'].forEach(ev => document.addEventListener(ev, refreshCardMarks));
+  ['cv:auth', 'cv:wl-changed', 'cv:library-sync', 'cv:meta-backfilled'].forEach(ev => document.addEventListener(ev, refreshCardMarks));
 }
 
 // Image error fallback via delegation (replaces inline onerror).

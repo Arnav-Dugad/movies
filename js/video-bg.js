@@ -13,16 +13,20 @@ export function ambientOK() { return document.documentElement.dataset.autoplay !
 // Mounts an ambient video into `container` (which must be position:relative and
 // already hold the backdrop image + a gradient overlay above it). Returns a
 // teardown function. Safe to call when not ambientOK() (it just no-ops).
-export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelector = '.detail-back-grad, .hero-vignette' } = {}) {
-  if (!container || !ytKey || !ambientOK()) return () => {};
+export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelector = '.detail-back-grad, .hero-vignette', muted = true, clean = false } = {}) {
+  const empty = () => {};
+  empty.setMuted = () => false; empty.isMuted = () => true;
+  if (!container || !ytKey || !ambientOK()) return empty;
   let el = null, timer = null, dead = false, onMsg = null;
+  let mutedState = !!muted;
+  let post = () => {};
 
   const reveal = () => { if (el && !dead) el.classList.add('show'); };
 
   timer = setTimeout(() => {
     if (dead || !container.isConnected) return;
     el = document.createElement('iframe');
-    el.className = 'ambient-video';
+    el.className = `ambient-video${clean ? ' ambient-video-clean' : ''}`;
     el.setAttribute('tabindex', '-1');
     el.setAttribute('aria-hidden', 'true');
     el.allow = 'autoplay; encrypted-media';
@@ -30,8 +34,8 @@ export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelec
     // YouTube render prev/next buttons, so we loop via the JS API instead (seek to
     // 0 on END below) for a clean, chrome-free video. enablejsapi also lets us hold
     // the fade-in until the trailer is actually PLAYING so nothing flashes in.
-    const post = (func, args = []) => { try { el.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com'); } catch (_) {} };
-    el.src = `https://www.youtube.com/embed/${ytKey}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+    post = (func, args = []) => { try { el.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), 'https://www.youtube.com'); } catch (_) {} };
+    el.src = `https://www.youtube.com/embed/${ytKey}?autoplay=1&mute=${mutedState ? 1 : 0}&controls=0&playsinline=1&rel=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&modestbranding=1&showinfo=0&autohide=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
     // Insert just BEFORE the gradient/vignette so paint order is: image → video → overlay.
     const overlay = container.querySelector(overlaySelector);
     if (overlay) container.insertBefore(el, overlay); else container.appendChild(el);
@@ -44,7 +48,11 @@ export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelec
       if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { return; } }
       if (!d || (d.event !== 'onStateChange' && d.event !== 'infoDelivery')) return;
       const st = d.info?.playerState ?? d.info;
-      if (st === 1) { post('setOption', ['captions', 'track', {}]); post('unloadModule', ['captions']); reveal(); }
+      if (st === 1) {
+        post('setOption', ['captions', 'track', {}]); post('unloadModule', ['captions']);
+        post(mutedState ? 'mute' : 'unMute'); if (!mutedState) post('setVolume', [72]);
+        reveal();
+      }
       else if (st === 0) { post('seekTo', [0, true]); post('playVideo'); }
     };
     window.addEventListener('message', onMsg);
@@ -56,10 +64,17 @@ export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelec
     // behind the static backdrop rather than exposing YouTube's paused chrome.
   }, delay);
 
-  return () => {
+  const teardown = () => {
     dead = true;
     if (timer) clearTimeout(timer);
     if (onMsg) { window.removeEventListener('message', onMsg); onMsg = null; }
     if (el) { el.src = 'about:blank'; el.remove(); el = null; }
   };
+  teardown.setMuted = value => {
+    mutedState = !!value;
+    if (el) { post(mutedState ? 'mute' : 'unMute'); if (!mutedState) post('setVolume', [72]); }
+    return mutedState;
+  };
+  teardown.isMuted = () => mutedState;
+  return teardown;
 }

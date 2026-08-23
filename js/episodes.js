@@ -21,6 +21,7 @@ const KEY = id => `tv_${id}`;
 const cacheKey = () => `cv_episode_progress_${state.user?.uid || 'guest'}`;
 const col = uid => db.collection('users').doc(uid || state.user.uid).collection('progress');
 const writeTimers = new Map();
+let progressUnsubscribe = null;
 const DAY = 86400000;
 
 const numbers = value => [...new Set((Array.isArray(value) ? value : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
@@ -359,6 +360,7 @@ function persist(key) {
   clearTimeout(writeTimers.get(key));
   const uid = state.user.uid;
   writeTimers.set(key, setTimeout(() => {
+    writeTimers.delete(key);
     if (state.user?.uid !== uid) return;
     const entry = state.episodeProgress[key];
     if (!entry) { col().doc(key).delete().catch(error => console.warn('episode progress delete', error)); return; }
@@ -402,8 +404,28 @@ async function writeMerged(key, entry, uid) {
 }
 
 export function resetEpisodeProgressForAuth() {
+  progressUnsubscribe?.(); progressUnsubscribe = null;
   writeTimers.forEach(clearTimeout); writeTimers.clear();
   state.episodeProgress = {};
+}
+
+/** Merge live Firestore changes into the local ledger without losing offline edits. */
+function startEpisodeProgressRealtime(uid) {
+  progressUnsubscribe?.(); progressUnsubscribe = null;
+  if (!uid) return;
+  progressUnsubscribe = col(uid).onSnapshot(snapshot => {
+    if (state.user?.uid !== uid) return;
+    const server = {};
+    snapshot.docs.forEach(doc => { const entry = sanitizeEntry(doc.data()); if (entry) server[doc.id] = entry; });
+    const local = state.episodeProgress || {}, merged = {};
+    for (const key of new Set([...Object.keys(server), ...Object.keys(local)])) {
+      const entry = mergeEntries(server[key], local[key]);
+      if (entry) merged[key] = entry;
+    }
+    state.episodeProgress = merged;
+    mirror();
+    document.dispatchEvent(new CustomEvent('cv:episode-progress', { detail: { live: true } }));
+  }, error => console.warn('episode progress live sync', error));
 }
 
 // Everything the progress document needs about a show, derived from one TMDB
@@ -977,7 +999,10 @@ export function initEpisodeRefresh() {
     if (!state.user || document.visibilityState === 'hidden') return;
     refreshTrackedShows().catch(error => console.warn('episode tracker daily refresh', error));
   };
-  document.addEventListener('cv:auth', refresh);
+  document.addEventListener('cv:auth', () => {
+    startEpisodeProgressRealtime(state.user?.uid || '');
+    refresh();
+  });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
 }
 

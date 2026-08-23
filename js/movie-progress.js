@@ -10,6 +10,8 @@ const KEY = id => `movie_${+id}`;
 const cacheKey = uid => `cv_movie_progress_${uid || state.user?.uid || 'guest'}`;
 const col = uid => db.collection('users').doc(uid || state.user.uid).collection('movieProgress');
 const timers = new Map();
+const pendingKeys = new Set();
+let unsubscribe = null;
 
 const finite = value => Number.isFinite(+value) ? +value : 0;
 function sanitize(value) {
@@ -53,15 +55,18 @@ async function write(key, entry, uid) {
 }
 
 function persist(key) {
+  pendingKeys.add(key);
   emit(key);
   const uid = state.user?.uid;
   if (!uid) return;
   clearTimeout(timers.get(key));
   timers.set(key, setTimeout(async () => {
+    timers.delete(key);
     if (state.user?.uid !== uid) return;
     const entry = state.movieProgress[key];
     try {
       if (entry) await write(key, entry, uid);
+      pendingKeys.delete(key);
     } catch (error) { console.warn('movie progress sync', error); }
   }, 350));
 }
@@ -94,7 +99,28 @@ export async function loadMovieProgress() {
 }
 
 export function resetMovieProgressForAuth() {
-  timers.forEach(clearTimeout); timers.clear(); state.movieProgress = {};
+  unsubscribe?.(); unsubscribe = null;
+  timers.forEach(clearTimeout); timers.clear(); pendingKeys.clear(); state.movieProgress = {};
+}
+
+function startMovieProgressRealtime(uid) {
+  unsubscribe?.(); unsubscribe = null;
+  if (!uid) return;
+  unsubscribe = col(uid).onSnapshot(snapshot => {
+    if (state.user?.uid !== uid) return;
+    const server = {};
+    snapshot.docs.forEach(doc => { const row = sanitize(doc.data()); if (row) server[doc.id] = row; });
+    const next = { ...state.movieProgress };
+    for (const [key, row] of Object.entries(server)) {
+      const local = next[key];
+      // A local edit waiting for acknowledgement remains optimistic. Otherwise
+      // Firestore is authoritative, so clock skew cannot make an older device win.
+      if (!pendingKeys.has(key) || !local || row.updatedAt >= local.updatedAt) next[key] = row;
+    }
+    state.movieProgress = next;
+    mirror(uid);
+    document.dispatchEvent(new CustomEvent('cv:movie-progress', { detail: { live: true } }));
+  }, error => console.warn('movie progress live sync', error));
 }
 
 export const movieProgressEntry = id => {
@@ -155,6 +181,7 @@ export function formatMovieTime(seconds, { compact = false } = {}) {
 }
 
 export function initMovieProgress() {
+  document.addEventListener('cv:auth', () => startMovieProgressRealtime(state.user?.uid || ''));
   document.addEventListener('cv:watched-toggled', event => {
     if (event.detail?.type === 'movie' && state.watched[`movie_${event.detail.id}`]) removeMovieProgress(event.detail.id);
   });

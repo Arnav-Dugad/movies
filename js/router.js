@@ -240,6 +240,7 @@ export function initRouter() {
   };
   document.addEventListener('cv:auth', refresh);
   document.addEventListener('cv:wl-changed', refresh);
+  document.addEventListener('cv:library-sync', refresh);
   // The meta backfill lands asynchronously and unlocks real hours/director data.
   document.addEventListener('cv:meta-backfilled', refresh);
   document.addEventListener('cv:navigate', e => navigate(pageToPath(e.detail)));

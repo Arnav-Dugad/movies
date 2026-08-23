@@ -14,7 +14,7 @@ async function bootGuest(page) {
     const auth = () => authInstance;
     auth.GoogleAuthProvider = class {};
     auth.EmailAuthProvider = { credential: () => ({}) };
-    const firestore = () => ({ collection: () => ref, batch: () => ({ set() {}, update() {}, delete() {}, commit: async () => {} }), runTransaction: async worker => worker({ get: ref2 => ref2.get(), set() {}, update() {}, delete() {} }) });
+    const firestore = () => ({ collection: () => ref, batch: () => ({ set() {}, update() {}, delete() {}, commit: async () => {} }), runTransaction: async worker => worker({ get: ref2 => ref2.get(), set: (ref2, value, options) => ref2.set(value, options), update: (ref2, value) => ref2.update(value), delete: ref2 => ref2.delete() }) });
     firestore.FieldValue = { serverTimestamp: () => Date.now(), increment: value => value, arrayUnion: (...values) => values, arrayRemove: (...values) => values, delete: () => null };
     window.firebase = { initializeApp() {}, auth, firestore };
   });
@@ -202,6 +202,9 @@ test('homepage poster controls apply independently and sync one Firebase snapsho
   });
   await expect(page.getByRole('heading', { name: 'Poster controls' })).toBeVisible();
   await expect(page.locator('.poster-controls input')).toHaveCount(10);
+  await expect(page.locator('input[data-pref="haptics"]')).toBeChecked();
+  await page.locator('label:has(input[data-pref="haptics"])').click();
+  expect(await page.evaluate(() => document.documentElement.dataset.haptics)).toBe('off');
   await page.locator('label:has(input[data-pref="cleanHomePosters"])').click();
   await expect(page.locator('input[data-pref="cleanHomePosters"]')).toBeChecked();
   expect(await page.evaluate(() => document.documentElement.dataset.cleanHomePosters)).toBe('on');
@@ -210,7 +213,7 @@ test('homepage poster controls apply independently and sync one Firebase snapsho
   await page.locator('label:has(input[data-pref="posterCommunityRating"])').click();
   await page.locator('label:has(input[data-pref="posterPreview"])').click();
   expect(await page.evaluate(() => ({ rating: document.documentElement.dataset.posterCommunityRating, preview: document.documentElement.dataset.posterPreview }))).toEqual({ rating: 'hide', preview: 'hide' });
-  await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.experiencePrefs?.posterCommunityRating === false && value.experiencePrefs?.posterPreview === false))).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.experiencePrefs?.posterCommunityRating === false && value.experiencePrefs?.posterPreview === false && value.experiencePrefs?.haptics === false))).toBe(true);
   await page.evaluate(async () => { const { togglePinned } = await import('/js/continue-prefs.js'); togglePinned('tv_55'); });
   await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.continueWatching?.pinned?.includes('tv_55')))).toBe(true);
 });

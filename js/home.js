@@ -11,7 +11,7 @@ import { applyContinuePrefs, togglePinned, toggleHidden, moveContinue, isPinned,
 import { franchiseSummary, toggleFranchiseDismissed, restoreAllFranchises } from './franchise.js';
 import { IMG, PH } from './config.js';
 import { state } from './state.js';
-import { grossingMoviesPage, formatGross } from './box-office.js';
+import { grossingMoviesPage, formatGross, formatIndianGross, getUsdInrRate, isIndianProduction } from './box-office.js';
 
 // Re-exported so router.js (cv:auth / cv:wl-changed) and initHome can refresh the
 // personalized rows. The advanced logic lives in recommend.js.
@@ -25,11 +25,15 @@ export async function renderBoxOfficeRail() {
     const data = await grossingMoviesPage(1);
     if (!$('boxOfficeRow')) return;
     const rows = data.rows.slice(0, 12);
-    host.querySelector('.boxoffice-home-row').innerHTML = rows.map((movie, index) => `<a class="bo-home-card" href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie" aria-label="Number ${index + 1}, ${esc(movie.title)}, ${formatGross(movie.revenue)} worldwide">
+    const usdInrRate = rows.some(isIndianProduction) ? await getUsdInrRate() : 90;
+    host.querySelector('.boxoffice-home-row').innerHTML = rows.map((movie, index) => {
+      const gross = isIndianProduction(movie) ? formatIndianGross(movie.revenue, { compact: true, rate: usdInrRate }) : formatGross(movie.revenue, { compact: true });
+      return `<a class="bo-home-card" href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie" aria-label="Number ${index + 1}, ${esc(movie.title)}, ${esc(gross)} worldwide">
       <img src="${movie.backdrop_path ? `${IMG}w500${movie.backdrop_path}` : movie.poster_path ? `${IMG}w342${movie.poster_path}` : PH}" alt="" loading="lazy">
       <span class="bo-home-scrim"></span><b class="bo-home-rank">${String(index + 1).padStart(2, '0')}</b>
-      <span class="bo-home-copy"><small>${esc((movie.release_date || '').slice(0, 4))} · Worldwide gross</small><strong>${esc(movie.title)}</strong><em>${formatGross(movie.revenue, { compact: true })}</em></span>
-    </a>`).join('');
+      <span class="bo-home-copy"><small>${esc((movie.release_date || '').slice(0, 4))} · Worldwide gross</small><strong>${esc(movie.title)}</strong><em>${esc(gross)}</em></span>
+    </a>`;
+    }).join('');
     observeReveals(host);
   } catch (_) { host.innerHTML = ''; }
 }
@@ -194,7 +198,10 @@ export async function renderFranchiseRail() {
   // Only series with something left, and only the actual next film — listing a
   // whole collection you have half-seen is the collection page's job.
   const rows = summary.inProgress.filter(item => item.nextUp).slice(0, 12);
-  if (!rows.length) { host.innerHTML = ''; return; }
+  if (!rows.length) {
+    host.innerHTML = `<section class="section reveal franchise-section franchise-section-empty"><div class="section-head"><div><h2 class="section-title"><span>&#9678;</span> Franchises</h2></div><button class="section-see-all" data-action="show-page" data-page="franchises">Open<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div></section>`;
+    return;
+  }
 
   const almost = rows.filter(item => item.unseen.length === 1).length;
   const lede = almost
@@ -264,6 +271,11 @@ export function initHomeActions() {
   // queue, so the rail always rebuilds rather than trying to patch itself.
   document.addEventListener('cv:episode-progress', renderContinueWatching);
   document.addEventListener('cv:movie-progress', renderContinueWatching);
+  document.addEventListener('cv:continue-prefs', renderContinueWatching);
+  document.addEventListener('cv:library-sync', () => {
+    renderContinueWatching();
+    debouncedFranchiseRail();
+  });
   registerActions({
     'continue-edit': () => { continueEditing = !continueEditing; renderContinueWatching(); },
     'continue-pin': (el) => { togglePinned(el.dataset.key); renderContinueWatching(); },

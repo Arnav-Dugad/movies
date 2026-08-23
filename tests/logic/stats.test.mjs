@@ -61,7 +61,7 @@ check('average runtime over movies', s.avgRuntime === Math.round(420 / 4), Strin
 // fix that is all the stats counted; the episode ledger is authoritative.
 state.watched.tv_100 = {
   tmdbId: 100, type: 'tv', title: 'Series', year: '2015', genres: [18], language: 'en',
-  runtime: 45, episodeRuntime: 45, watchedAt: secs(dayAgo(0)),
+  runtime: 45, episodeRuntime: 0, watchedAt: secs(dayAgo(0)),
 };
 s = stats.computeStats('all');
 check('without a ledger the stored runtime is used', s.totalMinutes === 420 + 45, String(s.totalMinutes));
@@ -77,6 +77,8 @@ state.episodeProgress = {
 s = stats.computeStats('all');
 check('the ledger drives TV watch time', s.totalMinutes === 420 + 13 * 45, String(s.totalMinutes));
 check('and the hours follow', s.hours === Math.floor((420 + 585) / 60), String(s.hours));
+check('average episode runtime comes from the ledger when the watched row is incomplete', s.avgEpisodeRuntime === 45, String(s.avgEpisodeRuntime));
+check('mixed average compares movies with episode units', s.avgRuntime === Math.round((90 + 120 + 150 + 60 + 45) / 5), String(s.avgRuntime));
 check('a series never becomes the longest title', s.longestTitle?.title === 'C');
 
 // ---------- scope filtering ----------

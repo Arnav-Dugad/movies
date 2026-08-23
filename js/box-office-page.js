@@ -3,13 +3,14 @@ import { $, esc, debounce } from './ui.js';
 import { IMG, PH } from './config.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
-import { grossingMoviesPage, formatGross, financials, franchiseBoxOfficeLeague, directorBoxOfficeRanking, isIndianProduction } from './box-office.js';
+import { grossingMoviesPage, formatGross, formatIndianGross, getUsdInrRate, financials, franchiseBoxOfficeLeague, directorBoxOfficeRanking, isIndianProduction } from './box-office.js';
 
 let items = [], nextPage = 1, totalPages = 1, loading = false;
 let chartRequested = 0, chartUpdatedAt = 0;
 let query = '', sort = 'gross', decade = 'all', view = 'movies';
 let franchiseRows = null, directorRows = null, rankRun = 0;
 let chartDepthPromise = null;
+let usdInrRate = 90;
 
 export async function renderBoxOfficePage({ reset = false } = {}) {
   const host = $('boxOfficeContent'); if (!host) return;
@@ -28,6 +29,7 @@ async function loadNext({ paintAfter = true } = {}) {
   if (button) { button.disabled = true; button.textContent = 'Loading…'; }
   try {
     const data = await grossingMoviesPage(nextPage);
+    if (data.rows.some(isIndianProduction)) getUsdInrRate().then(rate => { usdInrRate = rate; if (view === 'movies') paint(); });
     totalPages = data.totalPages;
     chartRequested += Math.max(0, +data.requested || data.rows.length);
     chartUpdatedAt = Math.max(chartUpdatedAt, +data.updatedAt || Date.now());
@@ -131,7 +133,7 @@ function chartRow({ movie, rank, money }) {
   if (isIndianProduction(movie)) {
     const indiaYear = (movie.release_date || '').slice(0, 4) || '—';
     const multiple = money.budget ? `${(money.revenue / money.budget).toFixed(2)}x` : '—';
-    return `<article class="bo-chart-row reveal"><span class="bo-chart-rank">${String(rank).padStart(2, '0')}</span><a class="bo-chart-art" href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie"><img src="${movie.poster_path ? `${IMG}w185${movie.poster_path}` : PH}" alt="" loading="lazy"></a><div class="bo-chart-copy"><span>${indiaYear}${movie.runtime ? ` · ${movie.runtime} min` : ''}</span><a href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie">${esc(movie.title)}</a><small class="bo-india-chip">India · worldwide data</small><div class="bo-chart-track"><i style="width:${Math.max(4, money.revenue / Math.max(1, items[0]?.revenue || money.revenue) * 100)}%"></i></div></div><div class="bo-chart-money"><small>Worldwide</small><strong>${formatGross(money.revenue)}</strong></div><div class="bo-chart-finance"><span><small>Budget</small><b>${formatGross(money.budget, { compact: true })}</b></span><span><small>Gross ÷ budget</small><b>${multiple}</b></span><span><small>Verdict</small><b>Needs India nett</b></span></div></article>`;
+    return `<article class="bo-chart-row reveal indian"><span class="bo-chart-rank">${String(rank).padStart(2, '0')}</span><a class="bo-chart-art" href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie"><img src="${movie.poster_path ? `${IMG}w185${movie.poster_path}` : PH}" alt="" loading="lazy"></a><div class="bo-chart-copy"><span>${indiaYear}${movie.runtime ? ` · ${movie.runtime} min` : ''}</span><a href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie">${esc(movie.title)}</a><small class="bo-india-chip">Indian production · converted from reported USD</small><div class="bo-chart-track"><i style="width:${Math.max(4, money.revenue / Math.max(1, items[0]?.revenue || money.revenue) * 100)}%"></i></div></div><div class="bo-chart-money"><small>Worldwide · approx.</small><strong>${formatIndianGross(money.revenue, { rate: usdInrRate })}</strong></div><div class="bo-chart-finance"><span><small>Budget · approx.</small><b>${formatIndianGross(money.budget, { compact: true, rate: usdInrRate })}</b></span><span><small>Gross ÷ budget</small><b>${multiple}</b></span><span><small>India nett</small><b>Not reported</b></span></div></article>`;
   }
   const year = (movie.release_date || '').slice(0, 4) || '—';
   return `<article class="bo-chart-row reveal"><span class="bo-chart-rank">${String(rank).padStart(2, '0')}</span><a class="bo-chart-art" href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie"><img src="${movie.poster_path ? `${IMG}w185${movie.poster_path}` : PH}" alt="" loading="lazy"></a><div class="bo-chart-copy"><span>${year}${movie.runtime ? ` · ${movie.runtime} min` : ''}</span><a href="/movie/${movie.id}" data-action="open-detail" data-id="${movie.id}" data-type="movie">${esc(movie.title)}</a><div class="bo-chart-track"><i style="width:${Math.max(4, money.revenue / Math.max(1, items[0]?.revenue || money.revenue) * 100)}%"></i></div></div><div class="bo-chart-money"><small>Worldwide</small><strong>${formatGross(money.revenue)}</strong></div><div class="bo-chart-finance"><span><small>Budget</small><b>${formatGross(money.budget, { compact: true })}</b></span><span><small>Profit</small><b class="${money.profit < 0 ? 'loss' : ''}">${money.budget ? formatGross(money.profit, { compact: true }) : '—'}</b></span><span><small>ROI</small><b>${money.roi == null ? '—' : `${Math.round(money.roi).toLocaleString()}%`}</b></span></div></article>`;
@@ -150,7 +152,7 @@ function directorRow(row, index) {
     : `<span class="bo-director-consistency" aria-label="Director consistency ${consistency.score} percent"><strong>${esc(consistency.label)} · ${consistency.score}</strong><span class="bo-consistency-track"><i style="--consistency:${consistency.score}%"></i></span><span>${consistency.sample} films · ${consistency.successRate}% succeeded</span></span>`;
   const eras = consistencyHTML + (row.eras || []).map(era => `<span><i>${esc(era.label)}</i><b>${formatGross(era.revenue, { compact: true })}</b><small>${esc(era.yearLabel)}</small></span>`).join('');
   const hit = row.hitRate == null ? 'Hit rate unavailable' : `${row.hitRate}% hit rate · ${row.hits}/${row.knownBudgets}`;
-  return `<a class="bo-league-row director reveal" href="/person/${row.id}" data-action="open-person" data-id="${row.id}"><span class="bo-league-rank">${String(index + 1).padStart(2, '0')}</span><img src="${row.profile ? `${IMG}w185${row.profile}` : PH}" alt="" loading="lazy"><span class="bo-league-copy"><strong>${esc(row.name)}</strong><small>${row.careerFilms || row.films} career film${(row.careerFilms || row.films) === 1 ? '' : 's'} · ${esc(hit)}${row.topFilm ? ` · ${esc(row.topFilm.title)}` : ''}</small><span class="bo-director-eras" aria-label="${esc(row.name)} career eras">${eras}</span></span><span class="bo-league-total"><small>Chart gross</small><b>${formatGross(row.revenue)}</b></span></a>`;
+  return `<a class="bo-league-row director reveal" href="/person/${row.id}" data-action="open-person" data-id="${row.id}"><span class="bo-league-rank">${String(index + 1).padStart(2, '0')}</span><img src="${row.profile ? `${IMG}w185${row.profile}` : PH}" alt="" loading="lazy"><span class="bo-league-copy"><strong>${esc(row.name)}</strong><small>${row.careerFilms || row.films} released film${(row.careerFilms || row.films) === 1 ? '' : 's'} · ${esc(hit)}${row.topFilm ? ` · ${esc(row.topFilm.title)}` : ''}</small><span class="bo-director-eras" aria-label="${esc(row.name)} career eras">${eras}</span></span><span class="bo-league-total"><small>Top-200 chart gross</small><b>${formatGross(row.revenue)}</b></span></a>`;
 }
 
 const searchInput = debounce(event => {

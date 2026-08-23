@@ -20,12 +20,13 @@ import { loadMovieProgress, resetMovieProgressForAuth } from './movie-progress.j
 
 let authMode = 'login';
 let delRelease = null;
+let authRun = 0;
 
 // Read the profile doc (avatar + created) into state so the Profile page and the
 // nav/dropdown avatars can render. Non-fatal — falls back to the initial avatar.
-// Returns the account's libraryVersion so the caller can decide whether the four
-// collection reads are needed at all (see js/library-cache.js).
-async function loadProfile() {
+// Returns the account's libraryVersion so the local fast-paint snapshot can be
+// stamped after the authoritative collection reads complete.
+async function loadProfile(uid = state.user?.uid) {
   let libraryVersion = 0;
   state.profile = { avatar: null, created: null, headline: '', bio: '', location: '', favoriteFilm: '', favoriteFilmId: null, favoriteFilmPoster: '', pinnedBadges: [], onboarded: false, seedGenres: [] };
   state.recommendationFeedback = { dismissed: [], history: [], rotation: 0, lastRecommendationActivityAt: 0, lastRotatedAt: 0 };
@@ -38,9 +39,9 @@ async function loadProfile() {
   resetMovieProgressForAuth();
   hydrateContinuePrefs(null);
   hydrateFranchisePrefs(null);
-  if (!state.user) return 0;
+  if (!uid || state.user?.uid !== uid) return 0;
   let localFeedback = {};
-  try { localFeedback = JSON.parse(localStorage.getItem(`cv_rec_feedback_${state.user.uid}`) || '{}'); } catch (_) {}
+  try { localFeedback = JSON.parse(localStorage.getItem(`cv_rec_feedback_${uid}`) || '{}'); } catch (_) {}
   const hasFeedback = feedback => Array.isArray(feedback?.dismissed) || Array.isArray(feedback?.history);
   const useFeedback = (feedback = {}) => {
     const dismissed = Array.isArray(feedback.dismissed) ? feedback.dismissed : [];
@@ -57,7 +58,8 @@ async function loadProfile() {
   // the owner-only Firestore profile replaces it when the cloud read succeeds.
   useFeedback(localFeedback);
   try {
-    const d = await db.collection('users').doc(state.user.uid).get();
+    const d = await db.collection('users').doc(uid).get();
+      if (state.user?.uid !== uid) return 0;
       if (d.exists) {
         const x = d.data(), feedback = x.recommendationFeedback || {};
         libraryVersion = Math.max(0, Math.floor(+x.libraryVersion || 0));
@@ -93,7 +95,7 @@ async function loadProfile() {
       if (localIsNewer) {
         // This is the retry path for a prior offline user action. It happens only
         // when the device copy proves newer, so normal profile loads never write.
-        db.collection('users').doc(state.user.uid).set({
+        db.collection('users').doc(uid).set({
           recommendationFeedback: { ...localFeedback, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
         }, { merge: true }).catch(error => console.warn('recommendation feedback retry', error));
       }
@@ -105,22 +107,20 @@ async function loadProfile() {
 export function initAuth() {
   initLibraryCache();
   auth.onAuthStateChanged(async u => {
+    const run = ++authRun;
     state.user = u;
     updateAuthUI();
     if (u) {
-      // Paint the library from this device before the network answers, then let
-      // the profile read (one document, which we needed anyway) say whether any
-      // of it is out of date. Unchanged means four library collection reads are skipped.
-      const cachedVersion = hydrateFromCache(u.uid);
-      const serverVersion = await loadProfile();
-      if (cachedVersion > 0 && cachedVersion === serverVersion) {
-        // Episode progress has its own conflict-safe local/server merge and is
-        // intentionally independent from the four-collection library version.
-        await Promise.all([loadEpisodeProgress(), loadMovieProgress()]);
-      } else {
-        await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadEpisodeProgress(), loadMovieProgress()]);
-        writeCache(u.uid, await ensureLibraryVersion(u.uid, serverVersion));
-      }
+      // Paint the device snapshot immediately, but never use its version as a
+      // reason to skip the authoritative reads below.
+      hydrateFromCache(u.uid);
+      const serverVersion = await loadProfile(u.uid);
+      if (run !== authRun || state.user?.uid !== u.uid) return;
+      // Cache is only a fast first paint. Always confirm the collections once;
+      // a delayed version bump must never make a second device trust stale data.
+      await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadEpisodeProgress(), loadMovieProgress()]);
+      if (run !== authRun || state.user?.uid !== u.uid) return;
+      writeCache(u.uid, await ensureLibraryVersion(u.uid, serverVersion));
       updateAuthUI();   // re-render now that the avatar has loaded
       try { state.searchHistory = JSON.parse(localStorage.getItem('cv_history_' + u.uid) || '[]'); } catch (e) { state.searchHistory = []; }
     } else {

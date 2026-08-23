@@ -16,6 +16,16 @@ http.createServer(async (request, response) => {
     response.writeHead(200, { 'content-type': mime[extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
     response.end(await readFile(file));
   } catch (_) {
+    // Mirror the production SPA fallback so direct loads and reloads of routes
+    // such as /movie/7 and /box-office exercise the real application shell.
+    try {
+      const path = decodeURIComponent(new URL(request.url, `http://localhost:${port}`).pathname);
+      if (!extname(path) && path !== '/tests/browser/episode-fixture') {
+        response.writeHead(200, { 'content-type': mime['.html'], 'cache-control': 'no-store' });
+        response.end(await readFile(resolve(root, 'index.html')));
+        return;
+      }
+    } catch (_) {}
     response.writeHead(404, { 'content-type': 'text/plain' });
     response.end('Not found');
   }

@@ -11,6 +11,7 @@ export const DEFAULT_PREFS = Object.freeze({
   rememberSearch: true, rememberViewed: true, discoverable: true, shareTaste: true,
   glass: 'rich', textSize: 'standard',
   backdropArt: true, posterTilt: true, highContrast: false, compactNav: false,
+  haptics: true,
   cleanHomePosters: false, posterCommunityRating: true, posterPersonalRating: true,
   posterWatchedMark: true, posterListButton: true, posterRateButton: true,
   posterMatchBadge: true, posterProviderLogo: true, posterDismissButton: true, posterPreview: true,
@@ -39,7 +40,7 @@ const allowed = {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   return next;
@@ -72,6 +73,7 @@ export function applyPrefs() {
   root.dataset.mature = prefs.mature ? 'on' : 'off';
   root.dataset.matureBlur = prefs.mature && prefs.matureBlur ? 'on' : 'off';
   root.dataset.compactNav = prefs.compactNav ? 'on' : 'off';
+  root.dataset.haptics = prefs.haptics ? 'on' : 'off';
   root.dataset.rememberViewed = prefs.rememberViewed ? 'on' : 'off';
 }
 

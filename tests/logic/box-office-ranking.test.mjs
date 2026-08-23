@@ -1,7 +1,7 @@
 import { check, summary } from './harness.mjs';
 
 const SRC = new URL('../../js/', import.meta.url).href;
-const { aggregateDirectorRanking, directorEraBreakdown, directorConsistency, boxOfficeAssumptions, isIndianProduction } = await import(SRC + 'box-office.js');
+const { aggregateDirectorRanking, directorEraBreakdown, directorConsistency, boxOfficeAssumptions, isIndianProduction, formatIndianGross } = await import(SRC + 'box-office.js');
 const { collectionOf } = await import(SRC + 'watched-meta.js');
 
 const films = [
@@ -31,10 +31,11 @@ const uneven = directorConsistency([
 check('director consistency rewards repeat success without overstating three films', reliable.score > uneven.score && reliable.label === 'Steady', JSON.stringify({ reliable, uneven }));
 check('director consistency exposes its measured sample', reliable.sample === 3 && reliable.medianMultiple === 3.5, JSON.stringify(reliable));
 const limited = directorConsistency([{ budget: 100, revenue: 400 }]);
-check('director consistency does not overstate a one-film sample', limited.score === null && limited.label === 'Limited data' && limited.sample === 1, JSON.stringify(limited));
+check('director consistency does not overstate a one-film sample', limited.score === null && limited.label === 'Not enough comparable films' && limited.sample === 1, JSON.stringify(limited));
 const indianProfile = boxOfficeAssumptions({ production_countries: [{ iso_3166_1: 'IN' }], original_language: 'hi' });
 check('Indian productions use their own theatrical model', isIndianProduction({ production_countries: [{ iso_3166_1: 'IN' }] }) && indianProfile.id === 'india' && indianProfile.hitThreshold === 2.5, JSON.stringify(indianProfile));
 check('country data takes priority over a language-only fallback', !isIndianProduction({ production_countries: [{ iso_3166_1: 'US' }], original_language: 'hi' }));
+check('Indian box office is converted from USD into clearly approximate crores', formatIndianGross(1000000, { rate: 80 }) === '≈ ₹8 crore', formatIndianGross(1000000, { rate: 80 }));
 
 const member = collectionOf({ belongs_to_collection: { id: 99, name: 'Series', poster_path: '/p.jpg' } });
 check('watched metadata stores collection identity', member.collectionId === 99 && member.collectionName === 'Series' && member.collectionChecked === true, JSON.stringify(member));
