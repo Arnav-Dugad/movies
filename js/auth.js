@@ -16,6 +16,7 @@ import { loadEpisodeProgress, resetEpisodeProgressForAuth } from './episodes.js'
 import { hydrateFromCache, writeCache, clearLibraryCache, resetLibraryRuntime, ensureLibraryVersion, initLibraryCache, flushLibraryVersion } from './library-cache.js';
 import { hydrateContinuePrefs } from './continue-prefs.js';
 import { hydrateFranchisePrefs } from './franchise.js';
+import { loadMovieProgress, resetMovieProgressForAuth } from './movie-progress.js';
 
 let authMode = 'login';
 let delRelease = null;
@@ -34,6 +35,7 @@ async function loadProfile() {
   state.statsSnapshot = null;
   hydrateStatsSections(null);
   resetEpisodeProgressForAuth();
+  resetMovieProgressForAuth();
   hydrateContinuePrefs(null);
   hydrateFranchisePrefs(null);
   if (!state.user) return 0;
@@ -114,9 +116,9 @@ export function initAuth() {
       if (cachedVersion > 0 && cachedVersion === serverVersion) {
         // Episode progress has its own conflict-safe local/server merge and is
         // intentionally independent from the four-collection library version.
-        await loadEpisodeProgress();
+        await Promise.all([loadEpisodeProgress(), loadMovieProgress()]);
       } else {
-        await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadEpisodeProgress()]);
+        await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadEpisodeProgress(), loadMovieProgress()]);
         writeCache(u.uid, await ensureLibraryVersion(u.uid, serverVersion));
       }
       updateAuthUI();   // re-render now that the avatar has loaded
@@ -132,6 +134,8 @@ export function initAuth() {
       state.statsSnapshot = null;
       hydrateStatsSections(null);
       resetEpisodeProgressForAuth();
+      resetMovieProgressForAuth();
+      hydrateContinuePrefs(null);
     }
     loadRecentlyViewed();
     document.dispatchEvent(new Event('cv:auth'));

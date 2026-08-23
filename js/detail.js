@@ -15,6 +15,7 @@ import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
 import { boxOfficeAssumptions } from './box-office.js';
+import { movieProgressEntry, startMovieProgress, setMovieProgressPosition, removeMovieProgress, parseMovieTime, formatMovieTime } from './movie-progress.js';
 
 let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
@@ -114,6 +115,7 @@ export async function openDetail(id, type) {
     const wd = !!state.watched[`${type}_${id}`];
     // You can't have watched — or have an opinion on — something that isn't out yet.
     const out = isReleased(det, type);
+    const movieProgress = type === 'movie' ? movieProgressEntry(id) : null;
     const recs = det.recommendations?.results || sim.results || [];
     const kws = det.keywords?.keywords || det.keywords?.results || [];
     const keywordMeta = kws.slice(0, 15).map(keyword => ({ id: +keyword.id, name: keyword.name || '' })).filter(keyword => keyword.id && keyword.name);
@@ -220,12 +222,14 @@ export async function openDetail(id, type) {
               <button class="dbtn-icon ${wl ? 'active' : ''}" data-wl="${type}|${id}" data-action="open-list-picker" data-item="${wlPayload}" aria-label="${wl ? 'Edit lists' : 'Add to a list'}" data-tip="${wl ? 'Edit lists' : 'Add to a list'}">${wl ? '✓' : '+'}</button>
               ${out ? `<button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" data-keywords="${esc(JSON.stringify(keywordMeta))}" data-runtime="${det.runtime || det.episode_run_time?.[0] || 0}" data-language="${det.original_language || ''}" data-country="${contentCountry}" data-release-date="${contentReleaseDate}" data-tmdb-rating="${det.vote_average || 0}" data-vote-count="${det.vote_count || 0}" data-collection-id="${det.belongs_to_collection?.id || 0}" data-collection-name="${esc(det.belongs_to_collection?.name || '')}" data-collection-poster="${det.belongs_to_collection?.poster_path || ''}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>` : ''}
               ${out ? `<button class="dbtn-icon" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate" data-tip="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>` : ''}
+              ${type === 'movie' && out ? `<button class="movie-progress-trigger${movieProgress ? ' active' : ''}" id="movieProgressTrigger_${id}" data-action="movie-progress-open" data-id="${id}" aria-label="${movieProgress ? 'Edit movie progress' : 'Start watching this movie'}" data-tip="${movieProgress ? 'Edit progress' : 'Start watching'}"${wd ? ' hidden' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4V8Z"/></svg><span>${movieProgress ? 'Watching' : 'Start'}</span></button>` : ''}
               ${out ? '' : `<span class="unreleased-note" data-tip="You can still add it to your list">${type === 'tv' ? 'Not aired yet' : 'Not released yet'}</span>`}
               <button class="dbtn-icon" data-action="share-item" data-title="${safeTitle}" data-id="${id}" data-type="${type}" aria-label="Share" data-tip="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
             </div>
             ${rewatchStripHTML(id, type)}
           </div>
         </div>
+        ${type === 'movie' && !wd ? movieProgressPanelHTML(id, det) : ''}
         ${cdHTML}${collHTML}
         <div class="detail-overview-wrap">
           <p class="detail-overview clamped" id="detOv">${esc(det.overview || 'No overview available.')}</p>
@@ -319,6 +323,48 @@ function paintRewatchStrip(id, type) {
   if (!html) return;
   const anchor = document.querySelector('.detail-head .detail-btns');
   if (anchor) anchor.insertAdjacentHTML('afterend', html);
+}
+
+// ===== MOVIE CONTINUE WATCHING =====
+// A movie can be remembered with no timestamp at all. Exact time is an optional
+// refinement, expressed as HH:MM:SS so it remains portable between players.
+function movieProgressMeta(det = curDet) {
+  return {
+    id: +det?.id, title: det?.title || det?.name || '', poster: det?.poster_path || '',
+    backdrop: det?.backdrop_path || '', runtime: Math.max(0, +det?.runtime || 0),
+  };
+}
+
+function movieProgressPanelHTML(id, det = curDet) {
+  const entry = movieProgressEntry(id);
+  if (!entry) return '';
+  const runtime = entry.runtime || Math.max(0, +det?.runtime || 0) * 60;
+  const percent = runtime ? Math.min(99, Math.round(entry.position / runtime * 100)) : 0;
+  const time = entry.position ? formatMovieTime(entry.position) : '';
+  return `<section class="movie-progress-panel" id="movieProgressPanel_${id}" aria-label="Movie progress">
+    <div class="movie-progress-orb" style="--movie-progress:${percent * 3.6}deg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 7v10l8-5-8-5Z"/></svg></div>
+    <div class="movie-progress-copy"><strong>${entry.position ? `Resume at ${time}` : 'Currently watching'}</strong><span>${runtime ? `${percent}% complete` : 'Saved to Continue Watching'}</span></div>
+    <label class="movie-time-field"><span>Stopped at</span><input type="text" inputmode="numeric" autocomplete="off" id="movieProgressTime_${id}" value="${time}" placeholder="HH:MM:SS" aria-label="Exact stopped time in hours minutes and seconds"></label>
+    <button class="movie-progress-save" data-action="movie-progress-save" data-id="${id}">Save</button>
+    <button class="movie-progress-remove" data-action="movie-progress-remove" data-id="${id}" aria-label="Remove from Continue Watching" data-tip="Remove">&#215;</button>
+  </section>`;
+}
+
+function paintMovieProgress(id) {
+  if (curType !== 'movie' || +curDet?.id !== +id) return;
+  const entry = movieProgressEntry(id), trigger = $(`movieProgressTrigger_${id}`);
+  const watched = !!state.watched[`movie_${id}`];
+  if (trigger) {
+    trigger.hidden = watched;
+    trigger.classList.toggle('active', !!entry);
+    const label = trigger.querySelector('span'); if (label) label.textContent = entry ? 'Watching' : 'Start';
+    trigger.setAttribute('aria-label', entry ? 'Edit movie progress' : 'Start watching this movie');
+    trigger.dataset.tip = entry ? 'Edit progress' : 'Start watching';
+  }
+  const panel = $(`movieProgressPanel_${id}`), html = movieProgressPanelHTML(id, curDet);
+  if (watched) { panel?.remove(); return; }
+  if (panel) { if (html) panel.outerHTML = html; else panel.remove(); return; }
+  if (html) document.querySelector('.detail-top')?.insertAdjacentHTML('afterend', html);
 }
 
 // ===== RELEASE STATE =====
@@ -1366,6 +1412,27 @@ export function initDetail() {
       el.setAttribute('aria-expanded', String(open));
       el.textContent = open ? 'Hide table' : 'View as table';
     },
+    'movie-progress-open': el => {
+      const id = +el.dataset.id;
+      if (!movieProgressEntry(id) && !startMovieProgress(movieProgressMeta(), 0)) return;
+      paintMovieProgress(id);
+      requestAnimationFrame(() => { const input = $(`movieProgressTime_${id}`); input?.focus(); input?.select(); });
+    },
+    'movie-progress-save': el => {
+      const id = +el.dataset.id, input = $(`movieProgressTime_${id}`);
+      const raw = input?.value.trim() || '';
+      const seconds = raw ? parseMovieTime(raw) : 0;
+      const runtime = Math.max(0, +curDet?.runtime || 0) * 60;
+      if (seconds === null) { toast('Use HH:MM:SS', 'info'); input?.focus(); return; }
+      if (runtime && seconds >= runtime) { toast('That time is past the movie runtime', 'info'); input?.focus(); return; }
+      setMovieProgressPosition(id, seconds, movieProgressMeta());
+      paintMovieProgress(id);
+      toast(seconds ? `Saved at ${formatMovieTime(seconds)}` : 'Saved to Continue Watching', 'success');
+    },
+    'movie-progress-remove': el => {
+      const id = +el.dataset.id;
+      if (removeMovieProgress(id)) { paintMovieProgress(id); toast('Removed from Continue Watching', 'info'); }
+    },
     'load-season': (el) => loadSeason(+el.dataset.tid, +el.dataset.sn, el),
     // ----- Episode tracking -----
     'ep-toggle': el => {
@@ -1477,7 +1544,21 @@ export function initDetail() {
   // either has to update the other. Scoped to the title actually on screen.
   document.addEventListener('cv:watched-toggled', (e) => {
     const id = +(e.detail?.id || 0), type = e.detail?.type;
-    if (id && curDet && +curDet.id === id && curType === type) paintRewatchStrip(id, type);
+    if (id && curDet && +curDet.id === id && curType === type) {
+      paintRewatchStrip(id, type);
+      if (type === 'movie') paintMovieProgress(id);
+    }
+  });
+
+  document.addEventListener('cv:movie-progress', event => {
+    const id = +(event.detail?.key || '').split('_')[1];
+    if (id) paintMovieProgress(id);
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Enter' || !event.target.matches('[id^="movieProgressTime_"]')) return;
+    event.preventDefault();
+    event.target.closest('.movie-progress-panel')?.querySelector('[data-action="movie-progress-save"]')?.click();
   });
 
   registerActions({

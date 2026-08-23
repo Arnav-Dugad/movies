@@ -52,21 +52,55 @@ export function boxOfficeAssumptions(movie) {
 }
 
 export function directorConsistency(movies) {
-  const sample = (movies || []).filter(movie => +movie?.budget > 0 && +movie?.revenue > 0);
-  if (!sample.length) return { score: null, label: 'Not enough data', sample: 0, hitRate: null, stability: null, medianMultiple: null };
-  const multiples = sample.map(movie => +movie.revenue / +movie.budget);
-  const hits = sample.filter(movie => (+movie.revenue / +movie.budget) >= boxOfficeAssumptions(movie).hitThreshold).length;
-  const hitRate = hits / sample.length * 100;
-  const logs = multiples.map(value => Math.log2(Math.max(.05, value)));
-  const mean = logs.reduce((sum, value) => sum + value, 0) / logs.length;
-  const deviation = Math.sqrt(logs.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / logs.length);
-  const stability = Math.max(0, Math.round(100 - deviation * 42));
-  const score = Math.round(hitRate * .72 + stability * .28);
-  const ordered = [...multiples].sort((a, b) => a - b);
-  const middle = Math.floor(ordered.length / 2);
-  const medianMultiple = ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
-  const label = sample.length < 3 ? 'Early sample' : score >= 85 ? 'Exceptional' : score >= 70 ? 'Reliable' : score >= 55 ? 'Steady' : score >= 40 ? 'Mixed' : 'Volatile';
-  return { score: sample.length < 3 ? null : score, label, sample: sample.length, hitRate: Math.round(hitRate), stability, medianMultiple };
+  const clamp = value => Math.max(0, Math.min(100, value));
+  const median = values => {
+    const ordered = [...values].sort((a, b) => a - b), middle = Math.floor(ordered.length / 2);
+    return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+  };
+  const rows = (movies || []).map(movie => {
+    const budget = +movie?.budget || 0, revenue = +movie?.revenue || 0;
+    const vote = +movie?.vote_average || 0, votes = +movie?.vote_count || 0;
+    const hasFinancial = budget > 0 && revenue > 0;
+    const hasAudience = vote > 0 && votes >= 40;
+    if (!hasFinancial && !hasAudience) return null;
+    let financial = null, audience = null, multiple = null;
+    if (hasFinancial) {
+      multiple = revenue / budget;
+      const target = boxOfficeAssumptions(movie).hitThreshold;
+      // Logarithmic scaling stops a single giant blockbuster from erasing an
+      // uneven career while treating each market's success threshold fairly.
+      financial = clamp(64 + Math.log2(Math.max(.05, multiple / target)) * 22);
+    }
+    if (hasAudience) {
+      // Confidence-weighted audience quality. Forty votes barely move the 6.3
+      // prior; thousands of votes let the film's own score speak for itself.
+      const confidence = votes / (votes + 650);
+      const adjusted = vote * confidence + 6.3 * (1 - confidence);
+      audience = clamp((adjusted - 4.5) / 4 * 100);
+    }
+    const performance = financial == null ? audience : audience == null ? financial : financial * .62 + audience * .38;
+    return { performance, multiple, hasFinancial, hasAudience };
+  }).filter(Boolean);
+  if (!rows.length) return { score: null, label: 'Not enough data', sample: 0, financialSample: 0, audienceSample: 0, successRate: null, stability: null, medianPerformance: null, medianMultiple: null };
+
+  const performances = rows.map(row => row.performance);
+  const middle = median(performances);
+  const deviation = median(performances.map(value => Math.abs(value - middle)));
+  const stability = Math.round(clamp(100 - deviation * 2.15));
+  const successRate = Math.round(rows.filter(row => row.performance >= 60).length / rows.length * 100);
+  const confidence = 1 - Math.exp(-rows.length / 6);
+  const raw = successRate * .48 + middle * .34 + stability * .18;
+  // Small samples regress towards neutral instead of ever displaying a fake 100.
+  const score = Math.round(50 + (raw - 50) * confidence);
+  const financialMultiples = rows.filter(row => row.multiple != null).map(row => row.multiple);
+  const label = rows.length < 3 ? 'Limited data' : score >= 82 ? 'Elite consistency' : score >= 70 ? 'Reliable' : score >= 58 ? 'Steady' : score >= 45 ? 'Mixed' : 'Volatile';
+  return {
+    score: rows.length < 3 ? null : score, label, sample: rows.length,
+    financialSample: rows.filter(row => row.hasFinancial).length,
+    audienceSample: rows.filter(row => row.hasAudience).length,
+    successRate, stability, medianPerformance: Math.round(middle),
+    medianMultiple: financialMultiples.length ? median(financialMultiples) : null,
+  };
 }
 
 async function movieDetail(movie, force) {
@@ -219,5 +253,28 @@ export async function directorBoxOfficeRanking(movies, { force = false, limit = 
     }
     creditsByMovie.set(+movie.id, record.crew);
   }, 5);
-  return aggregateDirectorRanking(movies, creditsByMovie).slice(0, limit);
+  const ranking = aggregateDirectorRanking(movies, creditsByMovie).slice(0, limit);
+  // The all-time chart is enough to rank directors by chart revenue, but not to
+  // describe career consistency. One movie-credits request per ranked director
+  // supplies their full released directing career (votes included) without the
+  // hundreds of detail requests that a budget-only model would require.
+  await pool(ranking, async row => {
+    try {
+      const data = await tmdb(`/person/${row.id}/movie_credits`, {}, { cache: !force });
+      const todayKey = today();
+      const career = [...new Map((data.crew || [])
+        .filter(movie => movie?.id && movie.job === 'Director')
+        .filter(movie => movie.release_date && movie.release_date <= todayKey)
+        .filter(movie => !(movie.genre_ids || []).includes(99))
+        .map(movie => [+movie.id, movie])).values()];
+      const merged = new Map(career.map(movie => [+movie.id, movie]));
+      row.works.forEach(movie => merged.set(+movie.id, { ...(merged.get(+movie.id) || {}), ...movie }));
+      row.careerFilms = career.length;
+      row.consistency = { ...directorConsistency([...merged.values()]), scope: 'career' };
+    } catch (_) {
+      row.careerFilms = row.works.length;
+      row.consistency = { ...row.consistency, scope: 'chart' };
+    }
+  }, 5);
+  return ranking;
 }

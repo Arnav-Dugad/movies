@@ -47,6 +47,7 @@ import { initAwards } from './awards.js';
 import { initProviderBadges } from './provider-badges.js';
 import { initNotifications } from './notifications.js';
 import { initCardPreviews } from './card-previews.js';
+import { initMovieProgress } from './movie-progress.js';
 
 function hideLoader() { window.__cvBooted = true; const l = $('loader'); if (l) l.classList.add('hidden'); }
 
@@ -58,6 +59,7 @@ async function init() {
   initImageFallback();
   initCardSync();
   initCardPreviews();
+  initMovieProgress();
   initProviderBadges();
   initNotifications();
   initAuth();

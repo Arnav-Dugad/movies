@@ -13,25 +13,43 @@
 // Moving a card IS pinning it to that position, so arbitrary ordering and
 // "keep this at the front" are one concept rather than two. Unpin and a show
 // returns to the automatic order, in the right place, with nothing to undo.
-import { db } from './firebase.js';
+import { db, firebase } from './firebase.js';
 import { state } from './state.js';
 
 const CAP = 40;
 let saveTimer = null;
 
-const clean = value => [...new Set((Array.isArray(value) ? value : []).map(Number).filter(id => Number.isInteger(id) && id > 0))].slice(0, CAP);
+const normal = value => {
+  if (typeof value === 'number' || /^\d+$/.test(String(value || ''))) return `tv_${+value}`;
+  const match = String(value || '').match(/^(tv|movie)_(\d+)$/);
+  return match && +match[2] > 0 ? `${match[1]}_${+match[2]}` : '';
+};
+const clean = value => [...new Set((Array.isArray(value) ? value : []).map(normal).filter(Boolean))].slice(0, CAP);
+const cacheKey = uid => `cv_continue_prefs_${uid}`;
 
-export function hydrateContinuePrefs(cloud) {
-  state.continuePrefs = {
-    pinned: clean(cloud?.pinned),
-    hidden: clean(cloud?.hidden),
-  };
+function cached(uid) {
+  try { return JSON.parse(localStorage.getItem(cacheKey(uid)) || 'null'); } catch (_) { return null; }
+}
+function mirror(uid = state.user?.uid) {
+  if (!uid) return;
+  try { localStorage.setItem(cacheKey(uid), JSON.stringify(prefs())); } catch (_) {}
 }
 
-const prefs = () => (state.continuePrefs ||= { pinned: [], hidden: [] });
+export function hydrateContinuePrefs(cloud) {
+  const local = state.user?.uid ? cached(state.user.uid) : null;
+  const chosen = +(local?.clientUpdatedAt || 0) > +(cloud?.clientUpdatedAt || 0) ? local : cloud;
+  state.continuePrefs = { pinned: clean(chosen?.pinned), hidden: clean(chosen?.hidden), clientUpdatedAt: +(chosen?.clientUpdatedAt || 0) };
+  mirror();
+  // Retry an offline device edit only when its timestamp proves it is newer.
+  // `null` is the pre-cloud loading sentinel used by auth; never let that early
+  // paint overwrite a newer device before the profile read has compared them.
+  if (cloud !== null && state.user?.uid && local === chosen && chosen !== cloud) sync(state.user.uid);
+}
 
-export const isPinned = id => prefs().pinned.includes(+id);
-export const isHidden = id => prefs().hidden.includes(+id);
+const prefs = () => (state.continuePrefs ||= { pinned: [], hidden: [], clientUpdatedAt: 0 });
+
+export const isPinned = id => prefs().pinned.includes(normal(id));
+export const isHidden = id => prefs().hidden.includes(normal(id));
 export const hasContinueEdits = () => prefs().pinned.length > 0 || prefs().hidden.length > 0;
 
 /**
@@ -41,19 +59,20 @@ export const hasContinueEdits = () => prefs().pinned.length > 0 || prefs().hidde
  */
 export function applyContinuePrefs(queue) {
   const { pinned, hidden } = prefs();
-  const visible = queue.filter(row => !hidden.includes(+row.id));
+  const visible = queue.filter(row => !hidden.includes(normal(row.key || row.id)));
   if (!pinned.length) return visible;
   const rank = new Map(pinned.map((id, index) => [id, index]));
-  const first = visible.filter(row => rank.has(+row.id)).sort((a, b) => rank.get(+a.id) - rank.get(+b.id));
-  const rest = visible.filter(row => !rank.has(+row.id));
+  const first = visible.filter(row => rank.has(normal(row.key || row.id))).sort((a, b) => rank.get(normal(a.key || a.id)) - rank.get(normal(b.key || b.id)));
+  const rest = visible.filter(row => !rank.has(normal(row.key || row.id)));
   return [...first, ...rest];
 }
 
 // ---------- mutations ----------
 export function togglePinned(id) {
-  const list = prefs().pinned, index = list.indexOf(+id);
+  const key = normal(id); if (!key) return false;
+  const list = prefs().pinned, index = list.indexOf(key);
   if (index >= 0) list.splice(index, 1);
-  else list.unshift(+id);          // a newly pinned show goes to the front
+  else list.unshift(key);          // a newly pinned title goes to the front
   prefs().pinned = list.slice(0, CAP);
   save();
   return isPinned(id);
@@ -65,8 +84,8 @@ export function togglePinned(id) {
  * a manual position can survive the next episode being ticked elsewhere.
  */
 export function moveContinue(id, direction, visibleIds) {
-  const target = +id;
-  const order = visibleIds.map(Number);
+  const target = normal(id);
+  const order = visibleIds.map(normal).filter(Boolean);
   const from = order.indexOf(target);
   const to = from + (direction < 0 ? -1 : 1);
   if (from < 0 || to < 0 || to >= order.length) return false;
@@ -79,13 +98,14 @@ export function moveContinue(id, direction, visibleIds) {
 }
 
 export function toggleHidden(id) {
+  const key = normal(id); if (!key) return false;
   const { hidden, pinned } = prefs();
-  const index = hidden.indexOf(+id);
+  const index = hidden.indexOf(key);
   if (index >= 0) hidden.splice(index, 1);
   else {
-    hidden.unshift(+id);
+    hidden.unshift(key);
     // A hidden show has no position to hold on to.
-    const pinIndex = pinned.indexOf(+id);
+    const pinIndex = pinned.indexOf(key);
     if (pinIndex >= 0) pinned.splice(pinIndex, 1);
   }
   prefs().hidden = hidden.slice(0, CAP);
@@ -94,20 +114,25 @@ export function toggleHidden(id) {
 }
 
 export function resetContinuePrefs() {
-  state.continuePrefs = { pinned: [], hidden: [] };
+  state.continuePrefs = { pinned: [], hidden: [], clientUpdatedAt: Date.now() };
   save();
 }
 
 // One debounced write on the profile document, which sign-in already reads — so
 // remembering the layout costs no extra read and at most one write per session.
 function save() {
+  prefs().clientUpdatedAt = Date.now();
+  mirror();
   document.dispatchEvent(new Event('cv:continue-prefs'));
   const uid = state.user?.uid;
   if (!uid) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    if (state.user?.uid !== uid) return;
-    db.collection('users').doc(uid).set({ continueWatching: prefs() }, { merge: true })
-      .catch(error => console.warn('continue prefs save', error));
-  }, 900);
+  saveTimer = setTimeout(() => sync(uid), 500);
+}
+
+function sync(uid) {
+  if (state.user?.uid !== uid) return Promise.resolve();
+  const value = { ...prefs(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  return db.collection('users').doc(uid).set({ continueWatching: value }, { merge: true })
+    .catch(error => console.warn('continue prefs save', error));
 }

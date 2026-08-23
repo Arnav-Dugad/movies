@@ -41,9 +41,12 @@ export const state = {
   // on sign-in and mirrored to localStorage so the Continue Watching rail can
   // paint before the network answers. See js/episodes.js.
   episodeProgress: {},
+  // In-progress movies use exact seconds when supplied and remain separate from
+  // episode documents so each data type can merge safely on its own terms.
+  movieProgress: {},
   // Which Continue Watching cards are pinned to the front and which are hidden.
   // Loaded with the profile document, so the rail's layout follows the account.
-  continuePrefs: { pinned: [], hidden: [] },
+  continuePrefs: { pinned: [], hidden: [], clientUpdatedAt: 0 },
   // Film-series display choices follow the account. Story orders only store TMDB
   // ids, so even a heavily customised library stays well below the profile limit.
   franchisePrefs: { dismissed: [], orderMode: 'release', storyOrders: {} },

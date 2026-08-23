@@ -10,6 +10,8 @@ html[data-ratings="hide"] .card-rating,
 html[data-ratings="hide"] .browse-feature-meta>b,
 html[data-ratings="hide"] .detail-tags .dtag.gold{display:none!important}
 html[data-watched-marks="hide"] .watched-badge{display:none!important}
+html[data-clean-home-posters="on"] #homePage .card-rating,html[data-clean-home-posters="on"] #homePage .card-myrating,html[data-clean-home-posters="on"] #homePage .watched-badge,html[data-clean-home-posters="on"] #homePage .card-wl,html[data-clean-home-posters="on"] #homePage .card-rate,html[data-clean-home-posters="on"] #homePage .card-badge,html[data-clean-home-posters="on"] #homePage .card-provider-badge,html[data-clean-home-posters="on"] #homePage .card-dismiss{display:none!important}
+html[data-poster-community-rating="hide"] #homePage .card-rating,html[data-poster-personal-rating="hide"] #homePage .card-myrating,html[data-poster-watched-mark="hide"] #homePage .watched-badge,html[data-poster-list-button="hide"] #homePage .card-wl,html[data-poster-rate-button="hide"] #homePage .card-rate,html[data-poster-match-badge="hide"] #homePage .card-badge,html[data-poster-provider-logo="hide"] #homePage .card-provider-badge,html[data-poster-dismiss-button="hide"] #homePage .card-dismiss{display:none!important}
 html[data-spoilers="shield"] .detail-overview,
 html[data-spoilers="shield"] .person-bio,
 html[data-spoilers="shield"] .browse-feature-copy>p{filter:blur(7px);user-select:none;transition:filter .25s}

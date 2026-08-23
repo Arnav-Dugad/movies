@@ -28,10 +28,10 @@ const reliable = directorConsistency([
 const uneven = directorConsistency([
   { budget: 100, revenue: 1000 }, { budget: 100, revenue: 80 }, { budget: 100, revenue: 110 },
 ]);
-check('director consistency rewards repeat success', reliable.score > uneven.score && reliable.label === 'Exceptional', JSON.stringify({ reliable, uneven }));
+check('director consistency rewards repeat success without overstating three films', reliable.score > uneven.score && reliable.label === 'Steady', JSON.stringify({ reliable, uneven }));
 check('director consistency exposes its measured sample', reliable.sample === 3 && reliable.medianMultiple === 3.5, JSON.stringify(reliable));
-const earlySample = directorConsistency([{ budget: 100, revenue: 400 }]);
-check('director consistency does not overstate a one-film sample', earlySample.score === null && earlySample.label === 'Early sample' && earlySample.sample === 1, JSON.stringify(earlySample));
+const limited = directorConsistency([{ budget: 100, revenue: 400 }]);
+check('director consistency does not overstate a one-film sample', limited.score === null && limited.label === 'Limited data' && limited.sample === 1, JSON.stringify(limited));
 const indianProfile = boxOfficeAssumptions({ production_countries: [{ iso_3166_1: 'IN' }], original_language: 'hi' });
 check('Indian productions use their own theatrical model', isIndianProduction({ production_countries: [{ iso_3166_1: 'IN' }] }) && indianProfile.id === 'india' && indianProfile.hitThreshold === 2.5, JSON.stringify(indianProfile));
 check('country data takes priority over a language-only fallback', !isIndianProduction({ production_countries: [{ iso_3166_1: 'US' }], original_language: 'hi' }));

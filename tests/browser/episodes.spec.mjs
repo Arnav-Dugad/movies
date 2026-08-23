@@ -144,20 +144,31 @@ test('poster trailers preview silently on desktop and never mount on mobile', as
     document.documentElement.dataset.motion = 'full';
     const card = document.createElement('a');
     card.className = 'card'; card.dataset.id = '42'; card.dataset.type = 'movie'; card.dataset.yt = 'previewKey';
+    card.dataset.title = 'Preview title'; card.dataset.backdrop = '/landscape.jpg'; card.dataset.year = '2026'; card.dataset.rating = '8.4';
     card.innerHTML = '<div class="card-img"><img alt="Preview title"></div><div class="card-info">Preview title</div>';
     document.body.appendChild(card);
   });
   const card = page.locator('.card[data-id="42"]');
+  const sourceWidth = await card.evaluate(element => element.getBoundingClientRect().width);
   await card.hover();
-  const frame = card.locator('iframe.ambient-video');
+  const preview = page.locator('.card-hover-preview');
+  const frame = preview.locator('iframe.ambient-video');
   await expect(frame).toHaveCount(1, { timeout: 2_500 });
   await expect(frame).toHaveAttribute('src', /autoplay=1.*mute=1.*controls=0/);
+  await expect(preview).toHaveClass(/open/);
+  const geometry = await preview.evaluate(element => {
+    const media = element.querySelector('.card-hover-media').getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    return { width: box.width, ratio: media.width / media.height };
+  });
+  expect(geometry.width).toBeGreaterThan(sourceWidth * 1.8);
+  expect(Math.abs(geometry.ratio - 16 / 9)).toBeLessThan(.04);
   await page.mouse.move(1200, 850);
   await expect(frame).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await card.hover();
   await page.waitForTimeout(700);
-  await expect(card.locator('iframe.ambient-video')).toHaveCount(0);
+  await expect(page.locator('.card-hover-preview')).toHaveCount(0);
 });
 
 test('details without videos or images retain a complete aligned hero', async ({ page }) => {

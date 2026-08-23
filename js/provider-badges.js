@@ -22,7 +22,11 @@ let observer = null;
 try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') || {}; } catch (_) { cache = {}; }
 
 function cacheKey(card) { return `${state.region}:${card.dataset.type}:${card.dataset.id}`; }
-function isEligible(card) { return !!card?.matches?.('.card[data-id][data-type]') && !!card.closest(ROOT_SELECTOR); }
+function isEligible(card) {
+  if (!card?.matches?.('.card[data-id][data-type]') || !card.closest(ROOT_SELECTOR)) return false;
+  if (card.closest('#homePage') && (document.documentElement.dataset.cleanHomePosters === 'on' || document.documentElement.dataset.posterProviderLogo === 'hide')) return false;
+  return true;
+}
 
 function saveCache() {
   try {
@@ -113,6 +117,13 @@ export function initProviderBadges() {
   document.addEventListener('cv:region', () => {
     document.querySelectorAll(scopedSelector('.card-provider-badge')).forEach(badge => badge.remove());
     document.querySelectorAll(scopedSelector('.card[data-id][data-type]')).forEach(card => {
+      delete card.dataset.providerResolved;
+      observeCard(card);
+    });
+  });
+  document.addEventListener('cv:prefs', () => {
+    document.querySelectorAll('#homePage .card-provider-badge').forEach(badge => badge.remove());
+    document.querySelectorAll('#homePage .card[data-id][data-type]').forEach(card => {
       delete card.dataset.providerResolved;
       observeCard(card);
     });

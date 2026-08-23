@@ -6,6 +6,7 @@ import { observeReveals } from './effects.js';
 import { registerActions } from './events.js';
 import { renderRecommendations } from './recommend.js';
 import { resumeQueue, episodeLabel } from './episodes.js';
+import { movieResumeQueue, formatMovieTime } from './movie-progress.js';
 import { applyContinuePrefs, togglePinned, toggleHidden, moveContinue, isPinned, isHidden, resetContinuePrefs, hasContinueEdits } from './continue-prefs.js';
 import { franchiseSummary, toggleFranchiseDismissed, restoreAllFranchises } from './franchise.js';
 import { IMG, PH } from './config.js';
@@ -42,23 +43,29 @@ export async function renderBoxOfficeRail() {
 // setting. The pins and hides it produces are what persist.
 let continueEditing = false;
 
+function continueQueue() {
+  const shows = resumeQueue(500).map(row => ({ ...row, type: 'tv', key: row.key || `tv_${row.id}`, lastAt: row.entry.lastWatched?.at || 0 }));
+  return [...shows, ...movieResumeQueue(500)].sort((a, b) => b.lastAt - a.lastAt);
+}
+
 export function renderContinueWatching() {
   const host = $('continueWatchingRow'); if (!host) return;
   // Every show in progress, not an arbitrary first dozen. The rail is a
   // horizontal scroller with lazy images, so length costs almost nothing, and a
   // show cut off at position 13 is a show you never get back to.
-  const all = state.user ? applyContinuePrefs(resumeQueue(500)) : [];
+  const source = state.user ? continueQueue() : [];
+  const all = state.user ? applyContinuePrefs(source) : [];
   const queue = all;
   // While editing, keep the section up even if everything has been hidden —
   // otherwise the control to unhide disappears with the last card.
   if (!queue.length && !continueEditing) { host.innerHTML = ''; continueEditing = false; return; }
   if (!state.user) { host.innerHTML = ''; return; }
 
-  const hiddenCount = resumeQueue(500).length - all.length;
+  const hiddenCount = source.length - all.length;
   host.innerHTML = `<section class="section reveal continue-section${continueEditing ? ' editing' : ''}">
     <div class="section-head"><div><span class="continue-eyebrow">Pick up where you left off</span><h2 class="section-title"><span>▶</span> Continue Watching</h2><p>${continueEditing
-      ? 'Pin, reorder, or hide shows.'
-      : `${queue.length} show${queue.length === 1 ? '' : 's'}${hiddenCount ? ` · ${hiddenCount} hidden` : ''}`}</p></div>
+      ? 'Pin, reorder, or hide titles.'
+      : `${queue.length} title${queue.length === 1 ? '' : 's'}${hiddenCount ? ` · ${hiddenCount} hidden` : ''}`}</p></div>
       <div class="continue-tools">
         ${continueEditing && hasContinueEdits() ? '<button class="continue-tool" data-action="continue-reset">Reset all</button>' : ''}
         <button class="continue-tool${continueEditing ? ' on' : ''}" data-action="continue-edit" aria-pressed="${continueEditing}">${continueEditing ? 'Done' : 'Edit'}</button>
@@ -76,44 +83,50 @@ export function renderContinueWatching() {
 // Hidden shows are only listed while editing — visible enough to bring back,
 // invisible the rest of the time, which is the point of hiding them.
 function hiddenCardsHTML() {
-  const hidden = resumeQueue(500).filter(row => isHidden(row.id));
+  const hidden = continueQueue().filter(row => isHidden(row.key));
   if (!hidden.length) return '';
   return hidden.map(row => `<article class="continue-card hidden-card">
     <div class="continue-art muted"><img src="${row.entry.poster ? `${IMG}w342${row.entry.poster}` : PH}" alt="" loading="lazy"></div>
     <div class="continue-body">
-      <h3>${esc(row.entry.title || 'TV show')}</h3>
+      <h3>${esc(row.entry.title || (row.type === 'movie' ? 'Movie' : 'TV show'))}</h3>
       <p class="continue-next">Hidden from this rail</p>
-      <button class="continue-restore" data-action="continue-hide" data-tid="${row.id}">Show again</button>
+      <button class="continue-restore" data-action="continue-hide" data-key="${row.key}">Show again</button>
     </div>
   </article>`).join('');
 }
 
-function continueCard({ id, entry, progress, next }, index = 0, total = 1) {
+function continueCard(row, index = 0, total = 1) {
+  const { id, entry, progress, next, type, key } = row;
   const art = entry.backdrop ? `${IMG}w500${entry.backdrop}` : entry.poster ? `${IMG}w342${entry.poster}` : PH;
-  const meta = esc(JSON.stringify({ title: entry.title, poster: entry.poster, backdrop: entry.backdrop, episodeRuntime: entry.episodeRuntime, structure: entry.structure, aired: entry.aired, status: entry.status, numberingMode: entry.numberingMode, episodeModelV: entry.episodeModelV }));
-  const title = esc(entry.title || 'TV show');
-  const left = Math.max(0, progress.aired - progress.watched);
-  const nextCompact = episodeLabel(entry, next, { compact: true });
-  return `<article class="continue-card${isPinned(id) ? ' pinned' : ''}" data-continue="${id}">
-    <div class="continue-art-shell"><a class="continue-art" href="/tv/${id}" data-action="open-detail" data-id="${id}" data-type="tv" aria-label="Open ${title}">
+  const isMovie = type === 'movie';
+  const meta = isMovie ? '' : esc(JSON.stringify({ title: entry.title, poster: entry.poster, backdrop: entry.backdrop, episodeRuntime: entry.episodeRuntime, structure: entry.structure, aired: entry.aired, status: entry.status, numberingMode: entry.numberingMode, episodeModelV: entry.episodeModelV }));
+  const title = esc(entry.title || (isMovie ? 'Movie' : 'TV show'));
+  const left = isMovie ? Math.max(0, row.left || 0) : Math.max(0, progress.aired - progress.watched);
+  const nextCompact = isMovie ? (entry.position ? `Resume ${formatMovieTime(entry.position)}` : 'Continue movie') : episodeLabel(entry, next, { compact: true });
+  const metaLine = isMovie
+    ? `<span>${entry.position ? `Stopped at ${formatMovieTime(entry.position)}` : 'Watching'}</span><b>${progress.percent}%</b>`
+    : `<span>${progress.watched} of ${progress.aired} watched</span><b>${progress.percent}%</b>`;
+  const leftLabel = isMovie ? (entry.runtime ? `${formatMovieTime(left, { compact: true })} left` : 'In progress') : `${left} left`;
+  return `<article class="continue-card${isPinned(key) ? ' pinned' : ''}" data-continue="${key}" data-type="${type}">
+    <div class="continue-art-shell"><a class="continue-art" href="/${type}/${id}" data-action="open-detail" data-id="${id}" data-type="${type}" aria-label="Open ${title}">
       <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
       <span class="continue-scrim" aria-hidden="true"></span>
       <span class="continue-play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
       <span class="continue-badge">${esc(nextCompact)}</span>
-      ${isPinned(id) ? '<span class="continue-pin-mark" aria-hidden="true">&#9733;</span>' : ''}
-      <span class="continue-left">${left} left</span>
+      ${isPinned(key) ? '<span class="continue-pin-mark" aria-hidden="true">&#9733;</span>' : ''}
+      <span class="continue-left">${leftLabel}</span>
       <span class="continue-bar"><i style="width:0" data-w="${progress.percent}"></i></span>
     </a>
-    ${continueEditing ? '' : `<button class="continue-quick" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail" aria-label="Mark ${esc(nextCompact)} of ${title} watched" data-tip="Mark watched">${EP_CHECK_HOME}</button>`}</div>
+    ${continueEditing || isMovie ? '' : `<button class="continue-quick" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail" aria-label="Mark ${esc(nextCompact)} of ${title} watched" data-tip="Mark watched">${EP_CHECK_HOME}</button>`}</div>
     <div class="continue-body">
       <h3>${title}</h3>
-      <p class="continue-next" data-continue-title="${id}">${esc(nextCompact)}</p>
-      <div class="continue-meta"><span>${progress.watched} of ${progress.aired} watched</span><b>${progress.percent}%</b></div>
+      <p class="continue-next" data-continue-title="${key}">${esc(nextCompact)}</p>
+      <div class="continue-meta">${metaLine}</div>
       ${continueEditing ? `<div class="continue-edit-bar">
-        <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Move ${title} earlier">&#8592;</button>
-        <button class="ce-btn${isPinned(id) ? ' on' : ''}" data-action="continue-pin" data-tid="${id}" aria-pressed="${isPinned(id)}" aria-label="${isPinned(id) ? 'Unpin' : 'Pin'} ${title}">${isPinned(id) ? '&#9733; Pinned' : '&#9734; Pin'}</button>
-        <button class="ce-btn" data-action="continue-hide" data-tid="${id}" aria-label="Hide ${title}">Hide</button>
-        <button class="ce-btn" data-action="continue-move" data-tid="${id}" data-dir="1" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${title} later">&#8594;</button>
+        <button class="ce-btn" data-action="continue-move" data-key="${key}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Move ${title} earlier">&#8592;</button>
+        <button class="ce-btn${isPinned(key) ? ' on' : ''}" data-action="continue-pin" data-key="${key}" aria-pressed="${isPinned(key)}" aria-label="${isPinned(key) ? 'Unpin' : 'Pin'} ${title}">${isPinned(key) ? '&#9733; Pinned' : '&#9734; Pin'}</button>
+        <button class="ce-btn" data-action="continue-hide" data-key="${key}" aria-label="Hide ${title}">Hide</button>
+        <button class="ce-btn" data-action="continue-move" data-key="${key}" data-dir="1" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${title} later">&#8594;</button>
       </div>` : ''}
     </div>
   </article>`;
@@ -126,16 +139,16 @@ function continueCard({ id, entry, progress, next }, index = 0, total = 1) {
 const stillsDone = new Set();
 
 async function hydrateContinueStills(queue, from = 0, count = 8) {
-  const slice = queue.slice(from, from + count).filter(row => !stillsDone.has(row.id));
+  const slice = queue.filter(row => row.type === 'tv').slice(from, from + count).filter(row => !stillsDone.has(row.key));
   if (!slice.length) return;
-  slice.forEach(row => stillsDone.add(row.id));
+  slice.forEach(row => stillsDone.add(row.key));
   await pool(slice, async row => {
     const season = await tmdb(`/tv/${row.id}/season/${row.next.season}`).catch(() => null);
     const episode = (season?.episodes || []).find(item => item.episode_number === row.next.episode);
     if (!episode) return;
-    const card = document.querySelector(`.continue-card[data-continue="${row.id}"]`);
+    const card = document.querySelector(`.continue-card[data-continue="${row.key}"]`);
     if (!card) return;
-    const label = card.querySelector(`[data-continue-title="${row.id}"]`);
+    const label = card.querySelector(`[data-continue-title="${row.key}"]`);
     // Keep the season/episode prefix: the title alone loses where you are.
     if (label && episode.name) label.textContent = `${episodeLabel(row.entry, row.next, { compact: true })} · ${episode.name}`;
     if (episode.still_path) {
@@ -250,13 +263,14 @@ export function initHomeActions() {
   // A tick anywhere — the rail's own button or the detail page — re-orders the
   // queue, so the rail always rebuilds rather than trying to patch itself.
   document.addEventListener('cv:episode-progress', renderContinueWatching);
+  document.addEventListener('cv:movie-progress', renderContinueWatching);
   registerActions({
     'continue-edit': () => { continueEditing = !continueEditing; renderContinueWatching(); },
-    'continue-pin': (el) => { togglePinned(+el.dataset.tid); renderContinueWatching(); },
-    'continue-hide': (el) => { toggleHidden(+el.dataset.tid); renderContinueWatching(); },
+    'continue-pin': (el) => { togglePinned(el.dataset.key); renderContinueWatching(); },
+    'continue-hide': (el) => { toggleHidden(el.dataset.key); renderContinueWatching(); },
     'continue-move': (el) => {
-      const visible = [...document.querySelectorAll('.continue-row .continue-card[data-continue]')].map(node => +node.dataset.continue);
-      if (moveContinue(+el.dataset.tid, +el.dataset.dir, visible)) renderContinueWatching();
+      const visible = [...document.querySelectorAll('.continue-row .continue-card[data-continue]')].map(node => node.dataset.continue);
+      if (moveContinue(el.dataset.key, +el.dataset.dir, visible)) renderContinueWatching();
     },
     'continue-reset': () => { resetContinuePrefs(); renderContinueWatching(); },
     'franchise-dismiss': (el, e) => {

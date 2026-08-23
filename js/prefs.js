@@ -11,6 +11,9 @@ export const DEFAULT_PREFS = Object.freeze({
   rememberSearch: true, rememberViewed: true, discoverable: true, shareTaste: true,
   glass: 'rich', textSize: 'standard',
   backdropArt: true, posterTilt: true, highContrast: false, compactNav: false,
+  cleanHomePosters: false, posterCommunityRating: true, posterPersonalRating: true,
+  posterWatchedMark: true, posterListButton: true, posterRateButton: true,
+  posterMatchBadge: true, posterProviderLogo: true, posterDismissButton: true, posterPreview: true,
   detailBoxOfficeExpanded: false, detailGalleryExpanded: false, detailReviewsExpanded: false,
   directorExcludeShorts: true, directorExcludeDocumentaries: true, directorExcludeUnreleased: true,
   // Mature content is OFF by default and leaves no trace in the UI until it is
@@ -36,7 +39,7 @@ const allowed = {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   return next;
@@ -55,6 +58,16 @@ export function applyPrefs() {
   root.dataset.textSize = prefs.textSize;
   root.dataset.backdropArt = prefs.backdropArt ? 'show' : 'hide';
   root.dataset.posterTilt = prefs.posterTilt ? 'on' : 'off';
+  root.dataset.cleanHomePosters = prefs.cleanHomePosters ? 'on' : 'off';
+  root.dataset.posterCommunityRating = prefs.posterCommunityRating ? 'show' : 'hide';
+  root.dataset.posterPersonalRating = prefs.posterPersonalRating ? 'show' : 'hide';
+  root.dataset.posterWatchedMark = prefs.posterWatchedMark ? 'show' : 'hide';
+  root.dataset.posterListButton = prefs.posterListButton ? 'show' : 'hide';
+  root.dataset.posterRateButton = prefs.posterRateButton ? 'show' : 'hide';
+  root.dataset.posterMatchBadge = prefs.posterMatchBadge ? 'show' : 'hide';
+  root.dataset.posterProviderLogo = prefs.posterProviderLogo ? 'show' : 'hide';
+  root.dataset.posterDismissButton = prefs.posterDismissButton ? 'show' : 'hide';
+  root.dataset.posterPreview = prefs.posterPreview ? 'show' : 'hide';
   root.dataset.contrast = prefs.highContrast ? 'high' : 'standard';
   root.dataset.mature = prefs.mature ? 'on' : 'off';
   root.dataset.matureBlur = prefs.mature && prefs.matureBlur ? 'on' : 'off';

@@ -81,7 +81,7 @@ export function buildCard(item, type, opts = {}) {
 
   const yt = item.__ytKey ? ` data-yt="${item.__ytKey}"` : '';
   const recKey = opts.dismissible ? `${t}_${item.id}` : '';
-  let h = `<a class="${cls}" href="/${t}/${item.id}" aria-label="${safeTitle}" data-action="open-detail" data-id="${item.id}" data-type="${t}"${recKey ? ` data-recommendation-key="${recKey}"` : ''}${yt}>`;
+  let h = `<a class="${cls}" href="/${t}/${item.id}" aria-label="${safeTitle}" data-action="open-detail" data-id="${item.id}" data-type="${t}" data-title="${safeTitle}" data-year="${esc(year)}" data-rating="${esc(rating)}" data-backdrop="${esc(item.backdrop_path || '')}"${recKey ? ` data-recommendation-key="${recKey}"` : ''}${yt}>`;
   if (opts.t10) h += `<div class="t10-num">${opts.rank}</div>`;
   h += `<div class="card-img"><img src="${poster}" alt="${safeTitle}" loading="lazy" data-ph="${PH}">`;
   if (opts.dismissible) h += `<button class="card-dismiss" data-action="dismiss-recommendation" data-id="${item.id}" data-type="${t}" data-title="${safeTitle}" data-poster="${esc(item.poster_path || '')}" data-source="${esc((item.__sources || [item.__source]).filter(Boolean).join(','))}" data-genres="${esc(JSON.stringify(item.genre_ids || []))}" data-keywords="${esc(JSON.stringify(item.__keywordIds || []))}" data-score="${Number(item.__score || 0).toFixed(3)}" aria-label="Not interested in ${safeTitle}" data-tip="Not interested"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;

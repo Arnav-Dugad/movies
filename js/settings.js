@@ -10,6 +10,7 @@ import { loadWatchlist, loadWatched } from './watchlist.js';
 import { loadRatings } from './ratings.js';
 import { loadLists } from './lists.js';
 import { loadEpisodeProgress, repairEpisodeProgress } from './episodes.js';
+import { loadMovieProgress } from './movie-progress.js';
 
 let cloudSyncTimer = null;
 
@@ -54,6 +55,18 @@ export function renderSettings() {
           ${select('glass', 'Glass effects', 'Control glow and translucent surface intensity.', [['rich', 'Rich cinema glass'], ['quiet', 'Quiet and focused']], prefs.glass)}
           ${toggle('highContrast', 'High-contrast type', 'Brighten supporting text and borders for easier reading.', prefs.highContrast)}
           ${toggle('compactNav', 'Compact navigation', 'Use a tighter desktop navigation bar with more breathing room below.', prefs.compactNav)}
+        </section>
+        <section class="settings-panel poster-controls"><div class="settings-panel-head">${ICONS.palette}<div><span>Home posters</span><h2>Poster controls</h2></div></div>
+          ${toggle('cleanHomePosters', 'Clean posters', 'Hide every badge and action from homepage artwork.', prefs.cleanHomePosters)}
+          ${toggle('posterCommunityRating', 'Community rating', 'Show the TMDB score on homepage posters.', prefs.posterCommunityRating)}
+          ${toggle('posterPersonalRating', 'Your rating', 'Show your own score on homepage posters.', prefs.posterPersonalRating)}
+          ${toggle('posterWatchedMark', 'Watched mark', 'Show the watched check on homepage posters.', prefs.posterWatchedMark)}
+          ${toggle('posterListButton', 'Add to list', 'Show the list button when a homepage poster is hovered.', prefs.posterListButton)}
+          ${toggle('posterRateButton', 'Quick rating', 'Show the quick-rate button for watched titles.', prefs.posterRateButton)}
+          ${toggle('posterMatchBadge', 'Match badge', 'Show personalized match percentages.', prefs.posterMatchBadge)}
+          ${toggle('posterProviderLogo', 'Streaming logo', 'Show subscription provider logos.', prefs.posterProviderLogo)}
+          ${toggle('posterDismissButton', 'Not interested', 'Show the recommendation dismissal button.', prefs.posterDismissButton)}
+          ${toggle('posterPreview', 'Hover previews', 'Expand homepage posters into muted landscape trailers on desktop.', prefs.posterPreview)}
         </section>
         <section class="settings-panel"><div class="settings-panel-head">${ICONS.motion}<div><span>Motion & playback</span><h2>Atmosphere</h2></div></div>
           ${select('motion', 'Interface motion', 'Respect your system, force full motion, or reduce it.', [['system', 'Use system setting'], ['full', 'Full cinematic motion'], ['reduced', 'Reduced motion']], prefs.motion)}
@@ -167,7 +180,7 @@ export function initSettings() {
       flushLibraryVersion();
       clearLibraryCache(state.user.uid);
       try {
-        await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadEpisodeProgress()]);
+        await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadEpisodeProgress(), loadMovieProgress()]);
         document.dispatchEvent(new Event('cv:wl-changed'));
         toast(libraryCacheDisabled() ? 'Library reloaded' : 'Library reloaded from the cloud', 'success');
       } catch (error) {

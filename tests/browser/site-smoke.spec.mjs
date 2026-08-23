@@ -2,11 +2,12 @@ import { test, expect } from '@playwright/test';
 
 async function bootGuest(page) {
   await page.addInitScript(() => {
+    window.__cvWrites = [];
     localStorage.setItem('cv_onboarding_guest_v1', JSON.stringify({ done: true, region: 'IN', seedGenres: [] }));
     const snapshot = { exists: false, empty: true, docs: [], data: () => ({}), forEach() {} };
     const ref = {
       collection: () => ref, doc: () => ref, where: () => ref, orderBy: () => ref, limit: () => ref,
-      get: async () => snapshot, set: async () => {}, update: async () => {}, add: async () => ref, delete: async () => {},
+      get: async () => snapshot, set: async value => { window.__cvWrites.push(value); }, update: async value => { window.__cvWrites.push(value); }, add: async () => ref, delete: async () => {},
       onSnapshot: callback => { callback(snapshot); return () => {}; },
     };
     const authInstance = { onAuthStateChanged: callback => { queueMicrotask(() => callback(null)); return () => {}; }, signOut: async () => {} };
@@ -41,6 +42,15 @@ test('highest-grossing rail and dedicated page expose reported money', async ({ 
   await page.route('https://api.themoviedb.org/3/collection/87096**', route => route.fulfill({ json: {
     id: 87096, name: 'Avatar Collection', poster_path: '/avatar-collection.jpg', parts: [{ id: 19995, title: 'Avatar', poster_path: '/avatar.jpg', release_date: '2009-12-16' }],
   } }));
+  await page.route('https://api.themoviedb.org/3/person/2710/movie_credits**', route => route.fulfill({ json: {
+    crew: [
+      { id: 19995, title: 'Avatar', job: 'Director', department: 'Directing', release_date: '2009-12-16', vote_average: 7.6, vote_count: 30000, genre_ids: [878] },
+      { id: 1, title: 'Aliens', job: 'Director', department: 'Directing', release_date: '1986-07-18', vote_average: 7.9, vote_count: 10000, genre_ids: [28, 878] },
+      { id: 2, title: 'Terminator 2', job: 'Director', department: 'Directing', release_date: '1991-07-03', vote_average: 8.1, vote_count: 12000, genre_ids: [28, 878] },
+      { id: 3, title: 'Titanic', job: 'Director', department: 'Directing', release_date: '1997-12-19', vote_average: 7.9, vote_count: 25000, genre_ids: [18] },
+      { id: 4, title: 'The Abyss', job: 'Director', department: 'Directing', release_date: '1989-08-09', vote_average: 7.3, vote_count: 3000, genre_ids: [878] },
+    ], cast: [],
+  } }));
 
   await page.goto('/index.html');
   await page.waitForFunction(() => window.__cvBooted === true, null, { timeout: 12_000 });
@@ -72,8 +82,8 @@ test('highest-grossing rail and dedicated page expose reported money', async ({ 
   await expect(page.locator('.bo-league-row')).toContainText('$2,923,706,026');
   await expect(page.locator('.bo-league-row')).toContainText('100% hit rate');
   await expect(page.locator('.bo-director-eras')).toContainText('Career');
-  await expect(page.locator('.bo-director-consistency')).toContainText('Early sample');
-  await expect(page.locator('.bo-director-consistency')).toContainText('1 measured');
+  await expect(page.locator('.bo-director-consistency')).toContainText('5 films');
+  await expect(page.locator('.bo-director-consistency')).not.toContainText('Limited data');
   const alignment = await page.evaluate(() => {
     const hero = document.querySelector('.bo-page-hero')?.getBoundingClientRect();
     const league = document.querySelector('.bo-league')?.getBoundingClientRect();
@@ -84,6 +94,7 @@ test('highest-grossing rail and dedicated page expose reported money', async ({ 
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.bo-league-row')).toBeVisible();
+  await expect(page.locator('.bo-director-consistency')).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(2);
 });
@@ -135,4 +146,71 @@ test('franchise page switches watch order and exposes gaps, timeline, coverage, 
   await expect(page.locator('.fp-revenue-bars a')).toHaveCount(3);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
+});
+
+test('movie progress accepts an optional exact stop time and survives reload', async ({ page }) => {
+  await bootGuest(page);
+  await page.route('https://api.themoviedb.org/3/**', route => {
+    const path = new URL(route.request().url()).pathname.replace('/3', '');
+    if (path === '/movie/7') return route.fulfill({ json: {
+      id: 7, title: 'Progress Movie', overview: 'A movie progress fixture.', status: 'Released',
+      release_date: '2020-01-01', runtime: 132, poster_path: '/seven.jpg', backdrop_path: '/seven-back.jpg',
+      vote_average: 8, vote_count: 1000, genres: [{ id: 18, name: 'Drama' }], original_language: 'en',
+      production_countries: [{ iso_3166_1: 'US', name: 'United States' }], spoken_languages: [], production_companies: [],
+      images: { logos: [], backdrops: [], posters: [] }, recommendations: { results: [] }, keywords: { keywords: [] },
+      external_ids: {}, release_dates: { results: [] }, alternative_titles: { titles: [] }, 'watch/providers': { results: {} },
+    } });
+    if (path === '/movie/7/credits') return route.fulfill({ json: { cast: [], crew: [] } });
+    return route.fulfill({ json: { page: 1, total_pages: 1, results: [] } });
+  });
+  const open = async ({ reload = false } = {}) => {
+    if (reload) await page.reload(); else await page.goto('/index.html');
+    await page.waitForFunction(() => window.__cvBooted === true, null, { timeout: 12_000 });
+    await page.evaluate(async () => {
+      const { state } = await import('/js/state.js');
+      const movie = await import('/js/movie-progress.js');
+      state.user = { uid: 'movie-progress-browser' };
+      await movie.loadMovieProgress();
+      document.dispatchEvent(new CustomEvent('cv:go', { detail: '/movie/7' }));
+    });
+    await expect(page.getByRole('heading', { name: 'Progress Movie' })).toBeVisible();
+  };
+  await open();
+  await page.getByRole('button', { name: 'Start watching this movie' }).click();
+  await expect(page.locator('.movie-progress-panel')).toContainText('Currently watching');
+  await page.getByLabel('Exact stopped time in hours minutes and seconds').fill('01:12:30');
+  await page.locator('.movie-progress-save').click();
+  await expect(page.locator('.movie-progress-panel')).toContainText('Resume at 01:12:30');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cv_movie_progress_movie-progress-browser')).movie_7.position)).toBe(4350);
+  await open({ reload: true });
+  await expect(page.locator('.movie-progress-panel')).toContainText('Resume at 01:12:30');
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
+});
+
+test('homepage poster controls apply independently and sync one Firebase snapshot', async ({ page }) => {
+  await bootGuest(page);
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.__cvBooted === true, null, { timeout: 12_000 });
+  await page.evaluate(async () => {
+    const { state } = await import('/js/state.js');
+    state.user = { uid: 'poster-settings-browser' };
+    document.dispatchEvent(new CustomEvent('cv:go', { detail: '/settings' }));
+    const card = document.createElement('article'); card.className = 'card';
+    card.innerHTML = '<div class="card-img"><span class="card-rating">8.8</span><button class="card-wl">+</button></div>';
+    document.getElementById('homePage').appendChild(card);
+  });
+  await expect(page.getByRole('heading', { name: 'Poster controls' })).toBeVisible();
+  await expect(page.locator('.poster-controls input')).toHaveCount(10);
+  await page.locator('label:has(input[data-pref="cleanHomePosters"])').click();
+  await expect(page.locator('input[data-pref="cleanHomePosters"]')).toBeChecked();
+  expect(await page.evaluate(() => document.documentElement.dataset.cleanHomePosters)).toBe('on');
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('#homePage .card-rating')).display)).toBe('none');
+  await page.locator('label:has(input[data-pref="cleanHomePosters"])').click();
+  await page.locator('label:has(input[data-pref="posterCommunityRating"])').click();
+  await page.locator('label:has(input[data-pref="posterPreview"])').click();
+  expect(await page.evaluate(() => ({ rating: document.documentElement.dataset.posterCommunityRating, preview: document.documentElement.dataset.posterPreview }))).toEqual({ rating: 'hide', preview: 'hide' });
+  await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.experiencePrefs?.posterCommunityRating === false && value.experiencePrefs?.posterPreview === false))).toBe(true);
+  await page.evaluate(async () => { const { togglePinned } = await import('/js/continue-prefs.js'); togglePinned('tv_55'); });
+  await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.continueWatching?.pinned?.includes('tv_55')))).toBe(true);
 });

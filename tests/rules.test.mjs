@@ -88,7 +88,7 @@ describe('users/{uid} profile document', () => {
 // a new one added to the rules without a test here is caught by the coverage
 // check in tests/coverage.mjs.
 describe('private subcollections', () => {
-  const PRIVATE = ['watchlist', 'watched', 'ratings', 'lists', 'progress'];
+  const PRIVATE = ['watchlist', 'watched', 'ratings', 'lists', 'progress', 'movieProgress'];
 
   for (const name of PRIVATE) {
     it(`${name} is readable and writable only by its owner`, async () => {

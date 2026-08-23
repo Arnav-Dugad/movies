@@ -26,6 +26,8 @@ let lastAudit = null;
 const HISTORY_LIMIT = 100;
 const ROTATION_IDLE_MS = 3 * 86400000;
 const ACTIVITY_WRITE_GAP = 6 * 60 * 60 * 1000;
+const SIGNAL_REFRESH_MS = 24 * 60 * 60 * 1000;
+let lastSignalSlot = -1;
 
 // ----- Per-visit freshness -----
 // Every time CineVerse is OPENED the rails show a different slice of the ranked
@@ -546,6 +548,29 @@ function activeRotation() {
   return prepareRecommendationRotation() + visitRotation();
 }
 
+const currentSignalSlot = () => Math.floor(Date.now() / SIGNAL_REFRESH_MS);
+function rotateList(values, offset) {
+  const list = [...(values || [])];
+  if (list.length < 2) return list;
+  const start = ((offset % list.length) + list.length) % list.length;
+  return [...list.slice(start), ...list.slice(0, start)];
+}
+
+// Named rails must evolve too, not only the cards inside them. The strongest
+// small pool remains taste-ranked; its starting signal rotates per visit and at
+// least once a day, so Because/From/theme rails do not fossilise indefinitely.
+export function rotateRecommendationSignals(profile, rotation = 0, slot = currentSignalSlot()) {
+  const cycle = Math.max(0, Math.floor(rotation)) + Math.max(0, Math.floor(slot));
+  return {
+    ...profile,
+    seedIds: rotateList((profile.seedIds || []).slice(0, 8), cycle),
+    topDirectors: rotateList((profile.topDirectors || []).slice(0, 6), cycle + 1),
+    topActors: rotateList((profile.topActors || []).slice(0, 6), cycle + 2),
+    topKeywords: rotateList((profile.topKeywords || []).slice(0, 10), cycle + 3),
+    topGenres: rotateList((profile.topGenres || []).slice(0, 8), cycle + 4),
+  };
+}
+
 function touchRecommendationActivity() {
   const feedback = feedbackState(), now = Date.now();
   if (now - +(feedback.lastRecommendationActivityAt || 0) < ACTIVITY_WRITE_GAP) return;
@@ -644,10 +669,13 @@ export async function renderRecommendations() {
   // Rendering never waits for old watched records to be enriched. When the
   // one-time metadata pass lands, its event refreshes these rails with themes.
   ensureWatchedMeta();
-  const profile = buildTasteProfile();
+  let profile = buildTasteProfile();
   if (!profile.hasSignal) { wrap.innerHTML = ''; return; }
   const rotation = activeRotation();
+  const signalSlot = currentSignalSlot();
+  profile = rotateRecommendationSignals(profile, rotation, signalSlot);
   profile.rotation = rotation;
+  lastSignalSlot = signalSlot;
 
   const seed = pickLabeledSeed(profile);
   const topActor = (profile.topActors || []).find(a => a.name);
@@ -754,6 +782,15 @@ export function initRecommendations() {
     if (event.target.closest('[data-recommendation-key]')) touchRecommendationActivity();
   }, true);
   document.addEventListener('cv:auth', () => { auditOpen = false; lastAudit = null; });
+  // A tab left open for days refreshes the named taste signals when it returns
+  // to the foreground. The short poll does no network work unless the day slot
+  // actually changed and Home's recommendation host is present.
+  const refreshNamedRails = () => {
+    if (document.hidden || currentSignalSlot() === lastSignalSlot || !$('personalRows')) return;
+    renderRecommendations();
+  };
+  document.addEventListener('visibilitychange', refreshNamedRails);
+  setInterval(refreshNamedRails, 30 * 60 * 1000);
   document.addEventListener('cv:meta-backfilled', () => {
     if ($('personalRows')) renderRecommendations();
     if ($('recommendationProfileInsights')) renderRecommendationInsights();
