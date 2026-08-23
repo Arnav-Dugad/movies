@@ -56,7 +56,7 @@ check('unmarking a season clears it', ep.seasonWatchedCount(1, 3) === 0);
 let completed = null;
 ep.onShowComplete((id, meta, progress) => { completed = { id, progress }; });
 ep.markUpTo(1, 3, 4, META);
-check('progress reports complete', ep.showProgress(1).complete && ep.showProgress(1).percent === 100);
+check('progress reports caught up without calling a returning series completed', ep.showProgress(1).caughtUp && !ep.showProgress(1).seriesCompleted && ep.showProgress(1).percent === 100);
 check('nextUp is null when caught up', ep.nextUp(1) === null);
 check('completion hook fired', completed?.id === 1 && completed.progress.aired === 24, JSON.stringify(completed));
 

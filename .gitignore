@@ -2,6 +2,8 @@
 .wrangler/
 node_modules/
 tests/node_modules/
+tests/test-results/
+tests/playwright-report/
 .firebase/
 
 # OS / editor noise
@@ -10,4 +12,5 @@ Thumbs.db
 
 # Emulator scratch output.
 tests/firestore-debug.log
+tests/firebase-debug.log
 tests/ui-debug.log

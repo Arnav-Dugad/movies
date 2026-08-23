@@ -52,13 +52,13 @@ ep.showEntry(3).seasons['2'] = [1, 2, 3, 4, 5, 6];        // one past the aired 
 p = ep.showProgress(3);
 check('watched never exceeds the aired total it is shown against', p.watched <= p.aired, `${p.watched}/${p.aired}`);
 check('the viewer\'s own ticks raise the denominator', p.aired === 16, p.aired);
-check('and having seen everything reads as complete', p.complete === true);
+check('and having seen everything reads as caught up', p.caughtUp === true && p.seriesCompleted === false);
 
 // ================= un-ticking undoes a completion ==========================
 // Was: completedAt was set on finish and never cleared, so a show stayed stamped
 // with a finish date after its last episode was un-marked.
 reset();
-const DONE = { ...SHOW, structure: { '1': 3 }, aired: { season: 1, episode: 3 } };
+const DONE = { ...SHOW, status: 'Ended', structure: { '1': 3 }, aired: { season: 1, episode: 3 } };
 ep.setSeasonWatched(4, 1, true, DONE);
 check('finishing a show stamps completedAt', ep.showEntry(4).completedAt > 0);
 check('and reports complete', ep.showProgress(4).complete === true);
@@ -73,7 +73,7 @@ reset();
 const added = ep.markUpTo(5, 2, 10, SHOW);               // asks for S2E10, only 4 aired
 p = ep.showProgress(5);
 check('up-to-here stops at the last aired episode', added === 14, added);
-check('and leaves the show complete, not over-complete', p.watched === 14 && p.complete === true, `${p.watched}/${p.aired}`);
+check('and leaves the show caught up, not falsely series-completed', p.watched === 14 && p.caughtUp === true && p.seriesCompleted === false, `${p.watched}/${p.aired}`);
 check('no unaired episode was marked',
   (ep.showEntry(5).seasons['2'] || []).every(e => e <= 4), JSON.stringify(ep.showEntry(5).seasons['2']));
 

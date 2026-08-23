@@ -40,16 +40,16 @@ check('unmarking a season clears its log rows', ep.showEntry(1) === null || !(ep
 state.episodeProgress = {};
 const added = await ep.markShowWatched(2, META);
 check('markShowWatched fills every aired episode', added === 7 + 13 + 4, String(added));
-check('progress reads complete', ep.showProgress(2).complete && ep.showProgress(2).percent === 100);
+check('progress reads caught up but not series completed', ep.showProgress(2).caughtUp && !ep.showProgress(2).seriesCompleted && ep.showProgress(2).percent === 100);
 check('unaired episodes stay unmarked', !ep.isEpisodeWatched(2, 3, 5));
-check('completedAt is stamped', ep.showEntry(2).completedAt > 0);
+check('caughtUpAt is stamped without a false series completion', ep.showEntry(2).caughtUpAt > 0 && ep.showEntry(2).completedAt === 0);
 check('marking again adds nothing', (await ep.markShowWatched(2, META)) === 0);
 
 // Without a structure and without a fetcher it must decline rather than guess.
 state.episodeProgress = {};
 check('no structure and no fetcher is a no-op', (await ep.markShowWatched(3, { title: 'X' }, { fetchStructure: null })) === 0 && ep.showEntry(3) === null);
 const fetched = await ep.markShowWatched(3, { title: 'X' }, { fetchStructure: async () => META });
-check('a fetcher supplies the structure', fetched === 24 && ep.showProgress(3).complete, String(fetched));
+check('a fetcher supplies the structure', fetched === 24 && ep.showProgress(3).caughtUp, String(fetched));
 
 // ---------- stampFrom keeps history honest ----------
 state.episodeProgress = {};
@@ -83,13 +83,39 @@ check('nothing is pending afterwards', ep.pendingLegacyShows().length === 0);
 const second = await ep.backfillLegacyShows(async () => FULL);
 check('a second run does nothing', second.filled === 0);
 
-// A show TMDB cannot resolve is recorded so it is not retried forever.
+// A temporary lookup failure remains retryable.
 state.watched.tv_13 = { tmdbId: 13, type: 'tv', title: 'Gone' };
 const missing = await ep.backfillLegacyShows(async () => null);
 check('an unresolvable show is skipped, not filled', missing.filled === 0);
-check('and is not offered again', ep.pendingLegacyShows().length === 0);
+check('and is offered again after a temporary failure', ep.pendingLegacyShows().some(row => row.id === 13));
+
+// ---------- historical repair ----------
+const statsProgress = structuredClone(state.episodeProgress);
+const statsWatched = structuredClone(state.watched);
+state.episodeProgress = {};
+const repairDate = Date.now() - 2 * 365 * 86400000;
+state.watched = { tv_30: { tmdbId: 30, type: 'tv', title: 'Repair Me', watchedAt: { seconds: Math.floor(repairDate / 1000) } } };
+const broken = {
+  tmdbId: 30, title: 'Repair Me', status: 'Returning Series', structure: { '1': 2, '2': 2 }, aired: { season: 2, episode: 2 },
+  seasons: { '1': [1, 2], '2': [1, 2] }, removed: {},
+  log: [[1, 1, repairDate, 1], [1, 2, repairDate, 1], [2, 1, repairDate, 1], [2, 2, repairDate, 1]], updatedAt: repairDate,
+};
+localStorage.setItem('cv_episode_progress_u1', JSON.stringify({ tv_30: broken }));
+ep.hydrateEpisodeProgressFromCache();
+let repairCutoff = 0;
+const repair = await ep.repairEpisodeProgress({
+  fetchHistorical: async (_id, options) => { repairCutoff = options.cutoff; return { ...FULL, title: 'Repair Me', status: 'Returning Series', structure: { '1': 2 }, aired: { season: 1, episode: 2 } }; },
+  refresh: async () => ({ refreshed: 1, failed: 0 }),
+});
+check('repair asks for the title shape at its original watch date', Math.abs(repairCutoff - repairDate) < 1000, repairCutoff - repairDate);
+check('repair removes seasons that did not exist at that watch date', !ep.showEntry(30).seasons['2'], JSON.stringify(ep.showEntry(30).seasons));
+check('repair tombstones false future history so cloud merge cannot revive it', ep.showEntry(30).removed['2'].join(',') === '1,2', JSON.stringify(ep.showEntry(30).removed));
+check('repair reports rebuilt history and removed future episodes', repair.repaired === 1 && repair.removedFuture === 2 && repair.refreshed === 1, JSON.stringify(repair));
+check('repair marks the reconstructed entry as legacy history', ep.showEntry(30).legacy === true && ep.showEntry(30).legacyBackfillAt > 0);
 
 // ---------- episodeStats ----------
+state.episodeProgress = statsProgress;
+state.watched = statsWatched;
 const stats = ep.episodeStats();
 check('stats count every episode', stats.episodes === 40, JSON.stringify({ e: stats.episodes }));
 check('stats count shows', stats.shows === 2);

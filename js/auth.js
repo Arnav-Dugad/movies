@@ -12,7 +12,7 @@ import { REGIONS } from './config.js';
 import { hydrateNotificationPrefs, resetNotificationPrefsForAuth } from './notification-prefs.js';
 import { hydrateProviderHistory, resetProviderHistoryForAuth } from './provider-history.js';
 import { hydrateStatsSections } from './stats.js';
-import { loadEpisodeProgress, resetEpisodeProgressForAuth, hydrateEpisodeProgressFromCache } from './episodes.js';
+import { loadEpisodeProgress, resetEpisodeProgressForAuth } from './episodes.js';
 import { hydrateFromCache, writeCache, clearLibraryCache, resetLibraryRuntime, ensureLibraryVersion, initLibraryCache, flushLibraryVersion } from './library-cache.js';
 import { hydrateContinuePrefs } from './continue-prefs.js';
 import { hydrateFranchisePrefs } from './franchise.js';
@@ -22,7 +22,7 @@ let delRelease = null;
 
 // Read the profile doc (avatar + created) into state so the Profile page and the
 // nav/dropdown avatars can render. Non-fatal — falls back to the initial avatar.
-// Returns the account's libraryVersion so the caller can decide whether the five
+// Returns the account's libraryVersion so the caller can decide whether the four
 // collection reads are needed at all (see js/library-cache.js).
 async function loadProfile() {
   let libraryVersion = 0;
@@ -108,13 +108,13 @@ export function initAuth() {
     if (u) {
       // Paint the library from this device before the network answers, then let
       // the profile read (one document, which we needed anyway) say whether any
-      // of it is out of date. Unchanged means five collection reads are skipped.
+      // of it is out of date. Unchanged means four library collection reads are skipped.
       const cachedVersion = hydrateFromCache(u.uid);
       const serverVersion = await loadProfile();
       if (cachedVersion > 0 && cachedVersion === serverVersion) {
-        // loadProfile resets episode progress for the new session; its own device
-        // mirror restores it without touching Firestore.
-        hydrateEpisodeProgressFromCache();
+        // Episode progress has its own conflict-safe local/server merge and is
+        // intentionally independent from the four-collection library version.
+        await loadEpisodeProgress();
       } else {
         await Promise.all([loadWatchlist(), loadRatings(), loadWatched(), loadLists(), loadEpisodeProgress()]);
         writeCache(u.uid, await ensureLibraryVersion(u.uid, serverVersion));

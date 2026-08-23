@@ -64,3 +64,23 @@ jobs:
       - name: Rules suite
         working-directory: tests
         run: npm run test:rules
+
+  browser:
+    name: episode browser flows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+      - name: Install
+        working-directory: tests
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+      - name: Browser suite
+        working-directory: tests
+        run: npm run test:browser

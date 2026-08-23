@@ -596,7 +596,7 @@ function tvTrackerPanel() {
 
   // Only in-progress shows earn a row here: a finished show has nothing left to
   // say, and listing every completed series would bury the ones that matter.
-  const active = tv.byShow.filter(show => !show.complete).slice(0, 8);
+  const active = tv.byShow.filter(show => !show.caughtUp).slice(0, 8);
   const completedShows = tv.byShow.filter(show => show.complete);
 
   const rows = active.map(show => `<article class="tv-row">
@@ -612,12 +612,14 @@ function tvTrackerPanel() {
   const tile = (label, value, note) => `<div><span>${esc(label)}</span><strong>${esc(String(value))}</strong><small>${esc(note)}</small></div>`;
 
   return `<section class="stats-panel tv-tracker">
-    <div class="stats-section-head"><div><span>Episode intelligence</span><h2>TV Tracker</h2><p>Per-episode progress across every show you track. Counted separately from your watched list, never added to it.</p></div><div class="tv-region-chip">${tv.completionRate}% completion rate</div></div>
+    <div class="stats-section-head"><div><span>Episode intelligence</span><h2>TV Tracker</h2><p>Per-episode progress across every show you track. Caught up, finished seasons, and completed series are measured separately.</p></div><div class="tv-region-chip">${tv.caughtUpRate}% caught up</div></div>
 
     <div class="tv-tiles">
       ${tile('Episodes watched', tv.episodes.toLocaleString(), `${tv.shows} show${tv.shows === 1 ? '' : 's'} tracked`)}
       ${tile('Episode time', hours ? `${hours.toLocaleString()}h` : '—', tv.runtimeCoverage === 100 ? 'Runtime known for every episode' : `Runtime known for ${tv.runtimeCoverage}% of them${days ? ` · about ${days} days` : ''}`)}
-      ${tile('Shows finished', tv.completed, tv.inProgress ? `${tv.inProgress} still in progress` : 'Nothing left open')}
+      ${tile('Caught up', tv.caughtUp, tv.inProgress ? `${tv.inProgress} with an episode waiting` : 'Nothing available is waiting')}
+      ${tile('Series completed', tv.completed, 'Ended series watched from first episode to last')}
+      ${tile('Seasons completed', tv.seasonsCompleted, 'Fully released seasons watched in full')}
       ${tile('Longest sitting', tv.binge ? `${tv.binge.count} eps` : '—', tv.binge ? `on ${new Date(`${tv.binge.day}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Counts episodes ticked one at a time')}
       ${tv.seasonRewatches.extraSeasons
         ? tile('Seasons rewatched', tv.seasonRewatches.extraSeasons, `${tv.seasonRewatches.rows[0].title} S${tv.seasonRewatches.rows[0].season} leads at ${tv.seasonRewatches.rows[0].plays}\u00d7${tv.seasonRewatches.extraMinutes ? ` \u00b7 ${Math.round(tv.seasonRewatches.extraMinutes / 60)}h on repeats` : ''}`)
@@ -630,8 +632,8 @@ function tvTrackerPanel() {
         <div class="tv-months">${months}</div>
       </figure>
       <figure class="tv-card">
-        <figcaption><strong>Shows in progress</strong><span>${active.length ? `${active.length} open · ${completedShows.length} finished` : 'Every tracked show is finished'}</span></figcaption>
-        ${rows || `<div class="tv-allclear"><i>✓</i><p>Nothing half-finished. ${completedShows.length} show${completedShows.length === 1 ? '' : 's'} complete.</p></div>`}
+        <figcaption><strong>Shows in progress</strong><span>${active.length ? `${active.length} open · ${tv.caughtUp} caught up · ${completedShows.length} series completed` : 'Every tracked show is caught up'}</span></figcaption>
+        ${rows || `<div class="tv-allclear"><i>✓</i><p>Nothing waiting. ${tv.caughtUp} show${tv.caughtUp === 1 ? '' : 's'} caught up; ${completedShows.length} ended series completed.</p></div>`}
       </figure>
     </div>
 

@@ -8,7 +8,7 @@ import { registerActions } from './events.js';
 import { observeReveals, observeCountUps } from './effects.js';
 import { mountAmbientVideo } from './video-bg.js';
 import { loadAwardsSection } from './awards.js';
-import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
+import { exactEpisodeTime, localEpisodeTime, localTimeZone, isEpisodeAvailable } from './episode-times.js';
 import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
   seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
@@ -121,9 +121,9 @@ export async function openDetail(id, type) {
     // One countdown block, shared markup. For an airing show it counts to the next
     // episode; for anything not yet out it counts to the release/premiere date.
     let cdHTML = '', cdDate = null, cdDoneMsg = '';
-    if (type === 'tv' && det.next_episode_to_air && new Date(`${det.next_episode_to_air.air_date}T23:59:59`) > new Date()) {
+    if (type === 'tv' && det.next_episode_to_air && !isEpisodeAvailable(det.next_episode_to_air, { showId: id })) {
       const ne = det.next_episode_to_air;
-      cdDate = `${ne.air_date}T23:59:59`; cdDoneMsg = '🎉 Now Airing!';
+      cdDate = `${ne.air_date}T00:00:00`; cdDoneMsg = '🎉 Now Airing!';
       const episode = `S${ne.season_number}E${ne.episode_number}${ne.name ? ` · ${ne.name}` : ''}`;
       cdHTML = countdownPanel(id, { eyebrow: 'Next episode intelligence', title: episode, note: 'A precision countdown that automatically upgrades when an exact network time is confirmed.', localHTML: `<div class="detail-local-airtime pending" id="nextAirTime_${id}"><i></i><span><b>Confirming local drop</b><small>Checking the broadcaster schedule…</small></span></div>` });
     } else if (!out) {
@@ -136,7 +136,7 @@ export async function openDetail(id, type) {
       }
     }
 
-    let seasHTML = '';
+    let seasHTML = '', initialSeason = null;
     if (type === 'tv' && det.seasons?.length) {
       const vs = det.seasons.filter(s => s.season_number > 0);
       // Keep the progress document's idea of the show current before anything
@@ -144,7 +144,8 @@ export async function openDetail(id, type) {
       syncShowStructure(id, showMeta(det));
       const progress = showProgress(id);
       const next = nextUp(id);
-      const openSeason = next?.season ?? vs[0]?.season_number;
+      const openSeason = next?.season ?? progress.lastWatched?.season ?? det.last_episode_to_air?.season_number ?? vs[0]?.season_number;
+      initialSeason = openSeason;
 
       const seasonCards = vs.map(s => {
         const yr = (s.air_date || '').slice(0, 4);
@@ -244,7 +245,7 @@ export async function openDetail(id, type) {
 
     if (cdDate) startCD(id, cdDate, cdDoneMsg);
     if (type === 'tv' && det.next_episode_to_air) hydrateNextEpisodeTime(det, id, gen);
-    if (type === 'tv' && det.seasons?.length) { const fs = det.seasons.find(s => s.season_number > 0); if (fs) loadEps(id, fs.season_number); }
+    if (type === 'tv' && initialSeason) loadEps(id, initialSeason);
     observeReveals(ct); observeCountUps(ct);
     // Animate the Box Office bar widths after paint (horizontal %-widths resolve
     // against the definite-width card).
@@ -506,7 +507,13 @@ async function hydrateNextEpisodeTime(show, id, gen) {
   const time = await exactEpisodeTime(show);
   if (gen !== reqGen) return;
   const label = $(`nextAirTime_${id}`);
-  if (!label) return;
+  if (!label) {
+    // On the release date the date-only fallback may initially say "available".
+    // If the broadcaster then confirms a later time today, rebuild once; the
+    // cached exact timestamp makes the precision countdown render immediately.
+    if (time?.airstamp && !isEpisodeAvailable(show.next_episode_to_air, { showId: id, airstamp: time.airstamp })) openDetail(id, 'tv');
+    return;
+  }
   if (!time?.airstamp) {
     label.className = 'detail-local-airtime';
     label.innerHTML = '<i></i><span><b>Exact time not announced</b><small>The confirmed episode date is shown above.</small></span>';
@@ -516,6 +523,10 @@ async function hydrateNextEpisodeTime(show, id, gen) {
   label.innerHTML = `<i></i><span><b>${esc(localEpisodeTime(time.airstamp))}</b><small>Exact drop · converted to ${esc(localTimeZone())} · <a href="https://www.tvmaze.com" target="_blank" rel="noopener">TVmaze</a></small></span>`;
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = []; countdownTimers.clear();
   startCD(id, time.airstamp, '🎉 Now Airing!');
+  // A confirmed time can turn today's date-only episode back into "upcoming".
+  // Repaint the active season so its controls use the same shared decision.
+  const activeSeason = +document.querySelector('.s-tab.active')?.dataset.sn;
+  if (activeSeason) loadEps(id, activeSeason);
 }
 
 // ===== MEDIA GALLERY =====
@@ -993,10 +1004,11 @@ function showProgressPanel(id, det, progress, next) {
       </div>
     </section>`;
   }
-  const nextLabel = next ? `S${next.season} · E${next.episode}` : 'All caught up';
-  return `<section class="show-progress${progress.complete ? ' complete' : ''}">
+  const nextLabel = next ? `S${next.season} · E${next.episode}` : (progress.seriesCompleted ? 'Series completed' : 'All caught up');
+  const stateLabel = progress.seriesCompleted ? 'Series completed' : progress.caughtUp ? 'Caught up' : progress.seasonCompleted ? 'Season completed' : 'Continue watching';
+  return `<section class="show-progress${progress.caughtUp ? ' complete' : ''}">
     <div class="show-progress-copy">
-      <span>${progress.complete ? 'Complete' : 'Continue watching'}</span>
+      <span>${stateLabel}</span>
       <strong>${esc(nextLabel)}</strong>
       <p>${progress.watched} of ${progress.aired} aired episode${progress.aired === 1 ? '' : 's'} watched${progress.total > progress.aired ? ` · ${progress.total} total` : ''}</p>
       <div class="show-progress-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
@@ -1004,7 +1016,7 @@ function showProgressPanel(id, det, progress, next) {
     <div class="show-progress-actions">
       <b>${progress.percent}%</b>
       ${next ? `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark S${next.season}E${next.episode} watched</button>` : ''}
-      ${progress.complete ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all ${progress.aired - progress.watched} remaining</button>`}
+      ${progress.caughtUp ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all ${progress.aired - progress.watched} remaining</button>`}
       <button class="btn-glass" data-action="ep-reset" data-tid="${id}">Reset</button>
     </div>
   </section>`;
@@ -1015,14 +1027,14 @@ function showProgressPanel(id, det, progress, next) {
 function episodeControls(id, ep, meta, watched) {
   if (!state.user) return '';
   return `<div class="ep-actions">
-    <button class="ep-check${watched ? ' on' : ''}" data-action="ep-toggle" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-meta="${meta}" aria-pressed="${watched}" aria-label="${watched ? 'Unmark' : 'Mark'} episode ${ep.episode_number} watched">${EP_CHECK}<span>${watched ? 'Watched' : 'Mark watched'}</span></button>
-    <button class="ep-upto" data-action="ep-mark-upto" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-meta="${meta}" data-tip="Mark everything up to and including this episode">Up to here</button>
+    <button class="ep-check${watched ? ' on' : ''}" data-action="ep-toggle" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-air-date="${esc(ep.air_date || '')}" data-meta="${meta}" aria-pressed="${watched}" aria-label="${watched ? 'Unmark' : 'Mark'} episode ${ep.episode_number} watched">${EP_CHECK}<span>${watched ? 'Watched' : 'Mark watched'}</span></button>
+    <button class="ep-upto" data-action="ep-mark-upto" data-tid="${id}" data-sn="${ep.season_number}" data-en="${ep.episode_number}" data-air-date="${esc(ep.air_date || '')}" data-meta="${meta}" data-tip="Mark everything up to and including this episode">Up to here</button>
   </div>`;
 }
 
 function seasonToolbar(id, season, episodes, meta) {
   if (!state.user) return '';
-  const aired = episodes.filter(ep => !ep.air_date || new Date(`${ep.air_date}T23:59:59`) <= new Date()).length;
+  const aired = episodes.filter(ep => isEpisodeAvailable(ep, { showId: id })).length;
   const done = seasonWatchedCount(id, season);
   const all = aired > 0 && done >= aired;
   return `<div class="season-toolbar">
@@ -1050,7 +1062,12 @@ function paintSeasonRewatch(id, season, meta) {
 }
 
 function readEpisodeMeta(el) {
-  try { return JSON.parse(el.dataset.meta || '{}'); } catch (_) { return {}; }
+  let meta = {};
+  try { meta = JSON.parse(el.dataset.meta || '{}'); } catch (_) {}
+  if (el.dataset.airDate !== undefined) meta.episode = {
+    season_number: +el.dataset.sn, episode_number: +el.dataset.en, air_date: el.dataset.airDate || '',
+  };
+  return meta;
 }
 
 // The toolbar carries the season's own counts, so it has to be recomputed
@@ -1088,10 +1105,9 @@ async function loadEps(tid, sn) {
     const meta = esc(JSON.stringify(show ? showMeta(show) : {}));
     const episodes = season.episodes || [];
     if (!episodes.length) { el.innerHTML = '<p style="color:var(--text3);padding:12px">No episodes yet</p>'; return; }
-    const today = new Date();
     el.innerHTML = seasonToolbar(tid, sn, episodes, meta) + episodes.map(ep => {
       const watched = isEpisodeWatched(tid, ep.season_number, ep.episode_number);
-      const future = ep.air_date && new Date(`${ep.air_date}T23:59:59`) > today;
+      const future = !isEpisodeAvailable(ep, { showId: tid });
       return `<div class="ep-card${watched ? ' watched' : ''}${future ? ' unaired' : ''}" data-ep="${ep.season_number}-${ep.episode_number}">
         <div class="ep-still">${ep.still_path ? `<img src="${IMG}w300${ep.still_path}" alt="" loading="lazy">` : ''}<div class="ep-num">E${ep.episode_number}</div>${watched ? `<div class="ep-seen" aria-hidden="true">${EP_CHECK}</div>` : ''}</div>
         <div class="ep-body">
@@ -1114,16 +1130,12 @@ async function loadEps(tid, sn) {
 function refreshEpisodeUI(tid) {
   const progress = showProgress(tid), next = nextUp(tid);
   const panel = document.querySelector('.show-progress');
-  if (panel) {
-    const bar = panel.querySelector('.show-progress-bar i');
-    if (bar) { bar.dataset.w = String(progress.percent); bar.style.width = `${progress.percent}%`; }
-    const value = panel.querySelector('.show-progress-actions b');
-    if (value) value.textContent = `${progress.percent}%`;
-    const heading = panel.querySelector('.show-progress-copy strong');
-    if (heading && progress.started) heading.textContent = next ? `S${next.season} · E${next.episode}` : 'All caught up';
-    const note = panel.querySelector('.show-progress-copy p');
-    if (note && progress.started) note.textContent = `${progress.watched} of ${progress.aired} aired episode${progress.aired === 1 ? '' : 's'} watched`;
-    panel.classList.toggle('complete', progress.complete);
+  if (panel && curDet?.id === tid) {
+    // Rebuild the controls as one unit. Updating only the heading left the old
+    // S/E values on the primary button, so a second click toggled the stale row.
+    panel.outerHTML = showProgressPanel(tid, curDet, progress, next);
+    const bar = document.querySelector('.show-progress-bar i');
+    if (bar) bar.style.width = `${progress.percent}%`;
   }
   document.querySelectorAll('.season-card').forEach(card => {
     const season = +card.dataset.sn;
@@ -1253,6 +1265,7 @@ export function initDetail() {
       // null means the write was refused (signed out). Painting a tick for an
       // episode that was never saved is worse than doing nothing.
       if (watched === null) return;
+      if (watched === 'unavailable') { toast('This episode has not dropped yet', 'info'); return; }
       const card = document.querySelector(`.ep-card[data-ep="${sn}-${en}"]`);
       if (card) {
         card.classList.toggle('watched', watched);

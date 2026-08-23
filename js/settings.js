@@ -9,7 +9,7 @@ import { clearLibraryCache, flushLibraryVersion, libraryCacheDisabled } from './
 import { loadWatchlist, loadWatched } from './watchlist.js';
 import { loadRatings } from './ratings.js';
 import { loadLists } from './lists.js';
-import { loadEpisodeProgress } from './episodes.js';
+import { loadEpisodeProgress, repairEpisodeProgress } from './episodes.js';
 
 let cloudSyncTimer = null;
 
@@ -93,7 +93,7 @@ export function renderSettings() {
       <aside>
         <section class="settings-panel"><div class="settings-panel-head">${ICONS.shield}<div><span>Region</span><h2>Streaming home</h2></div></div><label class="settings-select-row stacked"><span><strong>Where to Watch region</strong><small>Controls provider availability across details, notifications, and provider intelligence. ${REGIONS.length} countries, from JustWatch via TMDB.</small></span><select id="settingsRegion" class="watched-select" data-action="settings-region">${regionOpts}</select></label></section>
         <section class="settings-panel settings-vault"><div class="settings-panel-head">${ICONS.data}<div><span>Collection vault</span><h2>Backup & restore</h2></div></div><p>Download lists, memberships, watched history, ratings and profile showcase data in one readable JSON file.</p><div class="settings-vault-actions"><button class="btn-primary" data-action="download-backup">Download backup</button><button class="btn-glass" data-action="choose-backup">Restore backup</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="download-watched">Export watched only</button><button class="btn-glass" data-action="choose-watched-import">Import watched only</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="open-import">Import from Letterboxd, Trakt or IMDb</button></div><small>Every restore safely merges data and never deletes newer cloud records.</small></section>
-        <section class="settings-panel settings-maintenance"><div class="settings-panel-head">${ICONS.data}<div><span>Device data</span><h2>Maintenance</h2></div></div><button data-action="clear-search-history"><span>Clear search history</span><b>Clear</b></button><button data-action="clear-recent-history"><span>Clear recently viewed</span><b>Clear</b></button><button data-action="refresh-library"><span>Refresh library from cloud</span><b>Refresh</b></button><button data-action="reset-experience"><span>Reset experience settings</span><b>Reset</b></button><button data-action="sign-out"><span>Sign out on this device</span><b>Sign out</b></button></section>
+        <section class="settings-panel settings-maintenance"><div class="settings-panel-head">${ICONS.data}<div><span>Device data</span><h2>Maintenance</h2></div></div><button class="episode-repair-action" data-action="repair-episode-progress"><span><strong>Episode Progress Repair</strong><small data-repair-status>Rebuild old history and refresh tracked shows.</small></span><b>Repair</b></button><button data-action="clear-search-history"><span>Clear search history</span><b>Clear</b></button><button data-action="clear-recent-history"><span>Clear recently viewed</span><b>Clear</b></button><button data-action="refresh-library"><span>Refresh library from cloud</span><b>Refresh</b></button><button data-action="reset-experience"><span>Reset experience settings</span><b>Reset</b></button><button data-action="sign-out"><span>Sign out on this device</span><b>Sign out</b></button></section>
         <section class="settings-panel settings-danger"><span>Danger zone</span><h2>Delete account</h2><p>Permanently remove the account and its private collection.</p><button class="del-confirm" data-action="open-delete">Delete account</button></section>
       </aside>
     </div>
@@ -130,6 +130,30 @@ export function initSettings() {
     'clear-search-history': () => { clearSearchHistory(); toast('Search history cleared', 'info'); },
     'clear-recent-history': () => { state.recentlyViewed = []; try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {} toast('Recently viewed cleared', 'info'); },
     'reset-experience': () => { resetPrefs(); document.dispatchEvent(new Event('cv:privacy')); renderSettings(); toast('Experience settings reset', 'success'); },
+    'repair-episode-progress': async el => {
+      if (!state.user || el.disabled) return;
+      const label = el.querySelector('b'), status = el.querySelector('[data-repair-status]');
+      el.disabled = true;
+      if (label) label.textContent = 'Working…';
+      try {
+        const result = await repairEpisodeProgress({ onProgress: progress => {
+          if (!status || !el.isConnected) return;
+          status.textContent = progress.phase === 'refresh'
+            ? `Refreshing shows ${progress.completed}/${progress.total}`
+            : `Rebuilding history ${progress.completed}/${progress.total}`;
+        } });
+        if (status) status.textContent = `${result.repaired} histories rebuilt · ${result.refreshed} shows refreshed`;
+        document.dispatchEvent(new Event('cv:wl-changed'));
+        toast(result.failed ? `Repair finished with ${result.failed} item${result.failed === 1 ? '' : 's'} to retry` : 'Episode progress repaired', result.failed ? 'info' : 'success');
+      } catch (error) {
+        console.error('episode progress repair', error);
+        if (status) status.textContent = 'Could not finish. Your existing progress is safe.';
+        toast('Episode repair could not finish — try again', 'error');
+      } finally {
+        el.disabled = false;
+        if (label) label.textContent = 'Repair';
+      }
+    },
     // The escape hatch for the sign-in cache (js/library-cache.js). Signing in
     // normally skips the collection reads when the version says nothing changed;
     // this drops that snapshot so the next load reads everything again. Kept for

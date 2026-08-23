@@ -14,6 +14,30 @@ const inflight = new Map();
 try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') || {}; } catch (_) { cache = {}; }
 
 const cleanTitle = value => String(value || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim();
+const episodeKey = (showId, season, episode) => `${+showId || 0}:${+season || 0}:${+episode || 0}`;
+
+/**
+ * The single availability rule used by detail pages, tracker writes and tests.
+ * A confirmed broadcaster timestamp wins. TMDB only supplies a calendar date,
+ * so its safe fallback becomes available at the start of that date in the
+ * viewer's timezone. A missing date is unknown, never silently "already aired".
+ */
+export function episodeAvailability(episode, { showId = 0, airstamp = '', now = Date.now() } = {}) {
+  const exact = airstamp || cache[episodeKey(showId, episode?.season_number, episode?.episode_number)]?.airstamp || '';
+  if (exact) {
+    const at = new Date(exact).getTime();
+    if (Number.isFinite(at)) return { available: now >= at, at, precision: 'exact' };
+  }
+  const airDate = String(episode?.air_date || '');
+  const at = airDate ? new Date(`${airDate}T00:00:00`).getTime() : NaN;
+  return Number.isFinite(at)
+    ? { available: now >= at, at, precision: 'date' }
+    : { available: false, at: 0, precision: 'unknown' };
+}
+
+export function isEpisodeAvailable(episode, options) {
+  return episodeAvailability(episode, options).available;
+}
 
 function persist() {
   try {
@@ -53,7 +77,7 @@ async function fetchJSON(url) {
 export async function exactEpisodeTime(show) {
   const episode = show?.next_episode_to_air;
   if (!show?.id || !episode?.air_date) return null;
-  const key = `${show.id}:${episode.season_number}:${episode.episode_number}`;
+  const key = episodeKey(show.id, episode.season_number, episode.episode_number);
   const saved = cache[key], ttl = saved?.airstamp ? POSITIVE_TTL : EMPTY_TTL;
   if (saved && Date.now() - saved.checkedAt < ttl) return saved.airstamp ? saved : null;
   if (inflight.has(key)) return inflight.get(key);

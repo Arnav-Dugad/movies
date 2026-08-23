@@ -1,4 +1,4 @@
-// The sign-in cache skips five collection reads when a counter on the profile
+// The sign-in cache skips four library collection reads when a counter on the profile
 // document says nothing has changed. The property that makes that safe to rely
 // on: a false MISS is possible and harmless, a false HIT is impossible.
 //

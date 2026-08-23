@@ -6,11 +6,13 @@
   "scripts": {
     "test": "npm run test:logic && npm run coverage && npm run test:rules",
     "test:logic": "node --test logic/*.test.mjs",
+    "test:browser": "playwright test -c playwright.config.mjs",
     "test:rules": "firebase emulators:exec --config ../firebase.json --project cineverse-rules-test --only firestore \"node --test rules.test.mjs\"",
     "coverage": "node coverage.mjs",
     "emulator": "firebase emulators:start --config ../firebase.json --project cineverse-rules-test --only firestore"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@firebase/rules-unit-testing": "^3.0.4",
     "firebase-tools": "^13.29.1"
   }

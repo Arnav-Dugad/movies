@@ -125,7 +125,7 @@ merged = ep.mergeEntries(s1, s2);
 check('two devices working on different seasons keep both',
   watchedOf(merged, 1).length === 10 && watchedOf(merged, 2).length === 10,
   `${watchedOf(merged, 1).length}/${watchedOf(merged, 2).length}`);
-check('and the show reads as complete', (state.episodeProgress = { tv_1: merged }, ep.showProgress(1).complete) === true);
+check('and the show reads as caught up', (state.episodeProgress = { tv_1: merged }, ep.showProgress(1).caughtUp) === true);
 state.episodeProgress = {};
 
 // ================= metadata and history ====================================
@@ -168,6 +168,12 @@ check('a missing finish date does not become Infinity', (() => {
 check('one side having a date is enough', (() => {
   const out = ep.mergeEntries({ ...seenAll, completedAt: 0 }, { ...seenAll, completedAt: 7000 });
   return out.completedAt === 7000;
+})());
+check('a newer episode arrival can clear stale completion milestones', (() => {
+  const finished = { ...seenAll, caughtUpAt: 5000, completedAt: 5000, updatedAt: 100 };
+  const reopened = { ...seenAll, caughtUpAt: 0, completedAt: 0, updatedAt: 200 };
+  const out = ep.mergeEntries(finished, reopened);
+  return out.caughtUpAt === 0 && out.completedAt === 0;
 })());
 
 // ================= degenerate input ========================================

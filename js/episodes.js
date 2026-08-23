@@ -15,11 +15,13 @@ import { state } from './state.js';
 import { tmdb } from './api.js';
 import { db, firebase } from './firebase.js';
 import { toast } from './ui.js';
+import { isEpisodeAvailable } from './episode-times.js';
 
 const KEY = id => `tv_${id}`;
 const cacheKey = () => `cv_episode_progress_${state.user?.uid || 'guest'}`;
-const col = () => db.collection('users').doc(state.user.uid).collection('progress');
+const col = uid => db.collection('users').doc(uid || state.user.uid).collection('progress');
 const writeTimers = new Map();
+const DAY = 86400000;
 
 const numbers = value => [...new Set((Array.isArray(value) ? value : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
 
@@ -94,7 +96,10 @@ function sanitizeEntry(value) {
     removed,
     log: cleanLog(value.log),
     seasonPlays: cleanSeasonPlays(value.seasonPlays),
+    caughtUpAt: +value.caughtUpAt || 0,
     completedAt: +value.completedAt || 0,
+    metaCheckedAt: +value.metaCheckedAt || 0,
+    legacyBackfillAt: +value.legacyBackfillAt || 0,
     legacy: !!value.legacy,
     updatedAt: +value.updatedAt || 0,
   };
@@ -114,15 +119,29 @@ function mirror() {
   try { localStorage.setItem(cacheKey(), JSON.stringify(state.episodeProgress)); } catch (_) {}
 }
 
+const syncComparable = entry => entry ? JSON.stringify({ ...entry, metaCheckedAt: 0 }) : 'null';
+
 export async function loadEpisodeProgress() {
   if (!state.user) { state.episodeProgress = {}; return; }
+  const uid = state.user.uid;
   hydrateEpisodeProgressFromCache();
+  const local = { ...(state.episodeProgress || {}) };
   try {
-    const snap = await col().get();
+    const snap = await col(uid).get();
+    if (state.user?.uid !== uid) return;
+    const server = {};
+    snap.docs.forEach(doc => { const entry = sanitizeEntry(doc.data()); if (entry) server[doc.id] = entry; });
     const out = {};
-    snap.docs.forEach(doc => { const entry = sanitizeEntry(doc.data()); if (entry) out[doc.id] = entry; });
+    for (const key of new Set([...Object.keys(server), ...Object.keys(local)])) {
+      const entry = mergeEntries(server[key], local[key]);
+      if (entry) out[key] = entry;
+    }
     state.episodeProgress = out;
     mirror();
+    // A newer offline/local edit is reconciled after the read. Transactions keep
+    // a simultaneous edit on another device intact.
+    const dirty = Object.keys(out).filter(key => syncComparable(out[key]) !== syncComparable(server[key] || null));
+    await Promise.all(dirty.map(key => writeMerged(key, out[key], uid).catch(error => console.warn('episode progress reconcile', error))));
   } catch (error) { console.warn('loadEpisodeProgress', error); }
 }
 
@@ -148,9 +167,25 @@ export async function loadEpisodeProgress() {
 // Only the last line is a real conflict, and it needs two devices to disagree
 // about the SAME episode at the same time. Different episodes never collide.
 const setOf = (map, season) => new Set((map || {})[String(season)] || []);
-const earliest = (...values) => {
-  const real = values.map(Number).filter(value => value > 0);
-  return real.length ? Math.min(...real) : 0;
+const mergeStructure = (a, b) => {
+  const out = {};
+  for (const season of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    const count = Math.max(+(a || {})[season] || 0, +(b || {})[season] || 0);
+    if (count) out[String(+season)] = count;
+  }
+  return out;
+};
+const laterAired = (a, b) => {
+  if (!a) return b || null;
+  if (!b) return a;
+  return (+a.season > +b.season || (+a.season === +b.season && +a.episode >= +b.episode)) ? a : b;
+};
+const mergeMilestone = (server, local, field) => {
+  const a = +server?.[field] || 0, b = +local?.[field] || 0;
+  if (a && b) return Math.min(a, b);
+  if (!a && !b) return 0;
+  const holder = a ? server : local, clearer = a ? local : server;
+  return (+clearer.updatedAt || 0) > (+holder.updatedAt || 0) ? 0 : (a || b);
 };
 
 export function mergeEntries(server, local) {
@@ -203,18 +238,21 @@ export function mergeEntries(server, local) {
     poster: newer.poster || older.poster || '',
     backdrop: newer.backdrop || older.backdrop || '',
     episodeRuntime: newer.episodeRuntime || older.episodeRuntime || 0,
-    // Structure and the aired marker come from whichever document has more of
-    // them: a device that has opened the show recently knows more than one that
-    // has not, regardless of which wrote last.
-    structure: Object.keys(newer.structure || {}).length >= Object.keys(older.structure || {}).length ? newer.structure : older.structure,
-    aired: newer.aired || older.aired || null,
+    status: newer.status || older.status || '',
+    // Merge every season independently. Counting season keys was not enough: a
+    // returning series can gain S2E9 while both documents still have two keys.
+    structure: mergeStructure(server.structure, local.structure),
+    aired: laterAired(server.aired, local.aired),
     seasons, removed, seasonPlays,
     log: cleanLog([...(server.log || []), ...(local.log || [])]),
     // Earliest genuine finish, so a merge cannot postpone a completion date.
     // Guarded because Math.min() with nothing to compare returns Infinity.
-    completedAt: earliest(server.completedAt, local.completedAt),
+    caughtUpAt: mergeMilestone(server, local, 'caughtUpAt'),
+    completedAt: mergeMilestone(server, local, 'completedAt'),
+    metaCheckedAt: Math.max(+server.metaCheckedAt || 0, +local.metaCheckedAt || 0),
+    legacyBackfillAt: Math.max(+server.legacyBackfillAt || 0, +local.legacyBackfillAt || 0),
     lastWatched: (+newer.lastWatched?.at || 0) >= (+older.lastWatched?.at || 0) ? newer.lastWatched : older.lastWatched,
-    legacy: !!(server.legacy && local.legacy),
+    legacy: tied ? !!(server.legacy && local.legacy) : !!newer.legacy,
     updatedAt: Math.max(+server.updatedAt || 0, +local.updatedAt || 0),
   });
 }
@@ -244,7 +282,7 @@ function persistMeta(key, fields) {
   document.dispatchEvent(new CustomEvent('cv:episode-progress', { detail: { key } }));
   if (!state.user) return;
   const uid = state.user.uid;
-  col().doc(key).set({ ...fields, updatedAt: Date.now(), serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+  col(uid).doc(key).set({ ...fields, updatedAt: Date.now(), serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
     .catch(error => { if (state.user?.uid === uid) console.warn('episode structure sync', error); });
 }
 
@@ -253,7 +291,7 @@ function persistMeta(key, fields) {
 // seconds ago survives a tick made on a laptop now. One extra document read per
 // debounced batch — a rounding error next to the reads the library cache saves.
 async function writeMerged(key, entry, uid) {
-  const ref = col().doc(key);
+  const ref = col(uid).doc(key);
   await db.runTransaction(async transaction => {
     const snapshot = await transaction.get(ref);
     const server = snapshot.exists ? sanitizeEntry(snapshot.data()) : null;
@@ -284,11 +322,13 @@ export function tvShowMeta(det) {
     if (season.season_number > 0 && season.episode_count > 0) structure[String(season.season_number)] = season.episode_count;
   }
   const last = det?.last_episode_to_air;
+  const next = det?.next_episode_to_air;
   return {
     title: det?.name || '', poster: det?.poster_path || '', backdrop: det?.backdrop_path || '',
     episodeRuntime: (det?.episode_run_time || [])[0] || 0, status: det?.status || '',
     structure,
     aired: last?.season_number ? { season: last.season_number, episode: last.episode_number } : null,
+    nextEpisode: next?.season_number ? { season_number: +next.season_number, episode_number: +next.episode_number, air_date: next.air_date || '' } : null,
   };
 }
 
@@ -312,19 +352,48 @@ function metaStore() {
   return metaMemo;
 }
 
-export async function fetchShowMeta(id) {
+export async function fetchShowMeta(id, { force = false } = {}) {
   const key = String(+id || 0);
   const cached = metaStore()[key];
-  if (cached && Date.now() - (cached.at || 0) < META_TTL && Object.keys(cached.meta?.structure || {}).length) {
+  if (!force && cached && Date.now() - (cached.at || 0) < META_TTL && Object.keys(cached.meta?.structure || {}).length) {
     return cached.meta;
   }
-  const meta = tvShowMeta(await tmdb(`/tv/${id}`));
+  const meta = tvShowMeta(await tmdb(`/tv/${id}`, {}, { cache: !force }));
   try {
     metaMemo[key] = { at: Date.now(), meta };
     const rows = Object.entries(metaMemo).sort((a, b) => (b[1].at || 0) - (a[1].at || 0)).slice(0, 200);
     localStorage.setItem(META_CACHE_KEY, JSON.stringify(Object.fromEntries(rows)));
   } catch (_) {}
   return meta;
+}
+
+// Build the show shape that really existed at a historical moment. The old
+// backfill used today's full structure with an old watched date, which could
+// mark seasons released years later as watched in the past.
+export async function fetchHistoricalShowMeta(id, { cutoff = Date.now() } = {}) {
+  const detail = await tmdb(`/tv/${id}`);
+  const seasons = (detail.seasons || []).filter(season => season.season_number > 0 && season.episode_count > 0);
+  const queue = [...seasons];
+  const results = [];
+  const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+    for (;;) {
+      const season = queue.shift();
+      if (!season) return;
+      const payload = await tmdb(`/tv/${id}/season/${season.season_number}`);
+      results.push(payload);
+    }
+  });
+  await Promise.all(workers);
+  const structure = {};
+  let aired = null;
+  for (const season of results) {
+    const available = (season.episodes || []).filter(episode => isEpisodeAvailable(episode, { showId: id, now: cutoff }));
+    const cap = Math.max(0, ...available.map(episode => +episode.episode_number || 0));
+    if (!cap) continue;
+    structure[String(+season.season_number)] = cap;
+    aired = laterAired(aired, { season: +season.season_number, episode: cap });
+  }
+  return { ...tvShowMeta(detail), structure, aired, historicalCutoff: cutoff };
 }
 
 // ---------- reads ----------
@@ -349,20 +418,31 @@ function airedCapFor(entry, season) {
   const cap = +(entry?.structure || {})[String(+season)] || 0;
   if (cap <= 0) return 0;
   const aired = entry.aired;
-  if (!aired) return cap;
+  if (!aired) return 0;
   if (+season < aired.season) return cap;
   if (+season === aired.season) return Math.max(0, Math.min(cap, aired.episode));
   return 0;                                   // the season has not started airing
 }
 
-/** Every aired episode of this season ticked. */
-export function isSeasonComplete(id, season) {
-  const need = seasonAiredCount(id, season);
-  if (!need) return false;
+/** Separate the two meanings the old "complete" flag mixed together. */
+export function seasonState(id, season) {
+  const entry = showEntry(id);
+  const total = +(entry?.structure || {})[String(+season)] || 0;
+  const aired = seasonAiredCount(id, season);
   const done = new Set(showEntry(id)?.seasons?.[String(+season)] || []);
-  for (let episode = 1; episode <= need; episode++) if (!done.has(episode)) return false;
-  return true;
+  let watchedAired = 0;
+  for (let episode = 1; episode <= aired; episode++) if (done.has(episode)) watchedAired++;
+  return {
+    total, aired, watched: watchedAired,
+    caughtUp: aired > 0 && watchedAired >= aired,
+    completed: total > 0 && aired >= total && watchedAired >= total,
+  };
 }
+
+/** Every currently available episode is ticked. */
+export const isSeasonCaughtUp = (id, season) => seasonState(id, season).caughtUp;
+/** Every episode in a fully released season is ticked. */
+export const isSeasonComplete = (id, season) => seasonState(id, season).completed;
 
 // ===== SEASON REWATCHES =====
 // Rewatching one season is the common case for TV — nobody restarts a 60-episode
@@ -447,7 +527,7 @@ function airedTotal(entry) {
   const seasons = Object.keys(structure).map(Number).sort((a, b) => a - b);
   if (!seasons.length) return 0;
   const aired = entry.aired;
-  if (!aired) return seasons.reduce((sum, season) => sum + structure[season], 0);
+  if (!aired) return 0;
   let total = 0;
   for (const season of seasons) {
     if (season < aired.season) total += structure[season];
@@ -458,7 +538,7 @@ function airedTotal(entry) {
 
 export function showProgress(id) {
   const entry = showEntry(id);
-  if (!entry) return { watched: 0, ticked: 0, total: 0, aired: 0, percent: 0, started: false, complete: false, lastWatched: null };
+  if (!entry) return { watched: 0, ticked: 0, total: 0, aired: 0, percent: 0, started: false, caughtUp: false, seasonCompleted: false, completedSeasons: [], seriesCompleted: false, complete: false, lastWatched: null };
   const structure = entry.structure || {};
   // Two counts, because they answer different questions. `ticked` is every box
   // the viewer has checked. `watched` is the subset that counts toward this
@@ -490,11 +570,18 @@ export function showProgress(id) {
   // this stays 0 and nothing can read as complete.
   const airedBase = airedTotal(entry);
   const aired = airedBase > 0 ? Math.max(airedBase, watched) : 0;
+  const caughtUp = aired > 0 && watched >= aired;
+  const ended = ['ended', 'canceled', 'cancelled'].includes(String(entry.status || '').toLowerCase());
+  const seriesCompleted = caughtUp && total > 0 && watched >= total && ended;
+  const completedSeasons = Object.keys(structure).map(Number).filter(season => seasonState(id, season).completed);
+  const seasonCompleted = completedSeasons.length > 0;
   return {
     watched, ticked, total, aired,
     percent: aired ? Math.min(100, Math.round((watched / aired) * 100)) : 0,
     started: ticked > 0,
-    complete: aired > 0 && watched >= aired,
+    caughtUp, seasonCompleted, completedSeasons, seriesCompleted,
+    // Compatibility for older callers: "complete" now has one precise meaning.
+    complete: seriesCompleted,
     lastWatched: entry.lastWatched,
   };
 }
@@ -515,11 +602,11 @@ export function nextUp(id) {
   return null;
 }
 
-// Shows with progress but not finished, most recently watched first.
+// Shows with an available unwatched episode, most recently watched first.
 export function resumeQueue(limit = 12) {
   return Object.entries(state.episodeProgress || {})
     .map(([key, entry]) => ({ key, entry, id: entry.tmdbId || +key.split('_')[1], progress: showProgress(entry.tmdbId || +key.split('_')[1]) }))
-    .filter(row => row.progress.started && !row.progress.complete && nextUp(row.id))
+    .filter(row => row.progress.started && !row.progress.caughtUp && nextUp(row.id))
     .sort((a, b) => (b.entry.lastWatched?.at || 0) - (a.entry.lastWatched?.at || 0))
     .slice(0, limit)
     .map(row => ({ ...row, next: nextUp(row.id) }));
@@ -531,7 +618,7 @@ export function resumeQueue(limit = 12) {
 // reported alongside — an hours figure with unknown coverage is a guess.
 export function episodeStats({ months = 12 } = {}) {
   const shows = [];
-  let episodes = 0, minutes = 0, runtimeKnown = 0, completed = 0, inProgress = 0;
+  let episodes = 0, minutes = 0, runtimeKnown = 0, completed = 0, caughtUp = 0, seasonsCompleted = 0, inProgress = 0;
   const perDay = new Map(), perMonth = new Map(), soloPerDay = new Map();
 
   for (const entry of Object.values(state.episodeProgress || {})) {
@@ -541,13 +628,15 @@ export function episodeStats({ months = 12 } = {}) {
     if (!progress.started) continue;
     episodes += progress.watched;
     if (entry.episodeRuntime > 0) { minutes += progress.watched * entry.episodeRuntime; runtimeKnown += progress.watched; }
-    if (progress.complete) completed++; else inProgress++;
+    if (progress.seriesCompleted) completed++;
+    if (progress.caughtUp) caughtUp++; else inProgress++;
+    seasonsCompleted += progress.completedSeasons.length;
     shows.push({
       id, title: entry.title || 'TV show', poster: entry.poster || '',
       watched: progress.watched, aired: progress.aired, percent: progress.percent,
-      complete: progress.complete, lastAt: entry.lastWatched?.at || 0,
+      complete: progress.seriesCompleted, caughtUp: progress.caughtUp, seasonCompleted: progress.seasonCompleted, lastAt: entry.lastWatched?.at || 0,
       completedAt: entry.completedAt || 0, runtime: entry.episodeRuntime || 0,
-      next: progress.complete ? null : nextUp(id),
+      next: progress.caughtUp ? null : nextUp(id),
     });
     for (const [, , at, bulk] of entry.log || []) {
       const date = new Date(at);
@@ -585,8 +674,9 @@ export function episodeStats({ months = 12 } = {}) {
     episodes, minutes, runtimeKnown,
     seasonRewatches,
     runtimeCoverage: episodes ? Math.round(runtimeKnown / episodes * 100) : 0,
-    shows: shows.length, completed, inProgress,
+    shows: shows.length, completed, caughtUp, seasonsCompleted, inProgress,
     completionRate: shows.length ? Math.round(completed / shows.length * 100) : 0,
+    caughtUpRate: shows.length ? Math.round(caughtUp / shows.length * 100) : 0,
     series,
     logged,
     // The per-episode log is capped at LOG_CAP rows per show, so a long-running
@@ -615,7 +705,7 @@ export function episodeStats({ months = 12 } = {}) {
 }
 
 export function episodeTotals() {
-  let episodes = 0, minutes = 0, shows = 0, completed = 0;
+  let episodes = 0, minutes = 0, shows = 0, completed = 0, caughtUp = 0;
   for (const entry of Object.values(state.episodeProgress || {})) {
     const id = entry.tmdbId;
     if (!id) continue;                       // same guard episodeStats already had
@@ -624,9 +714,10 @@ export function episodeTotals() {
     shows++;
     episodes += progress.watched;
     minutes += progress.watched * (entry.episodeRuntime || 0);
-    if (progress.complete) completed++;
+    if (progress.seriesCompleted) completed++;
+    if (progress.caughtUp) caughtUp++;
   }
-  return { episodes, minutes, shows, completed };
+  return { episodes, minutes, shows, completed, caughtUp };
 }
 
 // ---------- writes ----------
@@ -656,11 +747,79 @@ export function syncShowStructure(id, meta) {
   if (!before) return;
   const structureChanged = JSON.stringify(before.structure || {}) !== JSON.stringify(meta.structure || {});
   const airedChanged = JSON.stringify(before.aired || null) !== JSON.stringify(meta.aired || null);
-  if (!structureChanged && !airedChanged) return;
+  const statusChanged = !!meta.status && before.status !== meta.status;
+  const stale = Date.now() - (+before.metaCheckedAt || 0) >= DAY;
+  if (!structureChanged && !airedChanged && !statusChanged && !stale) return false;
+  if (!structureChanged && !airedChanged && !statusChanged) {
+    // "Checked" is device cache data, not collection history. Mirroring it
+    // locally avoids one Firestore write per tracked show every day while still
+    // making each device perform its own daily freshness check.
+    before.metaCheckedAt = Date.now();
+    mirror();
+    return false;
+  }
   ensure(id, meta);
   const entry = state.episodeProgress[key];
-  entry.updatedAt = Date.now();
-  persistMeta(key, { structure: entry.structure, aired: entry.aired });
+  const now = Date.now();
+  entry.metaCheckedAt = now;
+  const progress = showProgress(id);
+  if (!progress.caughtUp) { entry.caughtUpAt = 0; entry.completedAt = 0; }
+  else {
+    if (!entry.caughtUpAt) entry.caughtUpAt = entry.lastWatched?.at || now;
+    entry.completedAt = progress.seriesCompleted ? (entry.completedAt || entry.caughtUpAt) : 0;
+  }
+  entry.updatedAt = now;
+  persistMeta(key, {
+    title: entry.title, poster: entry.poster, backdrop: entry.backdrop,
+    episodeRuntime: entry.episodeRuntime, status: entry.status,
+    structure: entry.structure, aired: entry.aired, metaCheckedAt: entry.metaCheckedAt,
+    caughtUpAt: entry.caughtUpAt, completedAt: entry.completedAt,
+  });
+  return true;
+}
+
+let trackerRefresh = null;
+
+/** Refresh stale tracked-show structure with a small, free-tier-friendly pool. */
+export async function refreshTrackedShows({ force = false, maxAge = DAY, concurrency = 3, onProgress } = {}) {
+  if (!state.user) return { total: 0, refreshed: 0, changed: 0, failed: 0 };
+  if (trackerRefresh && !force) return trackerRefresh;
+  const owner = state.user.uid;
+  const rows = Object.values(state.episodeProgress || {})
+    .filter(entry => entry.tmdbId && (force || Date.now() - (+entry.metaCheckedAt || 0) >= maxAge));
+  const run = (async () => {
+    let refreshed = 0, changed = 0, failed = 0;
+    const queue = [...rows];
+    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+      for (;;) {
+        const entry = queue.shift();
+        if (!entry || state.user?.uid !== owner) return;
+        try {
+          const meta = await fetchShowMeta(entry.tmdbId, { force: true });
+          if (state.user?.uid !== owner) return;
+          if (!meta || !Object.keys(meta.structure || {}).length) throw new Error('Missing show structure');
+          if (syncShowStructure(entry.tmdbId, meta)) changed++;
+          refreshed++;
+        } catch (error) { failed++; console.warn('episode tracker refresh', entry.tmdbId, error); }
+        onProgress?.({ total: rows.length, completed: refreshed + failed, refreshed, changed, failed });
+      }
+    });
+    await Promise.all(workers);
+    return { total: rows.length, refreshed, changed, failed };
+  })();
+  trackerRefresh = run;
+  try { return await run; }
+  finally { if (trackerRefresh === run) trackerRefresh = null; }
+}
+
+/** Daily on sign-in, plus immediately whenever a backgrounded app returns. */
+export function initEpisodeRefresh() {
+  const refresh = () => {
+    if (!state.user || document.visibilityState === 'hidden') return;
+    refreshTrackedShows().catch(error => console.warn('episode tracker daily refresh', error));
+  };
+  document.addEventListener('cv:auth', refresh);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
 }
 
 function apply(id, meta, mutate) {
@@ -682,7 +841,8 @@ function apply(id, meta, mutate) {
   // stamped as finished after its last episode was un-marked, and every surface
   // reading `completedAt` kept reporting a finish date for a show in progress.
   const after = showProgress(id);
-  if (!after.complete) {
+  if (!after.caughtUp) {
+    entry.caughtUpAt = 0;
     entry.completedAt = 0;
     // A rewatch count only means anything while the season is still complete.
     for (const season of Object.keys(entry.seasonPlays || {})) {
@@ -727,6 +887,14 @@ function unlogEpisode(entry, season, episode) {
   entry.log = (entry.log || []).filter(row => !(row[0] === +season && row[1] === +episode));
 }
 
+function availabilityMeta(meta, season, episode) {
+  const direct = meta?.episode;
+  if (+direct?.season_number === +season && +direct?.episode_number === +episode) return direct;
+  const next = meta?.nextEpisode;
+  if (+next?.season_number === +season && +next?.episode_number === +episode) return next;
+  return null;
+}
+
 /**
  * Returns the episode's new watched state, or `null` when the write was refused
  * because nobody is signed in. Callers must treat null as "nothing happened" —
@@ -735,6 +903,8 @@ function unlogEpisode(entry, season, episode) {
 export function toggleEpisode(id, season, episode, meta = {}) {
   if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   const wasWatched = isEpisodeWatched(id, season, episode);
+  const episodeMeta = availabilityMeta(meta, season, episode);
+  if (!wasWatched && episodeMeta && !isEpisodeAvailable(episodeMeta, { showId: id })) return 'unavailable';
   apply(id, meta, entry => {
     if (wasWatched) { setUnwatched(entry, season, [episode]); unlogEpisode(entry, season, episode); }
     else { setWatched(entry, season, [episode]); markLast(entry, season, episode); logEpisode(entry, season, episode); }
@@ -859,6 +1029,7 @@ export function clearShowProgress(id) {
   entry.seasons = {};
   entry.log = [];
   entry.seasonPlays = {};
+  entry.caughtUpAt = 0;
   entry.completedAt = 0;
   entry.lastWatched = null;
   entry.updatedAt = Date.now();
@@ -872,11 +1043,17 @@ export function onShowComplete(fn) { completeHook = fn; }
 
 function maybeCompleteShow(id, meta) {
   const progress = showProgress(id);
-  if (!progress.complete || !progress.aired) return;
+  if (!progress.caughtUp || !progress.aired) return;
   const entry = showEntry(id);
   // Persist explicitly rather than relying on the caller's pending debounce
   // still being open — the stamp is what every "finished on" figure reads.
-  if (entry && !entry.completedAt) { entry.completedAt = entry.lastWatched?.at || Date.now(); persist(KEY(id)); }
+  if (entry) {
+    let changed = false;
+    if (!entry.caughtUpAt) { entry.caughtUpAt = entry.lastWatched?.at || Date.now(); changed = true; }
+    if (progress.seriesCompleted && !entry.completedAt) { entry.completedAt = entry.caughtUpAt; changed = true; }
+    if (!progress.seriesCompleted && entry.completedAt) { entry.completedAt = 0; changed = true; }
+    if (changed) persist(KEY(id));
+  }
   if (state.watched[`tv_${id}`]) return;
   completeHook?.(id, meta, progress);
 }
@@ -920,18 +1097,86 @@ export async function backfillLegacyShows(fetchShow, { limit = 40, concurrency =
       const row = queue.shift();
       if (!row) return;
       if (state.user?.uid !== owner) return;
-      // Recorded either way: a show TMDB can no longer resolve must not be
-      // retried on every single page load.
-      done.add(row.id);
-      const meta = await fetchShow(row.id).catch(() => null);
+      const stamp = +(row.doc.watchedAt?.seconds || 0) * 1000 || +row.doc.watchedAt || Date.now();
+      const meta = await fetchShow(row.id, { cutoff: stamp }).catch(() => null);
       if (!meta || !Object.keys(meta.structure || {}).length) continue;
-      const stamp = +(row.doc.watchedAt?.seconds || 0) * 1000 || Date.now();
       const added = await markShowWatched(row.id, meta, { stampFrom: stamp });
-      if (added > 0) { filled++; episodes += added; }
+      const entry = showEntry(row.id);
+      if (entry) {
+        entry.legacy = true;
+        entry.legacyBackfillAt = Date.now();
+        persist(KEY(row.id));
+      }
+      // Only successful reconstructions are remembered. A temporary TMDB or
+      // offline failure must remain retryable on the next foreground refresh.
+      done.add(row.id);
+      filled++; episodes += added;
     }
   });
   await Promise.all(workers);
   rememberBackfilled(done);
   if (filled) document.dispatchEvent(new CustomEvent('cv:episode-progress', { detail: { backfill: filled } }));
   return { filled, episodes };
+}
+
+const watchedStamp = doc => +(doc?.watchedAt?.seconds || 0) * 1000 || +doc?.watchedAt || 0;
+
+/**
+ * Rebuild legacy history at its real historical cutoff, then refresh every
+ * tracked show's current structure. Safe to run repeatedly: watched sets are
+ * idempotent and explicit tombstones prevent a bad server copy resurfacing.
+ */
+export async function repairEpisodeProgress({ concurrency = 2, onProgress, fetchHistorical = fetchHistoricalShowMeta, refresh = refreshTrackedShows } = {}) {
+  if (!state.user) return { total: 0, repaired: 0, refreshed: 0, failed: 0, removedFuture: 0 };
+  const owner = state.user.uid;
+  const watchedShows = Object.entries(state.watched || {})
+    .filter(([key, doc]) => (doc.type || key.split('_')[0]) === 'tv')
+    .map(([key, doc]) => ({ id: +(doc.tmdbId || key.split('_').at(-1) || 0), doc }))
+    .filter(row => row.id);
+  const queue = [...watchedShows];
+  let repaired = 0, failed = 0, removedFuture = 0, completed = 0;
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    for (;;) {
+      const row = queue.shift();
+      if (!row || state.user?.uid !== owner) return;
+      try {
+        const cutoff = watchedStamp(row.doc) || Date.now();
+        const historical = await fetchHistorical(row.id, { cutoff });
+        if (!Object.keys(historical.structure || {}).length) throw new Error('No historical episodes found');
+        const entry = showEntry(row.id);
+        // Only unwind rows that carry the signature of the broken legacy pass:
+        // bulk timestamps at the title's original watched time. Ordinary manual
+        // episode ticks and later season marks are never touched.
+        if (entry) {
+          const legacyRows = new Set((entry.log || [])
+            .filter(([, , at, bulk]) => bulk && Math.abs(at - cutoff) < 60000)
+            .map(([season, episode]) => `${season}_${episode}`));
+          for (const [season, episodes] of Object.entries(entry.seasons || {})) {
+            const allowed = +(historical.structure || {})[season] || 0;
+            const bad = episodes.filter(episode => episode > allowed && legacyRows.has(`${season}_${episode}`));
+            if (bad.length) {
+              setUnwatched(entry, +season, bad);
+              bad.forEach(episode => unlogEpisode(entry, +season, episode));
+              removedFuture += bad.length;
+            }
+          }
+        }
+        await markShowWatched(row.id, historical, { stampFrom: cutoff });
+        const repairedEntry = showEntry(row.id);
+        if (repairedEntry) {
+          repairedEntry.legacy = true;
+          repairedEntry.legacyBackfillAt = Date.now();
+          repairedEntry.updatedAt = Date.now();
+          persist(KEY(row.id));
+        }
+        repaired++;
+      } catch (error) { failed++; console.warn('episode progress repair', row.id, error); }
+      completed++;
+      onProgress?.({ total: watchedShows.length, completed, repaired, failed, removedFuture });
+    }
+  });
+  await Promise.all(workers);
+  if (state.user?.uid !== owner) return { total: watchedShows.length, repaired, refreshed: 0, failed, removedFuture };
+  const current = await refresh({ force: true, onProgress: progress => onProgress?.({ ...progress, phase: 'refresh' }) });
+  return { total: watchedShows.length, repaired, refreshed: current.refreshed, failed: failed + current.failed, removedFuture };
 }

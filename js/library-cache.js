@@ -1,12 +1,14 @@
 // ===== LIBRARY CACHE — fewer reads on sign-in =====
-// Signing in read five whole collections every time: watchlist, ratings, watched,
-// lists, and episode progress. On a large library that is hundreds of document
+// Signing in read four whole library collections every time: watchlist, ratings,
+// watched and lists. On a large library that is hundreds of document
 // reads per page load to fetch data that had not changed since the last one.
 //
 // The fix is a version counter on the profile document — which sign-in already
 // reads, so checking it is free. Every mutation increments it. On load we paint
 // from a device cache immediately, then compare versions: equal means nothing has
-// changed anywhere, and the five collection reads are skipped entirely.
+// changed anywhere, and those four collection reads are skipped entirely.
+// Episode progress is not versioned here: it always performs its own
+// conflict-safe local/server merge, which removes a non-atomic dependency.
 //
 // WHY THIS CANNOT SERVE STALE DATA
 // The local version is only ever advanced by our own increments, so it is always
@@ -154,12 +156,12 @@ export function flushLibraryVersion() {
 export function initLibraryCache() {
   // Every module that writes to the library already announces it — watchlist,
   // watched, ratings, lists, backup restore, CSV import, and the metadata
-  // backfill all end with `cv:wl-changed`, and the episode ledger with
-  // `cv:episode-progress`. Hooking the two events rather than each call site
+  // backfill all end with `cv:wl-changed`. Episode progress deliberately has
+  // its own local/server merge and never depends on this separate version.
+  // Hooking the shared library event rather than each call site
   // means a write path added later is covered by the convention it already
   // follows, instead of by remembering to come back here.
   document.addEventListener('cv:wl-changed', bumpLibraryVersion);
-  document.addEventListener('cv:episode-progress', bumpLibraryVersion);
   // pagehide fires on mobile tab kills where unload does not.
   addEventListener('pagehide', flushLibraryVersion);
   addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushLibraryVersion(); });

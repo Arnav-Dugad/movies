@@ -90,6 +90,13 @@ possible. Ticking the final aired episode marks the show itself watched, and
 marking a show watched anywhere fills its episodes — the two directions stay in
 agreement instead of a "watched" show sitting at 0%.
 
+Episode availability has one definition in `js/episode-times.js`: a confirmed
+broadcaster timestamp wins, otherwise the TMDB date unlocks at local midnight,
+and a missing date stays unavailable. Tracked shows refresh once a day and when
+the app returns to the foreground, so a newly released episode reopens the queue
+without requiring a detail-page visit. The tracker reports **Caught up**,
+**Season completed**, and **Series completed** separately.
+
 ### What the tracker refuses to get wrong
 
 Several defects were fixed together, and each has a named regression test:
@@ -152,9 +159,11 @@ debounced batch of ticks.
 ### Shows watched before episode tracking existed
 
 They have a `watched` document and no progress document, so they would read as 0%
-forever. A one-time background pass fills them in using the date each was
-*originally* marked, capped per run and remembered on the device so a show you
-later un-tick is never silently re-filled.
+forever. A one-time background pass reconstructs the episodes that had really
+aired on the date each show was *originally* marked; seasons released later are
+never backdated. Failed lookups remain retryable. Settings also has a one-button
+**Episode Progress Repair** that repeats that historical reconstruction and then
+refreshes every tracked show's current shape.
 
 ### Why the log carries a `bulk` flag
 
@@ -303,6 +312,7 @@ cd tests
 npm run test:logic    # 430+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # the emulator suite (needs a JDK)
+npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
@@ -315,6 +325,11 @@ counting, and collection completion. It needs nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.
+
+`tests/browser/` drives the real detail tracker in Chromium through actual
+delegated clicks. It covers the initial season, advancing next-episode action,
+reload persistence, account isolation, offline reconciliation, and a newly
+arrived episode. This suite is also a separate CI gate.
 
 `tests/rules.test.mjs` loads the real `firestore.rules` into the Firestore
 emulator and covers every `match` path: owner-only collections, the deliberately
@@ -440,14 +455,16 @@ watched counts as seen even when search fails to return it.
 
 ## Fewer reads on sign-in
 
-Signing in read five whole collections every time — on a large library, hundreds
+Signing in read four whole library collections every time — on a large library, hundreds
 of document reads to fetch data that had not changed since the last page load.
 
 `js/library-cache.js` keeps a version counter on the profile document, which
 sign-in already reads, so checking it is free. Every mutation increments it. The
 page paints from a device cache immediately, then compares versions: equal means
-nothing changed anywhere and the five reads are skipped, taking sign-in from
-hundreds of reads to one.
+nothing changed anywhere and the four reads are skipped, taking sign-in from
+hundreds of reads to one. Episode progress is intentionally outside that version:
+it always merges the device and server ledgers, so its correctness no longer
+depends on a separate non-atomic counter update.
 
 It cannot serve stale data. The local counter is only ever advanced by this
 device's own increments, so it is always less than or equal to the server's — a
@@ -458,8 +475,7 @@ expires after seven days regardless, and a library too large for `localStorage`
 falls back to reading rather than guessing.
 
 Writers do not call into the cache directly. Every module that changes the
-library already ends with `cv:wl-changed` (and the episode ledger with
-`cv:episode-progress`), so the cache hooks those two events — a write path added
+library already ends with `cv:wl-changed`, so the cache hooks that event — a write path added
 later is covered by the convention it already follows.
 
 ## First-run onboarding

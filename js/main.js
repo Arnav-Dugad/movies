@@ -6,7 +6,7 @@ import { initImageFallback, initCardSync } from './cards.js';
 import { loadPrefs } from './prefs.js';
 import { initAuth } from './auth.js';
 import { initWatchlist, toggleWatched } from './watchlist.js';
-import { onShowComplete, backfillLegacyShows, fetchShowMeta, pendingLegacyShows } from './episodes.js';
+import { onShowComplete, backfillLegacyShows, fetchHistoricalShowMeta, pendingLegacyShows, initEpisodeRefresh } from './episodes.js';
 import { initLists } from './lists.js';
 import { initListLock } from './list-lock.js';
 import { initWatched } from './watched.js';
@@ -58,6 +58,7 @@ async function init() {
   initProviderBadges();
   initNotifications();
   initAuth();
+  initEpisodeRefresh();
   initWatchlist();
   // Ticking the final aired episode finishes the show, so the watched list,
   // stats, and badges agree with what the user just did instead of leaving a
@@ -121,7 +122,7 @@ async function init() {
   document.addEventListener('cv:auth', () => {
     if (!state.user || !pendingLegacyShows().length) return;
     setTimeout(() => {
-      backfillLegacyShows(fetchShowMeta)
+      backfillLegacyShows(fetchHistoricalShowMeta)
         .then(result => { if (result.filled) console.info(`CineVerse: filled episode history for ${result.filled} previously watched show(s)`); })
         .catch(error => console.warn('episode back-fill', error));
     }, 4000);
