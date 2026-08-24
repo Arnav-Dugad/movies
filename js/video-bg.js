@@ -13,10 +13,10 @@ export function ambientOK() { return document.documentElement.dataset.autoplay !
 // Mounts an ambient video into `container` (which must be position:relative and
 // already hold the backdrop image + a gradient overlay above it). Returns a
 // teardown function. Safe to call when not ambientOK() (it just no-ops).
-export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelector = '.detail-back-grad, .hero-vignette', muted = true, clean = false } = {}) {
+export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelector = '.detail-back-grad, .hero-vignette', muted = true, clean = false, respectAutoplay = true } = {}) {
   const empty = () => {};
   empty.setMuted = () => false; empty.isMuted = () => true;
-  if (!container || !ytKey || !ambientOK()) return empty;
+  if (!container || !ytKey || (respectAutoplay ? !ambientOK() : prefersReducedMotion())) return empty;
   let el = null, timer = null, dead = false, onMsg = null;
   let mutedState = !!muted;
   let post = () => {};

@@ -9,6 +9,7 @@ let saveTimer = null;
 let unsubscribe = null;
 let pendingOps = [];
 let ownerUid = '';
+let flushing = false;
 
 const normal = value => {
   if (typeof value === 'number' || /^\d+$/.test(String(value || ''))) return `tv_${+value}`;
@@ -42,7 +43,15 @@ function applyOps(base, operations) {
   const next = normalizePrefs(base);
   for (const op of operations || []) {
     const key = normal(op.key);
-    if (op.type === 'pin' && key) {
+    if (op.type === 'snapshot' && op.value && +(op.at || 0) >= next.clientUpdatedAt) {
+      // One-time migration for layout choices made by the older local-only
+      // implementation. Local choices win only for keys they explicitly know;
+      // unrelated pins and hides already stored by another device are retained.
+      const incoming = normalizePrefs(op.value);
+      const claimed = new Set([...incoming.pinned, ...incoming.hidden]);
+      next.pinned = clean([...incoming.pinned, ...next.pinned.filter(value => !claimed.has(value) && !incoming.hidden.includes(value))]);
+      next.hidden = clean([...incoming.hidden, ...next.hidden.filter(value => !claimed.has(value) && !incoming.pinned.includes(value))]);
+    } else if (op.type === 'pin' && key) {
       next.pinned = next.pinned.filter(value => value !== key);
       if (op.value) next.pinned.unshift(key);
     } else if (op.type === 'hide' && key) {
@@ -66,16 +75,31 @@ function applyOps(base, operations) {
 // Keeping this identical to the transaction body prevents a test-only model.
 export const mergeContinuePrefs = (base, operations) => applyOps(base, operations);
 
+const samePrefs = (a, b) => {
+  const left = normalizePrefs(a), right = normalizePrefs(b);
+  return left.clientUpdatedAt === right.clientUpdatedAt
+    && left.pinned.join('|') === right.pinned.join('|')
+    && left.hidden.join('|') === right.hidden.join('|');
+};
+
 export function hydrateContinuePrefs(cloud) {
   selectOwner();
   const local = state.user?.uid ? cached(state.user.uid) : null;
   if (!pendingOps.length && Array.isArray(local?.pendingOps)) {
     pendingOps = local.pendingOps.filter(op => op && typeof op === 'object').slice(-CAP);
   }
+  // Existing installs can hold a newer PC-only pin that predates the live-sync
+  // implementation. Replay that snapshot once as intent instead of allowing an
+  // empty/stale cloud object to erase it on both devices.
+  if (cloud !== null && !pendingOps.length && local && +local.clientUpdatedAt > +cloud?.clientUpdatedAt) {
+    pendingOps = [{ type: 'snapshot', value: normalizePrefs(local), at: +local.clientUpdatedAt, id: `migration_${+local.clientUpdatedAt}` }];
+  }
   const chosen = cloud === null ? local : (pendingOps.length ? applyOps(cloud, pendingOps) : cloud);
+  const changed = !samePrefs(state.continuePrefs, chosen);
   state.continuePrefs = normalizePrefs(chosen);
   mirror();
   if (cloud !== null && pendingOps.length) flush(state.user?.uid);
+  return changed;
 }
 
 export const isPinned = id => prefs().pinned.includes(normal(id));
@@ -143,7 +167,8 @@ export function resetContinuePrefs() {
 }
 
 async function flush(uid) {
-  if (!uid || state.user?.uid !== uid || !pendingOps.length) return;
+  if (!uid || state.user?.uid !== uid || !pendingOps.length || flushing) return;
+  flushing = true;
   const batch = [...pendingOps], ids = new Set(batch.map(op => op.id));
   const ref = db.collection('users').doc(uid);
   try {
@@ -159,10 +184,12 @@ async function flush(uid) {
     state.continuePrefs = pendingOps.length ? applyOps(committed, pendingOps) : normalizePrefs(committed);
     mirror(uid);
     document.dispatchEvent(new Event('cv:continue-prefs'));
-    if (pendingOps.length) flush(uid);
+    if (pendingOps.length) setTimeout(() => flush(uid), 250);
   } catch (error) {
     console.warn('continue prefs save', error);
     mirror(uid);
+  } finally {
+    flushing = false;
   }
 }
 
@@ -175,8 +202,14 @@ export function initContinuePrefsSync() {
     if (!uid) return;
     unsubscribe = db.collection('users').doc(uid).onSnapshot(snapshot => {
       if (state.user?.uid !== uid) return;
-      hydrateContinuePrefs(snapshot.exists ? (snapshot.data()?.continueWatching || {}) : {});
-      document.dispatchEvent(new Event('cv:continue-prefs'));
+      if (hydrateContinuePrefs(snapshot.exists ? (snapshot.data()?.continueWatching || {}) : {})) {
+        document.dispatchEvent(new Event('cv:continue-prefs'));
+      }
     }, error => console.warn('continue prefs live sync', error));
   });
+  const retry = () => {
+    if (state.user?.uid && document.visibilityState !== 'hidden') flush(state.user.uid);
+  };
+  window.addEventListener('online', retry);
+  document.addEventListener('visibilitychange', retry);
 }

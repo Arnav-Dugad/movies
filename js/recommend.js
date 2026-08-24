@@ -28,6 +28,8 @@ const ROTATION_IDLE_MS = 3 * 86400000;
 const ACTIVITY_WRITE_GAP = 6 * 60 * 60 * 1000;
 const SIGNAL_REFRESH_MS = 24 * 60 * 60 * 1000;
 let lastSignalSlot = -1;
+let recommendationRun = 0;
+let recommendationSignature = '';
 
 // ----- Per-visit freshness -----
 // Every time CineVerse is OPENED the rails show a different slice of the ranked
@@ -654,25 +656,45 @@ function recommendationCard(candidate, opts = {}) {
   return buildCard(candidate, candidate.__type, { ...opts, dismissible: true });
 }
 
-async function fillRow(id, fn) {
+async function fillRow(id, fn, run = recommendationRun) {
   try {
     const inner = await fn();
+    if (run !== recommendationRun) return;
     const el = $(id); if (!el) return;
     if (inner) el.innerHTML = inner; else el.closest('.section')?.remove();
-  } catch (e) { const el = $(id); if (el) el.closest('.section')?.remove(); }
+  } catch (e) {
+    if (run !== recommendationRun) return;
+    const el = $(id); if (el) el.closest('.section')?.remove();
+  }
 }
 
 // ----- Public entry (home.js re-exports this as renderPersonalRows) -----
 export async function renderRecommendations() {
   const wrap = $('personalRows');
   if (!wrap) return;
+  if (!state.authReady) return;
   // Rendering never waits for old watched records to be enriched. When the
   // one-time metadata pass lands, its event refreshes these rails with themes.
   ensureWatchedMeta();
   let profile = buildTasteProfile();
-  if (!profile.hasSignal) { wrap.innerHTML = ''; return; }
+  if (!profile.hasSignal) {
+    recommendationRun++;
+    recommendationSignature = `empty:${state.user?.uid || 'guest'}`;
+    if (wrap.firstChild) wrap.innerHTML = '';
+    return;
+  }
   const rotation = activeRotation();
   const signalSlot = currentSignalSlot();
+  const sourceSignature = JSON.stringify({
+    uid: state.user?.uid || 'guest', rotation, signalSlot,
+    watchlist: state.watchlist.map(item => item.id).sort(),
+    watched: Object.keys(state.watched).sort(),
+    ratings: Object.entries(state.ratings).sort(([a], [b]) => a.localeCompare(b)),
+    dismissed: [...(state.recommendationFeedback?.dismissed || [])].sort(),
+  });
+  if (sourceSignature === recommendationSignature && wrap.firstElementChild) return;
+  recommendationSignature = sourceSignature;
+  const run = ++recommendationRun;
   profile = rotateRecommendationSignals(profile, rotation, signalSlot);
   profile.rotation = rotation;
   lastSignalSlot = signalSlot;
@@ -703,8 +725,14 @@ export async function renderRecommendations() {
   if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}`, kicker: 'A story theme, not a genre — the sharper signal of the two' });
   if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}`, kicker: 'Your strongest genre by weight' });
 
-  wrap.innerHTML = descriptors.map(shell).join('');
-  observeReveals(wrap);
+  const shellHTML = descriptors.map(shell).join('');
+  // Keep populated rows in place while an updated recommendation pool resolves.
+  // Rebuild shells only when their visible labels actually changed.
+  if (!wrap.firstElementChild || wrap.dataset.shellSignature !== shellHTML) {
+    wrap.innerHTML = shellHTML;
+    wrap.dataset.shellSignature = shellHTML;
+    observeReveals(wrap);
+  }
 
   // ONE pool fetch + ONE ranking pass, shared by every row. The old code refetched
   // (and re-ranked) per row, which was both slower and inconsistent between rows.
@@ -717,7 +745,7 @@ export async function renderRecommendations() {
     if (!picks.length) return null;
     const top = picks[0].__score || 1;
     return picks.map(c => recommendationCard(c, { badge: matchBadge(c.__score, top) })).join('');
-  });
+  }, run);
 
   const rowFrom = async (pred, min = 1) => {
     const items = rotatedWindow((await pool).filter(pred), rotation, 20);
@@ -727,11 +755,11 @@ export async function renderRecommendations() {
   // The label and every card now share the exact same recommendation seed.
   // Strict similarity removes the row entirely if fewer than four honest matches
   // remain; a missing row is better than a confident but misleading explanation.
-  if (seed) fillRow('rowSeed', () => rowFrom(c => isRelatedToSeed(c, seed), 4));
-  if (topActor) fillRow('rowActor', () => rowFrom(c => hasCandidateSource(c, 'cast')));
-  if (topDirector) fillRow('rowDirector', () => rowFrom(c => hasCandidateSource(c, 'director')));
-  if (topKeyword) fillRow('rowTheme', () => rowFrom(c => hasCandidateSource(c, 'keyword') && (c.__keywordIds || []).includes(+topKeyword.id), 4));
-  if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)));
+  if (seed) fillRow('rowSeed', () => rowFrom(c => isRelatedToSeed(c, seed), 4), run);
+  if (topActor) fillRow('rowActor', () => rowFrom(c => hasCandidateSource(c, 'cast')), run);
+  if (topDirector) fillRow('rowDirector', () => rowFrom(c => hasCandidateSource(c, 'director')), run);
+  if (topKeyword) fillRow('rowTheme', () => rowFrom(c => hasCandidateSource(c, 'keyword') && (c.__keywordIds || []).includes(+topKeyword.id), 4), run);
+  if (genreId && genreMap[genreId]) fillRow('rowGenre', () => rowFrom(c => (c.genre_ids || []).includes(genreId)), run);
 }
 
 function signalName(id) { return genreMap[id] || 'Discovering'; }

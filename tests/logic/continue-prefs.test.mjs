@@ -18,4 +18,11 @@ check('hiding a title removes its pin atomically', !hidden.pinned.includes('tv_3
 const reset = mergeContinuePrefs(merged, [{ type: 'reset', at: 500, id: 'reset' }]);
 check('reset clears the shared continue layout', !reset.pinned.length && !reset.hidden.length, JSON.stringify(reset));
 
+const migrated = mergeContinuePrefs(remote, [{
+  type: 'snapshot', at: 600, id: 'legacy-pc',
+  value: { pinned: ['tv_37854'], hidden: ['movie_9'], clientUpdatedAt: 600 },
+}]);
+check('a newer legacy PC snapshot keeps its One Piece pin and unrelated cloud pins', migrated.pinned.join(',') === 'tv_37854,tv_100', JSON.stringify(migrated));
+check('legacy migration resolves only the keys that device explicitly chose', migrated.hidden.includes('movie_8') && migrated.hidden.includes('movie_9'), JSON.stringify(migrated));
+
 summary();

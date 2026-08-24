@@ -51,6 +51,9 @@ test('highest-grossing rail and dedicated page expose reported money', async ({ 
       { id: 4, title: 'The Abyss', job: 'Director', department: 'Directing', release_date: '1989-08-09', vote_average: 7.3, vote_count: 3000, genre_ids: [878] },
     ], cast: [],
   } }));
+  await page.route('https://query.wikidata.org/sparql**', route => route.fulfill({ json: { results: { bindings: [
+    { tmdbId: { value: '2710' }, gross: { value: '4000000000' }, films: { value: '5' } },
+  ] } } }));
 
   await page.goto('/index.html');
   await page.waitForFunction(() => window.__cvBooted === true, null, { timeout: 12_000 });
@@ -79,7 +82,8 @@ test('highest-grossing rail and dedicated page expose reported money', async ({ 
 
   await page.getByLabel('Box-office rankings').getByRole('button', { name: 'Directors' }).click();
   await expect(page.locator('.bo-league-row')).toContainText('James Cameron');
-  await expect(page.locator('.bo-league-row')).toContainText('$2,923,706,026');
+  await expect(page.locator('.bo-league-row')).toContainText('$4,000,000,000');
+  await expect(page.locator('.bo-league-row')).toContainText('Reported career gross');
   await expect(page.locator('.bo-league-row')).toContainText('100% hit rate');
   await expect(page.locator('.bo-director-eras')).toContainText('Career');
   await expect(page.locator('.bo-director-consistency')).toContainText('5 films');
@@ -155,8 +159,9 @@ test('movie progress accepts an optional exact stop time and survives reload', a
     if (path === '/movie/7') return route.fulfill({ json: {
       id: 7, title: 'Progress Movie', overview: 'A movie progress fixture.', status: 'Released',
       release_date: '2020-01-01', runtime: 132, poster_path: '/seven.jpg', backdrop_path: '/seven-back.jpg',
-      vote_average: 8, vote_count: 1000, genres: [{ id: 18, name: 'Drama' }], original_language: 'en',
-      production_countries: [{ iso_3166_1: 'US', name: 'United States' }], spoken_languages: [], production_companies: [],
+      vote_average: 8, vote_count: 1000, budget: 50000000, revenue: 200000000,
+      genres: [{ id: 18, name: 'Drama' }], original_language: 'hi',
+      production_countries: [{ iso_3166_1: 'IN', name: 'India' }], spoken_languages: [], production_companies: [],
       images: { logos: [], backdrops: [], posters: [] }, recommendations: { results: [] }, keywords: { keywords: [] },
       external_ids: {}, release_dates: { results: [] }, alternative_titles: { titles: [] }, 'watch/providers': { results: {} },
     } });
@@ -176,6 +181,9 @@ test('movie progress accepts an optional exact stop time and survives reload', a
     await expect(page.getByRole('heading', { name: 'Progress Movie' })).toBeVisible();
   };
   await open();
+  await expect(page.locator('.detail-accordion.box-office .detail-accordion-toggle')).toContainText(/₹.*crore/);
+  await page.locator('.detail-accordion.box-office .detail-accordion-toggle').click();
+  await expect(page.locator('.detail-accordion.box-office .bo3-note')).toContainText('Approximate INR crores');
   await page.getByRole('button', { name: 'Start watching this movie' }).click();
   await expect(page.locator('.movie-progress-panel')).toContainText('Currently watching');
   await page.getByLabel('Exact stopped time in hours minutes and seconds').fill('01:12:30');

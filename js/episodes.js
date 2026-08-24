@@ -21,6 +21,7 @@ const KEY = id => `tv_${id}`;
 const cacheKey = () => `cv_episode_progress_${state.user?.uid || 'guest'}`;
 const col = uid => db.collection('users').doc(uid || state.user.uid).collection('progress');
 const writeTimers = new Map();
+const dirtyKeys = new Set();
 let progressUnsubscribe = null;
 const DAY = 86400000;
 
@@ -233,7 +234,9 @@ export async function loadEpisodeProgress() {
     // A newer offline/local edit is reconciled after the read. Transactions keep
     // a simultaneous edit on another device intact.
     const dirty = Object.keys(out).filter(key => migrations.has(key) || syncComparable(out[key]) !== syncComparable(server[key] || null));
-    await Promise.all(dirty.map(key => writeMerged(key, out[key], uid).catch(error => console.warn('episode progress reconcile', error))));
+    await Promise.all(dirty.map(key => writeMerged(key, out[key], uid).catch(error => {
+      dirtyKeys.add(key); console.warn('episode progress reconcile', error);
+    })));
   } catch (error) { console.warn('loadEpisodeProgress', error); }
 }
 
@@ -354,6 +357,7 @@ export function mergeEntries(server, local) {
 // One debounced write per show: marking a whole season episode-by-episode still
 // costs a single document write instead of one per tick.
 function persist(key) {
+  dirtyKeys.add(key);
   mirror();
   document.dispatchEvent(new CustomEvent('cv:episode-progress', { detail: { key } }));
   if (!state.user) return;
@@ -363,8 +367,14 @@ function persist(key) {
     writeTimers.delete(key);
     if (state.user?.uid !== uid) return;
     const entry = state.episodeProgress[key];
-    if (!entry) { col().doc(key).delete().catch(error => console.warn('episode progress delete', error)); return; }
-    writeMerged(key, entry, uid).catch(error => console.warn('episode progress sync', error));
+    if (!entry) {
+      col().doc(key).delete().then(() => dirtyKeys.delete(key)).catch(error => console.warn('episode progress delete', error));
+      return;
+    }
+    const sentAt = +entry.updatedAt || 0;
+    writeMerged(key, entry, uid).then(() => {
+      if ((+state.episodeProgress[key]?.updatedAt || 0) <= sentAt) dirtyKeys.delete(key);
+    }).catch(error => console.warn('episode progress sync', error));
   }, 600));
 }
 
@@ -405,9 +415,14 @@ async function writeMerged(key, entry, uid) {
 
 export function resetEpisodeProgressForAuth() {
   progressUnsubscribe?.(); progressUnsubscribe = null;
-  writeTimers.forEach(clearTimeout); writeTimers.clear();
+  writeTimers.forEach(clearTimeout); writeTimers.clear(); dirtyKeys.clear();
   state.episodeProgress = {};
 }
+
+const sameProgressLedger = (left, right) => {
+  const keys = [...new Set([...Object.keys(left || {}), ...Object.keys(right || {})])].sort();
+  return keys.every(key => JSON.stringify(left?.[key] || null) === JSON.stringify(right?.[key] || null));
+};
 
 /** Merge live Firestore changes into the local ledger without losing offline edits. */
 function startEpisodeProgressRealtime(uid) {
@@ -421,11 +436,27 @@ function startEpisodeProgressRealtime(uid) {
     for (const key of new Set([...Object.keys(server), ...Object.keys(local)])) {
       const entry = mergeEntries(server[key], local[key]);
       if (entry) merged[key] = entry;
+      if (entry && syncComparable(entry) !== syncComparable(server[key] || null)) dirtyKeys.add(key);
     }
+    if (dirtyKeys.size) queueMicrotask(() => flushDirtyProgress());
+    if (sameProgressLedger(local, merged)) return;
     state.episodeProgress = merged;
     mirror();
     document.dispatchEvent(new CustomEvent('cv:episode-progress', { detail: { live: true } }));
   }, error => console.warn('episode progress live sync', error));
+}
+
+async function flushDirtyProgress() {
+  const uid = state.user?.uid;
+  if (!uid || !dirtyKeys.size) return;
+  await Promise.all([...dirtyKeys].map(async key => {
+    const entry = state.episodeProgress[key];
+    try {
+      if (!entry) await col(uid).doc(key).delete();
+      else await writeMerged(key, entry, uid);
+      if (state.user?.uid === uid) dirtyKeys.delete(key);
+    } catch (error) { console.warn('episode progress retry', error); }
+  }));
 }
 
 // Everything the progress document needs about a show, derived from one TMDB
@@ -1004,6 +1035,10 @@ export function initEpisodeRefresh() {
     refresh();
   });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
+  window.addEventListener('online', () => flushDirtyProgress());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') flushDirtyProgress();
+  });
 }
 
 function apply(id, meta, mutate) {

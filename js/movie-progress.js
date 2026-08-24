@@ -93,7 +93,11 @@ export async function loadMovieProgress() {
     mirror(uid);
     await Promise.all(Object.entries(local)
       .filter(([key, value]) => !server[key] || value.updatedAt > server[key].updatedAt || (value.updatedAt === server[key].updatedAt && value.deleted && !server[key].deleted))
-      .map(([key, value]) => write(key, value, uid).catch(error => console.warn('movie progress reconcile', error))));
+      .map(async ([key, value]) => {
+        pendingKeys.add(key);
+        try { await write(key, value, uid); pendingKeys.delete(key); }
+        catch (error) { console.warn('movie progress reconcile', error); }
+      }));
   } catch (error) { console.warn('load movie progress', error); }
   document.dispatchEvent(new Event('cv:movie-progress'));
 }
@@ -117,10 +121,26 @@ function startMovieProgressRealtime(uid) {
       // Firestore is authoritative, so clock skew cannot make an older device win.
       if (!pendingKeys.has(key) || !local || row.updatedAt >= local.updatedAt) next[key] = row;
     }
+    for (const [key, row] of Object.entries(next)) {
+      if (!server[key] && row && !row.deleted) pendingKeys.add(key);
+    }
+    if (pendingKeys.size) queueMicrotask(() => flushPendingMovies());
+    if (JSON.stringify(state.movieProgress) === JSON.stringify(next)) return;
     state.movieProgress = next;
     mirror(uid);
     document.dispatchEvent(new CustomEvent('cv:movie-progress', { detail: { live: true } }));
   }, error => console.warn('movie progress live sync', error));
+}
+
+async function flushPendingMovies() {
+  const uid = state.user?.uid;
+  if (!uid || !pendingKeys.size) return;
+  await Promise.all([...pendingKeys].map(async key => {
+    const entry = state.movieProgress[key];
+    if (!entry) { pendingKeys.delete(key); return; }
+    try { await write(key, entry, uid); if (state.user?.uid === uid) pendingKeys.delete(key); }
+    catch (error) { console.warn('movie progress retry', error); }
+  }));
 }
 
 export const movieProgressEntry = id => {
@@ -182,6 +202,10 @@ export function formatMovieTime(seconds, { compact = false } = {}) {
 
 export function initMovieProgress() {
   document.addEventListener('cv:auth', () => startMovieProgressRealtime(state.user?.uid || ''));
+  window.addEventListener('online', flushPendingMovies);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') flushPendingMovies();
+  });
   document.addEventListener('cv:watched-toggled', event => {
     if (event.detail?.type === 'movie' && state.watched[`movie_${event.detail.id}`]) removeMovieProgress(event.detail.id);
   });

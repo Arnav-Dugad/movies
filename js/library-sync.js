@@ -19,6 +19,18 @@ function announce() {
   announceTimer = setTimeout(() => document.dispatchEvent(new Event('cv:library-sync')), 45);
 }
 
+// Firestore's first onSnapshot delivery contains every document even when the
+// authoritative sign-in read has already put the exact same data in state. A
+// deep, stable comparison keeps that acknowledgement from repainting Home four
+// times (watchlist, watched, ratings and lists) during the opening animation.
+function stable(value) {
+  if (value == null || typeof value !== 'object') return value;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (Array.isArray(value)) return value.map(stable);
+  return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+}
+const unchanged = (before, after) => JSON.stringify(stable(before)) === JSON.stringify(stable(after));
+
 export function initLibraryRealtime() {
   document.addEventListener('cv:auth', () => {
     stopAll();
@@ -28,24 +40,32 @@ export function initLibraryRealtime() {
     const listen = (query, apply, label) => {
       stops.push(query.onSnapshot(snapshot => {
         if (state.user?.uid !== uid) return;
-        apply(snapshot); announce();
+        if (apply(snapshot) !== false) announce();
       }, error => console.warn(`${label} live sync`, error)));
     };
     listen(root.collection('watchlist').orderBy('added', 'desc'), snapshot => {
-      state.watchlist = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const next = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (unchanged(state.watchlist, next)) return false;
+      state.watchlist = next; return true;
     }, 'watchlist');
     listen(root.collection('watched'), snapshot => {
-      state.watched = Object.fromEntries(snapshot.docs.map(doc => [doc.id, doc.data()]));
+      const next = Object.fromEntries(snapshot.docs.map(doc => [doc.id, doc.data()]));
+      if (unchanged(state.watched, next)) return false;
+      state.watched = next; return true;
     }, 'watched');
     listen(root.collection('ratings'), snapshot => {
-      state.ratings = Object.fromEntries(snapshot.docs.map(doc => [doc.id, +doc.data().score || 0]));
+      const next = Object.fromEntries(snapshot.docs.map(doc => [doc.id, +doc.data().score || 0]));
+      if (unchanged(state.ratings, next)) return false;
+      state.ratings = next; return true;
     }, 'ratings');
     listen(root.collection('lists'), snapshot => {
       // An empty list collection is only the short first-use/offline window;
       // loadLists seeds the non-deletable defaults. Do not flash them away.
       if (snapshot.empty) return;
-      state.lists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      const next = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
         .sort((a, b) => (+a.order || 0) - (+b.order || 0) || String(a.name || '').localeCompare(String(b.name || '')));
+      if (unchanged(state.lists, next)) return false;
+      state.lists = next; return true;
     }, 'lists');
   });
 }

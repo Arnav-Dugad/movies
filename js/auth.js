@@ -109,6 +109,8 @@ export function initAuth() {
   auth.onAuthStateChanged(async u => {
     const run = ++authRun;
     state.user = u;
+    state.authReady = false;
+    document.dispatchEvent(new Event('cv:auth-loading'));
     updateAuthUI();
     if (u) {
       // Paint the device snapshot immediately, but never use its version as a
@@ -137,6 +139,8 @@ export function initAuth() {
       resetMovieProgressForAuth();
       hydrateContinuePrefs(null);
     }
+    if (run !== authRun || state.user?.uid !== u?.uid) return;
+    state.authReady = true;
     loadRecentlyViewed();
     document.dispatchEvent(new Event('cv:auth'));
   });

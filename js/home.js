@@ -46,6 +46,7 @@ export async function renderBoxOfficeRail() {
 // Edit mode is per page-load, not stored: it is a thing you are doing, not a
 // setting. The pins and hides it produces are what persist.
 let continueEditing = false;
+let continueRenderSignature = '';
 
 function continueQueue() {
   const shows = resumeQueue(500).map(row => ({ ...row, type: 'tv', key: row.key || `tv_${row.id}`, lastAt: row.entry.lastWatched?.at || 0 }));
@@ -54,6 +55,7 @@ function continueQueue() {
 
 export function renderContinueWatching() {
   const host = $('continueWatchingRow'); if (!host) return;
+  if (!state.authReady) return;
   // Every show in progress, not an arbitrary first dozen. The rail is a
   // horizontal scroller with lazy images, so length costs almost nothing, and a
   // show cut off at position 13 is a show you never get back to.
@@ -62,10 +64,24 @@ export function renderContinueWatching() {
   const queue = all;
   // While editing, keep the section up even if everything has been hidden —
   // otherwise the control to unhide disappears with the last card.
-  if (!queue.length && !continueEditing) { host.innerHTML = ''; continueEditing = false; return; }
-  if (!state.user) { host.innerHTML = ''; return; }
+  if (!queue.length && !continueEditing) {
+    const empty = `empty:${state.user?.uid || 'guest'}`;
+    if (continueRenderSignature !== empty) host.innerHTML = '';
+    continueRenderSignature = empty; continueEditing = false; return;
+  }
+  if (!state.user) { host.innerHTML = ''; continueRenderSignature = 'guest'; return; }
 
   const hiddenCount = source.length - all.length;
+  const signature = JSON.stringify({
+    uid: state.user.uid, editing: continueEditing, hiddenCount,
+    queue: queue.map(row => [row.key, row.progress?.watched, row.progress?.aired, row.progress?.percent, row.next?.season, row.next?.episode, row.entry?.position, row.entry?.updatedAt, isPinned(row.key)]),
+    hidden: continueEditing ? source.filter(row => isHidden(row.key)).map(row => row.key) : [],
+  });
+  // Episode metadata, live listeners and the authoritative sign-in read can all
+  // acknowledge the same state. Preserve the rail DOM (including loaded stills,
+  // scroll position and an active preview) when its visible model did not change.
+  if (signature === continueRenderSignature && host.firstElementChild) return;
+  continueRenderSignature = signature;
   host.innerHTML = `<section class="section reveal continue-section${continueEditing ? ' editing' : ''}">
     <div class="section-head"><div><span class="continue-eyebrow">Pick up where you left off</span><h2 class="section-title"><span>▶</span> Continue Watching</h2><p>${continueEditing
       ? 'Pin, reorder, or hide titles.'
@@ -189,15 +205,20 @@ function watchContinueScroll(queue) {
 export async function renderFranchiseRail() {
   const host = $('franchiseRow');
   if (!host) return;
+  if (!state.authReady) return;
   if (!state.user) { host.innerHTML = ''; return; }
+  const run = ++franchiseRenderRun;
   let summary;
   try { summary = await franchiseSummary(); }
-  catch (_) { host.innerHTML = ''; return; }
-  if (!$('franchiseRow')) return;
+  catch (_) { if (run === franchiseRenderRun) host.innerHTML = ''; return; }
+  if (run !== franchiseRenderRun || !$('franchiseRow')) return;
 
   // Only series with something left, and only the actual next film — listing a
   // whole collection you have half-seen is the collection page's job.
   const rows = summary.inProgress.filter(item => item.nextUp).slice(0, 12);
+  const signature = JSON.stringify({ uid: state.user.uid, rows: rows.map(item => [item.id, item.seen, item.released, item.nextUp?.id, item.unseen?.length]) });
+  if (signature === franchiseRenderSignature && host.firstElementChild) return;
+  franchiseRenderSignature = signature;
   if (!rows.length) {
     host.innerHTML = `<section class="section reveal franchise-section franchise-section-empty"><div class="section-head"><div><h2 class="section-title"><span>&#9678;</span> Franchises</h2></div><button class="section-see-all" data-action="show-page" data-page="franchises">Open<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div></section>`;
     return;
@@ -218,6 +239,9 @@ export async function renderFranchiseRail() {
   observeReveals();
   requestAnimationFrame(() => host.querySelectorAll('.fr-card-bar i').forEach(bar => { bar.style.width = `${+bar.dataset.w || 0}%`; }));
 }
+
+let franchiseRenderRun = 0;
+let franchiseRenderSignature = '';
 
 const EP_CHECK_HOME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>';
 
@@ -267,6 +291,10 @@ export function initHomeActions() {
     },
   });
   document.addEventListener('cv:auth', renderContinueWatching);
+  document.addEventListener('cv:auth-loading', () => {
+    continueRenderSignature = ''; franchiseRenderSignature = ''; franchiseRenderRun++;
+    ['continueWatchingRow', 'franchiseRow', 'personalRows'].forEach(id => { const node = $(id); if (node) node.innerHTML = ''; });
+  });
   // A tick anywhere — the rail's own button or the detail page — re-orders the
   // queue, so the rail always rebuilds rather than trying to patch itself.
   document.addEventListener('cv:episode-progress', renderContinueWatching);
@@ -345,9 +373,11 @@ export async function initHome() {
   observeReveals();
   // Personalized rails belong on Home; Profile contains the private explanation
   // of their signals and scoring instead of duplicating the same cards there.
-  renderRecommendations();
-  renderContinueWatching();
-  renderFranchiseRail();
+  if (state.authReady) {
+    renderRecommendations();
+    renderContinueWatching();
+    renderFranchiseRail();
+  }
   renderBoxOfficeRail();
   await Promise.allSettled(SECTIONS.map(async s => {
     const el = $('row_' + s.id);

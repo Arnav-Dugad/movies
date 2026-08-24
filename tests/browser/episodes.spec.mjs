@@ -152,6 +152,7 @@ test('poster trailers preview silently on desktop and never mount on mobile', as
   });
   const card = page.locator('.card[data-id="42"]');
   const sourceWidth = await card.evaluate(element => element.getBoundingClientRect().width);
+  const sourceHeight = await card.locator('.card-img').evaluate(element => element.getBoundingClientRect().height);
   const siblingLeft = await page.locator('.row>.card').nth(1).evaluate(element => element.getBoundingClientRect().left);
   await card.hover();
   const frame = card.locator('iframe.ambient-video-clean');
@@ -161,9 +162,10 @@ test('poster trailers preview silently on desktop and never mount on mobile', as
   const geometry = await card.evaluate(element => {
     const media = element.querySelector('.card-img').getBoundingClientRect();
     const box = element.getBoundingClientRect();
-    return { width: box.width, ratio: media.width / media.height };
+    return { width: box.width, height: media.height, ratio: media.width / media.height };
   });
   expect(geometry.width).toBeGreaterThan(sourceWidth * 1.8);
+  expect(Math.abs(geometry.height - sourceHeight)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.ratio - 16 / 9)).toBeLessThan(.04);
   await expect.poll(() => page.locator('.row>.card').nth(1).evaluate(element => element.getBoundingClientRect().left)).toBeGreaterThan(siblingLeft + 100);
   await card.getByRole('button', { name: 'Unmute preview' }).click();
@@ -175,6 +177,22 @@ test('poster trailers preview silently on desktop and never mount on mobile', as
   await card.hover();
   await page.waitForTimeout(700);
   await expect(card.locator('iframe')).toHaveCount(0);
+});
+
+test('identical progress acknowledgements preserve the Continue Watching rail DOM', async ({ page }) => {
+  await fixture(page);
+  const entry = baseEntry({ version: 2, second: [1] });
+  await page.evaluate(async value => {
+    cvTest.seedLocal('alice', value); cvTest.seedServer('alice', value); await cvTest.load();
+    const { state } = await import('/js/state.js'); state.authReady = true;
+    const host = document.createElement('div'); host.id = 'continueWatchingRow'; document.body.appendChild(host);
+    const { renderContinueWatching } = await import('/js/home.js');
+    renderContinueWatching();
+    window.__continueSection = host.firstElementChild;
+    renderContinueWatching();
+  }, entry);
+  expect(await page.evaluate(() => document.getElementById('continueWatchingRow').firstElementChild === window.__continueSection)).toBe(true);
+  await expect(page.locator('#continueWatchingRow .continue-card')).toHaveCount(1);
 });
 
 test('details without videos or images retain a complete aligned hero', async ({ page }) => {

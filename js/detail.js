@@ -14,7 +14,7 @@ import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeW
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
-import { boxOfficeAssumptions } from './box-office.js';
+import { boxOfficeAssumptions, formatIndianGross } from './box-office.js';
 import { movieProgressEntry, startMovieProgress, setMovieProgressPosition, removeMovieProgress, parseMovieTime, formatMovieTime } from './movie-progress.js';
 
 let curDet = null, curType = null;
@@ -721,6 +721,9 @@ const BO_GRID = 'rgba(255,255,255,.07)';
 const BO_INK = '#6b7280';
 
 const money = value => `$${fmt(Math.round(value))}`;
+const marketMoney = (model, value, { compact = false } = {}) => model.market.id === 'india'
+  ? formatIndianGross(value, { compact })
+  : money(value);
 
 function boxOfficeModel(det) {
   const budget = +(det.budget || 0), revenue = +(det.revenue || 0);
@@ -775,7 +778,7 @@ function boxOfficeChart(m, width) {
 
   const ticks = niceTicks(max);
   const axis = ticks.map(value => `<line x1="${x(value).toFixed(1)}" x2="${x(value).toFixed(1)}" y1="${padT - 6}" y2="${H - padB + 6}" stroke="${BO_GRID}" stroke-width="1"/>` +
-    `<text x="${x(value).toFixed(1)}" y="${H - padB + 22}" text-anchor="middle" fill="${BO_INK}" font-size="10" font-variant-numeric="tabular-nums">${value ? money(value) : '$0'}</text>`).join('');
+    `<text x="${x(value).toFixed(1)}" y="${H - padB + 22}" text-anchor="middle" fill="${BO_INK}" font-size="10" font-variant-numeric="tabular-nums">${value ? marketMoney(m, value, { compact: true }) : (m.market.id === 'india' ? '₹0' : '$0')}</text>`).join('');
 
   const band = m.hasBoth && m.beHigh > 0 ? (() => {
     const left = x(m.beLow), right = Math.min(x(m.beHigh), padL + innerW);
@@ -787,7 +790,7 @@ function boxOfficeChart(m, width) {
       <line x1="${right.toFixed(1)}" x2="${right.toFixed(1)}" y1="${top}" y2="${bottom}" stroke="${BO_BAND}" stroke-opacity=".3" stroke-width="1"/>
       <line class="bo3-band-rule" x1="${mid.toFixed(1)}" x2="${mid.toFixed(1)}" y1="${top}" y2="${bottom}" stroke="${BO_BAND}" stroke-width="1.5"/>
       <text x="${mid.toFixed(1)}" y="${(top - 5).toFixed(1)}" text-anchor="middle" fill="${BO_BAND}" font-size="9.5" font-weight="700">break-even</text>
-      <rect class="bo3-hit" x="${(left - 6).toFixed(1)}" y="${padT - 6}" width="${Math.max(24, right - left + 12).toFixed(1)}" height="${(H - padB + 12 - padT).toFixed(1)}" fill="transparent" data-tip="Modelled break-even ${money(m.beLow)} to ${money(m.beHigh)} — production plus ${Math.round(m.market.marketingLowRate * 100)}-${Math.round(m.market.marketingHighRate * 100)}% marketing, divided by a ${Math.round(m.market.returnLowRate * 100)}-${Math.round(m.market.returnHighRate * 100)}% theatrical return"></rect>
+      <rect class="bo3-hit" x="${(left - 6).toFixed(1)}" y="${padT - 6}" width="${Math.max(24, right - left + 12).toFixed(1)}" height="${(H - padB + 12 - padT).toFixed(1)}" fill="transparent" data-tip="Modelled break-even ${marketMoney(m, m.beLow)} to ${marketMoney(m, m.beHigh)} — production plus ${Math.round(m.market.marketingLowRate * 100)}-${Math.round(m.market.marketingHighRate * 100)}% marketing, divided by a ${Math.round(m.market.returnLowRate * 100)}-${Math.round(m.market.returnHighRate * 100)}% theatrical return"></rect>
     </g>`;
   })() : '';
 
@@ -801,12 +804,12 @@ function boxOfficeChart(m, width) {
     return `<g class="bo3-row">
       ${inlineLabel}
       <rect class="bo3-bar${row.emphasis ? ' emphasis' : ''}" x="${padL}" y="${y}" width="0" height="${barH}" rx="4" fill="${row.color}" data-w="${full.toFixed(1)}" data-delay="${index * 140}"></rect>
-      <text class="bo3-value" x="${(padL + full + 10).toFixed(1)}" y="${labelY.toFixed(1)}" fill="#f0f0f5" font-size="12" font-weight="700" opacity="0" data-delay="${index * 140 + 520}">${money(row.value)}</text>
-      <rect class="bo3-hit" x="${padL}" y="${(y - 8).toFixed(1)}" width="${Math.max(24, full).toFixed(1)}" height="${barH + 16}" fill="transparent" data-tip="${esc(`${row.label}: ${money(row.value)}`)}"></rect>
+      <text class="bo3-value" x="${(padL + full + 10).toFixed(1)}" y="${labelY.toFixed(1)}" fill="#f0f0f5" font-size="12" font-weight="700" opacity="0" data-delay="${index * 140 + 520}">${marketMoney(m, row.value, { compact: m.market.id === 'india' })}</text>
+      <rect class="bo3-hit" x="${padL}" y="${(y - 8).toFixed(1)}" width="${Math.max(24, full).toFixed(1)}" height="${barH + 16}" fill="transparent" data-tip="${esc(`${row.label}: ${marketMoney(m, row.value)}`)}"></rect>
     </g>`;
   }).join('');
 
-  return `<svg class="bo3-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Reported production budget and worldwide gross on a shared dollar scale, with the modelled break-even range">
+  return `<svg class="bo3-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Reported production budget and worldwide gross on one shared scale, with the modelled break-even range">
     <defs>
       <linearGradient id="bo3Gloss" x1="0" y1="0" x2="1" y2="0">
         <stop offset="0" stop-color="${BO_ACCENT}"/><stop offset="1" stop-color="${BO_ACCENT_SOFT}"/>
@@ -822,23 +825,24 @@ function boxOfficeHTML(det) {
   if (!m.budget && !m.revenue) return '';
   const verdict = boxOfficeVerdict(m);
   const difference = m.revenue - m.budget;
+  const displayMoney = value => marketMoney(m, value);
   const marketingRange = `${Math.round(m.market.marketingLowRate * 100)}–${Math.round(m.market.marketingHighRate * 100)}%`;
   const returnRange = `${Math.round(m.market.returnLowRate * 100)}–${Math.round(m.market.returnHighRate * 100)}%`;
 
   const tiles = [
-    m.budget ? ['Production budget', money(m.budget), 'Reported by TMDB'] : null,
-    m.revenue ? ['Worldwide gross', money(m.revenue), 'Theatrical, all territories'] : null,
-    m.hasBoth ? ['Gross above budget', `${difference >= 0 ? '+' : '−'}${money(Math.abs(difference))}`, 'Difference, not profit'] : null,
+    m.budget ? ['Production budget', displayMoney(m.budget), 'Reported by TMDB'] : null,
+    m.revenue ? ['Worldwide gross', displayMoney(m.revenue), 'Theatrical, all territories'] : null,
+    m.hasBoth ? ['Gross above budget', `${difference >= 0 ? '+' : '−'}${displayMoney(Math.abs(difference))}`, 'Difference, not profit'] : null,
     m.market.id === 'india' ? ['Market logic', 'India-aware', 'Distributor verdict kept separate'] : null,
   ].filter(Boolean);
 
   const tableRows = [
-    m.budget ? ['Production budget', money(m.budget), 'Reported'] : null,
-    m.revenue ? ['Worldwide gross', money(m.revenue), 'Reported'] : null,
-    m.budget ? ['Marketing', `${money(m.marketingLow)} – ${money(m.marketingHigh)}`, `Modelled at ${marketingRange} of production`] : null,
-    m.budget ? ['Total cost', `${money(m.costLow)} – ${money(m.costHigh)}`, 'Modelled: production plus marketing'] : null,
-    m.hasBoth ? ['Break-even gross', `${money(m.beLow)} – ${money(m.beHigh)}`, `Modelled: cost ÷ a ${returnRange} theatrical return`] : null,
-    m.hasBoth ? [m.market.id === 'india' ? 'Producer/distributor return' : 'Studio theatrical return', `${money(m.studioLow)} – ${money(m.studioHigh)}`, 'Modelled, before streaming and TV rights'] : null,
+    m.budget ? ['Production budget', displayMoney(m.budget), 'Reported'] : null,
+    m.revenue ? ['Worldwide gross', displayMoney(m.revenue), 'Reported'] : null,
+    m.budget ? ['Marketing', `${displayMoney(m.marketingLow)} – ${displayMoney(m.marketingHigh)}`, `Modelled at ${marketingRange} of production`] : null,
+    m.budget ? ['Total cost', `${displayMoney(m.costLow)} – ${displayMoney(m.costHigh)}`, 'Modelled: production plus marketing'] : null,
+    m.hasBoth ? ['Break-even gross', `${displayMoney(m.beLow)} – ${displayMoney(m.beHigh)}`, `Modelled: cost ÷ a ${returnRange} theatrical return`] : null,
+    m.hasBoth ? [m.market.id === 'india' ? 'Producer/distributor return' : 'Studio theatrical return', `${displayMoney(m.studioLow)} – ${displayMoney(m.studioHigh)}`, 'Modelled, before streaming and TV rights'] : null,
     m.hasBoth ? ['Gross ÷ budget', `${m.multiple.toFixed(2)}x`, 'Reported'] : null,
   ].filter(Boolean);
 
@@ -851,7 +855,7 @@ function boxOfficeHTML(det) {
     </div>
 
     <figure class="bo3-figure">
-      <figcaption><strong>Where the money landed</strong><span>Reported figures on one dollar scale. The shaded band is the modelled break-even range.</span></figcaption>
+      <figcaption><strong>Where the money landed</strong><span>Reported figures on one shared scale. The shaded band is the modelled break-even range.</span></figcaption>
       <div class="bo3-canvas" data-bo="${payload}"></div>
       <div class="bo3-legend">
         <span><i style="background:${BO_CONTEXT}"></i>Production budget</span>
@@ -875,10 +879,10 @@ function boxOfficeHTML(det) {
       <ol><li>Marketing is assumed to cost ${marketingRange} of the production budget.</li><li>Total cost is production plus that marketing range.</li><li>${m.market.id === 'india' ? `Producer and distributor return is modelled at ${returnRange} of worldwide gross. Indian Hit/Flop verdicts instead depend on India nett and distributor-rights cost, so this panel does not invent one.` : `Studios keep roughly ${returnRange} of worldwide gross, so break-even is total cost divided by that share.`}</li></ol>
     </div></details>
 
-    <p class="bo3-note">Figures in USD, as reported to TMDB.</p>
+    <p class="bo3-note">${m.market.id === 'india' ? 'Approximate INR crores converted from TMDB-reported USD. Worldwide gross, not India nett.' : 'Figures in USD, as reported to TMDB.'}</p>
   </div>`;
 
-  const summary = `${m.budget ? `${money(m.budget)} budget` : 'Budget unreported'} · ${m.revenue ? `${money(m.revenue)} gross` : 'Gross unreported'}${m.hasBoth ? ` · ${m.multiple.toFixed(1)}x` : ''}`;
+  const summary = `${m.budget ? `${displayMoney(m.budget)} budget` : 'Budget unreported'} · ${m.revenue ? `${displayMoney(m.revenue)} gross` : 'Gross unreported'}${m.hasBoth ? ` · ${m.multiple.toFixed(1)}x` : ''}`;
   return detailAccordion('detailBoxOfficeExpanded', 'Financial intelligence', 'Box Office', summary, core, 'box-office');
 }
 

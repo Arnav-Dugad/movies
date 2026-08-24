@@ -1,7 +1,7 @@
 import { check, summary } from './harness.mjs';
 
 const SRC = new URL('../../js/', import.meta.url).href;
-const { aggregateDirectorRanking, directorEraBreakdown, directorConsistency, boxOfficeAssumptions, isIndianProduction, formatIndianGross } = await import(SRC + 'box-office.js');
+const { aggregateDirectorRanking, applyDirectorCareerRevenue, directorEraBreakdown, directorConsistency, boxOfficeAssumptions, isIndianProduction, formatIndianGross } = await import(SRC + 'box-office.js');
 const { collectionOf } = await import(SRC + 'watched-meta.js');
 
 const films = [
@@ -18,6 +18,8 @@ const ranking = aggregateDirectorRanking(films, credits);
 check('directors are ranked by combined worldwide revenue', ranking.map(row => row.id).join(',') === '10,20', ranking.map(row => row.id).join(','));
 check('a director receives every directed film exactly once', ranking[0].revenue === 1300 && ranking[0].films === 2, JSON.stringify(ranking[0]));
 check('the top film is retained for context', ranking[0].topFilm.id === 1, JSON.stringify(ranking[0].topFilm));
+const careerRanking = applyDirectorCareerRevenue(ranking, new Map([[20, { gross: 5000, films: 12 }]]));
+check('reported career revenue can promote a director hidden by a chart-only subtotal', careerRanking[0].id === 20 && careerRanking[0].revenue === 5000 && careerRanking[0].chartRevenue === 700 && careerRanking[0].revenueSource === 'career', JSON.stringify(careerRanking));
 check('non-director crew are excluded', !ranking.some(row => row.id === 30));
 check('director hit rate excludes films with unknown budgets', ranking[0].knownBudgets === 2 && ranking[0].hits === 1 && ranking[0].hitRate === 50, JSON.stringify(ranking[0]));
 check('director eras retain early and recent revenue', ranking[0].eras.map(era => era.label).join(',') === 'Early,Recent', JSON.stringify(ranking[0].eras));

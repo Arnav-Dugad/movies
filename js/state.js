@@ -1,6 +1,10 @@
 // ===== CENTRAL STATE =====
 export const state = {
   user: null,
+  // False while Firebase is resolving and the authoritative private collections
+  // are still loading. Personalized home rails wait for this instead of painting
+  // cache, empty state, then cloud state in quick succession.
+  authReady: false,
   watchlist: [],
   ratings: {},
   watched: {},

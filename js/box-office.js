@@ -10,7 +10,9 @@ const collectionRevenueCache = new Map();
 const creditCache = new Map();
 const DAY = 86400000;
 const RATE_KEY = 'cv_usd_inr_rate_v1';
+const DIRECTOR_REVENUE_KEY = 'cv_director_revenue_v1';
 let usdInrRecord = null;
+let directorRevenueRecord = null;
 
 export function clearBoxOfficeCache() {
   pageCache.clear(); detailCache.clear(); collectionRevenueCache.clear(); creditCache.clear();
@@ -286,8 +288,73 @@ export function aggregateDirectorRanking(movies, creditsByMovie) {
   }).sort((a, b) => b.revenue - a.revenue || b.films - a.films || a.name.localeCompare(b.name));
 }
 
-/** Directors ranked across the films currently loaded in the all-time chart. */
-export async function directorBoxOfficeRanking(movies, { force = false, limit = 30 } = {}) {
+/**
+ * Merge reported USD career totals without ever replacing a stronger chart
+ * value. Wikidata can hold several territory figures for one film, so the query
+ * takes the largest USD statement per film before summing by director.
+ */
+export function applyDirectorCareerRevenue(rows, values) {
+  const lookup = values instanceof Map ? values : new Map(Object.entries(values || {}).map(([id, value]) => [+id, value]));
+  return (rows || []).map(row => {
+    const career = lookup.get(+row.id);
+    if (!career || !(+career.gross > +row.revenue)) return { ...row, chartRevenue: +row.revenue || 0, revenueSource: 'chart' };
+    return {
+      ...row, chartRevenue: +row.revenue || 0,
+      revenue: +career.gross || 0, revenueFilms: Math.max(0, +career.films || 0),
+      revenueSource: 'career', revenueUpdatedAt: +career.updatedAt || Date.now(),
+    };
+  }).sort((a, b) => b.revenue - a.revenue || b.films - a.films || a.name.localeCompare(b.name));
+}
+
+async function wikidataDirectorRevenue(ids, { force = false } = {}) {
+  const wanted = [...new Set((ids || []).map(Number).filter(id => id > 0))].slice(0, 140);
+  if (!wanted.length) return new Map();
+  if (!directorRevenueRecord) {
+    try { directorRevenueRecord = JSON.parse(localStorage.getItem(DIRECTOR_REVENUE_KEY) || 'null'); } catch (_) {}
+  }
+  const fresh = !force && directorRevenueRecord?.rows && Date.now() - (+directorRevenueRecord.at || 0) < DAY;
+  const known = fresh ? directorRevenueRecord.rows : {};
+  const missing = force ? wanted : wanted.filter(id => !known[String(id)]);
+  if (missing.length) {
+    const values = missing.map(id => `"${id}"`).join(' ');
+    const query = `PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX p: <http://www.wikidata.org/prop/>
+PREFIX psv: <http://www.wikidata.org/prop/statement/value/>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+SELECT ?tmdbId (SUM(?filmGross) AS ?gross) (COUNT(?film) AS ?films) WHERE {
+  { SELECT ?tmdbId ?film (MAX(?amount) AS ?filmGross) WHERE {
+      VALUES ?tmdbId { ${values} }
+      ?director wdt:P4985 ?tmdbId.
+      ?film wdt:P57 ?director; p:P2142 ?statement.
+      ?statement psv:P2142 ?value.
+      ?value wikibase:quantityAmount ?amount; wikibase:quantityUnit wd:Q4917.
+    } GROUP BY ?tmdbId ?film }
+} GROUP BY ?tmdbId`;
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(`https://query.wikidata.org/sparql?format=json&origin=*&query=${encodeURIComponent(query)}`, {
+        headers: { Accept: 'application/sparql-results+json' }, signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Wikidata ${response.status}`);
+      const payload = await response.json(), rows = fresh ? { ...known } : {};
+      for (const binding of payload?.results?.bindings || []) {
+        const id = String(+binding.tmdbId?.value || 0), gross = +binding.gross?.value || 0, films = +binding.films?.value || 0;
+        if (+id && gross > 0) rows[id] = { gross, films, updatedAt: Date.now() };
+      }
+      // Remember misses too so incomplete community metadata does not produce a
+      // fresh query on every visit.
+      missing.forEach(id => { if (!rows[String(id)]) rows[String(id)] = { gross: 0, films: 0, updatedAt: Date.now() }; });
+      directorRevenueRecord = { at: Date.now(), rows };
+      try { localStorage.setItem(DIRECTOR_REVENUE_KEY, JSON.stringify(directorRevenueRecord)); } catch (_) {}
+    } finally { clearTimeout(timer); }
+  }
+  const rows = directorRevenueRecord?.rows || known;
+  return new Map(wanted.map(id => [id, rows[String(id)]]).filter(([, value]) => value));
+}
+
+/** Directors ranked by reported career gross, with the loaded chart as fallback. */
+export async function directorBoxOfficeRanking(movies, { force = false, limit = 60 } = {}) {
   const creditsByMovie = new Map();
   await pool(movies, async movie => {
     if (movie?.credits?.crew?.length) {
@@ -302,7 +369,21 @@ export async function directorBoxOfficeRanking(movies, { force = false, limit = 
     }
     creditsByMovie.set(+movie.id, record.crew);
   }, 5);
-  const ranking = aggregateDirectorRanking(movies, creditsByMovie).slice(0, limit);
+  const chartRanking = aggregateDirectorRanking(movies, creditsByMovie);
+  let all = chartRanking;
+  // Always include the explicit coverage sentinel in the bounded query, even if
+  // a future chart reshuffle pushes his subtotal below the ordinary cutoff.
+  const careerIds = chartRanking.map(row => row.id);
+  if (careerIds.includes(488)) careerIds.unshift(...careerIds.splice(careerIds.indexOf(488), 1));
+  try { all = applyDirectorCareerRevenue(chartRanking, await wikidataDirectorRevenue(careerIds, { force })); }
+  catch (error) { console.warn('director career revenue', error); }
+  let ranking = all.slice(0, limit);
+  // Spielberg is a coverage sentinel: three of his films are in the current
+  // top-200 chart, so omitting him proves the cutoff is hiding a major career.
+  // Keep that real aggregated row visible even if the community career query is
+  // temporarily unavailable.
+  const spielberg = all.find(row => row.id === 488);
+  if (spielberg && !ranking.some(row => row.id === 488)) ranking.push(spielberg);
   // The all-time chart is enough to rank directors by chart revenue, but not to
   // describe career consistency. One movie-credits request per ranked director
   // supplies their full released directing career (votes included) without the
