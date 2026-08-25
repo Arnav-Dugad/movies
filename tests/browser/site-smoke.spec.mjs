@@ -1,6 +1,14 @@
 import { test, expect } from '@playwright/test';
 
 async function bootGuest(page) {
+  // The stub below is installed before the page runs, but index.html then loads
+  // the real Firebase compat SDK from gstatic, which replaces window.firebase —
+  // so the app was talking to real Firestore, every write was denied, and
+  // __cvWrites stayed empty no matter what the test did. Blocking the CDN keeps
+  // the stub in place, which is the only way an assertion about what CineVerse
+  // writes can mean anything.
+  await page.route('https://www.gstatic.com/firebasejs/**', route =>
+    route.fulfill({ contentType: 'application/javascript', body: '/* stubbed for tests */' }));
   await page.addInitScript(() => {
     window.__cvWrites = [];
     localStorage.setItem('cv_onboarding_guest_v1', JSON.stringify({ done: true, region: 'IN', seedGenres: [] }));
@@ -186,7 +194,7 @@ test('movie progress accepts an optional exact stop time and survives reload', a
   await expect(page.locator('.detail-accordion.box-office .bo3-note')).toContainText('Approximate INR crores');
   await page.getByRole('button', { name: 'Start watching this movie' }).click();
   await expect(page.locator('.movie-progress-panel')).toContainText('Currently watching');
-  await page.getByLabel('Exact stopped time in hours minutes and seconds').fill('01:12:30');
+  await page.getByLabel(/Where you stopped/).fill('01:12:30');
   await page.locator('.movie-progress-save').click();
   await expect(page.locator('.movie-progress-panel')).toContainText('Resume at 01:12:30');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cv_movie_progress_movie-progress-browser')).movie_7.position)).toBe(4350);
