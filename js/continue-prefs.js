@@ -3,6 +3,7 @@
 // transaction. This prevents one device replacing another device's newer layout.
 import { db, firebase } from './firebase.js';
 import { state } from './state.js';
+import { reportRulesDenial } from './rules-notice.js';
 
 const CAP = 40;
 let saveTimer = null;
@@ -140,10 +141,24 @@ export function togglePinned(id) {
 }
 
 export function moveContinue(id, direction, visibleIds) {
+  const order = visibleIds.map(normal).filter(Boolean);
+  const from = order.indexOf(normal(id));
+  return from < 0 ? false : moveContinueTo(id, from + (direction < 0 ? -1 : 1), visibleIds);
+}
+
+/**
+ * Land a title at an absolute position. A drag knows exactly where the card was
+ * dropped, so stepping one slot at a time (and writing once per step) is both
+ * slower and less faithful to what the viewer did.
+ */
+export function moveContinueTo(id, index, visibleIds) {
   const target = normal(id), order = visibleIds.map(normal).filter(Boolean);
-  const from = order.indexOf(target), to = from + (direction < 0 ? -1 : 1);
-  if (from < 0 || to < 0 || to >= order.length) return false;
+  const from = order.indexOf(target);
+  const to = Math.max(0, Math.min(order.length - 1, Math.floor(index)));
+  if (from < 0 || to === from) return false;
   order.splice(to, 0, ...order.splice(from, 1));
+  // Everything up to and including the new position becomes explicit; leaving
+  // the tail automatic would let it reshuffle around a slot just chosen by hand.
   prefs().pinned = order.slice(0, Math.max(to + 1, prefs().pinned.length)).slice(0, CAP);
   save({ type: 'order', value: prefs().pinned });
   return true;
@@ -186,7 +201,7 @@ async function flush(uid) {
     document.dispatchEvent(new Event('cv:continue-prefs'));
     if (pendingOps.length) setTimeout(() => flush(uid), 250);
   } catch (error) {
-    console.warn('continue prefs save', error);
+    if (!reportRulesDenial(error, 'the Continue Watching layout')) console.warn('continue prefs save', error);
     mirror(uid);
   } finally {
     flushing = false;

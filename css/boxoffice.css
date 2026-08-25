@@ -122,3 +122,24 @@
 @media(max-width:980px){.bo-chart-row{grid-template-columns:42px 54px 1fr auto}.bo-chart-art{width:54px;height:78px}.bo-chart-finance{grid-column:3/-1}.bo-page-orbit{display:none}}
 @media(max-width:640px){.bo-home-card{flex-basis:255px}.bo-page-hero{min-height:0;padding:28px 22px;border-radius:24px}.bo-page-tools{top:calc(var(--nav-h) + 5px)}.bo-page-tools .watched-select{flex:1;min-width:0}.bo-chart-row{grid-template-columns:34px 48px minmax(0,1fr);gap:10px;padding:11px}.bo-chart-art{width:48px;height:70px}.bo-chart-rank{font-size:.82rem}.bo-chart-money{grid-column:3;text-align:left}.bo-chart-finance{grid-column:2/-1}.bo-chart-money strong{font-size:.68rem}.bo-chart-copy>a{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.bo-page-summary>span{flex:1;min-width:110px}}
 @media(prefers-reduced-motion:reduce){.bo-home-card,.bo-home-card>img,.bo-chart-row{transition:none}.bo-page-orbit i,.bo-page-loading i{animation:none}}
+
+/* ===== LEAGUE BUILD PROGRESS ===== */
+/* A league is assembled from the whole chart, which takes a moment. Saying so —
+   with real progress — is the difference between waiting and wondering. */
+.bo-building{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+  padding:64px 24px;text-align:center;
+}
+.bo-building strong{font-family:var(--font-display);font-size:1.3rem;font-weight:900;letter-spacing:-.01em}
+.bo-building p{font-size:.84rem;color:var(--text2);margin:0;font-variant-numeric:tabular-nums}
+.bo-build-track{
+  width:min(320px,70vw);height:5px;border-radius:999px;overflow:hidden;
+  background:rgba(255,255,255,.1);
+}
+.bo-build-track i{
+  display:block;height:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--gold),var(--gold2));
+  transition:width .35s var(--ease-out);
+}
+.bo-building small{font-size:.72rem;color:var(--text3);max-width:44ch;line-height:1.55}
+@media (prefers-reduced-motion:reduce){ .bo-build-track i{transition:none} }

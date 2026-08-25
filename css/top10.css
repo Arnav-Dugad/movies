@@ -155,3 +155,28 @@
   .t10-row-link:hover{transform:none}
   .t10-hero-poster:hover,.t10-row-link:hover .t10-poster{transform:none}
 }
+
+/* ===== SAVE FROM THE CHART ===== */
+/* The row link fills the whole width, so the save control sits over it rather
+   than inside it — nesting a button in an anchor is invalid and swallows taps. */
+.t10-row{position:relative}
+.t10-row-save{position:absolute;z-index:3;right:14px;top:50%;transform:translateY(-50%)}
+.t10-row-save .card-wl{
+  position:static;width:34px;height:34px;display:grid;place-items:center;
+  border-radius:50%;font-size:1rem;
+  opacity:0;transition:opacity .2s var(--ease),background .2s var(--ease),transform .2s var(--ease);
+}
+.t10-row:hover .t10-row-save .card-wl,
+.t10-row-save .card-wl:focus-visible,
+.t10-row-save .card-wl.in{opacity:1}
+.t10-row-save .card-wl:hover{transform:scale(1.08)}
+/* A row already saved keeps its tick visible, so the chart shows what you hold. */
+@media (hover:none),(pointer:coarse){ .t10-row-save .card-wl{opacity:1} }
+
+.t10-hero-tools .card-wl{
+  position:static;width:42px;height:42px;display:grid;place-items:center;
+  border-radius:50%;font-size:1.1rem;opacity:1;
+}
+
+/* Room at the end of the row so the save control never sits on the chip. */
+@media (min-width:621px){ .t10-row-link{padding-right:60px} }

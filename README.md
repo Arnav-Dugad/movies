@@ -2,6 +2,28 @@
 
 https://arnav-dugad.github.io/movies/
 
+## Publishing the security rules
+
+**`firestore.rules` in this repository is not what Firebase enforces.** Firebase
+enforces whatever was last pasted into **Firebase Console → Firestore Database →
+Rules → Publish**. When a release adds a subcollection — `movieProgress` is the
+most recent — every write to it is denied until the rules are republished.
+
+The client is offline-first, so a denied write does not look like an error: the
+feature keeps working on the device that made it and silently does not exist
+anywhere else. That is exactly how one account ends up showing a different
+Continue Watching rail on a phone and a laptop, with a different number of
+titles and a different number starred.
+
+`js/rules-notice.js` now turns that silence into a message. A denial is never
+normal for an owner writing to their own document, so the first one per
+collection raises a toast naming the collection and the fix, and logs the
+console line that says what to do. Nothing retries or works around it — the
+rules have to be published.
+
+`tests/sync.test.mjs` proves the rules FILE is right by writing to every
+collection Continue Watching depends on. It cannot prove the deployment is.
+
 ## Opening a page by URL
 
 Firebase resolves the signed-in account asynchronously, so any page reached
@@ -311,7 +333,7 @@ letters.
 cd tests
 npm run test:logic    # 430+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
-npm install && npm run test:rules   # the emulator suite (needs a JDK)
+npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
@@ -342,6 +364,14 @@ undeclared. The emulator is a Java process, so this half needs a JDK on `PATH`
 `coverage.mjs` is the cheap half: it proves the suite is *complete* by checking
 that every rule path is named in the tests, so adding a collection without a test
 fails immediately. No Java needed.
+
+`sync.test.mjs` runs two Firestore clients as one account against the same
+emulator — a phone and a laptop — and asserts that everything Continue Watching
+depends on converges: ticks made on both devices, an un-tick that a stale device
+must not resurrect, an aired marker that can only move forward, a season that
+grew, rewatch counts, and every star, hide, drag order and reset. It uses its own
+project id, because the rules suite clears Firestore between its own tests and
+Node runs the two files concurrently.
 
 ### Publishing the rules
 

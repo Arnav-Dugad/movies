@@ -14,7 +14,7 @@ import { IMG, PH, genreMap } from './config.js';
 import { esc, $ } from './ui.js';
 import { state } from './state.js';
 import { observeReveals } from './effects.js';
-import { rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
+import { rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML, wlBtnHTML, wlPayload } from './cards.js';
 
 const SNAP_PREFIX = 'cv_top10_history_v1_';
 const snapKey = chart => SNAP_PREFIX + String(chart || 'movie');
@@ -127,7 +127,7 @@ function heroHTML(item, type, move) {
         <div class="t10-hero-actions">
           <button class="btn-primary" data-action="open-detail" data-id="${item.id}" data-type="${kind}">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Open</button>
-          <span class="t10-hero-tools" id="t10HeroTools">${rateBtnHTML(item.id, kind, title)}${myRatingHTML(item.id, kind)}</span>
+          <span class="t10-hero-tools" id="t10HeroTools">${wlBtnHTML(item.id, kind, wlPayload(item, kind))}${rateBtnHTML(item.id, kind, title)}${myRatingHTML(item.id, kind)}</span>
         </div>
       </div>
     </div>
@@ -157,6 +157,7 @@ function rowHTML(item, rank, type, move) {
       </span>
       <span class="t10-row-side">${movementChip(move)}</span>
     </a>
+    <span class="t10-row-save">${wlBtnHTML(item.id, kind, wlPayload(item, kind))}</span>
   </li>`;
 }
 

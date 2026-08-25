@@ -11,11 +11,71 @@ const creditCache = new Map();
 const DAY = 86400000;
 const RATE_KEY = 'cv_usd_inr_rate_v1';
 const DIRECTOR_REVENUE_KEY = 'cv_director_revenue_v1';
+// The chart is already treated as fresh for a day, but the cache only lived in
+// memory — so every visit rebuilt all ten pages from scratch, roughly two
+// hundred requests, before a league could be ranked. Keeping it on the device
+// for the same day makes the second visit immediate.
+const CHART_KEY = 'cv_box_office_chart_v2';
+const CHART_MAX_BYTES = 900_000;
+let chartStore = null;
+
+// A TMDB detail payload is enormous — a single page of twenty films is about two
+// megabytes with its images, translations and full crew. Only these fields are
+// ever read off a chart row, and the crew is narrowed to the directors the
+// league actually ranks, which takes a whole ten-page chart to well under a
+// hundred kilobytes. Anything added to a consumer must be added here too.
+const storableRow = movie => ({
+  id: movie.id,
+  title: movie.title || '',
+  poster_path: movie.poster_path || null,
+  backdrop_path: movie.backdrop_path || null,
+  release_date: movie.release_date || '',
+  status: movie.status || '',
+  revenue: +movie.revenue || 0,
+  budget: +movie.budget || 0,
+  runtime: +movie.runtime || 0,
+  vote_average: +movie.vote_average || 0,
+  vote_count: +movie.vote_count || 0,
+  genre_ids: movie.genre_ids || (movie.genres || []).map(genre => genre?.id).filter(Boolean),
+  original_language: movie.original_language || '',
+  origin_country: movie.origin_country || [],
+  production_countries: (movie.production_countries || []).map(country => ({ iso_3166_1: country?.iso_3166_1 || '' })),
+  belongs_to_collection: movie.belongs_to_collection
+    ? { id: movie.belongs_to_collection.id, name: movie.belongs_to_collection.name || '', poster_path: movie.belongs_to_collection.poster_path || null }
+    : null,
+  credits: { crew: (movie.credits?.crew || []).filter(person => person?.job === 'Director').map(person => ({ id: person.id, name: person.name || '', job: 'Director', profile_path: person.profile_path || null })) },
+});
 let usdInrRecord = null;
 let directorRevenueRecord = null;
 
 export function clearBoxOfficeCache() {
   pageCache.clear(); detailCache.clear(); collectionRevenueCache.clear(); creditCache.clear();
+  chartStore = null;
+  try { localStorage.removeItem(CHART_KEY); } catch (_) {}
+}
+
+function chartCache() {
+  if (chartStore) return chartStore;
+  try {
+    const raw = JSON.parse(localStorage.getItem(CHART_KEY) || 'null');
+    chartStore = raw && typeof raw === 'object' && raw.pages ? raw : { at: 0, pages: {} };
+  } catch (_) { chartStore = { at: 0, pages: {} }; }
+  // One expiry for the whole chart: a mix of pages from different days would
+  // rank a franchise against revenue figures taken at different times.
+  if (Date.now() - (+chartStore.at || 0) >= DAY) chartStore = { at: 0, pages: {} };
+  return chartStore;
+}
+
+function rememberChartPage(number, data) {
+  const store = chartCache();
+  if (!store.at) store.at = Date.now();
+  store.pages[number] = { ...data, rows: (data.rows || []).map(storableRow) };
+  try {
+    const payload = JSON.stringify(store);
+    // A chart too large to store is not an error — it just means the next visit
+    // pays for it again, which is the behaviour this replaced.
+    if (payload.length <= CHART_MAX_BYTES) localStorage.setItem(CHART_KEY, payload);
+  } catch (_) { /* quota, private mode: memory caching still applies */ }
 }
 
 const today = () => {
@@ -166,6 +226,10 @@ export async function grossingMoviesPage(page = 1, { force = false } = {}) {
   const number = Math.max(1, Math.floor(+page || 1));
   const cached = pageCache.get(number);
   if (!force && cached && Date.now() - cached.at < DAY) return cached.data;
+  if (!force) {
+    const stored = chartCache().pages[number];
+    if (stored?.rows?.length) { pageCache.set(number, { at: chartCache().at, data: stored }); return stored; }
+  }
   const discover = await tmdb('/discover/movie', {
     sort_by: 'revenue.desc', page: number,
     'primary_release_date.lte': today(), 'vote_count.gte': 50,
@@ -184,6 +248,7 @@ export async function grossingMoviesPage(page = 1, { force = false } = {}) {
   // the top 200 while keeping hydration bounded and cached for a full day.
   const data = { page: number, totalPages: Math.min(10, +discover.total_pages || 1), rows, requested: candidates.length, updatedAt: Date.now() };
   pageCache.set(number, { at: Date.now(), data });
+  rememberChartPage(number, data);
   return data;
 }
 
@@ -209,7 +274,7 @@ export async function collectionRevenueTimeline(collectionId, { force = false, s
       const released = Number.isFinite(date) ? date <= Date.now() : detail.status === 'Released' || detail.revenue > 0;
       if (released) hydrated.push(detail);
     } catch (_) {}
-  }, 4);
+  }, 6);
   hydrated.sort((a, b) => (a.release_date || '9999').localeCompare(b.release_date || '9999') || a.id - b.id);
   let cumulative = 0;
   const entries = hydrated.map(movie => {
@@ -238,16 +303,35 @@ export async function collectionRevenueTimeline(collectionId, { force = false, s
 
 /** Rank the collections represented by a revenue chart, hydrating every released part. */
 export async function franchiseBoxOfficeLeague(movies, { force = false, limit = 20 } = {}) {
+  // Every distinct collection in the chart used to be hydrated in full — its
+  // whole parts list, every part's detail — purely to sort them and then keep
+  // twenty. That is hundreds of requests to answer a question most of them lose.
+  //
+  // The chart already carries each film's revenue and its collection, so the
+  // league can be ranked provisionally from data in hand, and only the plausible
+  // contenders hydrated. A franchise with no film in the chart cannot out-earn
+  // one with several, and the candidate pool is three times the published limit,
+  // so the cut has a wide margin before it could change an answer.
   const collections = new Map();
   movies.forEach(movie => {
     const collection = movie?.belongs_to_collection;
-    if (collection?.id && !collections.has(collection.id)) collections.set(collection.id, collection);
+    if (!collection?.id) return;
+    if (!collections.has(collection.id)) collections.set(collection.id, { seed: collection, chartRevenue: 0, films: 0 });
+    const entry = collections.get(collection.id);
+    entry.chartRevenue += Math.max(0, +movie.revenue || 0);
+    entry.films++;
   });
+  const candidates = [...collections.values()]
+    .sort((a, b) => b.chartRevenue - a.chartRevenue || b.films - a.films)
+    .slice(0, Math.max(limit * 3, 24));
+
   const rows = [];
-  await pool([...collections.values()], async collection => {
-    const data = await collectionRevenueTimeline(collection.id, { force, seed: collection });
-    if (data?.reported) rows.push(data);
-  }, 3);
+  await pool(candidates, async candidate => {
+    try {
+      const data = await collectionRevenueTimeline(candidate.seed.id, { force, seed: candidate.seed });
+      if (data?.reported) rows.push(data);
+    } catch (_) { /* one unreachable collection must not lose the league */ }
+  }, 6);
   return rows.sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name)).slice(0, limit);
 }
 
@@ -368,7 +452,7 @@ export async function directorBoxOfficeRanking(movies, { force = false, limit = 
       record = { at: Date.now(), crew: data.crew || [] }; creditCache.set(movie.id, record);
     }
     creditsByMovie.set(+movie.id, record.crew);
-  }, 5);
+  }, 10);
   const chartRanking = aggregateDirectorRanking(movies, creditsByMovie);
   let all = chartRanking;
   // Always include the explicit coverage sentinel in the bounded query, even if

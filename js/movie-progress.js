@@ -4,6 +4,7 @@
 // be added later. Client timestamps make offline/newer-device reconciliation
 // deterministic without a separate version document.
 import { state } from './state.js';
+import { reportRulesDenial, resetRulesNotices } from './rules-notice.js';
 import { db, firebase } from './firebase.js';
 
 const KEY = id => `movie_${+id}`;
@@ -67,7 +68,9 @@ function persist(key) {
     try {
       if (entry) await write(key, entry, uid);
       pendingKeys.delete(key);
-    } catch (error) { console.warn('movie progress sync', error); }
+    } catch (error) {
+      if (!reportRulesDenial(error, 'movieProgress')) console.warn('movie progress sync', error);
+    }
   }, 350));
 }
 
@@ -181,16 +184,44 @@ export function movieResumeQueue(limit = 100) {
   }).filter(row => !row.entry.deleted && !state.watched[`movie_${row.id}`]).sort((a, b) => b.lastAt - a.lastAt).slice(0, limit);
 }
 
+/**
+ * Read a stopping point the way somebody would actually write one down.
+ * Accepts `1:23:45`, `1:23`, `83`, `83m`, `1h 23m`, `1h`, `1.5h` — because
+ * insisting on HH:MM:SS makes the viewer do the arithmetic the app is better at.
+ * Returns null only when there is genuinely no time in the string.
+ */
 export function parseMovieTime(value) {
-  const parts = String(value || '').trim().split(':');
-  if (!parts.length || parts.length > 3 || parts.some(part => !/^\d{1,2}$/.test(part))) return null;
-  const numbers = parts.map(Number);
-  let hours = 0, minutes = 0, seconds = 0;
-  if (numbers.length === 3) [hours, minutes, seconds] = numbers;
-  else if (numbers.length === 2) [minutes, seconds] = numbers;
-  else minutes = numbers[0];
-  if ((minutes >= 60 && numbers.length === 3) || seconds >= 60) return null;
-  return hours * 3600 + minutes * 60 + seconds;
+  const raw = String(value == null ? '' : value).trim().toLowerCase();
+  if (!raw) return 0;
+
+  // "1h 23m 40s" in any combination, and "1.5h".
+  if (/[hms]/.test(raw)) {
+    const unit = suffix => {
+      const match = raw.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${suffix}`));
+      return match ? parseFloat(match[1]) : 0;
+    };
+    const hours = unit('h'), minutes = unit('m(?!s)'), seconds = unit('s');
+    if (!hours && !minutes && !seconds) return null;
+    return Math.round(hours * 3600 + minutes * 60 + seconds);
+  }
+
+  // Colon form. Minutes and seconds may exceed two digits in the leading field
+  // ("100:30" is a hundred minutes), which the old pattern rejected outright.
+  if (raw.includes(':')) {
+    const parts = raw.split(':');
+    if (parts.length > 3 || parts.some(part => !/^\d+$/.test(part.trim()))) return null;
+    const numbers = parts.map(part => Number(part.trim()));
+    let hours = 0, minutes = 0, seconds = 0;
+    if (numbers.length === 3) [hours, minutes, seconds] = numbers;
+    else [minutes, seconds] = numbers;
+    // A trailing field over 59 is a typo, not a hundred seconds.
+    if (seconds > 59 || (numbers.length === 3 && minutes > 59)) return null;
+    return hours * 3600 + minutes * 60 + seconds;
+  }
+
+  // A bare number is minutes: that is how people describe where they stopped.
+  if (/^\d+(?:\.\d+)?$/.test(raw)) return Math.round(parseFloat(raw) * 60);
+  return null;
 }
 
 export function formatMovieTime(seconds, { compact = false } = {}) {
@@ -201,7 +232,7 @@ export function formatMovieTime(seconds, { compact = false } = {}) {
 }
 
 export function initMovieProgress() {
-  document.addEventListener('cv:auth', () => startMovieProgressRealtime(state.user?.uid || ''));
+  document.addEventListener('cv:auth', () => { resetRulesNotices(); startMovieProgressRealtime(state.user?.uid || ''); });
   window.addEventListener('online', flushPendingMovies);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') flushPendingMovies();

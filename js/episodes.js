@@ -15,6 +15,7 @@ import { state } from './state.js';
 import { tmdb } from './api.js';
 import { db, firebase } from './firebase.js';
 import { toast } from './ui.js';
+import { reportRulesDenial } from './rules-notice.js';
 import { isEpisodeAvailable } from './episode-times.js';
 
 const KEY = id => `tv_${id}`;
@@ -455,7 +456,9 @@ async function flushDirtyProgress() {
       if (!entry) await col(uid).doc(key).delete();
       else await writeMerged(key, entry, uid);
       if (state.user?.uid === uid) dirtyKeys.delete(key);
-    } catch (error) { console.warn('episode progress retry', error); }
+    } catch (error) {
+      if (!reportRulesDenial(error, 'progress')) console.warn('episode progress retry', error);
+    }
   }));
 }
 

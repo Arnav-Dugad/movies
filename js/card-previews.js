@@ -9,7 +9,16 @@ import { mountAmbientVideo } from './video-bg.js';
 
 const trailerCache = new Map();
 const DESKTOP_HOVER = '(hover:hover) and (pointer:fine) and (min-width:901px)';
-const HOVER_DELAY = 360;
+// Dwell before anything happens at all, so sweeping the pointer across a rail
+// never opens a card.
+const HOVER_DELAY = 420;
+// The card widens first and the artwork settles; the trailer arrives after. Two
+// separate beats rather than one — an iframe mounting DURING the width animation
+// forces layout and composite work on every frame of it, which is what made the
+// expansion stutter. It also gives the eye a moment to register the still before
+// it starts moving, which is the whole appeal of the Netflix version.
+const EXPAND_MS = 560;
+const VIDEO_DELAY = 260;
 const CLOSE_DELAY = 280;
 
 let hoverTimer = null;
@@ -19,6 +28,7 @@ let activeCard = null;
 let teardown = () => {};
 let requestToken = 0;
 let cleanupTimer = null;
+let videoTimer = null;
 let pendingCleanup = null;
 let motionGuardUntil = 0;
 
@@ -113,14 +123,22 @@ function expand(card, trailer) {
     if (activeCard !== card) return;
     card.classList.remove('card-preview-preparing');
     card.classList.add('card-preview-expanded');
-    teardown = mountAmbientVideo(media, trailer, { delay: 0, overlaySelector: '.card-preview-clean-mask', clean: true, respectAutoplay: false });
     setTimeout(() => { if (activeCard === card) glideIntoView(card); }, 90);
+    // Wait for the expansion to finish before asking the browser to build an
+    // iframe. `mountAmbientVideo` fades the video in on its own once ready.
+    videoTimer = setTimeout(() => {
+      videoTimer = null;
+      if (activeCard !== card || !card.isConnected) return;
+      card.classList.add('card-preview-playing');
+      teardown = mountAmbientVideo(media, trailer, { delay: 0, overlaySelector: '.card-preview-clean-mask', clean: true, respectAutoplay: false });
+    }, EXPAND_MS + VIDEO_DELAY);
   }));
 }
 
 function closePreview(immediate = false) {
   requestToken++;
   clearTimeout(hoverTimer); clearTimeout(closeTimer);
+  clearTimeout(videoTimer); videoTimer = null;
   clearTimeout(cleanupTimer); cleanupTimer = null;
   if (pendingCleanup) { const finish = pendingCleanup; pendingCleanup = null; finish(); }
   hoverTimer = null; closeTimer = null;
@@ -130,7 +148,7 @@ function closePreview(immediate = false) {
   const cleanup = () => {
     if (card.classList.contains('card-preview-expanded')) return;
     stop();
-    card.classList.remove('card-preview-preparing', 'card-preview-closing');
+    card.classList.remove('card-preview-preparing', 'card-preview-closing', 'card-preview-playing');
     card.querySelector('.card-preview-sound')?.remove();
     card.querySelector('.card-preview-backdrop')?.remove();
     card.querySelector('.card-preview-clean-mask')?.remove();
@@ -142,7 +160,7 @@ function closePreview(immediate = false) {
   } else {
     stop.setMuted?.(true);
     card.classList.add('card-preview-closing');
-    card.classList.remove('card-preview-expanded', 'card-preview-preparing');
+    card.classList.remove('card-preview-expanded', 'card-preview-preparing', 'card-preview-playing');
     pendingCleanup = cleanup;
     cleanupTimer = setTimeout(() => {
       pendingCleanup = null; cleanup();

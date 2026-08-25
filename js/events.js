@@ -35,6 +35,26 @@ export function initDelegation() {
     if (el && (el.tagName === 'SELECT' || el.tagName === 'INPUT')) dispatch(el, e);
   });
 
+  // `change` on a range slider only fires when the pointer is released, and on a
+  // text field only on blur — neither can drive a live readout. `data-live` is an
+  // explicit opt-in so nothing that already works on `change` starts firing twice.
+  document.addEventListener('input', e => {
+    const el = e.target.closest('[data-action][data-live]');
+    if (el) dispatch(el, e);
+  });
+
+  // A text field where Enter does nothing makes the Save button feel mandatory.
+  // `data-enter-action` names the action Enter should run instead.
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const el = e.target.closest('input[data-enter-action]');
+    if (!el) return;
+    const fn = handlers.get(el.dataset.enterAction);
+    if (!fn) return;
+    e.preventDefault();
+    fn(el, e);
+  });
+
   // Keyboard activation for role="button" / data-action elements (a11y).
   document.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;

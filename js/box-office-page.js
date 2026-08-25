@@ -1,5 +1,6 @@
 // ===== /box-office =====
 import { $, esc, debounce } from './ui.js';
+import { pool } from './api.js';
 import { IMG, PH } from './config.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
@@ -46,12 +47,47 @@ async function loadNext({ paintAfter = true } = {}) {
   } finally { loading = false; }
 }
 
-async function loadCompleteChart() {
-  if (!chartDepthPromise) chartDepthPromise = (async () => {
-    while (nextPage <= totalPages) {
-      const loaded = await loadNext({ paintAfter: false });
-      if (!loaded) break;
-    }
+/**
+ * Fill the chart to its full depth for the franchise and director leagues.
+ *
+ * This used to walk the pages one after another, and each page is a discover
+ * call plus twenty detail fetches — so ten pages meant roughly two hundred
+ * requests in series and a blank panel for as long as that took. The pages are
+ * independent, so they are fetched together instead, and the league is painted
+ * as they land rather than only at the end.
+ */
+const CHART_CONCURRENCY = 4;
+
+async function loadCompleteChart({ onProgress = () => {} } = {}) {
+  if (chartDepthPromise) return chartDepthPromise;
+  chartDepthPromise = (async () => {
+    // Page one establishes how deep the chart actually goes.
+    if (!items.length) await loadNext({ paintAfter: false });
+    const pages = [];
+    for (let page = nextPage; page <= totalPages; page++) pages.push(page);
+    if (!pages.length) return;
+
+    let done = 0;
+    const known = new Set(items.map(movie => movie.id));
+    await pool(pages, async page => {
+      try {
+        const data = await grossingMoviesPage(page);
+        totalPages = Math.max(totalPages, data.totalPages);
+        chartRequested += Math.max(0, +data.requested || data.rows.length);
+        chartUpdatedAt = Math.max(chartUpdatedAt, +data.updatedAt || Date.now());
+        for (const movie of data.rows) {
+          if (known.has(movie.id)) continue;
+          known.add(movie.id); items.push(movie);
+        }
+        items.sort((a, b) => b.revenue - a.revenue);
+        franchiseRows = null; directorRows = null;
+      } catch (error) {
+        console.warn('box office depth', page, error);
+      } finally {
+        onProgress(++done, pages.length);
+      }
+    }, CHART_CONCURRENCY);
+    nextPage = totalPages + 1;
   })().finally(() => { chartDepthPromise = null; });
   return chartDepthPromise;
 }
@@ -104,10 +140,27 @@ function paint() {
 async function showRanking(nextView) {
   view = nextView; query = ''; const run = ++rankRun;
   const host = $('boxOfficeContent'); if (!host) return;
-  host.innerHTML = shell('<div class="bo-page-loading"><i></i><i></i><i></i></div>');
+  const label = nextView === 'franchises' ? 'franchises' : 'directors';
+  const progress = (done, total) => {
+    if (run !== rankRun) return;
+    const bar = $('boBuildBar'), note = $('boBuildNote');
+    const percent = total ? Math.round(done / total * 100) : 0;
+    if (bar) bar.style.width = `${percent}%`;
+    if (note) note.textContent = `Reading the chart · ${percent}%`;
+  };
+  // Say what is happening and how far along it is. A silent spinner over a
+  // multi-second build reads as a page that has stopped working.
+  host.innerHTML = shell(`<div class="bo-building" role="status">
+    <strong>Building the ${esc(label)} league</strong>
+    <p id="boBuildNote">Reading the chart · 0%</p>
+    <span class="bo-build-track"><i id="boBuildBar" style="width:0%"></i></span>
+    <small>Ranked from the highest-grossing films TMDB reports, cached for a day.</small>
+  </div>`);
   bindSearch();
-  await loadCompleteChart();
+  await loadCompleteChart({ onProgress: progress });
   if (run !== rankRun || view !== nextView) return;
+  const note = $('boBuildNote');
+  if (note) note.textContent = `Ranking ${label}…`;
   try {
     if (nextView === 'franchises' && !franchiseRows) franchiseRows = await franchiseBoxOfficeLeague(items);
     if (nextView === 'directors' && !directorRows) directorRows = await directorBoxOfficeRanking(items);

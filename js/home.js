@@ -143,10 +143,11 @@ function continueCard(row, index = 0, total = 1) {
       <p class="continue-next" data-continue-title="${key}">${esc(nextCompact)}</p>
       <div class="continue-meta">${metaLine}</div>
       ${continueEditing ? `<div class="continue-edit-bar">
-        <button class="ce-btn" data-action="continue-move" data-key="${key}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="Move ${title} earlier">&#8592;</button>
+        <button class="ce-btn ce-grip continue-drag-handle" data-key="${key}" aria-label="Reorder ${title}. Drag, or use the arrow keys." title="Drag to reorder">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+        </button>
         <button class="ce-btn${isPinned(key) ? ' on' : ''}" data-action="continue-pin" data-key="${key}" aria-pressed="${isPinned(key)}" aria-label="${isPinned(key) ? 'Unpin' : 'Pin'} ${title}">${isPinned(key) ? '&#9733; Pinned' : '&#9734; Pin'}</button>
         <button class="ce-btn" data-action="continue-hide" data-key="${key}" aria-label="Hide ${title}">Hide</button>
-        <button class="ce-btn" data-action="continue-move" data-key="${key}" data-dir="1" ${index === total - 1 ? 'disabled' : ''} aria-label="Move ${title} later">&#8594;</button>
       </div>` : ''}
     </div>
   </article>`;

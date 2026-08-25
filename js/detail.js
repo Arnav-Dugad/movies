@@ -29,6 +29,7 @@ let reqGen = 0;                // bumped on every openDetail/openCollection call
 // watched tick, the rating, the rewatch strip and the episode panel all describe
 // that empty library, and nothing corrected them afterwards.
 let renderedFor = { uid: null, kind: null, id: 0 };
+let scrubTimer = null;   // debounces the movie scrubber's write while dragging
 let epGen = 0;                 // same idea, scoped to the season-episode list (season tabs can be clicked faster than they load)
 const episodeSearchCache = new Map();
 const episodeSearchGeneration = new Map();
@@ -335,19 +336,68 @@ function movieProgressMeta(det = curDet) {
   };
 }
 
+// Where you stopped is a position in a film, so the primary control is a
+// scrubber across its runtime. Typing is kept for precision — and made
+// forgiving — but nobody should have to convert "about two thirds in" into
+// HH:MM:SS before the app will accept it.
 function movieProgressPanelHTML(id, det = curDet) {
   const entry = movieProgressEntry(id);
   if (!entry) return '';
   const runtime = entry.runtime || Math.max(0, +det?.runtime || 0) * 60;
-  const percent = runtime ? Math.min(99, Math.round(entry.position / runtime * 100)) : 0;
-  const time = entry.position ? formatMovieTime(entry.position) : '';
-  return `<section class="movie-progress-panel" id="movieProgressPanel_${id}" aria-label="Movie progress">
-    <div class="movie-progress-orb" style="--movie-progress:${percent * 3.6}deg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 7v10l8-5-8-5Z"/></svg></div>
-    <div class="movie-progress-copy"><strong>${entry.position ? `Resume at ${time}` : 'Currently watching'}</strong><span>${runtime ? `${percent}% complete` : 'Saved to Continue Watching'}</span></div>
-    <label class="movie-time-field"><span>Stopped at</span><input type="text" inputmode="numeric" autocomplete="off" id="movieProgressTime_${id}" value="${time}" placeholder="HH:MM:SS" aria-label="Exact stopped time in hours minutes and seconds"></label>
-    <button class="movie-progress-save" data-action="movie-progress-save" data-id="${id}">Save</button>
-    <button class="movie-progress-remove" data-action="movie-progress-remove" data-id="${id}" aria-label="Remove from Continue Watching" data-tip="Remove">&#215;</button>
+  const position = Math.max(0, Math.min(entry.position || 0, runtime ? runtime - 1 : entry.position || 0));
+  const percent = runtime ? Math.min(99, Math.round(position / runtime * 100)) : 0;
+  const time = position ? formatMovieTime(position) : '';
+  const left = runtime ? Math.max(0, runtime - position) : 0;
+  return `<section class="movie-progress-panel" id="movieProgressPanel_${id}" aria-label="Movie progress" data-runtime="${runtime}">
+    <div class="mp-head">
+      <div class="movie-progress-orb" style="--movie-progress:${percent * 3.6}deg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 7v10l8-5-8-5Z"/></svg></div>
+      <div class="movie-progress-copy">
+        <strong id="movieProgressLabel_${id}">${position ? `Resume at ${time}` : 'Currently watching'}</strong>
+        <span id="movieProgressSub_${id}">${runtime ? `${percent}% in · ${formatMovieTime(left, { compact: true })} left` : 'Saved to Continue Watching'}</span>
+      </div>
+      <button class="movie-progress-remove" data-action="movie-progress-remove" data-id="${id}" aria-label="Remove from Continue Watching" data-tip="Remove">&#215;</button>
+    </div>
+    ${runtime ? `<div class="mp-scrub" style="--mp-fill:${percent}%">
+      <input type="range" id="movieProgressRange_${id}" data-action="movie-progress-scrub" data-id="${id}"
+        data-live min="0" max="${Math.max(1, runtime - 1)}" step="15" value="${position}"
+        aria-label="How far into the film you are" aria-valuetext="${time || 'the start'}">
+      <div class="mp-scrub-ends"><span>0:00</span><span>${formatMovieTime(runtime)}</span></div>
+    </div>` : ''}
+    <div class="mp-controls">
+      <button class="mp-nudge" data-action="movie-progress-nudge" data-id="${id}" data-by="-300" aria-label="Back five minutes">&minus;5m</button>
+      <button class="mp-nudge" data-action="movie-progress-nudge" data-id="${id}" data-by="-60" aria-label="Back one minute">&minus;1m</button>
+      <label class="movie-time-field"><span>Stopped at</span>
+        <input type="text" inputmode="text" autocomplete="off" id="movieProgressTime_${id}" value="${time}"
+          placeholder="1:23:45" aria-label="Where you stopped — 1:23:45, 83m, or 1h 23m"
+          data-action="movie-progress-type" data-live data-enter-action="movie-progress-save" data-id="${id}">
+      </label>
+      <button class="mp-nudge" data-action="movie-progress-nudge" data-id="${id}" data-by="60" aria-label="Forward one minute">+1m</button>
+      <button class="mp-nudge" data-action="movie-progress-nudge" data-id="${id}" data-by="300" aria-label="Forward five minutes">+5m</button>
+      <button class="movie-progress-save" data-action="movie-progress-save" data-id="${id}">Save</button>
+    </div>
+    <p class="mp-hint">Drag the bar, nudge, or type <b>1:23:45</b>, <b>83m</b>, or <b>1h 23m</b>.</p>
   </section>`;
+}
+
+/** Update the readout without rebuilding the panel, so dragging stays smooth. */
+function paintMovieReadout(id, seconds) {
+  const panel = $(`movieProgressPanel_${id}`);
+  if (!panel) return;
+  const runtime = Math.max(0, +panel.dataset.runtime || 0);
+  const position = Math.max(0, runtime ? Math.min(seconds, runtime - 1) : seconds);
+  const label = $(`movieProgressLabel_${id}`), sub = $(`movieProgressSub_${id}`);
+  const orb = panel.querySelector('.movie-progress-orb');
+  const percent = runtime ? Math.min(99, Math.round(position / runtime * 100)) : 0;
+  panel.querySelector('.mp-scrub')?.style.setProperty('--mp-fill', `${percent}%`);
+  if (label) label.textContent = position ? `Resume at ${formatMovieTime(position)}` : 'Currently watching';
+  if (sub && runtime) sub.textContent = `${percent}% in · ${formatMovieTime(Math.max(0, runtime - position), { compact: true })} left`;
+  if (orb) orb.style.setProperty('--movie-progress', `${percent * 3.6}deg`);
+  const range = $(`movieProgressRange_${id}`);
+  if (range && +range.value !== position) range.value = String(position);
+  if (range) range.setAttribute('aria-valuetext', position ? formatMovieTime(position) : 'the start');
+  const field = $(`movieProgressTime_${id}`);
+  if (field && document.activeElement !== field) field.value = position ? formatMovieTime(position) : '';
+  return position;
 }
 
 function paintMovieProgress(id) {
@@ -1422,16 +1472,48 @@ export function initDetail() {
       paintMovieProgress(id);
       requestAnimationFrame(() => { const input = $(`movieProgressTime_${id}`); input?.focus(); input?.select(); });
     },
+    // Dragging updates the readout on every frame but saves once, when released.
+    'movie-progress-scrub': el => {
+      const id = +el.dataset.id;
+      paintMovieReadout(id, +el.value || 0);
+      clearTimeout(scrubTimer);
+      scrubTimer = setTimeout(() => {
+        setMovieProgressPosition(id, +el.value || 0, movieProgressMeta());
+      }, 260);
+    },
+    'movie-progress-nudge': el => {
+      const id = +el.dataset.id, panel = $(`movieProgressPanel_${id}`);
+      const runtime = Math.max(0, +panel?.dataset.runtime || 0);
+      const current = +($(`movieProgressRange_${id}`)?.value) || parseMovieTime($(`movieProgressTime_${id}`)?.value || '') || 0;
+      const next = Math.max(0, runtime ? Math.min(current + +el.dataset.by, runtime - 1) : current + +el.dataset.by);
+      paintMovieReadout(id, next);
+      setMovieProgressPosition(id, next, movieProgressMeta());
+    },
+    // Typing shows the effect live; Enter commits, so the Save button is a
+    // confirmation rather than the only way to be understood.
+    'movie-progress-type': (el) => {
+      const id = +el.dataset.id;
+      const seconds = parseMovieTime(el.value);
+      if (seconds === null) return;
+      const panel = $(`movieProgressPanel_${id}`);
+      const runtime = Math.max(0, +panel?.dataset.runtime || 0);
+      paintMovieReadout(id, runtime ? Math.min(seconds, runtime - 1) : seconds);
+    },
     'movie-progress-save': el => {
       const id = +el.dataset.id, input = $(`movieProgressTime_${id}`);
       const raw = input?.value.trim() || '';
-      const seconds = raw ? parseMovieTime(raw) : 0;
-      const runtime = Math.max(0, +curDet?.runtime || 0) * 60;
-      if (seconds === null) { toast('Use HH:MM:SS', 'info'); input?.focus(); return; }
-      if (runtime && seconds >= runtime) { toast('That time is past the movie runtime', 'info'); input?.focus(); return; }
+      const parsed = parseMovieTime(raw);
+      const panel = $(`movieProgressPanel_${id}`);
+      const runtime = Math.max(0, +panel?.dataset.runtime || 0) || Math.max(0, +curDet?.runtime || 0) * 60;
+      if (parsed === null) {
+        toast('Try 1:23:45, 83m, or 1h 23m', 'info'); input?.focus(); input?.select(); return;
+      }
+      // Past the end is a stopping point that cannot exist, so it is clamped to
+      // just before the credits rather than refused — the intent is obvious.
+      const seconds = runtime ? Math.min(parsed, runtime - 1) : parsed;
       setMovieProgressPosition(id, seconds, movieProgressMeta());
       paintMovieProgress(id);
-      toast(seconds ? `Saved at ${formatMovieTime(seconds)}` : 'Saved to Continue Watching', 'success');
+      toast(seconds ? `Saved at ${formatMovieTime(seconds)}${parsed !== seconds ? ' — the end of the film' : ''}` : 'Saved to Continue Watching', 'success');
     },
     'movie-progress-remove': el => {
       const id = +el.dataset.id;

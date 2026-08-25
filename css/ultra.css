@@ -11,8 +11,28 @@ html[data-ratings="hide"] .browse-feature-meta>b,
 html[data-ratings="hide"] .detail-tags .dtag.gold{display:none!important}
 html[data-watched-marks="hide"] .watched-badge{display:none!important}
 @media(pointer:coarse){html[data-haptics="on"].haptic-pulse{--haptic-glow:rgba(255,255,255,.035)}html[data-haptics="on"].haptic-pulse button:active,html[data-haptics="on"].haptic-pulse a:active{filter:brightness(1.06)}}
-html[data-clean-home-posters="on"] #homePage .card-rating,html[data-clean-home-posters="on"] #homePage .card-myrating,html[data-clean-home-posters="on"] #homePage .watched-badge,html[data-clean-home-posters="on"] #homePage .card-wl,html[data-clean-home-posters="on"] #homePage .card-rate,html[data-clean-home-posters="on"] #homePage .card-badge,html[data-clean-home-posters="on"] #homePage .card-provider-badge,html[data-clean-home-posters="on"] #homePage .card-dismiss{display:none!important}
-html[data-poster-community-rating="hide"] #homePage .card-rating,html[data-poster-personal-rating="hide"] #homePage .card-myrating,html[data-poster-watched-mark="hide"] #homePage .watched-badge,html[data-poster-list-button="hide"] #homePage .card-wl,html[data-poster-rate-button="hide"] #homePage .card-rate,html[data-poster-match-badge="hide"] #homePage .card-badge,html[data-poster-provider-logo="hide"] #homePage .card-provider-badge,html[data-poster-dismiss-button="hide"] #homePage .card-dismiss{display:none!important}
+/* Poster controls apply to every poster in CineVerse, not only the ones on Home.
+   Scoping them to #homePage meant a setting switched off in Settings was still
+   in force on Discover, My List, Watched, search, the person and studio pages,
+   and the countdown — which reads as the control not working at all. */
+html[data-clean-home-posters="on"] .card-rating,
+html[data-clean-home-posters="on"] .card-myrating,
+html[data-clean-home-posters="on"] .watched-badge,
+html[data-clean-home-posters="on"] .card-wl,
+html[data-clean-home-posters="on"] .card-rate,
+html[data-clean-home-posters="on"] .card-badge,
+html[data-clean-home-posters="on"] .card-provider-badge,
+html[data-clean-home-posters="on"] .card-plays,
+html[data-clean-home-posters="on"] .card-dismiss{display:none!important}
+html[data-poster-community-rating="hide"] .card-rating,
+html[data-poster-personal-rating="hide"] .card-myrating,
+html[data-poster-watched-mark="hide"] .watched-badge,
+html[data-poster-watched-mark="hide"] .card-plays,
+html[data-poster-list-button="hide"] .card-wl,
+html[data-poster-rate-button="hide"] .card-rate,
+html[data-poster-match-badge="hide"] .card-badge,
+html[data-poster-provider-logo="hide"] .card-provider-badge,
+html[data-poster-dismiss-button="hide"] .card-dismiss{display:none!important}
 html[data-spoilers="shield"] .detail-overview,
 html[data-spoilers="shield"] .person-bio,
 html[data-spoilers="shield"] .browse-feature-copy>p{filter:blur(7px);user-select:none;transition:filter .25s}

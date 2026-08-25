@@ -34,6 +34,7 @@
   .card-w{width:240px}
   .card-t10{width:182px}
   .card-t10 .t10-num{font-size:5.5rem}
+  .card-t10 .t10-num-wide{font-size:3.7rem}
   .card-t10 .card-img{width:100px}
   /* Center the detail title-logo when the header stacks + centers on mobile. */
   .detail-title .title-logo{margin-left:auto;margin-right:auto}

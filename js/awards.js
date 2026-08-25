@@ -57,8 +57,31 @@ function categoryFor(label, programme) {
   return value && value.toLowerCase() !== programme.label.toLowerCase() ? value : '';
 }
 
+// A Commons filename search is a guess, so it has to earn the badge. The score
+// alone did not: "logo" in a filename was worth +14 against a threshold of 10, so
+// a search for one programme could return a different programme's wordmark and
+// pass. The award's own name must appear in the filename before anything is
+// shown — a missing logo is honest, a confident wrong one is not.
+// Words too generic to identify a programme. Matched EXACTLY, never as a
+// substring: "filmfare" contains "film" and is the most distinctive word it has.
+const GENERIC_AWARD_WORDS = new Set(['award', 'awards', 'festival', 'international', 'film', 'films', 'prize', 'prizes', 'the', 'de', 'du', 'la', 'le']);
+
+function nameGate(programme) {
+  // The label is often an abbreviation ("SAG Awards") while the search query
+  // carries the full name ("Screen Actors Guild Awards logo"). Both feed the
+  // gate, so an abbreviation never rejects its own correctly-named logo.
+  const words = [...new Set(`${programme.label} ${programme.query || ''}`.toLowerCase()
+    .replace(/logo/g, ' ')
+    .split(/[^a-z0-9]+/)
+    .filter(word => word.length > 2 && !GENERIC_AWARD_WORDS.has(word)))];
+  if (words.length) return title => words.some(word => title.includes(word));
+  // Nothing distinctive at all: demand the whole label, punctuation-insensitively.
+  const flat = programme.label.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return title => flat.length > 2 && title.replace(/[^a-z0-9]+/g, '').includes(flat);
+}
+
 async function commonsLogo(programme) {
-  const key = `cv_award_logo_v3_${programme.id}`;
+  const key = `cv_award_logo_v4_${programme.id}`;
   try {
     const cached = JSON.parse(localStorage.getItem(key) || 'null');
     if (cached && Date.now() - cached.ts < 30 * CACHE_MS) return cached.url || '';
@@ -79,7 +102,11 @@ async function commonsLogo(programme) {
       if (/\b(19|20)\d{2}\b|ceremony|red.?carpet|winner|arrival|poster|photograph|trophy presentation/i.test(title)) value -= 18;
       return value;
     };
-    const suitable = pages.filter(page => /\.(svg|png|webp|jpe?g)$/i.test(page.title || '')).sort((a, b) => score(b) - score(a));
+    const matchesName = nameGate(programme);
+    const suitable = pages
+      .filter(page => /\.(svg|png|webp|jpe?g)$/i.test(page.title || ''))
+      .filter(page => matchesName(String(page.title || '').toLowerCase()))
+      .sort((a, b) => score(b) - score(a));
     const winner = suitable.find(page => score(page) >= 10);
     const info = winner?.imageinfo?.[0];
     const url = commonsArt(info?.thumburl || info?.url || '');
@@ -140,7 +167,10 @@ async function groupAwards(items) {
     if (!group.art) group.art = commonsArt(item.logoArt);
   });
   const rows = [...groups.values()].sort((a, b) => Number(b.major) - Number(a.major) || b.wins - a.wins || b.items.length - a.items.length || a.label.localeCompare(b.label)).slice(0, 12);
-  await Promise.all(rows.map(async row => { row.art = await commonsLogo(row) || row.art; }));
+  // Wikidata's P154 is the programme's own declared logo. A filename search is
+  // only consulted when there is no declared logo at all — it used to override
+  // one, which is how an authoritative mark got replaced by a lucky guess.
+  await Promise.all(rows.map(async row => { if (!row.art) row.art = await commonsLogo(row); }));
   return rows;
 }
 

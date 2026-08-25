@@ -56,8 +56,8 @@ export function renderSettings() {
           ${toggle('highContrast', 'High-contrast type', 'Brighten supporting text and borders for easier reading.', prefs.highContrast)}
           ${toggle('compactNav', 'Compact navigation', 'Use a tighter desktop navigation bar with more breathing room below.', prefs.compactNav)}
         </section>
-        <section class="settings-panel poster-controls"><div class="settings-panel-head">${ICONS.palette}<div><span>Home posters</span><h2>Poster controls</h2></div></div>
-          ${toggle('cleanHomePosters', 'Clean posters', 'Hide every badge and action from homepage artwork.', prefs.cleanHomePosters)}
+        <section class="settings-panel poster-controls"><div class="settings-panel-head">${ICONS.palette}<div><span>Every poster</span><h2>Poster controls</h2></div></div>
+          ${toggle('cleanHomePosters', 'Clean posters', 'Hide every badge and action from poster artwork, everywhere in CineVerse.', prefs.cleanHomePosters)}
           ${toggle('posterCommunityRating', 'Community rating', 'Show the TMDB score on homepage posters.', prefs.posterCommunityRating)}
           ${toggle('posterPersonalRating', 'Your rating', 'Show your own score on homepage posters.', prefs.posterPersonalRating)}
           ${toggle('posterWatchedMark', 'Watched mark', 'Show the watched check on homepage posters.', prefs.posterWatchedMark)}
@@ -66,7 +66,7 @@ export function renderSettings() {
           ${toggle('posterMatchBadge', 'Match badge', 'Show personalized match percentages.', prefs.posterMatchBadge)}
           ${toggle('posterProviderLogo', 'Streaming logo', 'Show subscription provider logos.', prefs.posterProviderLogo)}
           ${toggle('posterDismissButton', 'Not interested', 'Show the recommendation dismissal button.', prefs.posterDismissButton)}
-          ${toggle('posterPreview', 'Hover previews', 'Expand homepage posters into muted landscape trailers on desktop.', prefs.posterPreview)}
+          ${toggle('posterPreview', 'Hover previews', 'Expand a poster into a muted landscape trailer when the pointer rests on it. Desktop only.', prefs.posterPreview)}
         </section>
         <section class="settings-panel"><div class="settings-panel-head">${ICONS.motion}<div><span>Motion & playback</span><h2>Atmosphere</h2></div></div>
           ${select('motion', 'Interface motion', 'Respect your system, force full motion, or reduce it.', [['system', 'Use system setting'], ['full', 'Full cinematic motion'], ['reduced', 'Reduced motion']], prefs.motion)}

@@ -31,6 +31,7 @@ import { initParty } from './party.js';
 import { initProfile } from './profile.js';
 import { initSettings } from './settings.js';
 import { initOnboarding } from './onboarding.js';
+import { initContinueDrag } from './continue-drag.js';
 import { initFranchisePage } from './franchise-page.js';
 import { initBoxOfficePage } from './box-office-page.js';
 import { initReleaseReminders } from './release-reminders.js';
@@ -106,6 +107,7 @@ async function init() {
   initProfile();
   initSettings();
   initOnboarding();
+  initContinueDrag();
   initFranchisePage();
   initBoxOfficePage();
   initBackups();
