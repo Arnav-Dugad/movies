@@ -8,6 +8,8 @@ import { initAuth } from './auth.js';
 import { initWatchlist, toggleWatched } from './watchlist.js';
 import { onShowComplete, backfillLegacyShows, fetchHistoricalShowMeta, pendingLegacyShows, initEpisodeRefresh } from './episodes.js';
 import { initLists } from './lists.js';
+import { initCollabLists } from './collab-lists.js';
+import { initCollabPage } from './collab-page.js';
 import { initListLock } from './list-lock.js';
 import { initWatched } from './watched.js';
 import { initRatings } from './ratings.js';
@@ -83,6 +85,8 @@ async function init() {
     });
   });
   initLists();
+  initCollabLists();
+  initCollabPage();
   initListLock();
   initWatched();
   initRatings();

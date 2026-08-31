@@ -8,6 +8,7 @@ import { registerActions, readItem } from './events.js';
 import { removeFromList, listsArr, listById, createList, renameList, deleteList, shareList } from './lists.js';
 import { isListLocked, listHasPin, openPinModal, relockList } from './list-lock.js';
 import { markShowWatched, clearShowProgress, showProgress } from './episodes.js';
+import { createCollabList, collabLink, membersLabel } from './collab-lists.js';
 import { tmdb, pool } from './api.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
@@ -329,6 +330,12 @@ export function renderWL() {
     rail.innerHTML = html;
   }
 
+  // ----- Shared lists -----
+  // Kept apart from the chip rail on purpose: these are not another filter over
+  // your watchlist, they are lists that live somewhere else and that somebody
+  // else can also change.
+  renderCollabSection();
+
   // ----- Head actions: inline create/rename input, else rename/delete controls -----
   if (head) {
     const active = listById(state.wlList);
@@ -401,6 +408,23 @@ export function renderWL() {
   }).join('')}</div>`;
 }
 
+function renderCollabSection() {
+  const host = $('wlCollab');
+  if (!host) return;
+  if (!state.user) { host.innerHTML = ''; return; }
+  const lists = state.collabLists || [];
+  host.innerHTML = `<div class="wl-collab-head">
+      <div><span>Together</span><h2>Shared lists</h2></div>
+      <button class="btn-glass" data-action="wl-new-collab">＋ New shared list</button>
+    </div>
+    ${lists.length
+      ? `<div class="wl-collab-row">${lists.map(list => `<a class="wl-collab-card" href="/collab/${esc(list.id)}" data-action="open-collab" data-id="${esc(list.id)}">
+          <span class="wl-collab-ico">${esc(list.icon)}</span>
+          <span class="wl-collab-copy"><strong>${esc(list.name)}</strong><small>${esc(membersLabel(list))} · ${list.count} title${list.count === 1 ? '' : 's'}</small></span>
+        </a>`).join('')}</div>`
+      : `<p class="wl-collab-empty">A shared list is one list, not two copies — whatever either of you adds, you both see. Make one and send the link.</p>`}`;
+}
+
 export function initWatchlist() {
   registerActions({
     'toggle-watched': async (el, e) => {
@@ -454,6 +478,20 @@ export function initWatchlist() {
     },
     'toggle-duplicates': () => { duplicateOpen = !duplicateOpen; renderWL(); },
     'wl-new-list': () => { listEdit = { mode: 'new' }; pendingDelete = null; renderWL(); },
+    'wl-new-collab': async (el) => {
+      const name = prompt('Name this shared list', 'Watch together');
+      if (name === null) return;
+      if (!String(name).trim()) { toast('A list needs a name', 'error'); return; }
+      el.disabled = true;
+      const id = await createCollabList(name);
+      el.disabled = false;
+      if (!id) return;
+      let copied = false;
+      if (navigator.clipboard) { try { await navigator.clipboard.writeText(collabLink(id)); copied = true; } catch (_) {} }
+      toast(copied ? 'List created — invite link copied' : 'Shared list created', 'success');
+      document.dispatchEvent(new CustomEvent('cv:go', { detail: `/collab/${id}` }));
+    },
+    'open-collab': (el) => document.dispatchEvent(new CustomEvent('cv:go', { detail: `/collab/${el.dataset.id}` })),
     'wl-rename-list': () => { listEdit = { mode: 'rename' }; pendingDelete = null; renderWL(); },
     'wl-list-cancel': () => { listEdit = null; renderWL(); },
     'wl-list-save': () => saveListEdit(),
@@ -478,4 +516,7 @@ export function initWatchlist() {
   // Reset transient edit state when leaving the page or signing out.
   document.addEventListener('cv:auth', () => { listEdit = null; pendingDelete = null; duplicateOpen = false; state.wlList = 'watchlist'; });
   document.addEventListener('cv:list-lock', () => { if (location.pathname === '/watchlist') renderWL(); });
+  // A shared list can change without this device doing anything — someone joins,
+  // renames it, or adds a title — so the section follows the live document.
+  document.addEventListener('cv:collab-lists', () => { if (location.pathname === '/watchlist') renderCollabSection(); });
 }

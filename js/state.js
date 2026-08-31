@@ -36,6 +36,7 @@ export const state = {
   // owner profile doc so the layout follows the account, not the device.
   statsSections: {},
   lists: [],          // custom lists metadata (loaded by lists.js)
+  collabLists: [],    // lists shared with another account (loaded by collab-lists.js)
   wlList: 'watchlist',   // active chip on the My List page ('watched' | listId; defaults to the Watchlist list)
   // PIN-locked lists that have been opened during THIS page session. Deliberately
   // not persisted: reloading CineVerse always re-locks. Lives here (not in

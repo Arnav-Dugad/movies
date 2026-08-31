@@ -11,6 +11,7 @@
 // watchlist.js) so there's no cycle; cards.js stays state-only.
 import { db, firebase } from './firebase.js';
 import { state } from './state.js';
+import { addToCollabList } from './collab-lists.js';
 import { $, esc, toast, trapFocus, lockScroll, unlockScroll } from './ui.js';
 import { registerActions, readItem } from './events.js';
 import { refreshWLBtns } from './cards.js';
@@ -326,6 +327,17 @@ function renderPickerRows() {
     const on = inList(id, type, l.id);
     return `<label class="list-row"><input type="checkbox" data-action="toggle-list-member" data-list="${esc(l.id)}" ${on ? 'checked' : ''}><span class="list-ico">${l.icon || '📁'}</span><span class="list-nm">${esc(l.name)}</span></label>`;
   }).join('');
+
+  // Shared lists live in a different collection and are not per-title toggles —
+  // any member can remove a title, so a checkbox would be lying about who is in
+  // control. They get an explicit Add instead, on the same sheet, so putting a
+  // film in front of the person you watch with is one tap from any poster.
+  if ((state.collabLists || []).length) {
+    rows.insertAdjacentHTML('beforeend',
+      `<div class="list-shared-head">Shared with others</div>` +
+      state.collabLists.map(list => `<div class="list-row shared"><span class="list-ico">${esc(list.icon)}</span><span class="list-nm">${esc(list.name)}</span><button type="button" class="list-add-locked" data-action="add-to-collab" data-list="${esc(list.id)}">Add</button></div>`).join(''));
+  }
+
   const create = $('listCreate');
   if (create) {
     create.innerHTML = creating
@@ -386,6 +398,27 @@ export function initLists() {
       toast('Saved to your locked list', 'success');
     },
     'create-list': () => { creating = true; renderPickerRows(); },
+    'add-to-collab': async (el) => {
+      if (!pickerTarget) return;
+      const item = pickerTarget.item || {};
+      // `pickerTarget.id` is already the TMDB id, resolved by openListPicker from
+      // whichever of `id`/`tmdbId` the caller had. A watchlist row's own `id` is
+      // a `${type}_${id}` doc key instead, so that case is parsed rather than
+      // coerced — `+'movie_693134'` is NaN, and a NaN id fails the write.
+      const key = fromKey(String(item.id || ''));
+      el.disabled = true; el.textContent = 'Adding…';
+      const result = await addToCollabList(el.dataset.list, {
+        tmdbId: pickerTarget.id != null ? pickerTarget.id : (item.tmdbId != null ? item.tmdbId : key.tmdbId),
+        type: item.type || pickerTarget.type || key.type,
+        title: item.title || item.name || '', poster: item.poster || item.poster_path || '',
+        year: item.year || '', rating: item.rating || item.vote_average || 0,
+      });
+      el.disabled = false;
+      el.textContent = result === 'added' ? 'Added' : 'Add';
+      const said = { added: 'Added to the shared list', already: 'Already on that list',
+        full: 'That list is full', 'signed-out': 'Sign in first' }[result] || 'Could not add it';
+      toast(said, result === 'added' ? 'success' : result === 'already' ? 'info' : 'error');
+    },
     'create-list-confirm': async () => {
       const inp = $('listNewName');
       const name = (inp && inp.value || '').trim();

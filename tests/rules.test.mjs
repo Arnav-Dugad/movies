@@ -260,6 +260,119 @@ describe('friendships', () => {
   });
 });
 
+describe('collaborative lists', () => {
+  const LIST = 'collab-abc123';
+  const asThird = () => env.authenticatedContext(THIRD).firestore();
+  const seedList = (members = [OWNER, OTHER]) => seed(db => setDoc(doc(db, `collabLists/${LIST}`), {
+    name: 'Date night', icon: '🍿', createdBy: OWNER, members, createdAt: 1, updatedAt: 1,
+  }));
+
+  it('a signed-in visitor can read the list itself — that is what makes an invite link work', async () => {
+    await seedList();
+    await assertSucceeds(getDoc(doc(asThird(), `collabLists/${LIST}`)));
+  });
+
+  it('but a signed-OUT visitor cannot', async () => {
+    await seedList();
+    await assertFails(getDoc(doc(asGuest(), `collabLists/${LIST}`)));
+  });
+
+  // The link reveals a name, not a library. Everything that would tell you what
+  // these people are actually watching is behind membership.
+  it('only members can read the titles on it', async () => {
+    await seedList();
+    await seed(db => setDoc(doc(db, `collabLists/${LIST}/items/movie_1`), { tmdbId: 1, type: 'movie', title: 'Heat', addedBy: OWNER }));
+    await assertSucceeds(getDoc(doc(asOwner(), `collabLists/${LIST}/items/movie_1`)));
+    await assertSucceeds(getDoc(doc(asOther(), `collabLists/${LIST}/items/movie_1`)));
+    await assertFails(getDoc(doc(asThird(), `collabLists/${LIST}/items/movie_1`)));
+    await assertFails(getDoc(doc(asGuest(), `collabLists/${LIST}/items/movie_1`)));
+  });
+
+  it('every member can add and remove titles', async () => {
+    await seedList();
+    await assertSucceeds(setDoc(doc(asOther(), `collabLists/${LIST}/items/movie_2`), { tmdbId: 2, type: 'movie', title: 'Sicario', addedBy: OTHER }));
+    await assertSucceeds(deleteDoc(doc(asOwner(), `collabLists/${LIST}/items/movie_2`)));
+  });
+
+  it('a non-member cannot add a title', async () => {
+    await seedList();
+    await assertFails(setDoc(doc(asThird(), `collabLists/${LIST}/items/movie_3`), { tmdbId: 3, type: 'movie', title: 'Nope', addedBy: THIRD }));
+  });
+
+  // "Added by" is shown on every row. If it could be forged it would be a lie,
+  // not a feature.
+  it('a member cannot add a title crediting somebody else', async () => {
+    await seedList();
+    await assertFails(setDoc(doc(asOther(), `collabLists/${LIST}/items/movie_4`), { tmdbId: 4, type: 'movie', title: 'Forged', addedBy: OWNER }));
+  });
+
+  it('and cannot rewrite who added an existing one', async () => {
+    await seedList();
+    await seed(db => setDoc(doc(db, `collabLists/${LIST}/items/movie_5`), { tmdbId: 5, type: 'movie', title: 'Drive', addedBy: OWNER }));
+    await assertFails(setDoc(doc(asOther(), `collabLists/${LIST}/items/movie_5`), { tmdbId: 5, type: 'movie', title: 'Drive', addedBy: OTHER }));
+  });
+
+  it('you can create a list you are a member of, but not one you are not', async () => {
+    await assertSucceeds(setDoc(doc(asOwner(), 'collabLists/mine'), { name: 'Mine', createdBy: OWNER, members: [OWNER], createdAt: 1, updatedAt: 1 }));
+    await assertFails(setDoc(doc(asOwner(), 'collabLists/theirs'), { name: 'Theirs', createdBy: OTHER, members: [OTHER], createdAt: 1, updatedAt: 1 }));
+    await assertFails(setDoc(doc(asOwner(), 'collabLists/absent'), { name: 'Absent', createdBy: OWNER, members: [OTHER], createdAt: 1, updatedAt: 1 }));
+  });
+
+  it('a visitor can join by adding only themselves', async () => {
+    await seedList([OWNER]);
+    await assertSucceeds(setDoc(doc(asOther(), `collabLists/${LIST}`),
+      { name: 'Date night', icon: '🍿', createdBy: OWNER, members: [OWNER, OTHER], createdAt: 1, updatedAt: 2 }));
+  });
+
+  it('joining cannot be used to remove anyone already on it', async () => {
+    await seedList([OWNER, OTHER]);
+    await assertFails(setDoc(doc(asThird(), `collabLists/${LIST}`),
+      { name: 'Date night', icon: '🍿', createdBy: OWNER, members: [OWNER, THIRD], createdAt: 1, updatedAt: 2 }));
+  });
+
+  it('joining cannot smuggle in a second person', async () => {
+    await seedList([OWNER]);
+    await assertFails(setDoc(doc(asOther(), `collabLists/${LIST}`),
+      { name: 'Date night', icon: '🍿', createdBy: OWNER, members: [OWNER, OTHER, THIRD], createdAt: 1, updatedAt: 2 }));
+  });
+
+  it('joining cannot rename the list or claim to have made it', async () => {
+    await seedList([OWNER]);
+    await assertFails(setDoc(doc(asOther(), `collabLists/${LIST}`),
+      { name: 'Renamed', icon: '🍿', createdBy: OWNER, members: [OWNER, OTHER], createdAt: 1, updatedAt: 2 }));
+    await assertFails(setDoc(doc(asOther(), `collabLists/${LIST}`),
+      { name: 'Date night', icon: '🍿', createdBy: OTHER, members: [OWNER, OTHER], createdAt: 1, updatedAt: 2 }));
+  });
+
+  it('a member can rename it but cannot reassign who made it', async () => {
+    await seedList();
+    await assertSucceeds(setDoc(doc(asOther(), `collabLists/${LIST}`),
+      { name: 'Sunday films', icon: '🎞️', createdBy: OWNER, members: [OWNER, OTHER], createdAt: 1, updatedAt: 3 }));
+    await assertFails(setDoc(doc(asOther(), `collabLists/${LIST}`),
+      { name: 'Sunday films', icon: '🎞️', createdBy: OTHER, members: [OWNER, OTHER], createdAt: 1, updatedAt: 3 }));
+  });
+
+  it('a member can leave, which is just an update', async () => {
+    await seedList();
+    await assertSucceeds(setDoc(doc(asOther(), `collabLists/${LIST}`),
+      { name: 'Date night', icon: '🍿', createdBy: OWNER, members: [OWNER], createdAt: 1, updatedAt: 4 }));
+  });
+
+  it('only whoever made it can delete it for everybody', async () => {
+    await seedList();
+    await assertFails(deleteDoc(doc(asOther(), `collabLists/${LIST}`)));
+    await assertFails(deleteDoc(doc(asThird(), `collabLists/${LIST}`)));
+    await assertSucceeds(deleteDoc(doc(asOwner(), `collabLists/${LIST}`)));
+  });
+
+  it('membership is capped, so one list cannot become a broadcast channel', async () => {
+    await seedList();
+    const thirteen = Array.from({ length: 13 }, (_, index) => `u${index}`);
+    await assertFails(setDoc(doc(asOwner(), 'collabLists/big'),
+      { name: 'Big', createdBy: OWNER, members: [OWNER, ...thirteen], createdAt: 1, updatedAt: 1 }));
+  });
+});
+
 describe('nothing else is reachable', () => {
   it('an undeclared top-level collection is denied by default', async () => {
     await assertFails(getDoc(doc(asOwner(), 'secretStuff/anything')));

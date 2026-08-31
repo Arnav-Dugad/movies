@@ -17,6 +17,7 @@ import { openStudio } from './studio.js';
 import { openCollection2 } from './collection.js';
 import { SECTIONS } from './home.js';
 import { openSharedList } from './shared-list.js';
+import { openCollabPage, closeCollabPage } from './collab-page.js';
 import { closeRating, isRatingOpen } from './ratings.js';
 import { closeListPicker, isListPickerOpen } from './lists.js';
 import { closePinModal, isPinModalOpen } from './list-lock.js';
@@ -61,6 +62,7 @@ const ROUTES = [
   { test: /^\/studio\/(\d+)\/?$/, page: 'studioPage', render: (p) => openStudio(+p[0], 'company') },
   { test: /^\/network\/(\d+)\/?$/, page: 'studioPage', render: (p) => openStudio(+p[0], 'network') },
   { test: /^\/shared-list\/([\w-]+)\/([\w-]+)\/?$/, page: 'sharedListPage', render: (p) => openSharedList(p[0], p[1]) },
+  { test: /^\/collab\/([\w-]+)\/?$/, page: 'collabPage', render: (p) => openCollabPage(p[0]) },
   { test: /^\/collection\/(\d+)\/?$/, page: 'detailPage', render: (p) => openCollection(+p[0]) },
   // Curated home-row collection — a section id (letters, so it never collides with
   // the numeric TMDB-collection route above).
@@ -89,6 +91,7 @@ const TITLES = {
   studioPage: 'CineVerse',
   collectionPage: 'CineVerse',
   sharedListPage: 'Shared List — CineVerse',
+  collabPage: 'Shared List — CineVerse',
 };
 
 const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', franchises: '/franchises', 'box-office': '/box-office', notifications: '/notifications', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
@@ -112,8 +115,9 @@ const ROUTE_NAMES = {
   profilePage: 'Profile', settingsPage: 'Settings', detailPage: 'Title details',
   personPage: 'Person', studioPage: 'Studio', collectionPage: 'Collection',
   sharedListPage: 'Shared list',
+  collabPage: 'Shared list',
 };
-const TITLED_LATER = new Set(['detailPage', 'personPage', 'studioPage', 'collectionPage', 'sharedListPage']);
+const TITLED_LATER = new Set(['detailPage', 'personPage', 'studioPage', 'collectionPage', 'sharedListPage', 'collabPage']);
 let announceTimer = null, announceTries = 0, firstRenderDone = false;
 
 function announceRoute(pageId) {
@@ -189,6 +193,7 @@ function renderRoute(path, { isPopState = false, scroll = true } = {}) {
   path = matched ? path : '/';
 
   closeDetail(); // clears any running countdown intervals
+  closeCollabPage(); // drops the shared-list listener when leaving that page
   closeAllModals();
   // The voice console is global now, but a live microphone must never outlive the
   // page that opened it — a voice command tears itself down before navigating.
