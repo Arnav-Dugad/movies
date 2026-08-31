@@ -190,6 +190,11 @@ function sanitizeEntry(value) {
     metaCheckedAt: +value.metaCheckedAt || 0,
     legacyBackfillAt: +value.legacyBackfillAt || 0,
     legacy: !!value.legacy,
+    // A show the viewer abandoned. Kept as a flag plus the moment it was set, so
+    // "I dropped this" and "I picked it back up" are both real decisions a merge
+    // can reason about, rather than an absence it would have to guess at.
+    dropped: !!value.dropped,
+    droppedAt: +value.droppedAt || 0,
     updatedAt: +value.updatedAt || 0,
   };
 }
@@ -351,6 +356,12 @@ export function mergeEntries(server, local) {
     legacyBackfillAt: Math.max(+server.legacyBackfillAt || 0, +local.legacyBackfillAt || 0),
     lastWatched: (+newer.lastWatched?.at || 0) >= (+older.lastWatched?.at || 0) ? newer.lastWatched : older.lastWatched,
     legacy: tied ? !!(server.legacy && local.legacy) : !!newer.legacy,
+    // Same shape as `legacy`: the newer document decides, and an exact tie needs
+    // both sides to agree before a show counts as dropped. That keeps the merge
+    // symmetric and errs toward the safer mistake — a dropped show reappearing in
+    // Continue Watching is a smaller harm than one silently vanishing from it.
+    dropped: tied ? !!(server.dropped && local.dropped) : !!newer.dropped,
+    droppedAt: Math.max(+server.droppedAt || 0, +local.droppedAt || 0),
     updatedAt: Math.max(+server.updatedAt || 0, +local.updatedAt || 0),
   });
 }
@@ -676,6 +687,48 @@ export function logSeasonRewatch(id, season, meta = {}) {
   return next;
 }
 
+// ===== DROPPED SHOWS =====
+// Abandoning a series is a real state, and a different one from "not started"
+// or "un-ticked". A dropped show keeps every episode the viewer actually
+// watched — the history is not a lie — but stops being treated as something
+// they are still working through: it leaves Continue Watching, stops counting
+// as in-progress on Stats, and no longer holds a franchise open.
+
+/** @returns {boolean} whether this show has been dropped. */
+export const isDropped = id => !!state.episodeProgress?.[KEY(id)]?.dropped;
+
+/** @returns {number} when it was dropped, 0 if it is being watched. */
+export const droppedAt = id => +state.episodeProgress?.[KEY(id)]?.droppedAt || 0;
+
+/**
+ * Mark a show dropped, or pick it back up.
+ * @param {number} id      TMDB show id
+ * @param {boolean} value  true to drop, false to resume
+ * @param {object} meta    show metadata, so a drop can create the document
+ * @returns {boolean|null} the new state, or null when signed out
+ */
+export function setDropped(id, value, meta = {}) {
+  if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
+  const want = !!value;
+  if (isDropped(id) === want) return want;
+  apply(id, meta, entry => {
+    entry.dropped = want;
+    // Stamped on both edges. Without a timestamp for the un-drop, a merge could
+    // not tell "picked it up again" from "never dropped it", and a stale device
+    // would keep re-dropping the show.
+    entry.droppedAt = Date.now();
+  });
+  return want;
+}
+
+/** Every show the viewer has walked away from, most recent first. */
+export function droppedShows() {
+  return Object.entries(state.episodeProgress || {})
+    .filter(([, entry]) => entry.dropped)
+    .map(([key, entry]) => ({ key, entry, id: entry.tmdbId || +key.split('_')[1], progress: showProgress(entry.tmdbId || +key.split('_')[1]) }))
+    .sort((a, b) => (b.entry.droppedAt || 0) - (a.entry.droppedAt || 0));
+}
+
 /** Undo the most recent season rewatch. Never drops below the original viewing. */
 export function removeSeasonRewatch(id, season, meta = {}) {
   if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
@@ -808,7 +861,7 @@ export function nextUp(id) {
 export function resumeQueue(limit = 12) {
   return Object.entries(state.episodeProgress || {})
     .map(([key, entry]) => ({ key, entry, id: entry.tmdbId || +key.split('_')[1], progress: showProgress(entry.tmdbId || +key.split('_')[1]) }))
-    .filter(row => row.progress.started && !row.progress.caughtUp && nextUp(row.id))
+    .filter(row => row.progress.started && !row.progress.caughtUp && !row.entry.dropped && nextUp(row.id))
     .sort((a, b) => (b.entry.lastWatched?.at || 0) - (a.entry.lastWatched?.at || 0))
     .slice(0, limit)
     .map(row => ({ ...row, next: nextUp(row.id) }));
@@ -820,7 +873,7 @@ export function resumeQueue(limit = 12) {
 // reported alongside — an hours figure with unknown coverage is a guess.
 export function episodeStats({ months = 12 } = {}) {
   const shows = [];
-  let episodes = 0, minutes = 0, runtimeKnown = 0, completed = 0, caughtUp = 0, seasonsCompleted = 0, inProgress = 0;
+  let episodes = 0, minutes = 0, runtimeKnown = 0, completed = 0, caughtUp = 0, seasonsCompleted = 0, inProgress = 0, dropped = 0;
   const perDay = new Map(), perMonth = new Map(), soloPerDay = new Map();
 
   for (const entry of Object.values(state.episodeProgress || {})) {
@@ -831,7 +884,9 @@ export function episodeStats({ months = 12 } = {}) {
     episodes += progress.watched;
     if (entry.episodeRuntime > 0) { minutes += progress.watched * entry.episodeRuntime; runtimeKnown += progress.watched; }
     if (progress.seriesCompleted) completed++;
-    if (progress.caughtUp) caughtUp++; else inProgress++;
+    if (entry.dropped) dropped++;
+    else if (progress.caughtUp) caughtUp++;
+    else inProgress++;
     seasonsCompleted += progress.completedSeasons.length;
     shows.push({
       id, title: entry.title || 'TV show', poster: entry.poster || '',
@@ -876,7 +931,7 @@ export function episodeStats({ months = 12 } = {}) {
     episodes, minutes, runtimeKnown,
     seasonRewatches,
     runtimeCoverage: episodes ? Math.round(runtimeKnown / episodes * 100) : 0,
-    shows: shows.length, completed, caughtUp, seasonsCompleted, inProgress,
+    shows: shows.length, completed, caughtUp, seasonsCompleted, inProgress, dropped,
     completionRate: shows.length ? Math.round(completed / shows.length * 100) : 0,
     caughtUpRate: shows.length ? Math.round(caughtUp / shows.length * 100) : 0,
     series,
@@ -1055,7 +1110,9 @@ function apply(id, meta, mutate) {
   // deleting it would let another device's stale copy re-add every episode on the
   // next merge. Only a genuinely empty document is dropped.
   const hasTombstones = Object.keys(entry.removed || {}).length > 0;
-  if (!Object.keys(entry.seasons).length && !hasTombstones) { delete state.episodeProgress[key]; persist(key); return { key, entry: null }; }
+  // "I dropped this" is a decision worth keeping on its own, so a document
+  // holding only that is not empty.
+  if (!Object.keys(entry.seasons).length && !hasTombstones && !entry.dropped) { delete state.episodeProgress[key]; persist(key); return { key, entry: null }; }
   // `legacy` means "completed before per-episode tracking existed". The moment
   // real episode data is written the flag stops being true of the document.
   if (entry.legacy && entry.log.length) entry.legacy = false;

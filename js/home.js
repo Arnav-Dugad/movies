@@ -1,11 +1,11 @@
 // ===== HOME SECTIONS (+ personalization) =====
 import { tmdb, pool } from './api.js';
-import { $, esc, debounce } from './ui.js';
+import { $, esc, debounce, toast } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
 import { registerActions } from './events.js';
 import { renderRecommendations } from './recommend.js';
-import { resumeQueue, episodeLabel } from './episodes.js';
+import { resumeQueue, episodeLabel, setDropped } from './episodes.js';
 import { movieResumeQueue, formatMovieTime } from './movie-progress.js';
 import { applyContinuePrefs, togglePinned, toggleHidden, moveContinue, isPinned, isHidden, resetContinuePrefs, hasContinueEdits } from './continue-prefs.js';
 import { franchiseSummary, toggleFranchiseDismissed, restoreAllFranchises } from './franchise.js';
@@ -147,7 +147,8 @@ function continueCard(row, index = 0, total = 1) {
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
         </button>
         <button class="ce-btn${isPinned(key) ? ' on' : ''}" data-action="continue-pin" data-key="${key}" aria-pressed="${isPinned(key)}" aria-label="${isPinned(key) ? 'Unpin' : 'Pin'} ${title}">${isPinned(key) ? '&#9733; Pinned' : '&#9734; Pin'}</button>
-        <button class="ce-btn" data-action="continue-hide" data-key="${key}" aria-label="Hide ${title}">Hide</button>
+        <button class="ce-btn" data-action="continue-hide" data-key="${key}" aria-label="Hide ${title} from this rail">Hide</button>
+        ${isMovie ? '' : `<button class="ce-btn ce-drop" data-action="continue-drop" data-tid="${id}" data-meta="${meta}" aria-label="Stop tracking ${title} everywhere">Dropped</button>`}
       </div>` : ''}
     </div>
   </article>`;
@@ -309,6 +310,15 @@ export function initHomeActions() {
     'continue-edit': () => { continueEditing = !continueEditing; renderContinueWatching(); },
     'continue-pin': (el) => { togglePinned(el.dataset.key); renderContinueWatching(); },
     'continue-hide': (el) => { toggleHidden(el.dataset.key); renderContinueWatching(); },
+    // Hiding is local to this rail; dropping says the viewer is done with the
+    // show, which Stats and the franchise suggestions read too.
+    'continue-drop': (el) => {
+      const id = +el.dataset.tid;
+      let meta = {}; try { meta = JSON.parse(el.dataset.meta || '{}'); } catch (_) {}
+      if (setDropped(id, true, meta) === null) return;
+      toast('Stopped tracking — your episodes are kept', 'info');
+      renderContinueWatching();
+    },
     'continue-move': (el) => {
       const visible = [...document.querySelectorAll('.continue-row .continue-card[data-continue]')].map(node => node.dataset.continue);
       if (moveContinue(el.dataset.key, +el.dataset.dir, visible)) renderContinueWatching();

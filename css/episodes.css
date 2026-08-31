@@ -346,3 +346,21 @@
 @media (prefers-reduced-motion:reduce){
   .continue-row.continue-reordering .continue-card{transition:none}
 }
+
+/* ===== DROPPED SHOWS =====
+   A series the viewer walked away from. Every episode they watched is kept, so
+   the panel keeps its shape and its numbers — only the green "you are making
+   progress" cue is dropped for a neutral one, and picking it back up is the
+   loud action rather than marking the next episode. */
+.show-progress.dropped{
+  border-color:rgba(255,255,255,.1);
+  background:radial-gradient(circle at 0 0,rgba(255,255,255,.05),transparent 42%),rgba(255,255,255,.02);
+}
+.show-progress.dropped .show-progress-copy>span{color:var(--text3)}
+.show-progress.dropped .show-progress-bar i{background:linear-gradient(90deg,var(--text3),var(--text2))}
+.show-undrop{border-color:rgba(52,211,153,.34)!important;color:#5ee8b8!important}
+.show-undrop:hover{background:rgba(16,185,129,.1)!important}
+/* Hiding is about this rail; dropping is about the show. The label carries the
+   difference, so the button only needs to not look like the one beside it. */
+.ce-btn.ce-drop{border-color:rgba(255,255,255,.14)}
+.ce-btn.ce-drop:hover{border-color:rgba(229,9,20,.4);color:#ff8b93}

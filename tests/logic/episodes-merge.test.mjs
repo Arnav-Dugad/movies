@@ -190,4 +190,53 @@ check('watched and removed never overlap after a merge', (() => {
   return true;
 })());
 
+// ================= dropping a show ==========================================
+// "I walked away from this" and "I picked it back up" are both decisions, so a
+// merge has to be able to tell them apart from a device that simply has not
+// heard about either yet.
+
+let dropPhone = device(() => { ep.toggleEpisode(1, 1, 1, SHOW); ep.setDropped(1, true, SHOW); }, T0 + 2000);
+let dropLaptop = device(() => { ep.toggleEpisode(1, 1, 1, SHOW); }, T0 + 1000);
+
+check('a drop reaches a device that never saw it',
+  ep.mergeEntries(dropLaptop, dropPhone).dropped === true);
+check('and that is order-independent',
+  ep.mergeEntries(dropPhone, dropLaptop).dropped === true);
+
+// The newer document decides. A device still holding the drop must not undo a
+// later change of mind.
+let resumed = device(() => { ep.toggleEpisode(1, 1, 1, SHOW); ep.setDropped(1, true, SHOW); ep.setDropped(1, false, SHOW); }, T0 + 3000);
+check('picking a show back up beats an older device still holding the drop',
+  ep.mergeEntries(dropPhone, resumed).dropped === false);
+check('and that is order-independent',
+  ep.mergeEntries(resumed, dropPhone).dropped === false);
+
+// An exact tie has no "newer", so both sides must agree — which errs toward the
+// show staying visible, the smaller mistake of the two.
+let tieDropped = device(() => { ep.toggleEpisode(1, 1, 1, SHOW); ep.setDropped(1, true, SHOW); }, T0 + 5000);
+let tieWatching = device(() => { ep.toggleEpisode(1, 1, 2, SHOW); }, T0 + 5000);
+check('an exact tie leaves the show in Continue Watching',
+  ep.mergeEntries(tieDropped, tieWatching).dropped === false);
+check('a tie where both agree keeps it dropped',
+  ep.mergeEntries(tieDropped, device(() => { ep.toggleEpisode(1, 1, 2, SHOW); ep.setDropped(1, true, SHOW); }, T0 + 5000)).dropped === true);
+check('the tie-break is symmetric',
+  ep.mergeEntries(tieWatching, tieDropped).dropped === ep.mergeEntries(tieDropped, tieWatching).dropped);
+
+check('dropping never loses an episode the viewer watched',
+  watchedOf(ep.mergeEntries(dropPhone, dropLaptop), 1).join(',') === '1',
+  watchedOf(ep.mergeEntries(dropPhone, dropLaptop), 1).join(','));
+check('the decision timestamp survives the merge',
+  ep.mergeEntries(dropLaptop, dropPhone).droppedAt === dropPhone.droppedAt);
+check('merging a drop is idempotent', (() => {
+  const once = ep.mergeEntries(dropPhone, dropLaptop);
+  return ep.mergeEntries(once, once).dropped === once.dropped;
+})());
+
+// A document holding only "I dropped this" still has something to say.
+state.episodeProgress = {};
+ep.setDropped(1, true, SHOW);
+check('a show can be dropped without a single episode ticked',
+  ep.showEntry(1)?.dropped === true, JSON.stringify(ep.showEntry(1)?.dropped));
+state.episodeProgress = {};
+
 summary();

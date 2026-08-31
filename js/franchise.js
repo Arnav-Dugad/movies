@@ -10,6 +10,7 @@
 import { tmdb, pool } from './api.js';
 import { db } from './firebase.js';
 import { state } from './state.js';
+import { isDropped } from './episodes.js';
 
 const CACHE_KEY = 'cv_collections_v1';
 const CACHE_TTL = 7 * 86400000;    // new parts and release dates should surface promptly
@@ -415,11 +416,16 @@ export async function tvFamilySummary({ limit = 8, watched = state.watched } = {
     if (all.length < MIN_FAMILY) continue;
 
     const seenIds = new Set(group.seen.map(show => show.id).filter(Boolean));
-    const unseen = all.filter(show => !seenIds.has(show.id));
+    // A show the viewer started and walked away from is neither seen nor a
+    // sensible thing to suggest next. It stays in `found` — the family really
+    // does contain it — but it never becomes the "carry on with" prompt, which
+    // is the whole point of dropping it.
+    const unseen = all.filter(show => !seenIds.has(show.id) && !isDropped(show.id));
+    const droppedHere = all.filter(show => !seenIds.has(show.id) && isDropped(show.id));
     rows.push({
       key: group.key, name: group.name,
       poster: group.seen.find(show => show.poster)?.poster || all.find(show => show.poster)?.poster || '',
-      found: all.length, seen: seenIds.size, unseen,
+      found: all.length, seen: seenIds.size, unseen, dropped: droppedHere,
       nextUp: unseen[0] || null,
       percent: all.length ? (seenIds.size / all.length) * 100 : 0,
       complete: all.length > 0 && seenIds.size >= all.length,

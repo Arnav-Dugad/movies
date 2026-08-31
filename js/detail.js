@@ -10,7 +10,8 @@ import { mountAmbientVideo } from './video-bg.js';
 import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone, isEpisodeAvailable } from './episode-times.js';
 import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setEpisodePosition, episodeLabel, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
-  seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch } from './episodes.js';
+  seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch,
+  isDropped, setDropped } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
@@ -1131,19 +1132,30 @@ function showProgressPanel(id, det, progress, next) {
       ${positionControl}
     </section>`;
   }
+  const dropped = isDropped(id);
   const nextLabel = next ? episodeLabel(id, next) : (progress.seriesCompleted ? 'Series completed' : 'All caught up');
-  const stateLabel = progress.seriesCompleted ? 'Series completed' : progress.caughtUp ? 'Caught up' : progress.seasonCompleted ? 'Season completed' : 'Continue watching';
-  return `<section class="show-progress${progress.caughtUp ? ' complete' : ''}">
+  const stateLabel = dropped ? 'Dropped'
+    : progress.seriesCompleted ? 'Series completed'
+    : progress.caughtUp ? 'Caught up'
+    : progress.seasonCompleted ? 'Season completed' : 'Continue watching';
+  // Dropping is deliberately quiet: an icon button beside Reset, not a headline
+  // action. Picking the show back up is the loud one, because that is the state
+  // a viewer arrives here wanting to change.
+  const dropControl = dropped
+    ? `<button class="btn-glass show-undrop" data-action="ep-undrop" data-tid="${id}" data-meta="${meta}">Start watching again</button>`
+    : `<button class="btn-glass icon-only" data-action="ep-drop" data-tid="${id}" data-meta="${meta}" aria-label="Stop tracking this show" data-tip="Stop tracking">✕</button>`;
+  return `<section class="show-progress${progress.caughtUp ? ' complete' : ''}${dropped ? ' dropped' : ''}">
     <div class="show-progress-copy">
       <span>${stateLabel}</span>
-      <strong>${esc(nextLabel)}</strong>
-      <p>${progress.watched}/${progress.aired} watched${progress.total > progress.aired ? ` · ${progress.total} total` : ''}</p>
+      <strong>${esc(dropped ? 'You stopped watching this' : nextLabel)}</strong>
+      <p>${progress.watched}/${progress.aired} watched${progress.total > progress.aired ? ` · ${progress.total} total` : ''}${dropped ? ' · hidden from Continue Watching' : ''}</p>
       <div class="show-progress-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
     </div>
     <div class="show-progress-actions">
       <b>${progress.percent}%</b>
-      ${next ? `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark next</button>` : ''}
-      ${progress.caughtUp ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all</button>`}
+      ${dropped || !next ? '' : `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark next</button>`}
+      ${dropped || progress.caughtUp ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all</button>`}
+      ${dropControl}
       <button class="btn-glass icon-only" data-action="ep-reset" data-tid="${id}" aria-label="Reset episode progress" data-tip="Reset">↻</button>
     </div>
     ${positionControl}
@@ -1609,6 +1621,21 @@ export function initDetail() {
       const tid = +el.dataset.tid;
       clearShowProgress(tid);
       toast('Episode progress cleared', 'info');
+      openDetail(tid, 'tv');
+    },
+    // Dropping keeps every episode already watched — it changes what CineVerse
+    // asks of you, not what it remembers. The re-render is the honest way to
+    // repaint the panel, the rail and the franchise rows in one go.
+    'ep-drop': el => {
+      const tid = +el.dataset.tid;
+      if (setDropped(tid, true, readEpisodeMeta(el)) === null) return;
+      toast('Stopped tracking — your episodes are kept', 'info');
+      openDetail(tid, 'tv');
+    },
+    'ep-undrop': el => {
+      const tid = +el.dataset.tid;
+      if (setDropped(tid, false, readEpisodeMeta(el)) === null) return;
+      toast('Back in Continue Watching', 'success');
       openDetail(tid, 'tv');
     },
     'go-collection': (el) => document.dispatchEvent(new CustomEvent('cv:go', { detail: `/collection/${el.dataset.cid}` })),
