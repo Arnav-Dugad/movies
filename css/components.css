@@ -172,7 +172,9 @@
 .card-badge{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:50px;font-size:.64rem;font-weight:800;z-index:1;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,var(--red),var(--red2));box-shadow:0 2px 8px var(--red-glow)}
 .card-wl{position:absolute;bottom:8px;right:8px;width:32px;height:32px;background:rgba(6,6,11,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:2;opacity:0;transform:translateY(8px);transition:all .3s var(--ease);font-size:16px;border:1px solid rgba(255,255,255,.1)}
 .card:hover .card-wl,.card-wl.in{opacity:1;transform:translateY(0)}
-.card-wl.in{color:var(--red);border-color:rgba(229,9,20,.3)}
+/* --red measures 4.22:1 on the card ground, just under AA. --red2 is the same
+   brand red one step brighter and reaches 5.3:1, so the tick stays legible. */
+.card-wl.in{color:var(--red2);border-color:rgba(229,9,20,.3)}
 .card-wl:hover{background:var(--red);color:#fff;border-color:var(--red)}
 .card-wl svg{width:16px;height:16px}
 /* Quick-rate, bottom-LEFT (mirrors .card-wl bottom-right). z-index:3 puts it above
