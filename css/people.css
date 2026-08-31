@@ -98,3 +98,58 @@
   .studio-decade-row{height:64px;gap:6px}
 }
 @media(prefers-reduced-motion:reduce){.career-bar,.studio-decade i,.person-photo-item{transition:none}}
+
+/* ===== CAREER ARC =====
+   Score against year, area proportional to votes, over a vote-weighted trend.
+   The plot stays quiet: one hairline grid, hollow dots for the career and solid
+   ones for titles already in the viewer's library, so their own history is the
+   only thing that reads as filled-in. */
+.person-arc{margin-top:30px}
+.arc-plot{
+  margin-top:12px;padding:2px 0;border-radius:14px;
+  background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,.008));
+  border:1px solid var(--glass-border);
+}
+.arc-plot svg{display:block;width:100%;height:270px;overflow:visible}
+.arc-grid{stroke:rgba(255,255,255,.07);stroke-width:1;vector-effect:non-scaling-stroke}
+.arc-tick{fill:var(--text3);font-size:15px;font-family:var(--font-mono)}
+.arc-trend{
+  fill:none;stroke:var(--gold);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round;
+  vector-effect:non-scaling-stroke;opacity:.85;
+}
+.arc-dot{
+  fill:rgba(255,255,255,.05);stroke:var(--text3);stroke-width:1.5;
+  vector-effect:non-scaling-stroke;cursor:pointer;
+  transition:fill .2s var(--ease),stroke .2s var(--ease);
+}
+.arc-dot:hover,.arc-dot:focus-visible{fill:var(--red);stroke:#fff;outline:none}
+.arc-dot.mine{fill:rgba(52,211,153,.55);stroke:var(--green2)}
+.arc-dot.mine:hover,.arc-dot.mine:focus-visible{fill:var(--green2);stroke:#fff}
+.arc-axis{
+  display:flex;justify-content:space-between;margin-top:7px;
+  color:var(--text3);font-family:var(--font-mono);font-size:.6rem;
+}
+.arc-facts{
+  list-style:none;padding:0;margin:14px 0 0;display:grid;gap:10px;
+  grid-template-columns:repeat(auto-fit,minmax(178px,1fr));
+}
+.arc-facts li{
+  min-width:0;padding:13px 15px;border:1px solid var(--glass-border);border-radius:14px;
+  background:rgba(255,255,255,.022);
+}
+.arc-facts span{
+  display:block;color:var(--text3);font-size:.52rem;font-weight:850;
+  text-transform:uppercase;letter-spacing:.11em;
+}
+.arc-facts strong{
+  display:block;margin-top:5px;overflow:hidden;font-size:.92rem;font-weight:750;
+  text-overflow:ellipsis;white-space:nowrap;
+}
+.arc-facts small{display:block;margin-top:3px;color:var(--text3);font-size:.62rem}
+@media(max-width:700px){
+  .arc-plot svg{height:210px}
+  .arc-tick{font-size:19px}
+  .arc-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .arc-facts li{padding:11px 12px}
+}
+.arc-trimmed{color:var(--text3);font-size:.56rem;text-align:center}

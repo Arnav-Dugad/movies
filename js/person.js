@@ -10,6 +10,7 @@ import { esc, $ } from './ui.js';
 import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
+import { state } from './state.js';
 
 let reqGen = 0;              // bumped on every openPerson(); guards a stale fetch
 let person = null;           // the last successfully loaded person payload
@@ -61,6 +62,38 @@ function activeCredits(groups) {
   return sortCredits(list, view.sort);
 }
 
+// A single archive-footage or awards-show credit from decades before the career
+// started stretches any time axis over mostly-empty years — TMDB has Nolan at
+// the 1953 Oscars, and DiCaprio's record reaches back to 1944. Both charts trim
+// to the 2nd-98th percentile of actual credits and say how many fell outside.
+// @param {number[]} years  one entry per credit, not per distinct year
+// @returns {{first:number,last:number,trimmed:number}|null}
+const YEAR_GAP = 8;          // an empty stretch this long is not a working period
+function trimmedYearRange(years) {
+  const timeline = [...years].filter(Boolean).sort((a, b) => a - b);
+  if (!timeline.length) return null;
+  let first = timeline[Math.floor(timeline.length * 0.02)];
+  let last = timeline[Math.max(0, Math.ceil(timeline.length * 0.98) - 1)];
+
+  // A percentile cannot help a short filmography: at 37 credits the 2nd
+  // percentile is still the very first one, so Nolan's 1953 Oscars appearance
+  // survived and stretched the axis over forty empty years. Also cut a long
+  // empty gap when only a handful of credits sit outside it — a real career has
+  // no eight-year hole at its very start or end.
+  const inner = timeline.filter(year => year >= first && year <= last);
+  const maxCut = Math.max(1, Math.floor(inner.length * 0.1));
+  for (let index = 1; index <= maxCut && index < inner.length; index++) {
+    if (inner[index] - inner[index - 1] >= YEAR_GAP) first = inner[index];
+  }
+  for (let step = 1; step <= maxCut && inner.length - 1 - step >= 0; step++) {
+    const index = inner.length - step;
+    if (inner[index] - inner[index - 1] >= YEAR_GAP) last = inner[index - 1];
+  }
+
+  if (!first || !last || last <= first || last - first > 120) return null;
+  return { first, last, trimmed: timeline.filter(year => year < first || year > last).length };
+}
+
 // ---------- career chart ----------
 // One series (titles released per year), so no legend: the caption names it.
 // Sequential single hue, hairline baseline, and only the extremes are labelled.
@@ -73,17 +106,11 @@ function careerChart(groups) {
     }
   }
   if (years.size < 3) return '';
-  // A single archive-footage credit from decades before the career started would
-  // otherwise stretch the axis over eighty mostly-empty bars (DiCaprio's TMDB
-  // record reaches back to 1944). Trim the sparse tails to the 2nd-98th
-  // percentile of actual credits and say how many fell outside.
   const timeline = [];
   for (const [year, count] of years) for (let index = 0; index < count; index++) timeline.push(year);
-  timeline.sort((a, b) => a - b);
-  const first = timeline[Math.floor(timeline.length * 0.02)];
-  const last = timeline[Math.max(0, Math.ceil(timeline.length * 0.98) - 1)];
-  if (!first || !last || last <= first || last - first > 120) return '';
-  const trimmed = timeline.filter(year => year < first || year > last).length;
+  const range = trimmedYearRange(timeline);
+  if (!range) return '';
+  const { first, last, trimmed } = range;
   const span = Array.from({ length: last - first + 1 }, (_, index) => ({ year: first + index, count: years.get(first + index) || 0 }));
   const max = Math.max(...span.map(point => point.count));
   const busiest = span.reduce((best, point) => (point.count > best.count ? point : best), span[0]);
@@ -92,6 +119,120 @@ function careerChart(groups) {
     <div class="person-section-head"><div><span>Career shape</span><h2>Titles per year</h2></div><b>${first} – ${last}</b></div>
     <div class="career-chart" role="group" aria-label="Titles released per year">${bars}</div>
     <div class="career-axis"><span>${first}</span><span class="career-peak">Busiest year ${busiest.year} · ${busiest.count} titles${trimmed ? ` · ${trimmed} archival credit${trimmed === 1 ? '' : 's'} outside this range` : ''}</span><span>${last}</span></div>
+  </section>`;
+}
+
+// ---------- career arc ----------
+// The bar chart above answers "how much did they work". This answers the
+// question a deep-dive is actually for: how the work was RECEIVED, and how that
+// moved over a career. Every rated title is a point — year across, score up,
+// area proportional to how many people voted — over a vote-weighted three-year
+// trend line. Titles already in the viewer's library are filled in, so their own
+// history reads against the career rather than beside it.
+const ARC = { w: 1000, h: 300, padL: 34, padR: 14, padT: 16, padB: 26 };
+
+function arcPoints(groups) {
+  const seen = new Map();
+  for (const bucket of groups.values()) {
+    for (const credit of bucket.values()) {
+      const year = yearOf(credit);
+      // 50 votes is where TMDB's average stops being one person's opinion.
+      if (!year || !(credit.vote_average > 0) || !(credit.vote_count >= 50)) continue;
+      const key = creditKey(credit);
+      if (!seen.has(key)) seen.set(key, { key, year, score: credit.vote_average, votes: credit.vote_count,
+        title: titleOf(credit), id: credit.id, type: credit.media_type || 'movie' });
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.year - b.year || a.title.localeCompare(b.title));
+}
+
+/** Vote-weighted mean per year, then smoothed over a three-year window. */
+function arcTrend(points) {
+  const byYear = new Map();
+  for (const point of points) {
+    const bucket = byYear.get(point.year) || { weight: 0, total: 0 };
+    bucket.weight += point.votes; bucket.total += point.score * point.votes;
+    byYear.set(point.year, bucket);
+  }
+  const years = [...byYear.keys()].sort((a, b) => a - b);
+  return years.map(year => {
+    let weight = 0, total = 0;
+    for (const offset of [-1, 0, 1]) {
+      const bucket = byYear.get(year + offset);
+      if (bucket) { weight += bucket.weight; total += bucket.total; }
+    }
+    return { year, score: weight ? total / weight : 0 };
+  });
+}
+
+function careerArc(groups) {
+  const all = arcPoints(groups);
+  if (all.length < 6) return '';
+  const range = trimmedYearRange(all.map(point => point.year));
+  if (!range) return '';
+  const points = all.filter(point => point.year >= range.first && point.year <= range.last);
+  if (points.length < 6) return '';
+  const firstYear = range.first, lastYear = range.last;
+  if (lastYear <= firstYear) return '';
+  const outside = all.length - points.length;
+  const scores = points.map(point => point.score);
+  const low = Math.max(0, Math.floor(Math.min(...scores) - 0.4));
+  const high = Math.min(10, Math.ceil(Math.max(...scores) + 0.4));
+  if (high <= low) return '';
+
+  const plotW = ARC.w - ARC.padL - ARC.padR, plotH = ARC.h - ARC.padT - ARC.padB;
+  const x = year => ARC.padL + ((year - firstYear) / (lastYear - firstYear)) * plotW;
+  const y = score => ARC.padT + (1 - (score - low) / (high - low)) * plotH;
+  // Area, not radius, tracks the vote count — a radius scale would exaggerate a
+  // blockbuster into ten times the ink it deserves.
+  const maxVotes = Math.max(...points.map(point => point.votes));
+  const r = votes => 3.2 + Math.sqrt(votes / maxVotes) * 8.5;
+
+  const inLibrary = key => !!(state.watched?.[key] || (state.watchlist || []).some(item => item.id === key));
+  const trend = arcTrend(points);
+  const line = trend.length > 1
+    ? `<polyline class="arc-trend" points="${trend.map(point => `${x(point.year).toFixed(1)},${y(point.score).toFixed(1)}`).join(' ')}" />`
+    : '';
+
+  const best = points.reduce((top, point) => (point.score > top.score ? point : top), points[0]);
+  const biggest = points.reduce((top, point) => (point.votes > top.votes ? point : top), points[0]);
+  const half = Math.floor(points.length / 2);
+  const meanOf = list => list.reduce((sum, point) => sum + point.score, 0) / (list.length || 1);
+  const early = meanOf(points.slice(0, half)), late = meanOf(points.slice(-half));
+  const shift = late - early;
+  const direction = Math.abs(shift) < 0.15 ? 'held steady'
+    : shift > 0 ? `rose ${shift.toFixed(1)} points` : `fell ${Math.abs(shift).toFixed(1)} points`;
+  const mine = points.filter(point => inLibrary(`${point.type}_${point.id}`));
+
+  const gridlines = [];
+  for (let score = Math.ceil(low); score <= high; score++) {
+    gridlines.push(`<line class="arc-grid" x1="${ARC.padL}" y1="${y(score).toFixed(1)}" x2="${ARC.w - ARC.padR}" y2="${y(score).toFixed(1)}" />`);
+    gridlines.push(`<text class="arc-tick" x="${ARC.padL - 7}" y="${(y(score) + 3.4).toFixed(1)}" text-anchor="end">${score}</text>`);
+  }
+
+  const dots = points.map(point => {
+    const own = inLibrary(`${point.type}_${point.id}`);
+    return `<circle class="arc-dot${own ? ' mine' : ''}" cx="${x(point.year).toFixed(1)}" cy="${y(point.score).toFixed(1)}" r="${r(point.votes).toFixed(1)}"
+      data-action="open-detail" data-id="${point.id}" data-type="${point.type}" role="button" tabindex="0"
+      data-tip="${esc(point.title)} · ${point.year} · ${point.score.toFixed(1)}"
+      aria-label="${esc(point.title)}, ${point.year}, scored ${point.score.toFixed(1)} from ${point.votes.toLocaleString()} votes${own ? ', in your library' : ''}"><title>${esc(point.title)} (${point.year}) — ${point.score.toFixed(1)}</title></circle>`;
+  }).join('');
+
+  return `<section class="person-arc">
+    <div class="person-section-head"><div><span>Career arc</span><h2>How the work landed</h2></div><b>${points.length} rated titles</b></div>
+    <div class="arc-plot">
+      <svg viewBox="0 0 ${ARC.w} ${ARC.h}" preserveAspectRatio="none" role="img"
+        aria-label="Score against year for ${points.length} titles between ${firstYear} and ${lastYear}. The vote-weighted average ${direction} across the career.">
+        ${gridlines.join('')}${line}${dots}
+      </svg>
+    </div>
+    <div class="arc-axis"><span>${firstYear}</span>${outside ? `<span class="arc-trimmed">${outside} credit${outside === 1 ? '' : 's'} outside this range</span>` : ''}<span>${lastYear}</span></div>
+    <ul class="arc-facts">
+      <li><span>Trend</span><strong>${esc(direction)}</strong><small>${early.toFixed(1)} early · ${late.toFixed(1)} late</small></li>
+      <li><span>Best received</span><strong>${esc(best.title)}</strong><small>${best.score.toFixed(1)} · ${best.year}</small></li>
+      <li><span>Widest reach</span><strong>${esc(biggest.title)}</strong><small>${biggest.votes.toLocaleString()} votes · ${biggest.year}</small></li>
+      <li><span>In your library</span><strong>${mine.length} of ${points.length}</strong><small>${mine.length ? `avg ${meanOf(mine).toFixed(1)}` : 'nothing saved yet'}</small></li>
+    </ul>
   </section>`;
 }
 
@@ -246,6 +387,7 @@ export async function openPerson(id) {
       ${vitalStats(p, groups)}
       ${knownFor.length ? `<section class="person-known"><div class="person-section-head"><div><span>Most seen</span><h2>Known for</h2></div></div><div class="similar-row">${knownFor.map(credit => buildCard(credit, credit.media_type || 'movie')).join('')}</div></section>` : ''}
       ${careerChart(groups)}
+      ${careerArc(groups)}
       ${filmographyHTML(groups)}
       ${photoStrip(p.images)}`;
 
