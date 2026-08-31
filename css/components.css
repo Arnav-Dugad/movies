@@ -1,3 +1,10 @@
+/* Keyboard users land on 13 navigation links before any page content; this
+   gives them one Tab to jump past it. Off-screen until focused. */
+.skip-link{position:fixed;top:10px;left:10px;z-index:9999;padding:10px 16px;border-radius:10px;
+  background:var(--red);color:#fff;font-size:.82rem;font-weight:750;text-decoration:none;
+  transform:translateY(-160%);transition:transform .18s var(--ease-out)}
+.skip-link:focus{transform:translateY(0);outline:2px solid #fff;outline-offset:2px}
+
 /* ===== BUTTONS ===== */
 .btn-primary{padding:13px 28px;background:linear-gradient(135deg,var(--red),var(--red2));color:#fff;border-radius:50px;font-weight:700;font-size:.9rem;display:inline-flex;align-items:center;gap:8px;transition:transform .3s var(--ease-out),box-shadow .3s var(--ease-out);letter-spacing:.3px;position:relative;overflow:hidden}
 .btn-primary::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,.15));opacity:0;transition:opacity .3s}
@@ -40,9 +47,13 @@
 .auth-google:hover{border-color:var(--text3);background:var(--bg3)}
 .auth-error{background:rgba(229,9,20,.12);border:1px solid rgba(229,9,20,.25);border-radius:var(--radius-sm);padding:12px 14px;color:var(--red2);font-size:.85rem;margin-bottom:16px;display:none;animation:shake .4s}
 .auth-error.show{display:flex;align-items:center;gap:8px}
-.auth-forgot{text-align:right;margin-top:-8px;margin-bottom:12px}
-.auth-forgot a{font-size:.8rem;color:var(--text3);transition:color .2s}
+.auth-forgot{display:flex;justify-content:flex-end;margin-top:-8px;margin-bottom:12px}
+/* The link sits in a full-width row, so a click that lands beside the words used
+   to hit the container and do nothing. Padding gives it a real target without
+   moving the text. */
+.auth-forgot a{font-size:.8rem;color:var(--text3);transition:color .2s;padding:6px 2px 6px 14px;margin:-6px -2px -6px 0;border-radius:6px}
 .auth-forgot a:hover{color:var(--red)}
+.auth-forgot a:focus-visible{outline:2px solid var(--red);outline-offset:2px;color:var(--red)}
 
 /* ===== SEARCH PAGE ===== */
 .search-page{display:none;padding:calc(var(--nav-h) + 12px) 0 120px;max-width:1200px;margin:0 auto}

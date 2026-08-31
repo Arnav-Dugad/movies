@@ -22,10 +22,30 @@ function roundedRect(ctx, x, y, width, height, radius) {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + width, y, x + width, y + height, r); ctx.arcTo(x + width, y + height, x, y + height, r); ctx.arcTo(x, y + height, x, y, r); ctx.arcTo(x, y, x + width, y, r); ctx.closePath();
 }
 
+/**
+ * Load artwork in a form the share canvas can draw AND read back.
+ *
+ * This used to be a plain fetch(), which failed for exactly the artwork that
+ * matters. The detail page paints the poster and backdrop first with ordinary
+ * <img> elements; the browser caches those responses as no-CORS, and both a
+ * later CORS-mode fetch() AND a later crossorigin <img> for the same URL are
+ * handed that cache entry, which carries no readable
+ * Access-Control-Allow-Origin — so the share card silently lost its artwork
+ * and logged a CORS error every time.
+ *
+ * TMDB does send `Access-Control-Allow-Origin: *`; the cached request mode was
+ * the problem, not the server. `cache: 'reload'` skips the poisoned entry and
+ * stores a CORS-clean one, which is why it is the primary path rather than a
+ * fallback: the ordinary case here is an image the page has already shown.
+ * Sharing is a deliberate, occasional action, so one revalidated download is a
+ * fair price for a card that always has its artwork.
+ */
 async function bitmap(path) {
   if (!path) return null;
+  const url = `${IMG}original${path}`;
   try {
-    const response = await fetch(`${IMG}original${path}`); if (!response.ok) return null;
+    const response = await fetch(url, { cache: 'reload' });
+    if (!response.ok) return null;
     const blob = await response.blob();
     if (window.createImageBitmap) return await createImageBitmap(blob);
     const objectURL = URL.createObjectURL(blob);

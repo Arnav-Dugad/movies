@@ -16,6 +16,11 @@
 <link rel="preconnect" href="https://image.tmdb.org">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
+<!-- The stylesheets below are render-blocking, so nothing paints until they
+     arrive — and on a slow connection the browser shows its own white ground
+     first. This one rule makes the very first paint CineVerse's own black. -->
+<style>html{background:#06060b;color-scheme:dark}</style>
+
 <!-- Styles (modular) -->
 <link rel="stylesheet" href="/css/variables.css">
 <link rel="stylesheet" href="/css/base.css">
@@ -61,6 +66,10 @@ setTimeout(function () {
 </script>
 </head>
 <body>
+
+<!-- Every route is its own <main>, so the target is resolved at click time
+     rather than hard-coded to one id. -->
+<a class="skip-link" href="#" data-action="skip-to-content">Skip to content</a>
 
 <!-- Ambient effects -->
 <div class="aurora" aria-hidden="true"></div>

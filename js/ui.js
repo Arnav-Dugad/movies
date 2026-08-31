@@ -1,4 +1,5 @@
 // ===== SHARED UI HELPERS =====
+import { lastActionElement } from './events.js';
 
 export function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML.replace(/'/g,'&#39;').replace(/"/g,'&quot;');}
 export function fmt(n){if(n>=1e9)return(n/1e9).toFixed(1)+'B';if(n>=1e6)return(n/1e6).toFixed(0)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return String(n);}
@@ -8,24 +9,82 @@ export const isTouch=()=>window.matchMedia('(hover: none)').matches;
 export const $=(id)=>document.getElementById(id);
 
 // ===== FOCUS TRAP =====
-// Keeps Tab inside an open modal and restores focus to whatever opened it.
-// Returns a teardown — call it from the modal's close path. Queried lazily on
-// each Tab so modals that rebuild their contents (e.g. the rating stars) work.
+/**
+ * Keep Tab inside `container` until the returned release function is called,
+ * then hand focus back to whatever opened it.
+ *
+ * The listener is on the document, not on the container. It used to be on the
+ * container, which meant the trap only worked once focus was already inside:
+ * an overlay opened while focus sat on the trigger behind it never saw the
+ * keydown at all, so Tab walked straight into the page underneath and a
+ * keyboard user was left operating a screen they could not see. For the same
+ * reason focus is moved into the container up front.
+ */
 export function trapFocus(container, restore = document.activeElement) {
-  const SEL = 'a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])';
+  // A <div role="button"> is never focused by a click, so `document.activeElement`
+  // at open time is often <body>. The element that actually fired the action is
+  // the honest place to send focus back to.
+  if (!restore || restore === document.body || restore === document.documentElement) {
+    restore = lastActionElement() || restore;
+  }
+  const SEL = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  const focusable = () => [...container.querySelectorAll(SEL)].filter(el => el.offsetParent !== null || el === document.activeElement);
+
+  if (!container.contains(document.activeElement)) {
+    const first = focusable()[0];
+    if (first) first.focus();
+    else {
+      // Nothing to land on yet (a modal still painting its contents). The
+      // container itself takes focus so the trap has something to hold.
+      if (!container.hasAttribute('tabindex')) container.setAttribute('tabindex', '-1');
+      try { container.focus({ preventScroll: true }); } catch (_) {}
+    }
+  }
+
   const onKey = e => {
     if (e.key !== 'Tab') return;
-    const f = [...container.querySelectorAll(SEL)].filter(el => el.offsetParent !== null);
+    const f = focusable();
     if (!f.length) return;
     const first = f[0], last = f[f.length - 1];
-    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    if (!container.contains(document.activeElement)) {
+      // Focus escaped (or never arrived). Pull it back to the right end.
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+    } else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   };
-  container.addEventListener('keydown', onKey);
+  document.addEventListener('keydown', onKey, true);
   return () => {
-    container.removeEventListener('keydown', onKey);
-    try { restore && restore.focus(); } catch (_) {}
+    document.removeEventListener('keydown', onKey, true);
+    restoreFocusTo(restore);
   };
+}
+
+/**
+ * Put focus back on the control a modal was opened from.
+ *
+ * Two things defeat a bare `.focus()` here. Many triggers are a <div> or <span>
+ * carrying role="button", which cannot receive focus at all without a tabindex,
+ * so the call silently did nothing and Escape dropped the user at the top of the
+ * document. And a modal that writes to the library re-renders the page behind
+ * it, leaving the original node detached — so its replacement is looked up by
+ * the action and payload that identify it.
+ */
+function restoreFocusTo(el) {
+  if (!el) return;
+  if (!document.contains(el)) {
+    const action = el.dataset?.action;
+    if (!action) return;
+    const id = el.dataset.id ? `[data-id="${CSS.escape(el.dataset.id)}"]` : '';
+    el = document.querySelector(`[data-action="${CSS.escape(action)}"]${id}`);
+    if (!el) return;
+  }
+  try {
+    el.focus({ preventScroll: true });
+    if (document.activeElement === el) return;
+    el.setAttribute('tabindex', '-1');
+    el.focus({ preventScroll: true });
+  } catch (_) {}
 }
 
 // ===== SCROLL LOCK (reference-counted so overlays never strand the page) =====

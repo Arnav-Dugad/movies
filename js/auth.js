@@ -232,6 +232,36 @@ function switchAuth(m) {
 
 function showAuthErr(msg) { $('authErrText').textContent = msg; $('authErr').classList.add('show'); }
 
+// Firebase error codes are for logs, not for people. Every path that shows an
+// auth failure goes through this — the reset and Google flows used to print the
+// raw `e.message`, so a mistyped address surfaced as "auth/invalid-email".
+const AUTH_MESSAGES = {
+  'auth/email-already-in-use': 'Email already in use',
+  'auth/wrong-password': 'Incorrect password',
+  'auth/user-not-found': 'No account found',
+  'auth/weak-password': 'Password must be 6+ characters',
+  'auth/invalid-email': 'Invalid email address',
+  'auth/invalid-credential': 'Invalid email or password',
+  'auth/missing-password': 'Please enter your password',
+  'auth/too-many-requests': 'Too many attempts — wait a minute and try again',
+  'auth/network-request-failed': "Can't reach the network — check your connection",
+  'auth/popup-blocked': 'Your browser blocked the sign-in popup',
+  'auth/requires-recent-login': 'Please sign in again to confirm this change',
+  'auth/user-disabled': 'This account has been disabled',
+};
+function authMessage(error) {
+  const known = AUTH_MESSAGES[error?.code];
+  if (known) return known;
+  // Never show a bare code. An unmapped failure gets a plain sentence, and the
+  // detail goes to the console where it is useful.
+  const raw = String(error?.message || '');
+  if (!raw || /^auth\//.test(raw) || /^Firebase:/.test(raw)) {
+    console.warn('auth', error?.code || raw, error);
+    return 'Something went wrong — please try again';
+  }
+  return raw;
+}
+
 async function handleAuth() {
   const email = $('authEmail').value.trim(), pass = $('authPass').value, name = $('authName').value.trim(), btn = $('authBtn');
   if (!email || !pass) return showAuthErr('Please fill in all fields');
@@ -247,8 +277,7 @@ async function handleAuth() {
     closeAuth();
     toast(authMode === 'login' ? 'Welcome back!' : 'Account created!', 'success');
   } catch (e) {
-    const m = { 'auth/email-already-in-use': 'Email already in use', 'auth/wrong-password': 'Incorrect password', 'auth/user-not-found': 'No account found', 'auth/weak-password': 'Password must be 6+ characters', 'auth/invalid-email': 'Invalid email address', 'auth/invalid-credential': 'Invalid email or password' };
-    showAuthErr(m[e.code] || e.message);
+    showAuthErr(authMessage(e));
   } finally {
     btn.disabled = false; btn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
   }
@@ -261,7 +290,7 @@ async function handleGoogleAuth() {
     if (r.additionalUserInfo?.isNewUser) await db.collection('users').doc(r.user.uid).set({ name: r.user.displayName, email: r.user.email, created: firebase.firestore.FieldValue.serverTimestamp() });
     closeAuth();
     toast('Signed in with Google!', 'success');
-  } catch (e) { if (e.code !== 'auth/popup-closed-by-user') showAuthErr(e.message); }
+  } catch (e) { if (e.code !== 'auth/popup-closed-by-user') showAuthErr(authMessage(e)); }
 }
 
 function handleProfileAuth() {
@@ -276,7 +305,7 @@ async function resetPassword(e) {
   const email = $('authEmail').value.trim();
   if (!email) return showAuthErr('Enter your email first');
   try { await auth.sendPasswordResetEmail(email); toast('Password reset email sent!', 'success'); }
-  catch (e2) { showAuthErr(e2.message); }
+  catch (e2) { showAuthErr(authMessage(e2)); }
 }
 
 // ===== DELETE ACCOUNT =====

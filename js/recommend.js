@@ -43,7 +43,15 @@ let sessionRotation = null;
 function visitRotation() {
   if (sessionRotation !== null) return sessionRotation;
   let stored = 0;
-  try { stored = Math.max(0, Math.floor(+(localStorage.getItem(SESSION_KEY()) || 0))); } catch (_) { stored = 0; }
+  // Math.max(0, NaN) is NaN, so a non-numeric value here (a truncated write, an
+  // older build, a corrupted profile) used to flow straight into pageFor() and
+  // send `page=NaN` to TMDB — every personalised row came back 400 and the rail
+  // was silently empty. Worse, String(NaN) was written back, so it stayed
+  // broken on that device for good. The value is now checked, not just coerced.
+  try {
+    const raw = Number(localStorage.getItem(SESSION_KEY()));
+    stored = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+  } catch (_) { stored = 0; }
   sessionRotation = (stored + 1) % 100000;
   try { localStorage.setItem(SESSION_KEY(), String(sessionRotation)); } catch (_) {}
   return sessionRotation;

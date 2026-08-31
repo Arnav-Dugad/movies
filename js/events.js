@@ -9,6 +9,12 @@ export function registerActions(map) {
   for (const [name, fn] of Object.entries(map)) handlers.set(name, fn);
 }
 
+// The element whose action fired most recently. A modal opened from a <div
+// role="button"> (which a click never focuses) had no trigger to hand focus
+// back to on close, so Escape dropped a keyboard user at the top of the page.
+let lastTrigger = null;
+export const lastActionElement = () => lastTrigger;
+
 function dispatch(el, e) {
   const action = el.dataset.action;
   const fn = handlers.get(action);
@@ -16,7 +22,7 @@ function dispatch(el, e) {
   // primary click is still handled by the SPA router for the smooth transition.
   if (el.tagName === 'A' && el.hasAttribute('href') &&
       (e.button > 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) return false;
-  if (fn) { e.preventDefault(); fn(el, e); return true; }
+  if (fn) { lastTrigger = el; e.preventDefault(); fn(el, e); return true; }
   return false;
 }
 

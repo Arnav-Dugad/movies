@@ -8,7 +8,14 @@
 --green:#10b981;--green2:#34d399;--green-glow:rgba(16,185,129,.15);
 --purple:#8b5cf6;--purple2:#a78bfa;
 --pink:#ec4899;
---text:#f0f0f5;--text2:#9ca3af;--text3:#4b5563;
+--text:#f0f0f5;--text2:#9ca3af;
+/* --text3 is the app's secondary metadata colour: years, counts, section
+   labels, episode meta. At #4b5563 it measured 2.67:1 on --bg and 2.4:1 on
+   the card surfaces — well under the 4.5:1 WCAG AA needs for body text, and
+   most of it is set at 9-13px. #767f8d keeps the same cool neutral and the
+   same place in the hierarchy (--text2 stays clearly brighter) while
+   measuring 5.0:1 on --bg and 4.5:1 on --bg3. */
+--text3:#767f8d;
 --font:'Outfit',sans-serif;
 --font-display:'Playfair Display',serif;
 --font-mono:'JetBrains Mono',monospace;

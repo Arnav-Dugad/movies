@@ -125,8 +125,14 @@ function closeAllModals() {
 
 function renderRoute(path, { isPopState = false, scroll = true } = {}) {
   const query = new URL(location.href).searchParams;
-  const match = matchRoute(path) || matchRoute('/');
-  const { route, params } = match;
+  const matched = matchRoute(path);
+  // An unmatched path used to render home while the address bar kept the broken
+  // URL: no nav item highlighted, refresh reloaded the same dead link, and
+  // sharing it passed the problem on. Home is the right destination, so the URL
+  // is corrected to say so.
+  if (!matched && path !== '/') history.replaceState({ path: '/' }, '', '/' + location.search);
+  const { route, params } = matched || matchRoute('/');
+  path = matched ? path : '/';
 
   closeDetail(); // clears any running countdown intervals
   closeAllModals();
@@ -159,6 +165,13 @@ function renderRoute(path, { isPopState = false, scroll = true } = {}) {
 function runRender(path, opts) {
   if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const t = document.startViewTransition(() => renderRoute(path, opts));
+    // A navigation that starts before the previous morph finishes skips it, and
+    // the skip rejects `ready` and `updateCallbackDone` as well as `finished`.
+    // Only `finished` was handled, so browsing quickly logged an uncaught
+    // "AbortError: Transition was skipped" for every interrupted transition.
+    // Being interrupted is normal here, so all three are acknowledged.
+    t.ready?.catch(() => {});
+    t.updateCallbackDone?.catch(() => {});
     // After the morph, drop any lingering shared name so the next transition is clean.
     t.finished.finally(() => { document.querySelectorAll('[style*="view-transition-name"]').forEach(el => { el.style.viewTransitionName = ''; }); }).catch(() => {});
   } else {
@@ -203,6 +216,15 @@ export function initRouter() {
     'show-page': (el) => { $('profileDD')?.classList.remove('active'); navigate(pageToPath(el.dataset.page)); },
     'go-home': () => navigate('/'),
     'back-to-top': () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+    // Which element is "the content" depends on the route, so it is found now
+    // rather than pointed at a fixed id that only exists on one page.
+    'skip-to-content': () => {
+      const page = [...document.querySelectorAll('.page-container')].find(el => el.style.display !== 'none');
+      if (!page) return;
+      if (!page.hasAttribute('tabindex')) page.setAttribute('tabindex', '-1');
+      page.focus({ preventScroll: true });
+      page.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    },
     'back': () => { if (history.state && history.length > 1) history.back(); else navigate('/'); },
   });
 
