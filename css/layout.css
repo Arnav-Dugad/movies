@@ -37,7 +37,7 @@
 /* ===== MOBILE NAV ===== */
 .mobile-nav{position:fixed;bottom:0;left:0;right:0;z-index:5000;background:rgba(6,6,11,.96);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border-top:1px solid var(--glass-border);padding:6px 0 max(6px,env(safe-area-inset-bottom));display:none}
 .mobile-nav-inner{display:flex;align-items:center;justify-content:space-around;max-width:500px;margin:0 auto}
-.mob-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 10px;min-width:52px;color:var(--text3);font-size:.62rem;font-weight:600;transition:all .2s var(--ease);letter-spacing:.3px;position:relative;-webkit-tap-highlight-color:transparent;cursor:pointer}
+.mob-item{display:flex;flex:1 1 0;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 10px;min-width:44px;min-height:48px;color:var(--text3);font-size:.62rem;font-weight:600;transition:all .2s var(--ease);letter-spacing:.3px;position:relative;-webkit-tap-highlight-color:transparent;cursor:pointer}
 .mob-item svg{width:22px;height:22px;transition:all .3s var(--ease)}
 .mob-item.active{color:var(--text)}
 .mob-item.active svg{color:var(--red)}

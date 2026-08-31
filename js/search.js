@@ -167,11 +167,26 @@ function highlight(text, q) {
   } catch (e) { return safe; }
 }
 
+// Several modes fan out to more than one endpoint and merge the answers. They
+// used to use Promise.all, so ONE failing call threw away every result the
+// others had already returned — a real search for "dune" showed the error state
+// with zero results because a supplementary keyword lookup happened to 500 at
+// TMDB. A partial answer is far better than none, so the fan-out keeps whatever
+// succeeded and only fails when every call did.
+async function settleAll(promises) {
+  const settled = await Promise.allSettled(promises);
+  const ok = settled.filter(r => r.status === 'fulfilled').map(r => r.value);
+  if (!ok.length) throw settled[0]?.reason || new Error('every request failed');
+  const failed = settled.length - ok.length;
+  if (failed) console.warn(`search: ${failed} of ${settled.length} requests failed; showing the rest`);
+  return ok;
+}
+
 // ---- unified fetcher (search vs discover), page-aware ----
 async function fetchPage(pageNum) {
   if (mode === 'command') {
     const types = commandCtx.filters.type === 'both' ? ['movie', 'tv'] : [commandCtx.filters.type];
-    const pages = await Promise.all(types.map(type => tmdb(`/discover/${type}`, commandParams(type, pageNum)).then(data => ({ type, data }))));
+    const pages = await settleAll(types.map(type => tmdb(`/discover/${type}`, commandParams(type, pageNum)).then(data => ({ type, data }))));
     return {
       results: pages.flatMap(({ type, data }) => (data.results || []).map(item => ({ ...item, __type: type }))),
       total_pages: Math.max(...pages.map(({ data }) => data.total_pages || 1)),
@@ -193,9 +208,14 @@ async function fetchPage(pageNum) {
         .then(data => ({ type, data })));
     const search = tmdb(`/search/${state.searchFilt}`, { query: keywordCtx.query || curQuery, page: pageNum, include_adult: adultFlag() })
       .then(data => ({ type: state.searchFilt, data }));
-    const pages = await Promise.all([search, ...calls]);
+    // The plain search is first and is the result the viewer actually asked
+    // for; the keyword-discover calls only enrich it. `__tagMatch` therefore
+    // keys off the call, not its position, so a dropped call cannot relabel
+    // the search results as tag matches.
+    const pages = await settleAll([search.then(v => ({ ...v, tagMatch: false })),
+      ...calls.map(c => c.then(v => ({ ...v, tagMatch: true })))]);
     return {
-      results: pages.flatMap(({ type, data }, index) => (data.results || []).map(item => ({ ...item, __type: item.media_type || type, __tagMatch: index > 0 }))),
+      results: pages.flatMap(({ type, data, tagMatch }) => (data.results || []).map(item => ({ ...item, __type: item.media_type || type, __tagMatch: tagMatch }))),
       total_pages: Math.max(1, ...pages.map(({ data }) => data.total_pages || 1)),
       total_results: pages.reduce((sum, { data }) => sum + +(data.total_results || 0), 0),
     };

@@ -71,6 +71,11 @@ setTimeout(function () {
      rather than hard-coded to one id. -->
 <a class="skip-link" href="#" data-action="skip-to-content">Skip to content</a>
 
+<!-- Announces the destination after an in-app navigation. The page swaps
+     without a document load, so nothing otherwise tells a screen reader that
+     anything happened. -->
+<p class="sr-only" id="routeAnnouncer" role="status" aria-live="polite" aria-atomic="true"></p>
+
 <!-- Ambient effects -->
 <div class="aurora" aria-hidden="true"></div>
 <div class="scroll-progress" aria-hidden="true"></div>

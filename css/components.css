@@ -276,12 +276,22 @@
 .stat-val{font-size:.96rem;font-weight:700;line-height:1.35;overflow-wrap:anywhere}
 .stat-val.money{color:var(--green2)}
 .stat-val.providers{margin-top:4px}
-/* Where-to-Watch is the most-used stat card — give it more room + bigger logos. */
-#providerBlock{grid-column:1/-1;min-width:0;max-width:100%}
-#providerBlock .stat-card{padding:17px 20px;width:100%;min-height:0}
-#providerBlock .provider-logo{width:44px;height:44px;border-radius:10px}
-#providerBlock .provider-icons{gap:8px}
+/* ===== WHERE TO WATCH =====
+   Promoted out of the stats grid to sit directly above it — streaming is the
+   most actionable thing on a detail page, and it used to be the last 160px cell
+   at the end. Same card surface as the stats, but full width, with the groups
+   running across instead of stacking and logos big enough to recognise. */
+#providerBlock{min-width:0;max-width:100%;margin-bottom:11px}
+#providerBlock .stat-card{padding:17px 20px;width:100%;min-height:0;justify-content:flex-start}
+#providerBlock .stat-label{display:flex;align-items:center;gap:10px}
+#providerBlock .stat-val.providers{display:flex;flex-wrap:wrap;align-items:flex-start;gap:14px 30px;margin-top:11px}
+#providerBlock .provider-group{margin-bottom:0}
+#providerBlock .provider-group-label{margin-bottom:6px}
+#providerBlock .provider-logo{width:46px;height:46px;border-radius:12px}
+#providerBlock .provider-icons{gap:9px}
+#providerBlock .provider-logo-link:hover{transform:translateY(-3px)}
 #providerBlock .region-select{margin-left:auto}
+.provider-none{font-size:.78rem;color:var(--text3)}
 
 /* Director photo (reuses cast look) */
 /* Each name is its own link (a title can have several directors), so the row — not
@@ -307,6 +317,7 @@
 .provider-group{margin-bottom:8px}
 .provider-group:last-child{margin-bottom:0}
 .provider-group-label{font-size:.68rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+
 .provider-icons{display:flex;flex-wrap:wrap;gap:6px}
 .provider-logo{width:32px;height:32px;border-radius:8px;object-fit:cover;background:var(--bg3)}
 .region-select{margin-left:auto;padding:4px 24px 4px 8px;font-size:.7rem;font-weight:700;background:var(--bg4);border:1px solid var(--glass-border);border-radius:6px;color:var(--text);cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='%239ca3af' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center}

@@ -237,6 +237,7 @@ export async function openDetail(id, type) {
           <span class="detail-overview-toggle" id="detOvToggle" data-action="toggle-overview" hidden>Read more</span>
         </div>
         ${boHTML}
+        <div id="providerBlock">${providerHTML(det, state.region)}</div>
         <div class="stats-grid">
           ${det.status ? `<div class="stat-card"><div class="stat-label">Status</div><div class="stat-val"><span style="color:${det.status === 'Released' || det.status === 'Returning Series' ? 'var(--green2)' : 'var(--text)'}">${det.status === 'Returning Series' ? '<span class="live-dot"></span>' : ''} ${esc(det.status)}</span></div></div>` : ''}
           ${det.original_language ? `<div class="stat-card"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
@@ -252,7 +253,6 @@ export async function openDetail(id, type) {
           ${altTitlesHTML(det)}
           ${det.homepage ? `<div class="stat-card"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit →</a></div></div>` : ''}
           ${linksHTML(det)}
-          <div id="providerBlock">${providerHTML(det, state.region)}</div>
         </div>
         <section class="awards-section" id="awardsSection_${id}" hidden></section>
         ${kwHTML}${vidsHTML}${castHTML}${crewHTML}${galHTML}${seasHTML}${revsHTML}${simHTML}
@@ -673,8 +673,11 @@ function providerHTML(det, region) {
     .filter(([, list]) => list && list.length);
   const inner = groups.length
     ? groups.map(([label, list]) => `<div class="provider-group"><div class="provider-group-label">${label}</div><div class="provider-icons">${list.slice(0, 6).map(logoLink).join('')}</div></div>`).join('')
-    : '<span style="font-size:.78rem;color:var(--text3)">Not available in your region</span>';
-  return `<div class="stat-card"><div class="stat-label" style="display:flex;align-items:center">Where to Watch<select class="region-select" data-action="region-change">${options}</select></div><div class="stat-val providers">${inner}</div></div>`;
+    : '<span class="provider-none">Not available in your region</span>';
+  // Where to watch is the most actionable thing on this page, so it sits above
+  // the stats grid as a full-width panel rather than as one 160px cell at the
+  // end of it. It keeps the stat-card surface so the page still reads as one set.
+  return `<div class="stat-card provider-panel"><div class="stat-label">Where to Watch<select class="region-select" data-action="region-change" aria-label="Streaming region">${options}</select></div><div class="stat-val providers">${inner}</div></div>`;
 }
 
 // ===== REVIEWS =====

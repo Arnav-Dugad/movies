@@ -95,6 +95,60 @@ const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/wat
 
 let currentPath = null;
 
+// ===== "WHERE AM I NOW?" =====
+// A page swap here changes no document, so a screen reader is given no signal
+// that activating a link did anything at all. One polite announcement per
+// navigation says where the user landed.
+//
+// Detail-style pages fetch their title, so announcing straight away would call
+// every film "Title details". Those wait briefly for a real heading and fall
+// back to the generic name if none arrives — one announcement either way, never
+// a wrong one followed by a correction.
+const ROUTE_NAMES = {
+  homePage: 'Home', moviesPage: 'Movies', tvPage: 'TV Shows', discoverPage: 'Discover',
+  remindersPage: 'Release Reminders', franchisesPage: 'Franchises', boxOfficePage: 'Box Office',
+  notificationsPage: 'Notifications', wlPage: 'My List', watchedPage: 'Watched',
+  statsPage: 'My Stats', searchPage: 'Search', friendsPage: 'Friends', partyPage: 'Watch Party',
+  profilePage: 'Profile', settingsPage: 'Settings', detailPage: 'Title details',
+  personPage: 'Person', studioPage: 'Studio', collectionPage: 'Collection',
+  sharedListPage: 'Shared list',
+};
+const TITLED_LATER = new Set(['detailPage', 'personPage', 'studioPage', 'collectionPage', 'sharedListPage']);
+let announceTimer = null, announceTries = 0, firstRenderDone = false;
+
+function announceRoute(pageId) {
+  const region = $('routeAnnouncer');
+  if (!region) return;
+  clearTimeout(announceTimer);
+  announceTries = 0;
+  const fallback = ROUTE_NAMES[pageId] || 'Page';
+  const heading = () => {
+    const page = $(pageId);
+    const found = page && page.querySelector('h1, .detail-title, .person-name, .browse-top h1');
+    if (!found) return '';
+    // A title with official artwork renders the logo image instead of words, so
+    // the heading has no text at all. Its alt IS the title — and is already the
+    // accessible name a screen reader would read here.
+    const text = (found.textContent.replace(/\s+/g, ' ').trim()
+      || found.querySelector('img[alt]')?.alt.replace(/\s+/g, ' ').trim() || '');
+    return text.length > 1 && text.length < 120 ? text : '';
+  };
+  const say = name => {
+    // Re-announce an identical string by clearing first; a live region ignores
+    // a write that does not change its text.
+    region.textContent = '';
+    region.textContent = `${name}, page loaded`;
+  };
+  if (!TITLED_LATER.has(pageId)) return say(fallback);
+  const poll = () => {
+    const name = heading();
+    if (name) return say(name);
+    if (++announceTries >= 8) return say(fallback);   // ~2s, then say something
+    announceTimer = setTimeout(poll, 250);
+  };
+  announceTimer = setTimeout(poll, 250);
+}
+
 function matchRoute(path) {
   for (const r of ROUTES) {
     const m = path.match(r.test);
@@ -154,6 +208,9 @@ function renderRoute(path, { isPopState = false, scroll = true } = {}) {
 
   route.render(params, query);
   document.title = TITLES[route.page] || TITLES.homePage;
+  // Not on the very first render: the document load already announced itself,
+  // and "Home, page loaded" on top of that is noise.
+  if (firstRenderDone) announceRoute(route.page); else firstRenderDone = true;
 
   if (scroll) window.scrollTo({ top: 0, behavior: isPopState ? 'auto' : 'smooth' });
 }
