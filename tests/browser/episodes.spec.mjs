@@ -138,45 +138,77 @@ test('desktop episodes use a visible bounded scroller and both season rails navi
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(2);
 });
 
-test('poster trailers preview silently on desktop and never mount on mobile', async ({ page }) => {
+test('the hover preview floats over the rail without moving it, and carries real information', async ({ page }) => {
   await fixture(page);
+  // The fixture's /movie/42 payload carries the trailer, runtime, certificate
+  // and genres the preview reads off one response (see episode-harness.js).
   await page.evaluate(() => {
     document.documentElement.dataset.motion = 'full';
     const row = document.createElement('div'); row.className = 'row'; row.style.width = '1100px';
     const card = document.createElement('a');
-    card.className = 'card'; card.dataset.id = '42'; card.dataset.type = 'movie'; card.dataset.yt = 'previewKey';
-    card.dataset.title = 'Preview title'; card.dataset.backdrop = '/landscape.jpg'; card.dataset.year = '2026'; card.dataset.rating = '8.4';
+    card.className = 'card'; card.dataset.id = '42'; card.dataset.type = 'movie';
+    card.dataset.title = 'Preview title'; card.dataset.backdrop = '/landscape.jpg'; card.dataset.year = '2010'; card.dataset.rating = '8.4';
     card.innerHTML = '<div class="card-img"><img alt="Preview title"></div><div class="card-info">Preview title</div>';
     const sibling = document.createElement('a'); sibling.className = 'card'; sibling.innerHTML = '<div class="card-img"></div>';
     row.append(card, sibling); document.body.appendChild(row);
   });
+
   const card = page.locator('.card[data-id="42"]');
-  const sourceWidth = await card.evaluate(element => element.getBoundingClientRect().width);
-  const sourceHeight = await card.locator('.card-img').evaluate(element => element.getBoundingClientRect().height);
+  const cardBefore = await card.evaluate(element => element.getBoundingClientRect().width);
   const siblingLeft = await page.locator('.row>.card').nth(1).evaluate(element => element.getBoundingClientRect().left);
+
   await card.hover();
-  const frame = card.locator('iframe.ambient-video-clean');
-  await expect(frame).toHaveCount(1, { timeout: 2_500 });
-  await expect(frame).toHaveAttribute('src', /autoplay=1.*mute=1.*controls=0/);
-  await expect(card).toHaveClass(/card-preview-expanded/);
-  const geometry = await card.evaluate(element => {
-    const media = element.querySelector('.card-img').getBoundingClientRect();
-    const box = element.getBoundingClientRect();
-    return { width: box.width, height: media.height, ratio: media.width / media.height };
+  const panel = page.locator('.cvp');
+  await expect(panel).toHaveCount(1, { timeout: 3_000 });
+
+  // THE regression this replaces: the old build animated the card's own width and
+  // flex-basis, so opening a preview shoved every neighbouring poster sideways
+  // and the rail moved under the pointer. Nothing in the rail may move.
+  expect(await page.locator('.row>.card').nth(1).evaluate(element => element.getBoundingClientRect().left)).toBeCloseTo(siblingLeft, 0);
+  expect(await card.evaluate(element => element.getBoundingClientRect().width)).toBeCloseTo(cardBefore, 0);
+  expect(await panel.evaluate(element => getComputedStyle(element).position)).toBe('fixed');
+
+  // A preview that plays a silent video and says nothing else is the thing being
+  // fixed: the score, year, runtime and certificate are the reason to stop on it.
+  await expect(panel.locator('.cvp-meta')).toContainText('8.4');
+  await expect(panel.locator('.cvp-meta')).toContainText('2010');
+  await expect(panel.locator('.cvp-meta')).toContainText('2h 28m');
+  await expect(panel.locator('.cvp-cert')).toHaveText('PG-13');
+  await expect(panel.locator('.cvp-genres span')).toHaveCount(2);
+  // ...and so are the controls, so a title can be saved without leaving the rail.
+  await expect(panel.locator('[data-action="open-list-picker"]')).toHaveCount(1);
+  await expect(panel.locator('[data-action="toggle-watched"]')).toHaveCount(1);
+  await expect(panel.locator('.cvp-play')).toHaveAttribute('href', '/movie/42');
+
+  // Clamped inside the viewport, so a card at either end of a rail still gets a
+  // whole panel instead of one running off the edge.
+  const box = await panel.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, vw: innerWidth, vh: innerHeight };
   });
-  expect(geometry.width).toBeGreaterThan(sourceWidth * 1.8);
-  expect(Math.abs(geometry.height - sourceHeight)).toBeLessThanOrEqual(1);
-  expect(Math.abs(geometry.ratio - 16 / 9)).toBeLessThan(.04);
-  await expect.poll(() => page.locator('.row>.card').nth(1).evaluate(element => element.getBoundingClientRect().left)).toBeGreaterThan(siblingLeft + 100);
-  await card.getByRole('button', { name: 'Unmute preview' }).click();
-  await expect(card.getByRole('button', { name: 'Mute preview' })).toBeVisible();
-  await expect(page.locator('.card-hover-preview')).toHaveCount(0);
+  expect(box.left).toBeGreaterThanOrEqual(0);
+  expect(box.right).toBeLessThanOrEqual(box.vw);
+  expect(box.top).toBeGreaterThanOrEqual(0);
+  expect(box.bottom).toBeLessThanOrEqual(box.vh);
+
+  const frame = panel.locator('iframe.ambient-video-clean');
+  await expect(frame).toHaveCount(1, { timeout: 3_000 });
+  await expect(frame).toHaveAttribute('src', /autoplay=1.*mute=1.*controls=0/);
+
+  await panel.locator('.cvp-sound').click({ force: true });
+  await expect(panel.locator('.cvp-sound')).toHaveAttribute('aria-label', 'Mute preview');
+
+  // Leaving closes it, and closing takes the iframe with it — a trailer that
+  // keeps buffering behind a dismissed panel is a tab that keeps working.
   await page.mouse.move(1200, 850);
-  await expect(frame).toHaveCount(0);
+  await expect(page.locator('.cvp')).toHaveCount(0, { timeout: 2_000 });
+
+  // Touch and narrow viewports never get one.
   await page.setViewportSize({ width: 390, height: 844 });
   await card.hover();
   await page.waitForTimeout(700);
-  await expect(card.locator('iframe')).toHaveCount(0);
+  await expect(page.locator('.cvp')).toHaveCount(0);
+  await expect(page.locator('iframe.ambient-video-clean')).toHaveCount(0);
 });
 
 test('identical progress acknowledgements preserve the Continue Watching rail DOM', async ({ page }) => {

@@ -523,9 +523,18 @@ function scopeToggle() {
   return `<div class="stats-scope" aria-label="Statistics scope">${[['all', 'Everything'], ['movie', 'Movies'], ['tv', 'TV Shows']].map(([value, label]) => `<button class="${statsScope === value ? 'active' : ''}" data-action="stats-filter" data-filter="${value}">${label}</button>`).join('')}</div>`;
 }
 
+// The headline number is rendered at its REAL value and animated down-up from
+// there. It used to be printed as a literal `0` for the count-up to overwrite,
+// which meant every figure on the page read zero whenever the animation did not
+// run — in a background tab, under reduced motion, or any time the observer
+// missed. A stat that is silently wrong is worse than one that does not move.
 function kpi(icon, label, value, suffix, sub, accent) {
   const numeric = typeof value === 'number';
-  return `<article class="stats-kpi ${accent}"><div class="stats-kpi-icon">${ICONS[icon]}</div><span>${label}</span><strong>${numeric ? `<b data-count="${value}">0</b>` : esc(value)}${suffix || ''}</strong><small>${sub}</small></article>`;
+  const decimals = numeric && !Number.isInteger(value) ? 1 : 0;
+  const shown = numeric
+    ? value.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+    : esc(value);
+  return `<article class="stats-kpi ${accent}"><div class="stats-kpi-icon">${ICONS[icon]}</div><span>${label}</span><strong>${numeric ? `<b data-count="${value}" data-decimals="${decimals}">${shown}</b>` : shown}${suffix || ''}</strong><small>${sub}</small></article>`;
 }
 
 function statsHero(stats) {

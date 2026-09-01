@@ -80,7 +80,8 @@ function normalizeEpisodeList(value, season, structure, numberingMode) {
 }
 
 function normalizeLog(value, structure, numberingMode) {
-  const mapped = (Array.isArray(value) ? value : []).map(row => {
+  const mapped = (Array.isArray(value) ? value : []).map(raw => {
+    const row = decodeLogRow(raw);
     if (!Array.isArray(row) || numberingMode !== 'absolute') return row;
     const [season, episode, ...rest] = row;
     const translated = normalizeEpisodeList([episode], season, structure, numberingMode)[0];
@@ -89,14 +90,37 @@ function normalizeLog(value, structure, numberingMode) {
   return cleanLog(mapped);
 }
 
+// FIRESTORE CANNOT STORE AN ARRAY OF ARRAYS. The log is a list of
+// [season, episode, stamp, bulk] tuples, which is exactly that shape, so every
+// document carrying a non-empty log was rejected with "Nested arrays are not
+// supported" and NO episode progress reached the cloud for those shows — the
+// write failed, retried, and failed again forever.
+//
+// The in-memory and localStorage shape stays a tuple (every reader indexes
+// row[0]..row[3]); the tuples are flattened to `"s.e.t.b"` strings only at the
+// Firestore boundary. `decodeLogRow` accepts both, so documents written by an
+// older build — and the transaction's own server read — still parse.
+const encodeLogRow = row => `${row[0]}.${row[1]}.${row[2]}.${row[3] ? 1 : 0}`;
+const decodeLogRow = row => {
+  if (Array.isArray(row)) return row;
+  if (typeof row !== 'string') return null;
+  const parts = row.split('.');
+  return parts.length >= 3 ? parts : null;
+};
+export const encodeLog = value => (Array.isArray(value) ? value : []).map(encodeLogRow);
+
 // Rows are deduplicated by episode, keeping the EARLIEST stamp: after a merge two
 // devices can each hold a row for the same episode with different moments, and
 // the first time it was marked is the true one. Without this, one episode could
 // appear twice in the episodes-over-time chart.
 function cleanLog(value) {
   const rows = (Array.isArray(value) ? value : [])
+    .map(decodeLogRow)
     .filter(row => Array.isArray(row) && row.length >= 3 && row.slice(0, 3).every(cell => Number.isFinite(+cell)))
-    .map(row => [+row[0], +row[1], +row[2], row[3] ? 1 : 0])
+    // `+row[3]`, not `row[3]`: a decoded wire row holds strings, and the string
+    // "0" is truthy — reading it directly turned every single tick into a bulk
+    // one on the first round trip through Firestore.
+    .map(row => [+row[0], +row[1], +row[2], +row[3] ? 1 : 0])
     .filter(row => row[0] > 0 && row[1] > 0 && row[2] > 0);
   const byEpisode = new Map();
   for (const row of rows) {
@@ -120,7 +144,9 @@ const cleanSeasonPlays = value => {
   return out;
 };
 
-function sanitizeEntry(value) {
+// Exported so the Firestore read boundary — the one place a document written by
+// another device (or an older build) enters the app — is directly testable.
+export function sanitizeEntry(value) {
   if (!value || typeof value !== 'object') return null;
   let seasons = {}, removed = {};
   const structure = {};
@@ -413,7 +439,9 @@ async function writeMerged(key, entry, uid) {
     const snapshot = await transaction.get(ref);
     const server = snapshot.exists ? sanitizeEntry(snapshot.data()) : null;
     const merged = mergeEntries(server, entry) || entry;
-    transaction.set(ref, { ...merged, serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    // `log` is flattened to strings on the way out — Firestore rejects a document
+    // containing an array of arrays outright, which used to fail the whole write.
+    transaction.set(ref, { ...merged, log: encodeLog(merged.log), serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() });
     // Adopt the merged result locally so this device immediately reflects what
     // the other one did, rather than waiting for the next full load.
     if (state.user?.uid === uid && state.episodeProgress[key]) {

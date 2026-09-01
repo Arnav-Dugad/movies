@@ -42,6 +42,8 @@
 <link rel="stylesheet" href="/css/onboarding.css">
 <link rel="stylesheet" href="/css/top10.css">
 <link rel="stylesheet" href="/css/apple-detail.css">
+<link rel="stylesheet" href="/css/preview.css">
+<link rel="stylesheet" href="/css/refinements.css">
 
 <!-- Firebase (compat SDK, classic scripts — must load before the app module) -->
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -157,10 +159,13 @@ setTimeout(function () {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       </button>
       <div style="position:relative">
-        <div class="nav-avatar" id="navAv" role="button" tabindex="0" data-action="toggle-profile" aria-label="Profile menu" data-tip="Account">?</div>
+        <!-- A neutral silhouette, not a "?" on a bright gradient: the avatar resolves in
+             three steps on a cold load (placeholder, then the initial, then the saved
+             picture) and a question mark makes the first of those look like an error. -->
+        <div class="nav-avatar avatar-pending" id="navAv" role="button" tabindex="0" data-action="toggle-profile" aria-label="Profile menu" data-tip="Account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg></div>
         <div class="profile-dd" id="profileDD">
           <div class="profile-dd-head" id="ddHead" role="button" tabindex="0" data-action="open-profile-page" aria-label="Open your profile">
-            <div class="profile-dd-avatar" id="ddAv">?</div>
+            <div class="profile-dd-avatar avatar-pending" id="ddAv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg></div>
             <div><div class="profile-dd-name" id="ddName">Guest</div><div class="profile-dd-email" id="ddEmail">Sign in</div></div>
           </div>
           <div class="profile-dd-item" id="ddAuth" data-action="open-auth">
@@ -368,7 +373,7 @@ setTimeout(function () {
     <select class="browse-select" id="mYear" data-action="filter-movies"></select>
     <select class="browse-select" id="mLang" data-action="filter-movies"><option value="">All Languages</option><option value="en">English</option><option value="hi">Hindi</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="fr">French</option><option value="es">Spanish</option><option value="de">German</option><option value="it">Italian</option><option value="zh">Chinese</option><option value="ta">Tamil</option><option value="te">Telugu</option></select>
     <select class="browse-select" id="mRating" data-action="filter-movies"><option value="">Any Rating</option><option value="8">8+ ★</option><option value="7">7+ ★</option><option value="6">6+ ★</option><option value="5">5+ ★</option></select>
-    <select class="browse-select" id="mRatingMax" data-action="filter-movies" aria-label="Maximum movie rating"><option value="">No maximum rating</option><option value="9">Up to 9 ★</option><option value="8">Up to 8 ★</option><option value="7">Up to 7 ★</option><option value="6">Up to 6 ★</option></select>
+    <select class="browse-select" id="mRatingMax" data-action="filter-movies" aria-label="Maximum movie rating"><option value="">Any maximum rating</option><option value="9">Up to 9 ★</option><option value="8">Up to 8 ★</option><option value="7">Up to 7 ★</option><option value="6">Up to 6 ★</option></select>
     <select class="browse-select" id="mRuntime" data-action="filter-movies" aria-label="Movie runtime"><option value="">Any runtime</option><option value="short">Under 90 min</option><option value="medium">90–120 min</option><option value="long">Over 2 hours</option></select>
     <select class="browse-select" id="mVotes" data-action="filter-movies" aria-label="Minimum movie votes"><option value="">Any popularity</option><option value="100">100+ votes</option><option value="500">500+ votes</option><option value="1000">1,000+ votes</option><option value="5000">5,000+ votes</option></select>
     <select class="browse-select" id="mCert" data-action="filter-movies" aria-label="Movie certification"><option value="">Any certificate</option><option value="G">G</option><option value="PG">PG</option><option value="PG-13">PG-13</option><option value="R">R</option></select>
@@ -393,7 +398,7 @@ setTimeout(function () {
     <select class="browse-select" id="tYear" data-action="filter-tv"></select>
     <select class="browse-select" id="tLang" data-action="filter-tv"><option value="">All Languages</option><option value="en">English</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="hi">Hindi</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="zh">Chinese</option><option value="ta">Tamil</option><option value="te">Telugu</option></select>
     <select class="browse-select" id="tRating" data-action="filter-tv"><option value="">Any rating</option><option value="8">8+ ★</option><option value="7">7+ ★</option><option value="6">6+ ★</option><option value="5">5+ ★</option></select>
-    <select class="browse-select" id="tRatingMax" data-action="filter-tv" aria-label="Maximum TV rating"><option value="">No maximum rating</option><option value="9">Up to 9 ★</option><option value="8">Up to 8 ★</option><option value="7">Up to 7 ★</option><option value="6">Up to 6 ★</option></select>
+    <select class="browse-select" id="tRatingMax" data-action="filter-tv" aria-label="Maximum TV rating"><option value="">Any maximum rating</option><option value="9">Up to 9 ★</option><option value="8">Up to 8 ★</option><option value="7">Up to 7 ★</option><option value="6">Up to 6 ★</option></select>
     <select class="browse-select" id="tRuntime" data-action="filter-tv" aria-label="Episode runtime"><option value="">Any episode length</option><option value="short">Under 30 min</option><option value="medium">30–60 min</option><option value="long">Over 60 min</option></select>
     <select class="browse-select" id="tVotes" data-action="filter-tv" aria-label="Minimum TV votes"><option value="">Any popularity</option><option value="100">100+ votes</option><option value="500">500+ votes</option><option value="1000">1,000+ votes</option><option value="5000">5,000+ votes</option></select>
     <select class="browse-select" id="tStatus" data-action="filter-tv" aria-label="TV status"><option value="">Any status</option><option value="0">Returning series</option><option value="1">Planned</option><option value="2">In production</option><option value="3">Ended</option><option value="4">Cancelled</option><option value="5">Pilot</option></select>
@@ -658,7 +663,7 @@ setTimeout(function () {
     <select class="search-select" id="fltRating" data-action="search-filter" aria-label="Minimum rating">
       <option value="">Any rating</option><option value="6">6+ ★</option><option value="7">7+ ★</option><option value="8">8+ ★</option><option value="9">9+ ★</option>
     </select>
-    <select class="search-select" id="fltRatingMax" data-action="search-filter" aria-label="Maximum rating"><option value="">No maximum rating</option><option value="9">Up to 9 ★</option><option value="8">Up to 8 ★</option><option value="7">Up to 7 ★</option><option value="6">Up to 6 ★</option></select>
+    <select class="search-select" id="fltRatingMax" data-action="search-filter" aria-label="Maximum rating"><option value="">Any maximum rating</option><option value="9">Up to 9 ★</option><option value="8">Up to 8 ★</option><option value="7">Up to 7 ★</option><option value="6">Up to 6 ★</option></select>
     <select class="search-select" id="fltVotes" data-action="search-filter" aria-label="Minimum votes"><option value="">Any vote count</option><option value="100">100+ votes</option><option value="500">500+ votes</option><option value="1000">1,000+ votes</option><option value="5000">5,000+ votes</option></select>
     <select class="search-select" id="fltLanguage" data-action="search-filter" aria-label="Original language"><option value="">Any language</option><option value="en">English</option><option value="hi">Hindi</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="ta">Tamil</option><option value="te">Telugu</option></select>
     <select class="search-select" id="fltCollection" data-action="search-filter" aria-label="Collection status"><option value="all">Any collection status</option><option value="unwatched">Not watched</option><option value="watched">Watched</option><option value="saved">In my lists</option><option value="unsaved">Not in my lists</option><option value="rated">Rated by me</option></select>

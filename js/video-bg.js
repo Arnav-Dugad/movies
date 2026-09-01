@@ -13,7 +13,7 @@ export function ambientOK() { return document.documentElement.dataset.autoplay !
 // Mounts an ambient video into `container` (which must be position:relative and
 // already hold the backdrop image + a gradient overlay above it). Returns a
 // teardown function. Safe to call when not ambientOK() (it just no-ops).
-export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelector = '.detail-back-grad, .hero-vignette', muted = true, clean = false, respectAutoplay = true } = {}) {
+export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelector = '.detail-back-grad, .hero-vignette', muted = true, clean = false, respectAutoplay = true, onPlaying = null } = {}) {
   const empty = () => {};
   empty.setMuted = () => false; empty.isMuted = () => true;
   if (!container || !ytKey || (respectAutoplay ? !ambientOK() : prefersReducedMotion())) return empty;
@@ -21,7 +21,15 @@ export function mountAmbientVideo(container, ytKey, { delay = 1400, overlaySelec
   let mutedState = !!muted;
   let post = () => {};
 
-  const reveal = () => { if (el && !dead) el.classList.add('show'); };
+  // `onPlaying` fires on the same confirmed PLAYING state that reveals the
+  // iframe, so a caller can drop its own poster/loading state at the exact
+  // moment there is really something moving behind it — never earlier.
+  let announced = false;
+  const reveal = () => {
+    if (!el || dead) return;
+    el.classList.add('show');
+    if (!announced) { announced = true; try { onPlaying?.(); } catch (_) {} }
+  };
 
   timer = setTimeout(() => {
     if (dead || !container.isConnected) return;

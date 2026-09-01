@@ -1,0 +1,233 @@
+/* ===== REFINEMENTS =====
+   Loaded last. Fixes for defects found by walking the built site, plus the
+   consistency pass on spacing, typography and controls. Kept in one file rather
+   than scattered through the modules above so every change made in this pass is
+   reviewable — and revertable — in one place. */
+
+/* ---------------------------------------------------------------- lightbox --
+   `.trailer-close` had no rule anywhere in the stylesheet. The close control on
+   the image viewer was a bare 7x16px "×" glyph sitting in the middle of a
+   flex-centred black overlay: nearly invisible, and far under any reasonable
+   target size. */
+.trailer-close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  position: absolute;
+  z-index: 5;
+  right: clamp(12px, 3vw, 26px);
+  top: clamp(12px, 3vw, 26px);
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: background .2s var(--ease-out), transform .2s var(--ease-out);
+}
+.trailer-close:hover { background: var(--red); transform: scale(1.05); }
+
+/* The trailer overlay's own close button sat over the video's top-right corner,
+   where YouTube also draws its title bar. Moving it clear of the frame. */
+.trailer-x {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  position: absolute;
+  right: 0;
+  top: -54px;
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  color: #fff;
+  font-size: 1rem;
+  transition: background .2s var(--ease-out);
+}
+.trailer-x:hover { background: var(--red); }
+
+/* ------------------------------------------------------------------- hero --
+   The hero used to collapse its badge, rating, year, genres AND synopsis three
+   seconds after landing, leaving an image with two buttons on it and nothing
+   that says what the title is. Only the synopsis folds away now: the line that
+   is genuinely long, and the only one you finish reading. Everything that
+   answers "what am I looking at" stays put. */
+.hero-slide.collapsed .hero-badge,
+.hero-slide.collapsed .hero-meta,
+.hero-slide.collapsed .hero-genres {
+  opacity: 1;
+  max-height: 80px;
+  transform: none;
+  pointer-events: auto;
+  margin-bottom: 12px;
+}
+.hero-slide.collapsed .hero-badge { margin-bottom: 18px; }
+.hero-slide.collapsed .hero-genres { margin-bottom: 14px; }
+
+/* Anchored a little lower and given a floor, so the stack does not leave a dead
+   band between the buttons and the progress rail. */
+.hero-content { bottom: 12%; }
+.hero-desc { min-height: 0; }
+
+/* The progress rail is the only affordance for "there are more titles here",
+   and at 3px on a dark backdrop it was easy to miss entirely. */
+.hero-prog-item { height: 4px; }
+.hero-progress { bottom: 14px; gap: 5px; }
+.hero-prog-item:focus-visible { outline: 2px solid var(--red2); outline-offset: 3px; }
+
+/* ------------------------------------------------------------ detail page --
+   "Christopher Nolan" rendered as "Christop…" on one line and "Nolan" on the
+   next: the name box was narrower than the longest word in it, so the browser
+   truncated mid-word before it ever got to wrap. Giving the person card the
+   width of two grid cells fits a real name, and the clamp then only ever breaks
+   between words. */
+.stat-person { grid-column: span 2; }
+.stat-person .sp-name {
+  text-overflow: clip;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* A two-line name pushed the character/job line into the row below, because
+   nothing reserved space for the second line. A floor under both keeps every
+   tile in a scrolling row on the same baseline. */
+.cast-item .cast-pic { display: grid; place-items: center; }
+.cast-name { min-height: 1.9em; }
+/* The character/job line is the row's baseline: without a floor under the name,
+   a two-line name pushed it into the row below. */
+.cast-char { min-height: 1.2em; }
+
+/* Award programme marks clipped their own wordmarks — "Emmy Awards" rendered as
+   "Emm Awar". Wider box, tighter type, and room for two lines. */
+.award-programme-mark { width: 84px; height: 58px; }
+.award-programme-mark.wordmark > span {
+  font-size: .55rem;
+  line-height: 1.15;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* Every collapsible panel printed the word "Open" or "Collapsed" beside its
+   chevron — the state the chevron's rotation already carries, in a second place
+   that has to agree with it. The chevron keeps the job. */
+.detail-accordion-state b { display: none; }
+
+/* ------------------------------------------------------------ stats page --
+   The section jump list scrolls horizontally and ran out underneath the
+   "Collapse all" button, so its last entry read as a clipped fragment. Fading
+   the strip out before the button, rather than under it, makes the cut look
+   deliberate and shows there is more to scroll to. */
+.stats-index-jump {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+}
+.stats-index-toggle { flex-shrink: 0; }
+
+/* Headline figures are set in a monospaced face precisely so they do not jump
+   while counting; tabular figures make that guarantee explicit. */
+.stats-kpi strong,
+.stat-val { font-variant-numeric: tabular-nums; }
+
+/* -------------------------------------------------------------- episodes --
+   The show-progress bar packs a percentage and up to four controls against the
+   right edge; on a narrow column the last of them was clipped to a couple of
+   letters. Each control keeps its own label whole and the group wraps instead. */
+.show-progress-actions > * { flex-shrink: 0; white-space: nowrap; }
+.show-progress-actions { justify-content: flex-end; }
+
+/* --------------------------------------------------------------- controls --
+   A visible focus ring on every interactive surface, in the app's own accent
+   rather than the browser default. */
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--red2);
+  outline-offset: 2px;
+}
+.card:focus-visible { outline-offset: 4px; border-radius: 12px; }
+
+/* Every filter dropdown was as wide as its own label, so a fourteen-control
+   filter bar read as a ragged wall with no column to scan down. A shared
+   minimum gives the row an implicit grid. */
+.browse-filters select,
+.watched-select {
+  min-width: 150px;
+  transition: border-color .2s var(--ease-out), background .2s var(--ease-out);
+}
+
+/* ------------------------------------------------------------------ cards --
+   Poster badges are written in after the per-user data resolves, so they used to
+   pop in a beat after the artwork. Fading them keeps the arrival quiet. */
+.card-rating,
+.card-myrating,
+.card-badge,
+.watched-badge { animation: cardBadgeIn .34s var(--ease-out) both; }
+@keyframes cardBadgeIn { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: none; } }
+
+/* --------------------------------------------------------------- loading --
+   The loading screen sat on its animation for a fixed run even when the app was
+   ready sooner; the fade out is quicker now so a warm load feels warm. */
+#loader { transition: opacity .45s ease, visibility .45s ease; }
+
+/* -------------------------------------------------------------- scrollbar --
+   5px with a hover colour is a control nobody can hit. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+  background-color: rgba(255, 255, 255, .13);
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(255, 255, 255, .26); }
+
+@media (prefers-reduced-motion: reduce) {
+  .card-rating, .card-myrating, .card-badge, .watched-badge { animation: none; }
+}
+
+/* A cast or crew member with no headshot drew an empty dark disc, which reads as
+   a failed image rather than as "TMDB has no photo of this person". */
+.cast-initial {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text3);
+  line-height: 1;
+}
+
+/* Studio and network chips were sized by whatever their logo happened to be, so
+   a wide wordmark became a white slab beside a small square mark and the row had
+   no rhythm. A fixed tile height gives every studio the same footprint. */
+.studio-logos .studio-logo {
+  height: 46px;
+  width: auto;
+  min-width: 58px;
+  max-width: 128px;
+  padding: 7px 11px;
+  background: #f5f5f7;
+}
+.studio-logos .studio-logo img { max-height: 100%; }
+.studio-name-link {
+  display: inline-flex;
+  align-items: center;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .04);
+  font-size: .74rem;
+  font-weight: 650;
+}
+
+/* The nav avatar resolves in up to three steps on a cold load — placeholder,
+   then the account initial, then the saved picture. Muting the placeholder means
+   only the last of those is the loud one. */
+.avatar-pending {
+  background: var(--bg4) !important;
+  color: var(--text3);
+}
+.avatar-pending svg { width: 56%; height: 56%; }
+.nav-avatar, .profile-dd-avatar { transition: background .3s var(--ease-out), border-color .3s var(--ease-out); }

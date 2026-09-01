@@ -26,7 +26,7 @@ const regionName = () => countryName(state.region);
 function populateGenres() {
   const type = $('discoverType')?.value || 'movie';
   const genres = type === 'tv' ? tGenreList : mGenreList;
-  [['discoverGenre', 'Any genre', ''], ['discoverExcludeGenre', 'Exclude no genre', 'No ']].forEach(([id, first, prefix]) => {
+  [['discoverGenre', 'Any genre', ''], ['discoverExcludeGenre', 'Nothing excluded', 'No ']].forEach(([id, first, prefix]) => {
     const select = $(id); if (!select) return;
     const selected = select.value;
     select.innerHTML = `<option value="">${first}</option>` + genres.map(genre => `<option value="${genre.id}">${prefix}${esc(genre.n)}</option>`).join('');

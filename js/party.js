@@ -6,7 +6,7 @@ import { esc, $ } from './ui.js';
 import { registerActions } from './events.js';
 import { buildCard, skelCards } from './cards.js';
 import { social, getFriendTaste } from './social.js';
-import { buildTasteProfile, profileFromShared, blendProfiles, fetchCandidates, rankAndDedupe, matchBadge, diversify, tag } from './recommend.js';
+import { buildTasteProfile, profileFromShared, blendProfiles, fetchCandidates, rankAndDedupe, matchBadge, scoreRange, diversify, tag } from './recommend.js';
 
 const MOVIE_GENRES = new Set(mGenreList.map(g => g.id));
 const TV_GENRES = new Set(tGenreList.map(g => g.id));
@@ -148,7 +148,9 @@ async function compute() {
   if (!ranked.length) { res.innerHTML = `<p style="color:var(--text3);padding:20px">Couldn't find a crossover pick — try including ${partyMode === 'tv' ? 'shows' : 'films'} some have seen.</p>`; return; }
 
   const top = ranked[0];
-  const topScore = top.__score || 1;
+  // The whole ranked set, so the badges spread across the real spread of scores
+  // rather than clustering at 99% (see matchBadge).
+  const topScore = scoreRange(ranked);
   const why = whyGenres(blended);
   // When the group leaned on the vibe picker, say so — "you all love X" would be a
   // lie for people with no history.

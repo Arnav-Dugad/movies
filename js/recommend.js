@@ -468,7 +468,29 @@ export function diversify(ranked, n = 20, lambda = 0.35) {
   return out;
 }
 
-export function matchBadge(score, top) { const pct = Math.max(60, Math.min(99, Math.round((score / (top || 1)) * 100))); return `${pct}% match`; }
+// A match percentage that actually separates the row. Scoring `score / top` put
+// every card between 97% and 99% — the scores inside one ranked window are all
+// within a few percent of each other, so the badge printed "99% match" on
+// everything and told a viewer nothing. Spreading the window's own range across
+// 72-99% keeps the ordering honest while making the difference between the first
+// pick and the twentieth visible.
+//
+// `range` is the [lowest, highest] score in the set being rendered. A set whose
+// scores are genuinely identical collapses to the top of the band rather than
+// dividing by zero.
+export function matchBadge(score, range) {
+  const [low, high] = Array.isArray(range) ? range : [0, range];
+  const span = (+high || 0) - (+low || 0);
+  const ratio = span > 1e-6 ? ((+score || 0) - low) / span : 1;
+  const pct = Math.round(72 + Math.max(0, Math.min(1, ratio)) * 27);
+  return `${pct}% match`;
+}
+
+// The lowest and highest score in a ranked set, for matchBadge.
+export const scoreRange = items => {
+  const scores = items.map(item => +item.__score || 0);
+  return scores.length ? [Math.min(...scores), Math.max(...scores)] : [0, 1];
+};
 
 function pickLabeledSeed(profile) {
   for (const s of profile.seedIds) {
@@ -751,8 +773,8 @@ export async function renderRecommendations() {
   fillRow('rowTopPicks', async () => {
     const picks = rotatedWindow(diversify(await pool, 40), rotation, 20);
     if (!picks.length) return null;
-    const top = picks[0].__score || 1;
-    return picks.map(c => recommendationCard(c, { badge: matchBadge(c.__score, top) })).join('');
+    const range = scoreRange(picks);
+    return picks.map(c => recommendationCard(c, { badge: matchBadge(c.__score, range) })).join('');
   }, run);
 
   const rowFrom = async (pred, min = 1) => {

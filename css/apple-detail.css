@@ -117,30 +117,8 @@
 .ep-list::-webkit-scrollbar{display:block;width:9px}.ep-list::-webkit-scrollbar-track{background:rgba(255,255,255,.025);border-radius:0 18px 18px 0}.ep-list::-webkit-scrollbar-thumb{min-height:52px;border:2px solid #111115;border-radius:999px;background:rgba(235,235,245,.28)}.ep-list::-webkit-scrollbar-thumb:hover{background:rgba(235,235,245,.48)}.ep-list:focus-visible{outline:2px solid rgba(125,211,252,.72);outline-offset:4px}
 .ep-list>.season-toolbar{position:sticky;z-index:6;top:0;margin:0;border-width:0 0 1px;border-radius:17px 17px 11px 11px;background:rgba(20,20,25,.9);box-shadow:0 10px 28px rgba(0,0,0,.28);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px)}
 
-/* Desktop-only inline previews. Height never changes: portrait art widens into
-   a 16:9 stage while neighbouring cards glide aside on one spring-like curve. */
-@media (hover:hover) and (pointer:fine) and (min-width:901px){
-  .row>.card[data-id][data-type]{transform-origin:center;transition:width .56s cubic-bezier(.22,1,.28,1),flex-basis .56s cubic-bezier(.22,1,.28,1),transform .44s cubic-bezier(.22,1,.28,1)}
-  .row>.card.card-preview-preparing,.row>.card.card-preview-expanded,.row>.card.card-preview-closing{will-change:width,flex-basis,transform}
-  .row>.card.card-preview-preparing,.row>.card.card-preview-expanded{z-index:12}
-  .row>.card.card-preview-expanded{width:var(--inline-preview-width)!important;flex-basis:var(--inline-preview-width)!important;transform:translateY(-2px)}
-  .row>.card.card-preview-expanded .card-img,.row>.card.card-preview-closing .card-img{height:var(--inline-preview-height)!important;aspect-ratio:auto;border-radius:15px;transition:border-radius .42s ease,box-shadow .52s ease}
-  .row>.card.card-preview-expanded .card-img{width:100%!important;box-shadow:0 22px 60px rgba(0,0,0,.56),0 0 0 1px rgba(255,255,255,.07)}
-  .row>.card.card-t10.card-preview-preparing .t10-num,.row>.card.card-t10.card-preview-expanded .t10-num,.row>.card.card-t10.card-preview-closing .t10-num{position:absolute;left:0;bottom:0;pointer-events:none}
-  .row>.card.card-t10.card-preview-expanded .t10-num{opacity:0;transform:translateX(-16px)}
-  .row>.card.card-t10.card-preview-expanded .card-img,.row>.card.card-t10.card-preview-closing .card-img{width:100%!important;flex:1 1 auto}
-  .row>.card .card-img>img:not(.card-preview-backdrop){transition:opacity .34s ease,transform .72s cubic-bezier(.16,1,.3,1)}
-  .row>.card.card-preview-expanded .card-img>img:not(.card-preview-backdrop){opacity:0;transform:scale(1.06)}
-  .card-preview-backdrop{position:absolute;z-index:0;inset:0;width:100%;height:100%;object-fit:cover;opacity:0!important;transform:scale(1.065)!important;filter:saturate(.94);transition:opacity .42s ease,transform 1.05s cubic-bezier(.16,1,.3,1),filter .45s ease}
-  .card-preview-expanded .card-preview-backdrop{opacity:1!important;transform:scale(1.018)!important;filter:saturate(1.04)}
-  .card-preview-expanded .ambient-video-clean{z-index:2;inset:-13% -7%;width:114%;height:126%;transform:scale(1.08);transition:opacity .46s ease!important}
-  .card-preview-closing .ambient-video-clean{opacity:0!important;transition-duration:.2s!important}
-  .card-preview-clean-mask{position:absolute;z-index:3;inset:0;pointer-events:none;opacity:0;background:linear-gradient(180deg,rgba(5,5,7,.42) 0,transparent 16%,transparent 82%,rgba(5,5,7,.58) 100%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);transition:opacity .35s ease}.card-preview-expanded .card-preview-clean-mask{opacity:1}
-  .card-preview-expanded .card-img::after{z-index:4;opacity:0!important}.card-preview-expanded .card-rating,.card-preview-expanded .card-myrating,.card-preview-expanded .watched-badge,.card-preview-expanded .card-wl,.card-preview-expanded .card-rate,.card-preview-expanded .card-badge,.card-preview-expanded .card-provider-badge,.card-preview-expanded .card-dismiss{opacity:0!important;pointer-events:none}
-  .card-preview-sound{width:38px;height:38px;display:grid;place-items:center;position:absolute;z-index:20;right:11px;top:calc(var(--inline-preview-height) - 49px);border:1px solid rgba(255,255,255,.28);border-radius:50%;background:rgba(7,7,10,.58);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35);backdrop-filter:blur(12px);cursor:pointer;opacity:0;transform:scale(.72);transition:opacity .28s .18s,transform .42s cubic-bezier(.16,1,.3,1) .14s,background .2s}
-  .card-preview-playing .card-preview-sound{opacity:1;transform:none}.card-preview-sound:hover{background:rgba(255,255,255,.18)}.card-preview-sound svg{width:17px;height:17px}.card-preview-sound .sound-on{display:none}.card-preview-sound.unmuted .sound-on{display:block}.card-preview-sound.unmuted .sound-off{display:none}
-}
-@media (hover:none),(pointer:coarse),(max-width:900px){.card-preview-sound,.card-preview-backdrop,.card-preview-clean-mask{display:none!important}}
+/* The desktop hover preview lives in css/preview.css now — a floating panel
+   rather than an in-row expansion, so neighbouring posters never reflow. */
 
 /* Home cards are cinematic on desktop and compact enough for two useful mobile
    choices to remain visible without crushing titles. */

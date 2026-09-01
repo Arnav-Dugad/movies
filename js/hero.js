@@ -10,9 +10,9 @@ import { mountAmbientVideo, ambientOK } from './video-bg.js';
 
 const HERO_INTERVAL_MS = 30000;
 const models = {
-  home: { hostId: 'heroWrap', endpoint: '/trending/all/day', mediaType: '', items: [], index: 0, timer: null, paused: false, ambient: null, descTimer: null, videoGen: 0, loading: null },
-  movie: { hostId: 'movieHero', endpoint: '/trending/movie/week', mediaType: 'movie', items: [], index: 0, timer: null, paused: false, ambient: null, descTimer: null, videoGen: 0, loading: null },
-  tv: { hostId: 'tvHero', endpoint: '/trending/tv/week', mediaType: 'tv', items: [], index: 0, timer: null, paused: false, ambient: null, descTimer: null, videoGen: 0, loading: null },
+  home: { hostId: 'heroWrap', endpoint: '/trending/all/day', mediaType: '', items: [], index: 0, timer: null, paused: false, ambient: null, videoGen: 0, loading: null },
+  movie: { hostId: 'movieHero', endpoint: '/trending/movie/week', mediaType: 'movie', items: [], index: 0, timer: null, paused: false, ambient: null, videoGen: 0, loading: null },
+  tv: { hostId: 'tvHero', endpoint: '/trending/tv/week', mediaType: 'tv', items: [], index: 0, timer: null, paused: false, ambient: null, videoGen: 0, loading: null },
 };
 const heroKeyCache = {};
 const heroLogoCache = {};
@@ -42,14 +42,21 @@ function mountHeroLogos(key) {
 }
 
 function expandDescription(model) {
-  clearTimeout(model.descTimer);
   hostFor(model)?.querySelectorAll('.hero-slide.collapsed').forEach(slide => slide.classList.remove('collapsed'));
 }
 
-function scheduleDescription(model) {
-  expandDescription(model);
+// Folding the synopsis away used to be on a blind three-second timer, whether or
+// not anything had arrived to look at instead. Tied to the trailer, it becomes
+// the thing it was meant to be: the text steps aside once there is footage
+// playing behind it. With no trailer — or with autoplay blocked — the synopsis
+// simply stays, which is the right answer for a still image.
+//
+// (Only the synopsis moves; the badge, score, year and genres stay put. Hiding
+// those left a backdrop with two buttons on it and no way to tell what the title
+// was, which is the state anyone who glanced away for three seconds landed in.)
+function collapseDescription(model) {
   if (prefersReducedMotion()) return;
-  model.descTimer = setTimeout(() => hostFor(model)?.querySelector('.hero-slide.active')?.classList.add('collapsed'), 3000);
+  hostFor(model)?.querySelector('.hero-slide.active')?.classList.add('collapsed');
 }
 
 async function getTrailerKey(model, item) {
@@ -76,7 +83,12 @@ async function mountHeroVideo(key) {
   const trailerKey = await getTrailerKey(model, item);
   if (!trailerKey || generation !== model.videoGen || indexAtRequest !== model.index || !host.offsetParent) return;
   const slide = host.querySelector('.hero-slide.active');
-  if (slide) model.ambient = mountAmbientVideo(slide, trailerKey, { overlaySelector: '.hero-vignette', delay: 900 });
+  if (slide) model.ambient = mountAmbientVideo(slide, trailerKey, {
+    overlaySelector: '.hero-vignette', delay: 900,
+    // Fires on the confirmed PLAYING state, so the synopsis only steps aside
+    // once there is genuinely something moving behind it.
+    onPlaying: () => { if (generation === model.videoGen) collapseDescription(model); },
+  });
 }
 
 function heroPayload(model, item) {
@@ -112,7 +124,7 @@ function renderHero(key) {
   startHeroTimer(key);
   mountHeroVideo(key);
   mountHeroLogos(key);
-  scheduleDescription(model);
+  expandDescription(model);
 }
 
 async function loadHero(key) {
@@ -142,7 +154,7 @@ export function goHero(index, key = 'home') {
   });
   startHeroTimer(key);
   mountHeroVideo(key);
-  scheduleDescription(model);
+  expandDescription(model);
 }
 
 export function startHeroTimer(key = 'home') {
@@ -163,7 +175,7 @@ function pauseHero(key) {
 function resumeHero(key) {
   const model = modelFor(key); if (!model.paused) return;
   model.paused = false; if (key === 'home') state.heroPaused = false;
-  startHeroTimer(key); mountHeroVideo(key); scheduleDescription(model);
+  startHeroTimer(key); mountHeroVideo(key); expandDescription(model);
 }
 
 export function initHero() { return loadHero('home'); }
@@ -186,7 +198,7 @@ export function initHeroInteractions() {
   document.addEventListener('visibilitychange', () => {
     Object.entries(models).forEach(([key, model]) => {
       if (document.hidden) { clearInterval(model.timer); teardownVideo(model); expandDescription(model); }
-      else if (!model.paused && hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); scheduleDescription(model); }
+      else if (!model.paused && hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); expandDescription(model); }
     });
   });
   // Routed pages stay mounted and only toggle display. Observe those three page
@@ -198,7 +210,7 @@ export function initHeroInteractions() {
     queueMicrotask(() => {
       visibilityQueued = false;
       Object.entries(models).forEach(([key, model]) => {
-        if (hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); scheduleDescription(model); }
+        if (hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); expandDescription(model); }
         else { clearInterval(model.timer); teardownVideo(model); expandDescription(model); }
       });
     });

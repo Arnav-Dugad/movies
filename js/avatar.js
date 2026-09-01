@@ -41,6 +41,9 @@ export function applyAvatar(el, av, name) {
   if (!el) return;
   el.style.background = avatarBg(av);
   el.classList.toggle('has-avatar-image', !!avatarPreset(av));
+  // Drops the neutral silhouette the markup ships with, so the placeholder is
+  // only ever visible until the real avatar is known.
+  el.classList.remove('avatar-pending');
   el.innerHTML = avatarMarkup(av, name);
 }
 

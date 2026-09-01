@@ -90,7 +90,18 @@ window.fetch = async input => {
   if (url.hostname !== 'api.themoviedb.org') return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
   const path = url.pathname.replace('/3', '');
   let body = {};
-  if (path === '/tv/1') body = showPayload();
+  // A film with everything the hover preview reads off one response: trailer,
+  // runtime, certificate and genres.
+  if (path === '/movie/42') body = {
+    id: 42, title: 'Preview title', overview: 'A preview fixture.', runtime: 148,
+    release_date: '2010-07-15', vote_average: 8.4, vote_count: 1000,
+    backdrop_path: '/landscape.jpg', poster_path: '/p.jpg',
+    genres: [{ id: 28, name: 'Action' }, { id: 878, name: 'Science Fiction' }],
+    videos: { results: [{ site: 'YouTube', type: 'Trailer', official: true, key: 'previewKey' }] },
+    images: { logos: [] },
+    release_dates: { results: [{ iso_3166_1: 'US', release_dates: [{ certification: 'PG-13' }] }] },
+  };
+  else if (path === '/tv/1') body = showPayload();
   else if (path === '/tv/1/season/1') body = { season_number: 1, episodes: [episode(1, 1), episode(1, 2), episode(1, 3)] };
   else if (path === '/tv/1/season/2') body = { season_number: 2, episodes: [episode(2, 1), episode(2, 2), episode(2, 3, version() >= 3 ? past(1) : future(2))] };
   else if (path.endsWith('/credits')) body = { cast: [], crew: [] };

@@ -22,8 +22,8 @@ export function initFilters() {
   }
   $('mGenres').innerHTML = '<option value="">All movie genres</option>' + mGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
   $('tGenres').innerHTML = '<option value="">All TV genres</option>' + tGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
-  $('mExcludeGenre').innerHTML = '<option value="">Exclude no movie genre</option>' + mGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
-  $('tExcludeGenre').innerHTML = '<option value="">Exclude no TV genre</option>' + tGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
+  $('mExcludeGenre').innerHTML = '<option value="">Nothing excluded</option>' + mGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
+  $('tExcludeGenre').innerHTML = '<option value="">Nothing excluded</option>' + tGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
   fillProviderSelect($('mProvider'), 'movie');
   fillProviderSelect($('tProvider'), 'tv');
 }

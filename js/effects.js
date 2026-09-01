@@ -12,28 +12,51 @@ const pointerFine = () => !isTouch();
 let revealObs = null;
 function ensureRevealObs() {
   if (revealObs) return revealObs;
+  // A section is 350-520px tall and fades over 0.7s, so requiring 8% of it to be
+  // on screen before starting meant a quick scroll landed inside a block that had
+  // not begun fading — which reads as a hole in the page, not as an animation.
+  // The margin arms a block before it arrives: mostly below (the direction
+  // reading travels), with some above so scrolling back up is covered too.
   revealObs = new IntersectionObserver(entries => {
     entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); } });
-  }, { threshold: .08, rootMargin: '0px 0px -50px 0px' });
+  }, { threshold: 0, rootMargin: '200px 0px 400px 0px' });
   return revealObs;
 }
-export function initScrollReveal() { ensureRevealObs(); observeReveals(); }
+export function initScrollReveal() {
+  ensureRevealObs(); observeReveals();
+  // An IntersectionObserver reports nothing while the tab is hidden. Anything
+  // that scrolled past in a background tab would stay at opacity:0 with no
+  // second chance, so re-arm on the way back.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) observeReveals(); });
+}
 export function observeReveals(root = document) {
   const obs = ensureRevealObs();
   root.querySelectorAll('.reveal:not(.visible)').forEach(el => obs.observe(el));
 }
 
 // ----- Count-up numbers -----
+// Grouped, locale-aware formatting. The animation used to write
+// `val.toFixed(decimals)`, which silently undid the formatting the markup had
+// already applied: a vote count rendered as "40,047" became "40047" the moment
+// it animated, and an average of 7.4 rendered as "7" because the caller never
+// passed `decimals`. Formatting once, here, keeps the animated frames and the
+// final value in the same shape.
+const fmt = (value, decimals) => value.toLocaleString(undefined, {
+  minimumFractionDigits: decimals, maximumFractionDigits: decimals,
+});
+
 export function countUp(el, target, { dur = 900, decimals = 0, prefix = '', suffix = '' } = {}) {
-  if (!motionOK()) { el.textContent = prefix + target.toFixed(decimals) + suffix; return; }
+  const settle = () => { el.textContent = prefix + fmt(target, decimals) + suffix; };
+  // A hidden tab gets no animation frames, so an animated write would leave the
+  // number frozen at whatever frame ran last. Reduced motion opts out too.
+  if (!motionOK() || document.hidden) { settle(); return; }
   const start = performance.now();
-  const from = 0;
   function tick(now) {
     const p = Math.min(1, (now - start) / dur);
     const eased = 1 - Math.pow(1 - p, 3);
-    const val = from + (target - from) * eased;
-    el.textContent = prefix + val.toFixed(decimals) + suffix;
-    if (p < 1) requestAnimationFrame(tick);
+    if (p >= 1) { settle(); return; }
+    el.textContent = prefix + fmt(target * eased, decimals) + suffix;
+    requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
 }
