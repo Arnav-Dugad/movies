@@ -97,6 +97,7 @@ function libraryRefs(sources = state) {
   (sources.watchlist || []).forEach(w => { const [type, id] = splitKey(String(w.id || '')); refs.push({ type: w.type || type, id: w.tmdbId || id, keywords: w.keywords }); });
   Object.entries(sources.watched || {}).forEach(([key, d]) => { const [type, id] = splitKey(key); refs.push({ type: d?.type || type, id: d?.tmdbId || id, keywords: d?.keywords }); });
   (sources.recentlyViewed || []).forEach(r => refs.push({ type: r.type, id: r.id, keywords: r.keywords }));
+  Object.values(sources.episodeProgress || {}).forEach(entry => { if (entry?.tmdbId) refs.push({ type: 'tv', id: entry.tmdbId }); });
   return refs;
 }
 
@@ -124,6 +125,11 @@ const recencyWeight = value => {
   const ageDays = Math.max(0, (Date.now() - ms) / 86400000);
   return .75 + .65 * Math.exp(-ageDays / 365);
 };
+const FRESH_MS = 21 * 86400000;     // "watched lately"
+const WATCHING_MS = 45 * 86400000;   // a show ticked within this is "being watched"
+// Film genres that have a TV counterpart under a different TMDB id, so a taste
+// built mostly from films still finds series (Action is 28 for film, 10759 for TV).
+const TV_GENRE_FOR = { 28: 10759, 12: 10759, 878: 10765, 14: 10765, 10752: 10768, 53: 80, 27: 9648 };
 const keywordList = value => (value || []).map(keyword => typeof keyword === 'object' ? keyword : { id: +keyword, name: '' }).filter(keyword => +keyword.id);
 
 // Sort a {key: weight} map into [{id, name, w}], strongest first, keeping only
@@ -174,7 +180,9 @@ export function buildTasteProfile(sources = state, { includeMature = matureShape
   // to EXCLUDE titles, never to inform taste.
   Object.entries(watched).forEach(([key, d]) => {
     if (!d) return;
-    const rw = ratingW(ratings[key]), recent = recencyWeight(d.watchedAt), signal = (1.5 + rw) * recent;
+    // Something finished in the last three weeks is what you are in the mood for
+    // now, so it outweighs the same title watched a year ago.
+    const rw = ratingW(ratings[key]), recent = recencyWeight(d.watchedAt) * (Date.now() - timestampMs(d.watchedAt) < FRESH_MS ? 1.6 : 1), signal = (1.5 + rw) * recent;
     addG(d.genres, signal);          // a poorly-rated genre can go negative
     keywordList(d.keywords).filter(keyword => !matureKeyword(keyword)).forEach(keyword => { bump(keywordWeights, keyword.id, signal * .85); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
     if (d.language) bump(languageWeights, d.language, signal * .4);
@@ -211,6 +219,21 @@ export function buildTasteProfile(sources = state, { includeMature = matureShape
   recentlyViewed.forEach(r => (r.type === 'tv' ? tv++ : movie++));
   Object.values(watched).forEach(d => { if (d) (d.type === 'tv' ? tv++ : movie++); });
 
+  // What you are watching RIGHT NOW: shows with episodes ticked recently, most
+  // recent first, plus films finished in the last few weeks. These seed their own
+  // "Because you're watching…" rail and count toward how much TV you watch.
+  const now = Date.now();
+  const inProgress = Object.values(sources.episodeProgress || {})
+    .filter(entry => entry?.tmdbId && !entry.dropped && +entry.lastWatched?.at && now - entry.lastWatched.at < WATCHING_MS)
+    .filter(entry => !privateTitle('tv', entry.tmdbId, null))
+    .map(entry => ({ id: +entry.tmdbId, type: 'tv', title: entry.title || '', poster: entry.poster || '', at: +entry.lastWatched.at, reason: 'watching' }));
+  tv += inProgress.length;
+  const recentFilms = Object.entries(watched)
+    .map(([key, d]) => ({ key, d, at: timestampMs(d?.watchedAt) }))
+    .filter(({ d, at }) => d && at && now - at < FRESH_MS && (d.type || splitKey(key)[0]) === 'movie')
+    .map(({ key, d, at }) => ({ id: +(d.tmdbId || splitKey(key)[1]), type: 'movie', title: d.title || '', poster: d.poster || '', at, reason: 'watched' }));
+  const nowWatching = [...inProgress, ...recentFilms].filter(item => item.id).sort((a, b) => b.at - a.at).slice(0, 4);
+
   // Seeds for /recommendations: highly-rated titles first, then most-recent.
   const seedIds = [];
   Object.entries(ratings).forEach(([key, score]) => {
@@ -231,7 +254,9 @@ export function buildTasteProfile(sources = state, { includeMature = matureShape
   const dismissed = new Set(sources.recommendationFeedback?.dismissed || []);
   // Everything watched stays excluded from results, private titles included —
   // this set never leaves the device (social.js filters its own copy).
-  const seen = new Set([...Object.keys(allWatched), ...dismissed]);
+  // A show you are part-way through is not a recommendation either.
+  const tracked = Object.values(sources.episodeProgress || {}).filter(entry => entry?.tmdbId && Object.keys(entry.seasons || {}).length).map(entry => `tv_${entry.tmdbId}`);
+  const seen = new Set([...Object.keys(allWatched), ...tracked, ...dismissed]);
 
   const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
   const topActors = topOf(actorWeights, actorNames, 1.5, actorImages);
@@ -241,12 +266,12 @@ export function buildTasteProfile(sources = state, { includeMature = matureShape
 
   return {
     genreWeights, topGenres, seedIds, seen, dismissed, movieBias: movie >= tv,
-    excludeMature: !includeMature, recent: recentlyViewed,
+    excludeMature: !includeMature, recent: recentlyViewed, nowWatching,
     keywordWeights, keywordNames, topKeywords, languageWeights,
     actorWeights, actorNames, actorImages, topActors,
     directorWeights, directorNames, directorImages, topDirectors,
     decadeWeights, topDecade,
-    hasSignal: topGenres.length > 0 || seedIds.length > 0 || topActors.length > 0 || topKeywords.length > 0,
+    hasSignal: topGenres.length > 0 || seedIds.length > 0 || topActors.length > 0 || topKeywords.length > 0 || nowWatching.length > 0,
   };
 }
 
@@ -324,7 +349,7 @@ export async function fetchCandidates(profile, { only = null } = {}) {
   const wantMovie = only !== 'tv', wantTV = only !== 'movie';
   const topGenres = profile.topGenres || [];
   const movieG = topGenres.filter(g => MOVIE_GENRES.has(g)).slice(0, 3);
-  const tvG = topGenres.filter(g => TV_GENRES.has(g)).slice(0, 3);
+  const tvG = [...new Set(topGenres.map(g => (TV_GENRES.has(g) ? g : TV_GENRE_FOR[g])).filter(Boolean))].slice(0, 3);
   const actors = profile.topActors || [];
   const directors = profile.topDirectors || [];
   const push = (p, type, source, provenance = {}) => calls.push(p.then(d => tag(d.results, type, source, provenance)).catch(() => []));
@@ -359,13 +384,28 @@ export async function fetchCandidates(profile, { only = null } = {}) {
   // exact keyword provenance so the UI can truthfully promise “Because you enjoy…”.
   (profile.topKeywords || []).slice(0, 2).forEach(keyword => {
     if (wantMovie) push(tmdb('/discover/movie', { with_keywords: String(keyword.id), sort_by: 'popularity.desc', 'vote_count.gte': 80, page: pageFor(2), ...outM }), 'movie', 'keyword', { __keywordIds: [+keyword.id] });
-    if (wantTV && (only === 'tv' || !profile.movieBias)) push(tmdb('/discover/tv', { with_keywords: String(keyword.id), sort_by: 'popularity.desc', 'vote_count.gte': 80, ...outT }), 'tv', 'keyword', { __keywordIds: [+keyword.id] });
+    if (wantTV) push(tmdb('/discover/tv', { with_keywords: String(keyword.id), sort_by: 'popularity.desc', 'vote_count.gte': 80, ...outT }), 'tv', 'keyword', { __keywordIds: [+keyword.id] });
   });
-  if (wantTV && tvG.length && (only === 'tv' || !profile.movieBias)) {
+  // Series come for everyone now, not only for viewers whose history leans TV —
+  // a film-heavy library still deserves shows, and "Series for you" draws on these.
+  if (wantTV && tvG.length) {
     const or = tvG.join('|');
     push(tmdb('/discover/tv', { with_genres: or, sort_by: 'popularity.desc', 'vote_count.gte': 150, page: pageFor(0), ...outT }), 'tv', 'genre');
-    if (only === 'tv') push(tmdb('/discover/tv', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 300, ...outT }), 'tv', 'quality');
+    push(tmdb('/discover/tv', { with_genres: or, sort_by: 'vote_average.desc', 'vote_count.gte': 300, page: pageFor(1), ...outT }), 'tv', 'quality');
   }
+  // What you are watching now seeds the most specific rail on Home. Its genres
+  // are fetched alongside (cached) so the rail can refuse titles that only share
+  // TMDB's "recommendations" link without sharing the show's kind.
+  profile.watchingGenres = profile.watchingGenres || {};
+  (profile.nowWatching || []).slice(0, 3).filter(item => !only || item.type === only).forEach(item => {
+    const key = `${item.type}_${item.id}`;
+    calls.push(tmdb(`/${item.type}/${item.id}/recommendations`)
+      .then(d => tag(d.results, item.type, 'watching', { __seedKey: key }))
+      .catch(() => []));
+    calls.push(tmdb(`/${item.type}/${item.id}`)
+      .then(d => { profile.watchingGenres[key] = (d.genres || []).map(genre => genre.id); return []; })
+      .catch(() => []));
+  });
   (profile.seedIds || []).slice(0, 3).filter(s => !only || s.type === only)
     .forEach(s => calls.push(tmdb(`/${s.type}/${s.id}/recommendations`)
       .then(d => tag(d.results, s.type, 'rec', { __seedKey: `${s.type}_${s.id}` }))
@@ -378,7 +418,7 @@ export async function fetchCandidates(profile, { only = null } = {}) {
 // ----- Scoring & ranking -----
 // Where a candidate CAME FROM is itself evidence: a TMDB "more like this" off a
 // title you rated 9 is a better bet than a broad popularity sweep.
-const SOURCE_BONUS = { rec: 1.4, keyword: 1.3, cast: 1.2, castmore: 1.15, director: 1.1, quality: 0.7, genre: 0.6, trending: 0.4 };
+const SOURCE_BONUS = { watching: 1.5, rec: 1.4, keyword: 1.3, cast: 1.2, castmore: 1.15, director: 1.1, quality: 0.7, genre: 0.6, trending: 0.4 };
 
 // Genres that DEFINE a title's audience rather than just flavour it. Sharing a
 // broad bucket like Comedy or Adventure means little — an animated kids' film and
@@ -411,6 +451,19 @@ export function isRelatedToSeed(candidate, seed) {
   const overlap = genres.filter(genre => seedGenres.has(genre)).length;
   const minimum = seedGenres.size >= 3 ? 2 : 1;
   return overlap >= minimum && !genres.some(genre => DEFINING_GENRES.has(genre) && !seedGenres.has(genre));
+}
+
+// The "Because you're watching" rail: the candidate must come from that title's
+// own TMDB recommendations, share at least one of its genres once they are
+// known, and not introduce an audience-defining genre the title does not have.
+export function isRelatedToWatching(candidate, item, profile) {
+  if (!item || !hasCandidateSource(candidate, 'watching')) return false;
+  const key = `${item.type}_${item.id}`;
+  if (!(candidate.__seedKeys || []).includes(key)) return false;
+  const seedGenres = new Set((profile?.watchingGenres?.[key] || []).map(Number));
+  if (!seedGenres.size) return true;
+  const genres = (candidate.genre_ids || []).map(Number);
+  return genres.some(genre => seedGenres.has(genre)) && !genres.some(genre => DEFINING_GENRES.has(genre) && !seedGenres.has(genre));
 }
 
 export function scoreBreakdown(c, profile, norms = {}) {
@@ -785,6 +838,8 @@ export async function renderRecommendations() {
     dismissed: [...(state.recommendationFeedback?.dismissed || [])].sort(),
     // A newly classified title or the opt-in changing alters what may be used.
     matureInRecs: matureShapesTaste(), verdicts: matureVerdictVersion(),
+    // The shows being watched now decide a rail, so a new one rebuilds the rails.
+    watching: (profile.nowWatching || []).map(item => `${item.type}_${item.id}`),
   });
   if (sourceSignature === recommendationSignature && wrap.firstElementChild) return;
   recommendationSignature = sourceSignature;
@@ -798,8 +853,16 @@ export async function renderRecommendations() {
   const topDirector = (profile.topDirectors || []).find(d => d.name);
   const topKeyword = (profile.topKeywords || [])[0];
   const genreId = profile.topGenres.find(g => MOVIE_GENRES.has(g));
+  const watchingNow = (profile.nowWatching || [])[0] || null;
 
   const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You', kicker: 'Ranked from everything you have watched, saved, and rated' }];
+  if (watchingNow) descriptors.push({
+    id: 'rowWatching', icon: watchingNow.type === 'tv' ? '📺' : '🍿',
+    title: `Because you're ${watchingNow.reason === 'watching' ? 'watching' : 'just watched'} ${watchingNow.title}`,
+    kicker: watchingNow.reason === 'watching' ? 'Following the show you are in the middle of' : 'Following the last film you finished',
+    art: watchingNow.poster ? { kind: 'poster', src: `${IMG}w154${watchingNow.poster}`, alt: watchingNow.title, id: watchingNow.id, type: watchingNow.type } : null,
+  });
+  descriptors.push({ id: 'rowSeries', icon: '📺', title: 'Series for You', kicker: 'Shows ranked from your taste and what you are watching lately' });
   if (seed) descriptors.push({
     id: 'rowSeed', icon: seed.reason === 'liked' ? '⭐' : '🍿',
     title: `Because you ${seed.reason} ${seed.title}`,
@@ -849,6 +912,8 @@ export async function renderRecommendations() {
   // The label and every card now share the exact same recommendation seed.
   // Strict similarity removes the row entirely if fewer than four honest matches
   // remain; a missing row is better than a confident but misleading explanation.
+  if (watchingNow) fillRow('rowWatching', () => rowFrom(c => isRelatedToWatching(c, watchingNow, profile), 4), run);
+  fillRow('rowSeries', () => rowFrom(c => c.__type === 'tv', 4), run);
   if (seed) fillRow('rowSeed', () => rowFrom(c => isRelatedToSeed(c, seed), 4), run);
   if (topActor) fillRow('rowActor', () => rowFrom(c => hasCandidateSource(c, 'cast')), run);
   if (topDirector) fillRow('rowDirector', () => rowFrom(c => hasCandidateSource(c, 'director')), run);

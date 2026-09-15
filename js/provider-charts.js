@@ -99,9 +99,9 @@ function trendChart(series, width) {
     <path d="${area}" fill="url(#piTrendFill)"/>
     <path d="${line}" fill="none" stroke="${TREND}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     <line class="pi-cross" x1="0" x2="0" y1="${padT}" y2="${padT + innerH}" stroke="${TREND}" stroke-width="1" opacity="0"/>
-    <circle class="pi-dot" r="4.5" fill="${TREND}" stroke="#0d0e14" stroke-width="2" opacity="0"/>
-    <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4.5" fill="${TREND}" stroke="#0d0e14" stroke-width="2"/>
-    <text x="${Math.min(W - padR, lastX + 8).toFixed(1)}" y="${Math.max(padT + 10, lastY - 9).toFixed(1)}" text-anchor="${lastX > W - 70 ? 'end' : 'start'}" fill="#e5e7eb" font-size="11" font-weight="700">${values.at(-1)}</text>
+    <circle class="pi-dot pi-ring" r="4.5" fill="${TREND}" stroke-width="2" opacity="0"/>
+    <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" class="pi-ring" r="4.5" fill="${TREND}" stroke-width="2"/>
+    <text x="${Math.min(W - padR, lastX + 8).toFixed(1)}" y="${Math.max(padT + 10, lastY - 9).toFixed(1)}" text-anchor="${lastX > W - 70 ? 'end' : 'start'}" class="pi-last" font-size="11" font-weight="700">${values.at(-1)}</text>
     ${hit}
   </svg>`;
 }
@@ -112,7 +112,7 @@ function sparkline(points) {
   if (values.length < 2) return '<span class="pi-spark-empty">—</span>';
   const max = Math.max(1, ...values), W = 62, H = 18;
   const path = values.map((value, index) => `${index ? 'L' : 'M'}${((index / (values.length - 1)) * W).toFixed(1)} ${(H - (value / max) * (H - 3) - 1.5).toFixed(1)}`).join(' ');
-  return `<svg class="pi-spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="${path}" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${W}" cy="${(H - (values.at(-1) / max) * (H - 3) - 1.5).toFixed(1)}" r="2.4" fill="${TREND}"/></svg>`;
+  return `<svg class="pi-spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true"><path d="${path}" class="pi-spark-line" fill="none" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${W}" cy="${(H - (values.at(-1) / max) * (H - 3) - 1.5).toFixed(1)}" r="2.4" fill="${TREND}"/></svg>`;
 }
 
 function statsTable(stats) {

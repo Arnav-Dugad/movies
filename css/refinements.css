@@ -50,22 +50,34 @@
 .trailer-x:hover { background: var(--red); }
 
 /* ------------------------------------------------------------------- hero --
-   The hero used to collapse its badge, rating, year, genres AND synopsis three
-   seconds after landing, leaving an image with two buttons on it and nothing
-   that says what the title is. Only the synopsis folds away now: the line that
-   is genuinely long, and the only one you finish reading. Everything that
-   answers "what am I looking at" stays put. */
+   Four seconds after a slide arrives (js/hero.js) everything but the title logo
+   folds away — badge, score, genres, synopsis and buttons — and the logo settles
+   into the space they leave. Hover, focus or a tap brings the rest back. */
+.hero-actions {
+  max-height: 140px;
+  transition: opacity .45s var(--ease), max-height .6s var(--ease), margin .5s var(--ease), transform .5s var(--ease);
+}
+.hero-title { transition: margin .6s var(--ease), transform .6s var(--ease-out); }
 .hero-slide.collapsed .hero-badge,
 .hero-slide.collapsed .hero-meta,
-.hero-slide.collapsed .hero-genres {
-  opacity: 1;
-  max-height: 80px;
-  transform: none;
-  pointer-events: auto;
-  margin-bottom: 12px;
+.hero-slide.collapsed .hero-genres,
+.hero-slide.collapsed .hero-desc,
+.hero-slide.collapsed .hero-actions {
+  /* The entrance animations hold opacity with fill-mode "both"; without this
+     the buttons stayed fully visible on a collapsed slide. */
+  animation: none;
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
 }
-.hero-slide.collapsed .hero-badge { margin-bottom: 18px; }
-.hero-slide.collapsed .hero-genres { margin-bottom: 14px; }
+.hero-slide.collapsed .hero-title { margin-bottom: 0; }
+/* The logo is the whole identity of a collapsed slide, so it grows a touch. */
+.hero-slide.collapsed .hero-logo { transform: scale(1.06); transform-origin: left bottom; }
+.hero-logo { transition: transform .8s var(--ease-out); }
+.hero-slide.collapsed { cursor: pointer; }
 
 /* Anchored a little lower and given a floor, so the stack does not leave a dead
    band between the buttons and the progress rail. */
@@ -309,3 +321,240 @@ input:focus-visible,
 }
 .avatar-pending svg { width: 56%; height: 56%; }
 .nav-avatar, .profile-dd-avatar { transition: background .3s var(--ease-out), border-color .3s var(--ease-out); }
+
+/* ---------------------------------------------------------- poster spacing --
+   Rails and grids on Home, Movies and TV packed posters 12-14px apart, so a row
+   read as one continuous strip of artwork. More air lets each title stand on its
+   own. Compact density keeps a tighter rhythm, but still wider than before. */
+#homePage .row { gap: 22px; }
+#moviesPage .browse-grid,
+#tvPage .browse-grid { gap: 34px 22px; }
+html[data-density="compact"] #homePage .row { gap: 14px; }
+html[data-density="compact"] #moviesPage .browse-grid,
+html[data-density="compact"] #tvPage .browse-grid { gap: 24px 14px; }
+@media (max-width: 900px) {
+  #homePage .row { gap: 16px; }
+  #moviesPage .browse-grid,
+  #tvPage .browse-grid { gap: 26px 14px; }
+}
+@media (max-width: 430px) {
+  #homePage .row { gap: 12px; }
+  #moviesPage .browse-grid,
+  #tvPage .browse-grid { gap: 22px 12px; }
+}
+
+/* ---------------------------------------------------------- poster captions --
+   Settings → "Hide titles under posters" (off by default) removes the name, year
+   and type beneath every poster, everywhere, for a pure artwork wall. The title
+   stays available to assistive technology through each card's aria-label. */
+html[data-poster-captions="hide"] .card > .card-info { display: none; }
+
+/* ------------------------------------------------------------ binge forecast --
+   "At your pace of 2 episodes a day, you'll finish the 6 left in 3 days." Sits
+   under the show's progress bar, quiet until read. */
+.show-progress-copy .show-forecast {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  color: var(--cyan2);
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.show-progress-copy .show-forecast svg { width: 15px; height: 15px; flex-shrink: 0; }
+.tv-row-forecast { color: var(--cyan2); font-weight: 650; }
+
+/* The lone "Import from Letterboxd, Trakt or IMDb" button spans the vault row. */
+.settings-vault-actions > :only-child { grid-column: 1 / -1; }
+
+/* ------------------------------------------------------- continue watching --
+   Minimal and clean. The rail had a glass stage around it, a bordered glass
+   panel around every card, an eyebrow, a badge and a "left" label painted on the
+   artwork, and a two-part meta line under it. Now: the artwork, a hairline of
+   progress along its bottom edge, the title, and one line saying what is next.
+   Controls appear only when the pointer or focus arrives. */
+.continue-minimal.continue-section { padding-block: 10px 6px; margin-top: 4px; overflow: visible; }
+.continue-minimal.continue-section::before { display: none; }
+.continue-minimal .continue-head { display: flex; align-items: baseline; gap: 12px; }
+.continue-minimal .continue-count {
+  color: var(--text3);
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  font-weight: 600;
+}
+.continue-minimal .continue-tool {
+  min-height: 32px;
+  padding: 0 12px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text3);
+  font-size: .8rem;
+}
+.continue-minimal .continue-tool:hover { color: var(--text); background: rgba(255, 255, 255, .06); }
+.continue-minimal .continue-tool.on { background: var(--accent); color: #fff; }
+
+.continue-minimal .continue-card {
+  width: 320px;
+  flex: 0 0 320px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: transform .35s var(--ease-out);
+}
+.continue-minimal .continue-card:hover { transform: translateY(-4px); border-color: transparent; box-shadow: none; }
+.continue-minimal .continue-art { border-radius: 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); outline: 0; }
+.continue-minimal .continue-card:hover .continue-art { box-shadow: 0 16px 36px rgba(0, 0, 0, .5); }
+.continue-minimal .continue-card:hover .continue-art img { transform: scale(1.04); }
+.continue-minimal .continue-scrim { background: linear-gradient(to bottom, transparent 55%, rgba(4, 4, 9, .55) 100%); }
+.continue-minimal .continue-bar {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 0;
+  background: rgba(255, 255, 255, .18);
+}
+.continue-minimal .continue-bar i { background: var(--red2); }
+.continue-minimal .continue-pin-mark { right: 10px; top: 10px; width: 20px; height: 20px; font-size: .62rem; }
+.continue-minimal .continue-play { width: 46px; height: 46px; }
+.continue-minimal .continue-quick { opacity: 0; transform: scale(.9); }
+.continue-minimal .continue-card:hover .continue-quick,
+.continue-minimal .continue-card:focus-within .continue-quick { opacity: 1; transform: none; }
+
+.continue-minimal .continue-body { padding: 11px 2px 0; }
+.continue-minimal .continue-body h3 { font-size: .95rem; font-weight: 650; }
+.continue-minimal .continue-next {
+  display: flex;
+  gap: 8px;
+  margin-top: 3px;
+  color: var(--text3);
+  font-size: .8rem;
+}
+.continue-minimal .continue-next > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.continue-minimal .continue-next > i { flex-shrink: 0; font-style: normal; }
+.continue-minimal .continue-next > i::before { content: '·'; margin-right: 8px; }
+
+@media (max-width: 700px) {
+  .continue-minimal .continue-card { width: 260px; flex-basis: 260px; }
+  .continue-minimal .continue-play { opacity: 0; }
+}
+/* Touch has no hover, so the quick "mark watched" stays reachable. */
+@media (hover: none), (pointer: coarse) {
+  .continue-minimal .continue-quick { opacity: 1; transform: none; }
+}
+
+/* ------------------------------------------------------ detail page parts --
+   Settings → "What appears": a switch for every part of a title's page. */
+.settings-parts-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 4px 0 14px; }
+.settings-parts-summary p { flex: 1 1 280px; color: var(--text3); font-size: .84rem; line-height: 1.55; }
+.settings-parts-summary span {
+  padding: 6px 11px;
+  border: 1px solid var(--glass-border);
+  border-radius: 50px;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: .76rem;
+}
+.settings-parts-summary button,
+.settings-parts-head button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 50px;
+  background: rgba(255, 255, 255, .03);
+  color: var(--text2);
+  font-size: .78rem;
+  font-weight: 650;
+}
+.settings-parts-summary button:hover,
+.settings-parts-head button:hover { color: var(--text); border-color: rgba(255, 255, 255, .18); }
+.settings-parts-group { padding: 14px 0; border-top: 1px solid var(--glass-border); }
+.settings-parts-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.settings-parts-head b { color: var(--text); font-size: .88rem; font-weight: 700; }
+.settings-parts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.settings-part {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .02);
+  color: var(--text3);
+  font-size: .84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .2s var(--ease-out), background .2s var(--ease-out), color .2s var(--ease-out);
+}
+.settings-part input { position: absolute; opacity: 0; pointer-events: none; }
+.settings-part i {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid rgba(255, 255, 255, .25);
+  border-radius: 6px;
+  transition: background .2s var(--ease-out), border-color .2s var(--ease-out);
+}
+.settings-part input:checked + i {
+  border-color: var(--green);
+  background: var(--green) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 12px no-repeat;
+}
+.settings-part:has(input:checked) { color: var(--text); border-color: rgba(16, 185, 129, .25); background: rgba(16, 185, 129, .05); }
+.settings-part:hover { border-color: rgba(255, 255, 255, .18); }
+.settings-part input:focus-visible + i { outline: 2px solid var(--red2); outline-offset: 2px; }
+@media (max-width: 700px) { .settings-parts-grid { grid-template-columns: 1fr 1fr; } }
+
+/* ===== THEME SWITCH (profile menu) =====
+   One orb drawing morphs between moon and sun: the shade circle that bites the
+   crescent slides off, the core shrinks, and the rays turn in. */
+button.profile-dd-item.theme-switch { width: 100%; text-align: left; font: inherit; font-size: .88rem; font-weight: 500; }
+.theme-switch .theme-switch-label { flex: 1; }
+.theme-orb { width: 18px; height: 18px; flex-shrink: 0; display: grid; place-items: center; color: var(--text2); transition: color .5s var(--ease-out); }
+.profile-dd-item .theme-orb svg { width: 18px; height: 18px; opacity: 1; overflow: visible; }
+.theme-orb-core { transform-box: fill-box; transform-origin: center; transition: transform .7s var(--spring); }
+.theme-orb-shade { transform-box: view-box; transition: transform .7s var(--ease-out); }
+.theme-orb-rays { transform-box: fill-box; transform-origin: center; opacity: 0; transform: rotate(-70deg) scale(.4); transition: opacity .45s var(--ease-out), transform .7s var(--spring); }
+.theme-switch[aria-checked="true"] .theme-orb { color: #f59e0b; }
+.theme-switch[aria-checked="true"] .theme-orb-core { transform: scale(.66); }
+.theme-switch[aria-checked="true"] .theme-orb-shade { transform: translate(9px, -9px); }
+.theme-switch[aria-checked="true"] .theme-orb-rays { opacity: 1; transform: none; }
+.theme-switch-track { position: relative; width: 36px; height: 20px; border-radius: 999px; background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); flex-shrink: 0; transition: background .45s var(--ease-out); }
+.theme-switch-track i { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .5s var(--spring), background .45s var(--ease-out); }
+.theme-switch[aria-checked="true"] .theme-switch-track { background: linear-gradient(135deg, #fbbf24, #f97316); }
+.theme-switch[aria-checked="true"] .theme-switch-track i { transform: translateX(16px); background: #fff; }
+.theme-switch:focus-visible { outline: 2px solid var(--red2); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) {
+  .theme-orb-core, .theme-orb-shade, .theme-orb-rays, .theme-switch-track i { transition: none; }
+}
+
+/* ===== THEME TRANSITION =====
+   js/theme-toggle.js drives a circular reveal through the View Transitions
+   API. The page's own shared-element names are suspended so nothing escapes
+   the circle, and the default cross-fade is replaced by the clip animation. */
+:root.theme-vt * { view-transition-name: none !important; }
+:root.theme-vt::view-transition-group(root) { animation: none; }
+:root.theme-vt::view-transition-old(root),
+:root.theme-vt::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+:root.theme-vt.to-dark::view-transition-old(root) { z-index: 2; }
+:root.theme-vt.to-dark::view-transition-new(root) { z-index: 1; }
+/* A warm bloom at the switch, painted into the incoming light page and then
+   left to fade on the live page. */
+:root::after { content: ''; position: fixed; inset: 0; z-index: 10001; pointer-events: none; opacity: 0; transition: opacity 1.1s var(--ease-out) .05s;
+  background: radial-gradient(circle at var(--theme-x, 90%) var(--theme-y, 4%), rgba(255, 196, 120, .38), rgba(255, 214, 160, .12) 22%, transparent 48%); }
+:root.theme-bloom::after { opacity: 1; transition: none; }
+.theme-wipe { position: fixed; inset: 0; z-index: 10002; pointer-events: none; }
+
+/* Chart ink that used to be SVG presentation attributes lives here, so both
+   themes can colour it (attributes are invisible to the light-theme compiler). */
+.bo3-label { fill: #9ca3af; }
+.bo3-svg .bo3-value { fill: #f0f0f5; }
+.pi-ring { stroke: #0d0e14; }
+.pi-last { fill: #e5e7eb; }
+.pi-spark-line { stroke: rgba(255,255,255,.3); }

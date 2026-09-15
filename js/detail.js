@@ -11,7 +11,7 @@ import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone, isEpisodeAvailable } from './episode-times.js';
 import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setEpisodePosition, episodeLabel, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
   seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch,
-  isDropped, setDropped } from './episodes.js';
+  isDropped, setDropped, bingeForecast, forecastSentence } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
@@ -52,7 +52,7 @@ function countdownGrid(id) {
 }
 
 function countdownPanel(id, { eyebrow, title, localHTML = '' }) {
-  return `<section class="countdown" data-countdown-shell="${id}" style="--minute-sweep:0%"><header class="countdown-head"><div><span class="countdown-signal"><i></i>${esc(eyebrow)}</span><h2>${esc(title)}</h2></div>${localHTML}</header><div class="countdown-stage">${countdownGrid(id)}<div class="countdown-horizon" aria-hidden="true"><i></i></div></div><time class="countdown-foot" id="cd_target_${id}">Checking time…</time></section>`;
+  return `<section class="countdown" data-dp="countdown" data-countdown-shell="${id}" style="--minute-sweep:0%"><header class="countdown-head"><div><span class="countdown-signal"><i></i>${esc(eyebrow)}</span><h2>${esc(title)}</h2></div>${localHTML}</header><div class="countdown-stage">${countdownGrid(id)}<div class="countdown-horizon" aria-hidden="true"><i></i></div></div><time class="countdown-foot" id="cd_target_${id}">Checking time…</time></section>`;
 }
 
 export async function openDetail(id, type) {
@@ -211,56 +211,56 @@ export async function openDetail(id, type) {
           ${posterHTML}
           <div class="detail-head">
             ${titleHTML}
-            ${det.tagline ? `<p class="detail-tagline">"${esc(det.tagline)}"</p>` : ''}
+            ${det.tagline ? `<p class="detail-tagline" data-dp="tagline">"${esc(det.tagline)}"</p>` : ''}
             <div class="detail-tags">
-              <span class="dtag gold"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span data-count="${det.vote_average || 0}" data-decimals="1">${rat}</span></span>
-              <span class="dtag">${year}</span>
-              ${rt ? `<span class="dtag">${rt}</span>` : ''}
-              ${cert ? `<span class="dtag">${cert}</span>` : ''}
-              ${genres.map(g => `<span class="dtag">${esc(g)}</span>`).join('')}
+              <span class="dtag gold" data-dp="rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><span data-count="${det.vote_average || 0}" data-decimals="1">${rat}</span></span>
+              <span class="dtag" data-dp="year">${year}</span>
+              ${rt ? `<span class="dtag" data-dp="runtime">${rt}</span>` : ''}
+              ${cert ? `<span class="dtag" data-dp="certificate">${cert}</span>` : ''}
+              ${genres.map(g => `<span class="dtag" data-dp="genres">${esc(g)}</span>`).join('')}
             </div>
             <div class="detail-btns">
-              ${trailer ? `<button class="btn-primary magnetic" data-action="play-trailer" data-key="${trailer.key}" data-tip="Play trailer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play Trailer</button>` : ''}
+              ${trailer ? `<button class="btn-primary magnetic" data-dp="trailerButton" data-action="play-trailer" data-key="${trailer.key}" data-tip="Play trailer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play Trailer</button>` : ''}
               <!-- A bookmark, not a tick. Beside the watched button — which is also a
                    tick — two adjacent circles both showing a ✓ gave a viewer no way to
                    tell "saved to a list" from "I have seen this" without hovering for
                    the tooltip. -->
-              <button class="dbtn-icon ${wl ? 'active' : ''}" data-wl="${type}|${id}" data-action="open-list-picker" data-item="${wlPayload}" aria-label="${wl ? 'Edit lists' : 'Add to a list'}" data-tip="${wl ? 'Edit lists' : 'Add to a list'}">${wl ? '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/></svg>'}</button>
-              ${out ? `<button class="dbtn-icon ${wd ? 'active' : ''}" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" data-keywords="${esc(JSON.stringify(keywordMeta))}" data-runtime="${det.runtime || det.episode_run_time?.[0] || 0}" data-language="${det.original_language || ''}" data-country="${contentCountry}" data-release-date="${contentReleaseDate}" data-tmdb-rating="${det.vote_average || 0}" data-vote-count="${det.vote_count || 0}" data-collection-id="${det.belongs_to_collection?.id || 0}" data-collection-name="${esc(det.belongs_to_collection?.name || '')}" data-collection-poster="${det.belongs_to_collection?.poster_path || ''}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>` : ''}
-              ${out ? `<button class="dbtn-icon" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate" data-tip="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>` : ''}
-              ${type === 'movie' && out ? `<button class="movie-progress-trigger${movieProgress ? ' active' : ''}" id="movieProgressTrigger_${id}" data-action="movie-progress-open" data-id="${id}" aria-label="${movieProgress ? 'Edit movie progress' : 'Start watching this movie'}" data-tip="${movieProgress ? 'Edit progress' : 'Start watching'}"${wd ? ' hidden' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4V8Z"/></svg><span>${movieProgress ? 'Watching' : 'Start'}</span></button>` : ''}
+              <button class="dbtn-icon ${wl ? 'active' : ''}" data-dp="listButton" data-wl="${type}|${id}" data-action="open-list-picker" data-item="${wlPayload}" aria-label="${wl ? 'Edit lists' : 'Add to a list'}" data-tip="${wl ? 'Edit lists' : 'Add to a list'}">${wl ? '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/></svg>'}</button>
+              ${out ? `<button class="dbtn-icon ${wd ? 'active' : ''}" data-dp="watchedButton" data-action="toggle-watched" data-id="${id}" data-type="${type}" data-title="${safeTitle}" data-poster="${det.poster_path || ''}" data-year="${year}" data-genres="${esc(JSON.stringify((det.genres || []).map(g => g.id)))}" data-keywords="${esc(JSON.stringify(keywordMeta))}" data-runtime="${det.runtime || det.episode_run_time?.[0] || 0}" data-language="${det.original_language || ''}" data-country="${contentCountry}" data-release-date="${contentReleaseDate}" data-tmdb-rating="${det.vote_average || 0}" data-vote-count="${det.vote_count || 0}" data-collection-id="${det.belongs_to_collection?.id || 0}" data-collection-name="${esc(det.belongs_to_collection?.name || '')}" data-collection-poster="${det.belongs_to_collection?.poster_path || ''}" aria-label="${wd ? 'Unmark watched' : 'Mark as watched'}" data-tip="${wd ? 'Unmark watched' : 'Mark as watched'}" style="${wd ? 'color:var(--green);border-color:var(--green)' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>` : ''}
+              ${out ? `<button class="dbtn-icon" data-dp="rateButton" data-action="open-rating" data-id="${id}" data-type="${type}" data-title="${safeTitle}" aria-label="Rate" data-tip="Rate">${myRating ? `<span style="font-size:.72rem;font-weight:800;color:var(--gold)">${myRating}</span>` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'}</button>` : ''}
+              ${type === 'movie' && out ? `<button class="movie-progress-trigger${movieProgress ? ' active' : ''}" data-dp="progressButton" id="movieProgressTrigger_${id}" data-action="movie-progress-open" data-id="${id}" aria-label="${movieProgress ? 'Edit movie progress' : 'Start watching this movie'}" data-tip="${movieProgress ? 'Edit progress' : 'Start watching'}"${wd ? ' hidden' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4V8Z"/></svg><span>${movieProgress ? 'Watching' : 'Start'}</span></button>` : ''}
               ${out ? '' : `<span class="unreleased-note" data-tip="You can still add it to your list">${type === 'tv' ? 'Not aired yet' : 'Not released yet'}</span>`}
-              <button class="dbtn-icon" data-action="share-item" data-title="${safeTitle}" data-id="${id}" data-type="${type}" aria-label="Share" data-tip="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
+              <button class="dbtn-icon" data-dp="shareButton" data-action="share-item" data-title="${safeTitle}" data-id="${id}" data-type="${type}" aria-label="Share" data-tip="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></button>
             </div>
             ${rewatchStripHTML(id, type)}
           </div>
         </div>
         ${type === 'movie' && !wd ? movieProgressPanelHTML(id, det) : ''}
-        ${cdHTML}${collHTML}
-        <div class="detail-overview-wrap">
+        ${cdHTML}${collHTML ? `<div data-dp="collection" style="display:contents">${collHTML}</div>` : ''}
+        <div class="detail-overview-wrap" data-dp="overview">
           <p class="detail-overview clamped" id="detOv">${esc(det.overview || 'No overview available.')}</p>
           <span class="detail-overview-toggle" id="detOvToggle" data-action="toggle-overview" hidden>Read more</span>
         </div>
-        ${boHTML}
-        <div id="providerBlock">${providerHTML(det, state.region)}</div>
+        ${boHTML ? `<div data-dp="boxOffice" style="display:contents">${boHTML}</div>` : ''}
+        <div id="providerBlock" data-dp="whereToWatch">${providerHTML(det, state.region)}</div>
         <div class="stats-grid">
-          ${det.status ? `<div class="stat-card"><div class="stat-label">Status</div><div class="stat-val"><span style="color:${det.status === 'Released' || det.status === 'Returning Series' ? 'var(--green2)' : 'var(--text)'}">${det.status === 'Returning Series' ? '<span class="live-dot"></span>' : ''} ${esc(det.status)}</span></div></div>` : ''}
-          ${det.original_language ? `<div class="stat-card"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
-          ${det.vote_count ? `<div class="stat-card"><div class="stat-label">Votes</div><div class="stat-val" data-count="${det.vote_count}">${det.vote_count.toLocaleString()}</div></div>` : ''}
+          ${det.status ? `<div class="stat-card" data-dp="status"><div class="stat-label">Status</div><div class="stat-val"><span style="color:${det.status === 'Released' || det.status === 'Returning Series' ? 'var(--green2)' : 'var(--text)'}">${det.status === 'Returning Series' ? '<span class="live-dot"></span>' : ''} ${esc(det.status)}</span></div></div>` : ''}
+          ${det.original_language ? `<div class="stat-card" data-dp="language"><div class="stat-label">Language</div><div class="stat-val">${det.original_language.toUpperCase()}</div></div>` : ''}
+          ${det.vote_count ? `<div class="stat-card" data-dp="votes"><div class="stat-label">Votes</div><div class="stat-val" data-count="${det.vote_count}">${det.vote_count.toLocaleString()}</div></div>` : ''}
           ${directorCardHTML(dirs, type)}
-          ${type === 'tv' && det.number_of_seasons ? `<div class="stat-card"><div class="stat-label">Seasons</div><div class="stat-val" data-count="${det.number_of_seasons}">${det.number_of_seasons}</div></div>` : ''}
-          ${type === 'tv' && det.number_of_episodes ? `<div class="stat-card"><div class="stat-label">Episodes</div><div class="stat-val" data-count="${det.number_of_episodes}">${det.number_of_episodes}</div></div>` : ''}
+          ${type === 'tv' && det.number_of_seasons ? `<div class="stat-card" data-dp="seasons"><div class="stat-label">Seasons</div><div class="stat-val" data-count="${det.number_of_seasons}">${det.number_of_seasons}</div></div>` : ''}
+          ${type === 'tv' && det.number_of_episodes ? `<div class="stat-card" data-dp="episodeCount"><div class="stat-label">Episodes</div><div class="stat-val" data-count="${det.number_of_episodes}">${det.number_of_episodes}</div></div>` : ''}
           ${networksHTML(det, type)}
           ${companiesHTML(det)}
           ${originalTitleHTML(det, type, title)}
-          ${listCardHTML('Countries', (det.production_countries || []).map(c => c.name))}
-          ${listCardHTML('Languages', (det.spoken_languages || []).map(l => l.english_name || l.name))}
+          ${listCardHTML('Countries', (det.production_countries || []).map(c => c.name), 'countries')}
+          ${listCardHTML('Languages', (det.spoken_languages || []).map(l => l.english_name || l.name), 'spokenLanguages')}
           ${altTitlesHTML(det)}
-          ${det.homepage ? `<div class="stat-card"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit →</a></div></div>` : ''}
+          ${det.homepage ? `<div class="stat-card" data-dp="website"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit →</a></div></div>` : ''}
           ${linksHTML(det)}
         </div>
-        <section class="awards-section" id="awardsSection_${id}" hidden></section>
-        ${kwHTML}${vidsHTML}${castHTML}${crewHTML}${galHTML}${seasHTML}${revsHTML}${simHTML}
+        <section class="awards-section" data-dp="awards" id="awardsSection_${id}" hidden></section>
+        ${kwHTML ? `<div data-dp="keywords" style="display:contents">${kwHTML}</div>` : ''}${vidsHTML ? `<div data-dp="videos" style="display:contents">${vidsHTML}</div>` : ''}${castHTML ? `<div data-dp="cast" style="display:contents">${castHTML}</div>` : ''}${crewHTML ? `<div data-dp="crew" style="display:contents">${crewHTML}</div>` : ''}${galHTML ? `<div data-dp="gallery" style="display:contents">${galHTML}</div>` : ''}${seasHTML ? `<div data-dp="episodes" style="display:contents">${seasHTML}</div>` : ''}${revsHTML ? `<div data-dp="reviews" style="display:contents">${revsHTML}</div>` : ''}${simHTML ? `<div data-dp="moreLikeThis" style="display:contents">${simHTML}</div>` : ''}
       </div>`;
 
     ct.classList.toggle('no-detail-poster', !posterPath);
@@ -307,7 +307,7 @@ function rewatchStripHTML(id, type) {
   // "first" and "last" rather than listing viewings we may have aged out.
   const caption = last && last !== first ? `First ${first} · last ${last}`
     : first ? `Watched ${first}` : 'Date not recorded';
-  return `<div class="rewatch-strip" id="rwStrip_${type}_${id}">
+  return `<div class="rewatch-strip" data-dp="rewatchStrip" id="rwStrip_${type}_${id}">
     <div class="rw-count" aria-hidden="true"><b>${plays}</b><span>${plays === 1 ? 'play' : 'plays'}</span></div>
     <div class="rw-body"><div class="rw-label">${playLabel(key)}</div><div class="rw-dates">${esc(caption)}</div></div>
     <div class="rw-acts">
@@ -353,7 +353,7 @@ function movieProgressPanelHTML(id, det = curDet) {
   const percent = runtime ? Math.min(99, Math.round(position / runtime * 100)) : 0;
   const time = position ? formatMovieTime(position) : '';
   const left = runtime ? Math.max(0, runtime - position) : 0;
-  return `<section class="movie-progress-panel" id="movieProgressPanel_${id}" aria-label="Movie progress" data-runtime="${runtime}">
+  return `<section class="movie-progress-panel" data-dp="movieProgress" id="movieProgressPanel_${id}" aria-label="Movie progress" data-runtime="${runtime}">
     <div class="mp-head">
       <div class="movie-progress-orb" style="--movie-progress:${percent * 3.6}deg"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 7v10l8-5-8-5Z"/></svg></div>
       <div class="movie-progress-copy">
@@ -460,7 +460,7 @@ function directorCardHTML(dirs, type) {
   const label = dirs.length > 1 ? (isCreator ? 'Creators' : 'Directors') : (isCreator ? 'Creator' : 'Director');
   const rows = dirs.map(d => `<a class="sp-row" href="/person/${d.id}" data-action="open-person" data-id="${d.id}" data-tip="View ${esc(d.name)}"><div class="sp-pic">${d.profile_path ? `<img src="${IMG}w185${d.profile_path}" alt="${esc(d.name)}" loading="lazy" data-ph="${PH}">` : `<span class="sp-mono">${esc((d.name || '?')[0])}</span>`}</div><div class="sp-name">${esc(d.name)}</div></a>`).join('');
   // Each name is its own link now, so the card itself is no longer the click target.
-  return `<div class="stat-card stat-person${dirs.length > 1 ? ' stat-person-multi' : ''}"><div class="stat-label">${label}</div>${rows}</div>`;
+  return `<div class="stat-card stat-person${dirs.length > 1 ? ' stat-person-multi' : ''}" data-dp="director"><div class="stat-label">${label}</div>${rows}</div>`;
 }
 
 // ===== EXTERNAL LINKS =====
@@ -539,7 +539,7 @@ function companiesHTML(det) {
   const one = c => c.logo_path
     ? `<a class="studio-logo" href="/studio/${c.id}" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles"><img src="${IMG}w185${c.logo_path}" alt="${esc(c.name)}" title="${esc(c.name)}" loading="lazy"></a>`
     : `<a class="studio-name-link" href="/studio/${c.id}" data-action="open-studio" data-id="${c.id}" data-tip="See ${esc(c.name)} titles">${esc(c.name)}</a>`;
-  return `<div class="stat-card stat-media"><div class="stat-label">${cos.length > 1 ? 'Studios' : 'Studio'}</div><div class="studio-logos">${cos.map(one).join('')}</div></div>`;
+  return `<div class="stat-card stat-media" data-dp="studios"><div class="stat-label">${cos.length > 1 ? 'Studios' : 'Studio'}</div><div class="studio-logos">${cos.map(one).join('')}</div></div>`;
 }
 
 // TV networks get their own page too (/network/:id), since a network's catalogue
@@ -551,21 +551,21 @@ function networksHTML(det, type) {
   const one = n => n.logo_path
     ? `<a class="studio-logo" href="/network/${n.id}" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows"><img src="${IMG}w185${n.logo_path}" alt="${esc(n.name)}" title="${esc(n.name)}" loading="lazy"></a>`
     : `<a class="studio-name-link" href="/network/${n.id}" data-action="open-network" data-id="${n.id}" data-tip="See ${esc(n.name)} shows">${esc(n.name)}</a>`;
-  return `<div class="stat-card stat-media"><div class="stat-label">${nets.length > 1 ? 'Networks' : 'Network'}</div><div class="studio-logos">${nets.map(one).join('')}</div></div>`;
+  return `<div class="stat-card stat-media" data-dp="networks"><div class="stat-label">${nets.length > 1 ? 'Networks' : 'Network'}</div><div class="studio-logos">${nets.map(one).join('')}</div></div>`;
 }
 
 // A generic comma-list stat card (countries, languages).
-function listCardHTML(label, values) {
+function listCardHTML(label, values, part = '') {
   const vals = (values || []).filter(Boolean);
   if (!vals.length) return '';
-  return `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-val" style="font-size:.82rem;line-height:1.5">${esc(vals.join(', '))}</div></div>`;
+  return `<div class="stat-card"${part ? ` data-dp="${part}"` : ''}><div class="stat-label">${label}</div><div class="stat-val" style="font-size:.82rem;line-height:1.5">${esc(vals.join(', '))}</div></div>`;
 }
 
 // Only worth showing when it actually differs from the title you're reading.
 function originalTitleHTML(det, type, title) {
   const orig = type === 'tv' ? det.original_name : det.original_title;
   if (!orig || orig === title) return '';
-  return `<div class="stat-card"><div class="stat-label">Original Title</div><div class="stat-val" style="font-size:.86rem">${esc(orig)}</div></div>`;
+  return `<div class="stat-card" data-dp="originalTitle"><div class="stat-label">Original Title</div><div class="stat-val" style="font-size:.86rem">${esc(orig)}</div></div>`;
 }
 
 // A few alternative titles, preferring the user's region.
@@ -578,7 +578,7 @@ function altTitlesHTML(det) {
     .map(t => t.title).filter(Boolean);
   const seen = [...new Set(pick)].slice(0, 4);
   if (!seen.length) return '';
-  return `<div class="stat-card"><div class="stat-label">Also Known As</div><div class="stat-val" style="font-size:.8rem;line-height:1.6">${esc(seen.join(' · '))}</div></div>`;
+  return `<div class="stat-card" data-dp="alsoKnownAs"><div class="stat-label">Also Known As</div><div class="stat-val" style="font-size:.8rem;line-height:1.6">${esc(seen.join(' · '))}</div></div>`;
 }
 
 function linksHTML(det) {
@@ -587,7 +587,7 @@ function linksHTML(det) {
     .filter(([k]) => ext[k])
     .map(([k, label, url]) => `<a class="ext-link" href="${esc(url(ext[k]))}" target="_blank" rel="noopener noreferrer">${label}</a>`);
   if (!links.length) return '';
-  return `<div class="stat-card"><div class="stat-label">Links</div><div class="stat-val ext-links">${links.join('')}</div></div>`;
+  return `<div class="stat-card" data-dp="links"><div class="stat-label">Links</div><div class="stat-val ext-links">${links.join('')}</div></div>`;
 }
 
 // ===== FULL CREW =====
@@ -857,12 +857,12 @@ function boxOfficeChart(m, width) {
     const full = Math.max(3, x(row.value) - padL);
     const labelY = y + barH / 2 + 4;
     const inlineLabel = narrow
-      ? `<text x="${padL}" y="${(y - 9).toFixed(1)}" fill="#9ca3af" font-size="11" font-weight="600">${esc(row.label)}</text>`
-      : `<text x="${(padL - 14).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="end" fill="#9ca3af" font-size="11.5" font-weight="600">${esc(row.label)}</text>`;
+      ? `<text x="${padL}" y="${(y - 9).toFixed(1)}" class="bo3-label" font-size="11" font-weight="600">${esc(row.label)}</text>`
+      : `<text x="${(padL - 14).toFixed(1)}" y="${labelY.toFixed(1)}" text-anchor="end" class="bo3-label" font-size="11.5" font-weight="600">${esc(row.label)}</text>`;
     return `<g class="bo3-row">
       ${inlineLabel}
       <rect class="bo3-bar${row.emphasis ? ' emphasis' : ''}" x="${padL}" y="${y}" width="0" height="${barH}" rx="4" fill="${row.color}" data-w="${full.toFixed(1)}" data-delay="${index * 140}"></rect>
-      <text class="bo3-value" x="${(padL + full + 10).toFixed(1)}" y="${labelY.toFixed(1)}" fill="#f0f0f5" font-size="12" font-weight="700" opacity="0" data-delay="${index * 140 + 520}">${marketMoney(m, row.value, { compact: m.market.id === 'india' })}</text>
+      <text class="bo3-value" x="${(padL + full + 10).toFixed(1)}" y="${labelY.toFixed(1)}" font-size="12" font-weight="700" opacity="0" data-delay="${index * 140 + 520}">${marketMoney(m, row.value, { compact: m.market.id === 'india' })}</text>
       <rect class="bo3-hit" x="${padL}" y="${(y - 8).toFixed(1)}" width="${Math.max(24, full).toFixed(1)}" height="${barH + 16}" fill="transparent" data-tip="${esc(`${row.label}: ${marketMoney(m, row.value)}`)}"></rect>
     </g>`;
   }).join('');
@@ -1154,6 +1154,7 @@ function showProgressPanel(id, det, progress, next) {
       <strong>${esc(dropped ? 'You stopped watching this' : nextLabel)}</strong>
       <p>${progress.watched}/${progress.aired} watched${progress.total > progress.aired ? ` · ${progress.total} total` : ''}${dropped ? ' · hidden from Continue Watching' : ''}</p>
       <div class="show-progress-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
+      ${(() => { const forecast = dropped ? null : bingeForecast(id); return forecast ? `<p class="show-forecast" data-dp="bingeForecast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>${esc(forecastSentence(forecast))}</p>` : ''; })()}
     </div>
     <div class="show-progress-actions">
       <b>${progress.percent}%</b>

@@ -4,6 +4,7 @@ import { $, toast, esc } from './ui.js';
 import { registerActions } from './events.js';
 import { REGIONS, regionLabel } from './config.js';
 import { prefs, updatePref, resetPrefs, preferencePayload } from './prefs.js';
+import { DETAIL_PART_GROUPS } from './detail-parts.js';
 import { db } from './firebase.js';
 import { clearLibraryCache, flushLibraryVersion, libraryCacheDisabled } from './library-cache.js';
 import { loadWatchlist, loadWatched } from './watchlist.js';
@@ -37,6 +38,22 @@ const ICONS = {
 const toggle = (key, title, sub, checked) => `<label class="settings-switch-row"><span><strong>${title}</strong><small>${sub}</small></span><input type="checkbox" data-action="settings-toggle" data-pref="${key}" ${checked ? 'checked' : ''}><i></i></label>`;
 const select = (key, title, sub, options, value) => `<label class="settings-select-row"><span><strong>${title}</strong><small>${sub}</small></span><select class="watched-select" data-action="settings-pref" data-pref="${key}">${options.map(([v, label]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>`;
 
+// Every part of a title's page, grouped, each with its own switch.
+function detailPartsPanel() {
+  const hidden = new Set(prefs.detailHidden || []);
+  const shownCount = DETAIL_PART_GROUPS.reduce((sum, group) => sum + group.parts.filter(([key]) => !hidden.has(key)).length, 0);
+  const total = DETAIL_PART_GROUPS.reduce((sum, group) => sum + group.parts.length, 0);
+  const groups = DETAIL_PART_GROUPS.map(group => {
+    const allShown = group.parts.every(([key]) => !hidden.has(key));
+    const parts = group.parts.map(([key, label]) => `<label class="settings-part"><input type="checkbox" data-action="settings-detail-part" data-part="${key}"${hidden.has(key) ? '' : ' checked'}><i aria-hidden="true"></i><span>${esc(label)}</span></label>`).join('');
+    return `<div class="settings-parts-group"><div class="settings-parts-head"><b>${esc(group.title)}</b><button data-action="settings-detail-group" data-group="${group.id}" data-show="${allShown ? '0' : '1'}">${allShown ? 'Hide all' : 'Show all'}</button></div><div class="settings-parts-grid">${parts}</div></div>`;
+  }).join('');
+  return `<section class="settings-panel settings-detail-parts"><div class="settings-panel-head">${ICONS.data}<div><span>Detail pages</span><h2>What appears</h2></div></div>
+    <div class="settings-parts-summary"><p>Switch off anything you never look at, down to a single fact. Hiding changes only what is shown — nothing about a title is lost.</p><span id="detailPartsCount">${shownCount} of ${total} shown</span>${hidden.size ? '<button data-action="settings-detail-reset">Show everything</button>' : ''}</div>
+    ${groups}
+  </section>`;
+}
+
 export function renderSettings() {
   const ct = $('settingsContent'); if (!ct) return;
   if (!state.user) {
@@ -51,12 +68,14 @@ export function renderSettings() {
       <main>
         <section class="settings-panel"><div class="settings-panel-head">${ICONS.palette}<div><span>Appearance</span><h2>Cinematic interface</h2></div></div>
           ${select('density', 'Content density', 'Choose roomy cards or fit more on screen.', [['comfortable', 'Comfortable'], ['compact', 'Compact']], prefs.density)}
+          <label class="settings-select-row"><span><strong>Theme</strong><small>Cinema dark, paper light, or follow your device. Also in the profile menu.</small></span><select class="watched-select" data-action="settings-theme" data-pref="theme">${[['dark', 'Dark'], ['light', 'Light'], ['system', 'Match device']].map(([v, label]) => `<option value="${v}" ${v === prefs.theme ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
           ${select('textSize', 'Text size', 'Increase interface text without zooming the page.', [['standard', 'Standard'], ['large', 'Large']], prefs.textSize)}
           ${select('glass', 'Glass effects', 'Control glow and translucent surface intensity.', [['rich', 'Rich cinema glass'], ['quiet', 'Quiet and focused']], prefs.glass)}
           ${toggle('highContrast', 'High-contrast type', 'Brighten supporting text and borders for easier reading.', prefs.highContrast)}
           ${toggle('compactNav', 'Compact navigation', 'Use a tighter desktop navigation bar with more breathing room below.', prefs.compactNav)}
         </section>
         <section class="settings-panel poster-controls"><div class="settings-panel-head">${ICONS.palette}<div><span>Every poster</span><h2>Poster controls</h2></div></div>
+          ${toggle('hidePosterCaptions', 'Hide titles under posters', 'Remove the name, year, and movie or TV label beneath every poster across CineVerse, for a pure artwork wall.', prefs.hidePosterCaptions)}
           ${toggle('cleanHomePosters', 'Clean posters', 'Hide every badge and action from poster artwork, everywhere in CineVerse.', prefs.cleanHomePosters)}
           ${toggle('posterCommunityRating', 'Community rating', 'Show the TMDB score on homepage posters.', prefs.posterCommunityRating)}
           ${toggle('posterPersonalRating', 'Your rating', 'Show your own score on homepage posters.', prefs.posterPersonalRating)}
@@ -97,6 +116,7 @@ export function renderSettings() {
           ${toggle('detailGalleryExpanded', 'Open Gallery', 'Show backdrop and poster artwork expanded by default.', prefs.detailGalleryExpanded)}
           ${toggle('detailReviewsExpanded', 'Open Reviews', 'Show community reviews expanded by default.', prefs.detailReviewsExpanded)}
         </section>
+        ${detailPartsPanel()}
         <section class="settings-panel settings-privacy"><div class="settings-panel-head">${ICONS.shield}<div><span>Privacy</span><h2>Your visibility, your choice</h2></div></div>
           ${toggle('rememberSearch', 'Remember searches', 'Keep recent searches only on this device.', prefs.rememberSearch)}
           ${toggle('rememberViewed', 'Remember recently viewed', 'Save recently opened titles only on this device.', prefs.rememberViewed)}
@@ -142,6 +162,24 @@ export function initSettings() {
       if (key === 'discoverable' || key === 'shareTaste') document.dispatchEvent(new Event('cv:privacy'));
       toast('Preference saved', 'success');
     },
+    'settings-detail-part': el => {
+      const hidden = new Set(prefs.detailHidden || []);
+      if (el.checked) hidden.delete(el.dataset.part); else hidden.add(el.dataset.part);
+      updatePref('detailHidden', [...hidden]);
+      renderSettings();
+      // The panel is redrawn; keep keyboard focus on the switch just used.
+      document.querySelector(`[data-action="settings-detail-part"][data-part="${el.dataset.part}"]`)?.focus({ preventScroll: true });
+    },
+    'settings-detail-group': el => {
+      const group = DETAIL_PART_GROUPS.find(entry => entry.id === el.dataset.group);
+      if (!group) return;
+      const hidden = new Set(prefs.detailHidden || []);
+      group.parts.forEach(([key]) => { if (el.dataset.show === '1') hidden.delete(key); else hidden.add(key); });
+      updatePref('detailHidden', [...hidden]);
+      renderSettings();
+      toast(el.dataset.show === '1' ? `${group.title}: all shown` : `${group.title}: all hidden`, 'info');
+    },
+    'settings-detail-reset': () => { updatePref('detailHidden', []); renderSettings(); toast('Every detail-page part is shown again', 'success'); },
     'settings-pref': el => { updatePref(el.dataset.pref, el.value); toast('Preference saved', 'success'); },
     'clear-search-history': () => { clearSearchHistory(); toast('Search history cleared', 'info'); },
     'clear-recent-history': () => { state.recentlyViewed = []; try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {} toast('Recently viewed cleared', 'info'); },

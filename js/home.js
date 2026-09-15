@@ -82,10 +82,13 @@ export function renderContinueWatching() {
   // scroll position and an active preview) when its visible model did not change.
   if (signature === continueRenderSignature && host.firstElementChild) return;
   continueRenderSignature = signature;
-  host.innerHTML = `<section class="section reveal continue-section${continueEditing ? ' editing' : ''}">
-    <div class="section-head"><div><span class="continue-eyebrow">Pick up where you left off</span><h2 class="section-title"><span>▶</span> Continue Watching</h2><p>${continueEditing
-      ? 'Pin, reorder, or hide titles.'
-      : `${queue.length} title${queue.length === 1 ? '' : 's'}${hiddenCount ? ` · ${hiddenCount} hidden` : ''}`}</p></div>
+  // Minimal on purpose: a title, a quiet count, and the artwork. Everything that
+  // used to sit on top of the art (next-episode badge, "3 left", the glass stage
+  // around the rail) now lives in one line under each card or not at all.
+  host.innerHTML = `<section class="section reveal continue-section continue-minimal${continueEditing ? ' editing' : ''}">
+    <div class="section-head"><div class="continue-head"><h2 class="section-title">Continue Watching</h2><span class="continue-count">${continueEditing
+      ? 'Pin, reorder, or hide titles'
+      : `${queue.length}${hiddenCount ? ` · ${hiddenCount} hidden` : ''}`}</span></div>
       <div class="continue-tools">
         ${continueEditing && hasContinueEdits() ? '<button class="continue-tool" data-action="continue-reset">Reset all</button>' : ''}
         <button class="continue-tool${continueEditing ? ' on' : ''}" data-action="continue-edit" aria-pressed="${continueEditing}">${continueEditing ? 'Done' : 'Edit'}</button>
@@ -123,25 +126,19 @@ function continueCard(row, index = 0, total = 1) {
   const title = esc(entry.title || (isMovie ? 'Movie' : 'TV show'));
   const left = isMovie ? Math.max(0, row.left || 0) : Math.max(0, progress.aired - progress.watched);
   const nextCompact = isMovie ? (entry.position ? `Resume ${formatMovieTime(entry.position)}` : 'Continue movie') : episodeLabel(entry, next, { compact: true });
-  const metaLine = isMovie
-    ? `<span>${entry.position ? `Stopped at ${formatMovieTime(entry.position)}` : 'Watching'}</span><b>${progress.percent}%</b>`
-    : `<span>${progress.watched} of ${progress.aired} watched</span><b>${progress.percent}%</b>`;
-  const leftLabel = isMovie ? (entry.runtime ? `${formatMovieTime(left, { compact: true })} left` : 'In progress') : `${left} left`;
+  const leftLabel = isMovie ? (entry.runtime ? `${formatMovieTime(left, { compact: true })} left` : '') : `${left} left`;
   return `<article class="continue-card${isPinned(key) ? ' pinned' : ''}" data-continue="${key}" data-type="${type}">
     <div class="continue-art-shell"><a class="continue-art" href="/${type}/${id}" data-action="open-detail" data-id="${id}" data-type="${type}" aria-label="Open ${title}">
       <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
       <span class="continue-scrim" aria-hidden="true"></span>
       <span class="continue-play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
-      <span class="continue-badge">${esc(nextCompact)}</span>
-      ${isPinned(key) ? '<span class="continue-pin-mark" aria-hidden="true">&#9733;</span>' : ''}
-      <span class="continue-left">${leftLabel}</span>
-      <span class="continue-bar"><i style="width:0" data-w="${progress.percent}"></i></span>
+      ${isPinned(key) ? '<span class="continue-pin-mark" aria-label="Pinned">&#9733;</span>' : ''}
+      <span class="continue-bar" role="img" aria-label="${progress.percent}% watched"><i style="width:0" data-w="${progress.percent}"></i></span>
     </a>
     ${continueEditing || isMovie ? '' : `<button class="continue-quick" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail" aria-label="Mark ${esc(nextCompact)} of ${title} watched" data-tip="Mark watched">${EP_CHECK_HOME}</button>`}</div>
     <div class="continue-body">
       <h3>${title}</h3>
-      <p class="continue-next" data-continue-title="${key}">${esc(nextCompact)}</p>
-      <div class="continue-meta">${metaLine}</div>
+      <p class="continue-next"><span data-continue-title="${key}">${esc(nextCompact)}</span>${leftLabel ? `<i>${esc(leftLabel)}</i>` : ''}</p>
       ${continueEditing ? `<div class="continue-edit-bar">
         <button class="ce-btn ce-grip continue-drag-handle" data-key="${key}" aria-label="Reorder ${title}. Drag, or use the arrow keys." title="Drag to reorder">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>

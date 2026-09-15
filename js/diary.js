@@ -1,0 +1,304 @@
+// ===== WATCH DIARY =====
+// Daily and monthly: what you watched, how much, and when. Three views of one
+// event list, built from data the library already holds — no request:
+//
+//   - a MONTH CALENDAR where each day is shaded by minutes watched (one hue,
+//     darker is more) and carries a small fan of the posters you watched;
+//   - a DAY REEL for the selected day: a 24-hour ribbon that places every film
+//     and episode at the time you marked it, with the same items as a list
+//     beneath (the table view of the ribbon);
+//   - a YEAR STRIP of hours per month, each month headed by its most-watched
+//     poster; picking a month opens it in the calendar.
+//
+// What counts as viewing. Films come from each play of a watched film (a rewatch
+// is its own day). Episodes come from the per-episode log. Anything marked in
+// bulk — a whole season, a whole show, a back-filled history — is bookkeeping,
+// not viewing: it is listed on its day as "marked", never shades a day, and never
+// adds minutes. A series marked watched with no episode log is treated the same.
+// Minutes use the title's reported runtime; a title without one still counts as
+// an item and adds no invented time.
+import { IMG, PH } from './config.js';
+import { state } from './state.js';
+import { $, esc } from './ui.js';
+import { registerActions } from './events.js';
+
+const DAY = 86400000;
+const pad = n => String(n).padStart(2, '0');
+export const dayKey = at => { const d = new Date(at); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+export const monthKey = at => dayKey(at).slice(0, 7);
+const splitKey = key => { const i = String(key).lastIndexOf('_'); return [String(key).slice(0, i), +String(key).slice(i + 1)]; };
+
+const msOf = value => {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  return +(value.seconds || 0) * 1000;
+};
+
+/** Every dated viewing, oldest first. Pure: pass the pieces of state it reads. */
+export function diaryEvents({ watched = {}, episodeProgress = {} } = {}) {
+  const events = [];
+  const logged = new Set();
+  for (const entry of Object.values(episodeProgress || {})) {
+    const id = +entry?.tmdbId;
+    if (!id) continue;
+    const log = Array.isArray(entry.log) ? entry.log : [];
+    if (log.length) logged.add(`tv_${id}`);
+    for (const row of log) {
+      const at = +row?.[2];
+      if (!at) continue;
+      events.push({
+        kind: 'episode', key: `tv_${id}`, id, type: 'tv', title: entry.title || 'TV show', poster: entry.poster || '',
+        season: +row[0], episode: +row[1], at, bulk: !!+row[3], minutes: +row[3] ? 0 : Math.max(0, +entry.episodeRuntime || 0),
+      });
+    }
+  }
+  for (const [key, doc] of Object.entries(watched || {})) {
+    if (!doc) continue;
+    const [keyType, keyId] = splitKey(key);
+    const type = doc.type || keyType, id = +(doc.tmdbId || keyId);
+    if (!id) continue;
+    if (type === 'movie') {
+      const dates = Array.isArray(doc.playDates) && doc.playDates.length ? doc.playDates.map(Number).filter(Boolean) : [msOf(doc.watchedAt)].filter(Boolean);
+      dates.forEach((at, index) => events.push({
+        kind: 'movie', key, id, type, title: doc.title || 'Film', poster: doc.poster || '', at, bulk: false,
+        minutes: Math.max(0, +doc.runtime || 0), rewatch: index > 0,
+      }));
+    } else if (type === 'tv' && !logged.has(key)) {
+      const at = msOf(doc.watchedAt);
+      if (at) events.push({ kind: 'series', key, id, type, title: doc.title || 'TV show', poster: doc.poster || '', at, bulk: true, minutes: 0 });
+    }
+  }
+  return events.sort((a, b) => a.at - b.at);
+}
+
+/** Per-day totals: viewing only (bulk marks are counted separately). */
+export function diaryDays(events) {
+  const days = new Map();
+  for (const event of events) {
+    const key = dayKey(event.at);
+    if (!days.has(key)) days.set(key, { key, minutes: 0, items: 0, films: 0, episodes: 0, marked: 0, titles: new Map(), events: [] });
+    const day = days.get(key);
+    day.events.push(event);
+    if (event.bulk) { day.marked++; continue; }
+    day.items++;
+    day.minutes += event.minutes;
+    if (event.kind === 'movie') day.films++; else day.episodes++;
+    const title = day.titles.get(event.key) || { key: event.key, id: event.id, type: event.type, title: event.title, poster: event.poster, count: 0, minutes: 0 };
+    title.count++; title.minutes += event.minutes;
+    day.titles.set(event.key, title);
+  }
+  return days;
+}
+
+/** Per-month totals for the last `months` months, oldest first, no gaps. */
+export function diaryMonths(days, { months = 12, now = Date.now() } = {}) {
+  const base = new Date(now);
+  const out = [];
+  for (let back = months - 1; back >= 0; back--) {
+    const date = new Date(base.getFullYear(), base.getMonth() - back, 1);
+    const key = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+    const month = { key, label: date.toLocaleDateString(undefined, { month: 'short' }), year: date.getFullYear(), minutes: 0, items: 0, titles: new Map() };
+    out.push(month);
+  }
+  const byKey = new Map(out.map(month => [month.key, month]));
+  for (const day of days.values()) {
+    const month = byKey.get(day.key.slice(0, 7));
+    if (!month) continue;
+    month.minutes += day.minutes;
+    month.items += day.items;
+    for (const title of day.titles.values()) {
+      const held = month.titles.get(title.key) || { ...title, count: 0, minutes: 0 };
+      held.count += title.count; held.minutes += title.minutes;
+      month.titles.set(title.key, held);
+    }
+  }
+  return out;
+}
+
+/** Shade step 0-4 for a day's minutes against the busiest day in view. */
+export function shadeStep(minutes, max) {
+  if (!minutes || !max) return 0;
+  const ratio = minutes / max;
+  return ratio > .75 ? 4 : ratio > .5 ? 3 : ratio > .25 ? 2 : 1;
+}
+
+export const formatMinutes = minutes => {
+  const total = Math.round(+minutes || 0);
+  if (!total) return '0m';
+  const hours = Math.floor(total / 60), rest = total % 60;
+  return hours ? `${hours}h${rest ? ` ${rest}m` : ''}` : `${rest}m`;
+};
+
+const topTitles = titles => [...titles.values()].sort((a, b) => b.minutes - a.minutes || b.count - a.count);
+
+// ---------- view state ----------
+const view = { month: '', day: '' };
+
+function model() {
+  const events = diaryEvents({ watched: state.watched, episodeProgress: state.episodeProgress });
+  return { events, days: diaryDays(events) };
+}
+
+export function diarySummary() {
+  const { days } = model();
+  const current = monthKey(Date.now());
+  let minutes = 0, items = 0;
+  for (const day of days.values()) if (day.key.startsWith(current)) { minutes += day.minutes; items += day.items; }
+  return items ? `${items} watched this month · ${formatMinutes(minutes)}` : 'Your daily viewing, drawn as a calendar';
+}
+
+// ---------- markup ----------
+const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0].map(index => new Date(2024, 0, 7 + index).toLocaleDateString(undefined, { weekday: 'short' }));
+
+function calendarHTML(days, monthValue, selected) {
+  const [year, month] = monthValue.split('-').map(Number);
+  const first = new Date(year, month - 1, 1);
+  const count = new Date(year, month, 0).getDate();
+  const lead = (first.getDay() + 6) % 7;             // Monday first
+  const today = dayKey(Date.now());
+  const inMonth = [...days.values()].filter(day => day.key.startsWith(monthValue));
+  const max = Math.max(0, ...inMonth.map(day => day.minutes));
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span class="diary-cell pad" aria-hidden="true"></span>');
+  for (let date = 1; date <= count; date++) {
+    const key = `${monthValue}-${pad(date)}`;
+    const day = days.get(key);
+    const future = key > today;
+    const step = day ? shadeStep(day.minutes, max) : 0;
+    const titles = day ? topTitles(day.titles) : [];
+    const fan = titles.slice(0, 3).map((title, index) => `<img style="--fan:${index}" src="${title.poster ? `${IMG}w92${title.poster}` : PH}" alt="" loading="lazy">`).join('');
+    const extra = titles.length > 3 ? `<em>+${titles.length - 3}</em>` : '';
+    const dateLabel = new Date(year, month - 1, date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    const summary = day && (day.items || day.marked)
+      ? `${day.items ? `${day.items} watched, ${formatMinutes(day.minutes)}` : ''}${day.items && day.marked ? '; ' : ''}${day.marked ? `${day.marked} marked in bulk` : ''}${titles.length ? ` — ${titles.slice(0, 3).map(title => title.title).join(', ')}` : ''}`
+      : 'nothing watched';
+    cells.push(`<button class="diary-cell s${step}${key === today ? ' today' : ''}${key === selected ? ' selected' : ''}${future ? ' future' : ''}${day?.marked && !day.items ? ' marked-only' : ''}" data-action="diary-day" data-day="${key}" aria-pressed="${key === selected}" aria-label="${esc(`${dateLabel}: ${summary}`)}"${future ? ' disabled' : ''} data-tip="${esc(day?.items ? `${formatMinutes(day.minutes)} · ${titles.slice(0, 2).map(title => title.title).join(', ')}` : dateLabel)}">
+      <b>${date}</b>${fan ? `<span class="diary-fan">${fan}${extra}</span>` : ''}${day?.items ? `<small>${formatMinutes(day.minutes)}</small>` : ''}
+    </button>`);
+  }
+  return `<div class="diary-weekdays" aria-hidden="true">${WEEKDAYS.map(name => `<span>${esc(name)}</span>`).join('')}</div>
+    <div class="diary-grid" role="group" aria-label="${esc(first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}">${cells.join('')}</div>
+    <div class="diary-legend" aria-hidden="true"><span>Less</span>${[0, 1, 2, 3, 4].map(step => `<i class="s${step}"></i>`).join('')}<span>More</span><small>shaded by minutes watched</small></div>`;
+}
+
+const timeOf = at => new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+function reelHTML(day, key) {
+  const date = new Date(`${key}T12:00:00`);
+  const heading = date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  if (!day || !day.events.length) {
+    return `<div class="diary-reel empty"><span class="diary-kicker">Day reel</span><h3>${esc(heading)}</h3><p>Nothing watched this day. Pick a shaded day on the calendar.</p></div>`;
+  }
+  const viewing = day.events.filter(event => !event.bulk);
+  const marked = day.events.filter(event => event.bulk);
+  // Markers sit at their time of day; ones that would collide are dropped into
+  // the next lane instead of overlapping.
+  const lanes = [];
+  const markers = viewing.map(event => {
+    const d = new Date(event.at);
+    const position = ((d.getHours() * 60 + d.getMinutes()) / 1440) * 100;
+    let lane = lanes.findIndex(last => position - last > 7);
+    if (lane < 0) { lane = lanes.length; lanes.push(position); } else lanes[lane] = position;
+    const label = event.kind === 'episode' ? `S${event.season} E${event.episode}` : event.rewatch ? 'Rewatch' : 'Film';
+    return `<a class="diary-marker" style="--at:${position.toFixed(2)}%;--lane:${lane}" href="/${event.type}/${event.id}" data-action="open-detail" data-id="${event.id}" data-type="${event.type}" data-tip="${esc(`${timeOf(event.at)} · ${event.title} · ${label}`)}" aria-label="${esc(`${timeOf(event.at)}, ${event.title}, ${label}`)}"><img src="${event.poster ? `${IMG}w92${event.poster}` : PH}" alt="" loading="lazy"></a>`;
+  }).join('');
+  const laneCount = Math.max(1, lanes.length);
+  const hours = [0, 6, 12, 18, 24].map(hour => `<span style="--at:${hour / 24 * 100}%">${hour === 24 ? '' : new Date(2024, 0, 1, hour).toLocaleTimeString(undefined, { hour: 'numeric' })}</span>`).join('');
+  const rows = day.events.map(event => `<li class="${event.bulk ? 'bulk' : ''}">
+      <time>${esc(timeOf(event.at))}</time>
+      <img src="${event.poster ? `${IMG}w92${event.poster}` : PH}" alt="" loading="lazy">
+      <a href="/${event.type}/${event.id}" data-action="open-detail" data-id="${event.id}" data-type="${event.type}">${esc(event.title)}</a>
+      <span>${event.kind === 'episode' ? `S${event.season} E${event.episode}` : event.kind === 'series' ? 'Series marked watched' : event.rewatch ? 'Film · rewatch' : 'Film'}${event.bulk && event.kind === 'episode' ? ' · marked in bulk' : ''}</span>
+      <b>${event.minutes ? formatMinutes(event.minutes) : '—'}</b>
+    </li>`).join('');
+  const parts = [day.films ? `${day.films} film${day.films === 1 ? '' : 's'}` : '', day.episodes ? `${day.episodes} episode${day.episodes === 1 ? '' : 's'}` : ''].filter(Boolean).join(', ');
+  return `<div class="diary-reel">
+    <span class="diary-kicker">Day reel</span>
+    <h3>${esc(heading)}</h3>
+    <p class="diary-reel-sum">${viewing.length ? `<b>${formatMinutes(day.minutes)}</b> · ${esc(parts)}` : 'No viewing'}${marked.length ? ` · ${marked.length} marked in bulk` : ''}</p>
+    ${viewing.length ? `<div class="diary-ribbon" style="--lanes:${laneCount}" role="img" aria-label="${esc(`When you watched on ${heading}`)}"><div class="diary-ribbon-track"><i class="night a"></i><i class="night b"></i>${markers}</div><div class="diary-ribbon-hours">${hours}</div></div>` : ''}
+    <ol class="diary-list">${rows}</ol>
+  </div>`;
+}
+
+function yearHTML(days, monthValue) {
+  const months = diaryMonths(days, { months: 12 });
+  const max = Math.max(1, ...months.map(month => month.minutes));
+  return `<div class="diary-year" role="group" aria-label="Hours watched per month, last 12 months">${months.map(month => {
+    const lead = topTitles(month.titles)[0];
+    const height = month.minutes ? Math.max(6, Math.round(month.minutes / max * 100)) : 0;
+    const name = new Date(`${month.key}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    return `<button class="diary-month${month.key === monthValue ? ' active' : ''}" data-action="diary-month-pick" data-month="${month.key}" aria-pressed="${month.key === monthValue}" aria-label="${esc(`${name}: ${formatMinutes(month.minutes)} across ${month.items} watched${lead ? `, most of all ${lead.title}` : ''}`)}" data-tip="${esc(`${name} · ${month.minutes ? formatMinutes(month.minutes) : 'nothing watched'}${lead ? ` · ${lead.title}` : ''}`)}">
+      <span class="diary-month-bar"><span class="diary-month-fill" style="--h:${height}%">${lead?.poster ? `<img src="${IMG}w92${lead.poster}" alt="" loading="lazy">` : ''}</span></span>
+      <b>${month.minutes ? formatMinutes(month.minutes) : ''}</b>
+      <span>${esc(month.label)}</span>
+    </button>`;
+  }).join('')}</div>`;
+}
+
+function bodyHTML() {
+  const { days } = model();
+  const current = monthKey(Date.now());
+  if (!view.month) view.month = current;
+  // Default day: the latest day with anything on it in the shown month.
+  if (!view.day || !view.day.startsWith(view.month)) {
+    const keys = [...days.keys()].filter(key => key.startsWith(view.month)).sort();
+    view.day = keys.length ? keys[keys.length - 1] : (view.month === current ? dayKey(Date.now()) : `${view.month}-01`);
+  }
+  const [year, month] = view.month.split('-').map(Number);
+  const monthName = new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const monthDays = [...days.values()].filter(day => day.key.startsWith(view.month));
+  const totals = monthDays.reduce((sum, day) => ({ minutes: sum.minutes + day.minutes, items: sum.items + day.items, active: sum.active + (day.items ? 1 : 0) }), { minutes: 0, items: 0, active: 0 });
+  const busiest = monthDays.reduce((best, day) => (day.minutes > (best?.minutes || 0) ? day : best), null);
+  return `<div class="diary-top">
+      <div class="diary-switch">
+        <button data-action="diary-month" data-dir="-1" aria-label="Previous month">‹</button>
+        <h3>${esc(monthName)}</h3>
+        <button data-action="diary-month" data-dir="1" aria-label="Next month"${view.month >= current ? ' disabled' : ''}>›</button>
+      </div>
+      <div class="diary-tiles">
+        <div><span>Watched</span><strong>${formatMinutes(totals.minutes)}</strong></div>
+        <div><span>Titles &amp; episodes</span><strong>${totals.items}</strong></div>
+        <div><span>Days with viewing</span><strong>${totals.active}</strong></div>
+        <div><span>Biggest day</span><strong>${busiest?.minutes ? esc(new Date(`${busiest.key}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })) : '—'}</strong></div>
+      </div>
+    </div>
+    <div class="diary-layout">
+      <div class="diary-calendar">${calendarHTML(days, view.month, view.day)}</div>
+      ${reelHTML(days.get(view.day), view.day)}
+    </div>
+    <div class="diary-year-wrap"><span class="diary-kicker">Last 12 months</span>${yearHTML(days, view.month)}</div>`;
+}
+
+export function diaryPanel() {
+  return `<section class="stats-panel watch-diary">
+    <div class="stats-section-head"><div><span>Daily &amp; monthly</span><h2>Watch Diary</h2><p>Every film and episode on the day you watched it. Days are shaded by minutes watched; whole seasons marked at once are listed, never counted as viewing.</p></div></div>
+    <div id="diaryRoot">${bodyHTML()}</div>
+  </section>`;
+}
+
+function repaint() {
+  const root = $('diaryRoot');
+  if (root) root.innerHTML = bodyHTML();
+}
+
+const shiftMonth = (value, by) => {
+  const [year, month] = value.split('-').map(Number);
+  const date = new Date(year, month - 1 + by, 1);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+};
+
+export function initDiary() {
+  registerActions({
+    'diary-day': el => { view.day = el.dataset.day; repaint(); document.querySelector(`.diary-cell[data-day="${view.day}"]`)?.focus({ preventScroll: true }); },
+    'diary-month': el => {
+      const next = shiftMonth(view.month || monthKey(Date.now()), +el.dataset.dir || 0);
+      if (next > monthKey(Date.now())) return;
+      view.month = next; view.day = '';
+      repaint();
+    },
+    'diary-month-pick': el => { view.month = el.dataset.month; view.day = ''; repaint(); },
+  });
+  document.addEventListener('cv:auth', () => { view.month = ''; view.day = ''; });
+}

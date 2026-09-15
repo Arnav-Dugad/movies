@@ -341,6 +341,97 @@ follows one scale by role (the Discover block in `css/refinements.css`): upperca
 captions 11.5px, buttons, pills and meta 13px, select values 13.8px, descriptions
 14.4px. After Dark follows the same scale. Nothing on the page renders below 11px.
 
+Settings and Stats had the same problem (7.5-9px captions). Rather than restyle
+hundreds of selectors by hand, `tests/tools/type-scale.mjs` reads every stylesheet
+in the order `index.html` loads them, finds each font-size rule for a class that
+Settings or Stats actually renders, and writes `css/type-scale.css`: the same
+rules, scoped to those pages and in the same order, with anything under 13.5px
+lifted onto an 11-14px ramp. Re-run it after adding CSS to either page.
+
+## Light theme
+
+**Profile menu → Light theme**, or **Settings → Theme** (Dark, Light, Match
+device). The choice is stored with the other experience preferences and syncs to
+your account.
+
+CineVerse was designed dark: roughly 550 KB of CSS with over a thousand
+hand-picked colours beyond the tokens in `css/variables.css`. A forked light
+stylesheet would drift from the dark one on the first commit. Instead
+`js/theme.js` **compiles** the light theme from the live stylesheets:
+
+- For every rule in every same-origin sheet, it copies only the colour-bearing
+  declarations into a new rule with the same selector, inside the same
+  `@media`/`@supports` wrappers, in the same order.
+- Each colour is rewritten in OKLCH. Neutrals flip lightness along a tuned curve
+  (near-black surfaces become warm paper, near-white ink becomes charcoal) and
+  keep their hue. Saturated accents keep their colour and are only deepened where
+  they were too bright to read on paper. Type is deepened more than fills, so a
+  pale cyan figure still clears contrast. Dark shadows stay dark and soften.
+- It knows three situations a formula would get wrong. White ink on a saturated
+  fill (the red button) is kept. A near-white plate with no ink of its own (a
+  studio logo card, a QR code, a switch knob) stays white. Cards whose copy sits
+  directly on a photograph (the Discover spotlight, the franchise banner, list
+  covers) stay dark "islands".
+
+The cascade still resolves correctly because every colour declaration is copied,
+changed or not, with identical specificity and order, after all the originals.
+So among colour properties the copies alone decide the winner, exactly as the
+originals did. Switching back to dark disables the compiled sheet.
+`css/light.css` holds what no formula can know: the hand-tuned palette, nav
+glass, the hero and backdrop washes, and the dark-island tokens.
+
+`js/theme.js` is a classic script in `<head>`, placed after the stylesheets, so
+it runs before first paint: a light reader never sees a dark flash. The compile
+takes about 65 ms on a desktop and happens only for light readers.
+
+Two details matter on paper that the dark theme hid:
+
+- **Title logos.** Most TMDB logos are white lettering. `js/logo-tone.js` samples
+  each logo once (a tiny canvas read of a CORS copy) and tags it: white logos
+  become ink, and white type beside a colourful mark has its lightness inverted
+  with the hue kept, so The Dark Knight's bat stays blue.
+- **Trailer letterboxing.** Ambient trailers are sized to cover their frame. The
+  hero washes are opaque across the top and bottom tenth, where scope films carry
+  black bars inside a 16:9 video.
+
+The switch itself: going light, the paper page opens as a circle from the switch
+with a warm bloom that lingers; going dark, it closes back into the switch. Both
+use the View Transitions API, so the page swaps once under a snapshot instead of
+every element animating its colours. Browsers without it get a circular wipe, and
+reduced motion switches instantly.
+
+## Detail pages, your way
+
+**Settings → Detail pages → What appears** has a switch for every part of a
+title's page, grouped as Title header, Actions, Panels, Facts and Sections, down
+to a single fact card (vote count, original title, spoken languages…). Each group
+has Hide all / Show all, and one button shows everything again.
+
+`js/detail-parts.js` is the single catalogue. Settings draws its switches from
+it, `js/prefs.js` cleans stored choices against it, and the detail template tags
+each element with `data-dp="<key>"`. Hidden parts become one generated rule, so
+an open title page changes the instant a switch is flipped. Hiding is presentation
+only: nothing is fetched differently and switching a part back on loses nothing.
+The choice syncs with your other preferences.
+
+## Posters
+
+**Settings → Poster controls → Hide titles under posters** removes the title,
+year and type line from every poster on the site. It is off by default and syncs
+to your account. Rails on Home, Movies and TV have wider gaps between posters.
+
+## Hero
+
+After four seconds, the home, Movies and TV heroes collapse to the title logo
+alone. Badge, meta, genres, description and buttons fold away. Hovering, focusing
+or tapping the hero brings them back, and the timer restarts when you leave.
+Reduced motion keeps everything visible.
+
+## Mobile navigation
+
+Search sits in the middle of the bottom bar: Home, Movies, TV, **Search**,
+Releases, My List, Series.
+
 ## Importing an existing history
 
 `js/import-csv.js` reads the exports people actually have — Letterboxd
@@ -391,7 +482,7 @@ snapshot, an append-only change log, and one catalog sample per day.
 ## Stats
 
 Sections are ordered by what answers "how am I doing" first — Activity Pulse,
-then the TV Tracker, then Rating & Library, then the deeper taste and collection
+the Watch Diary, then the TV Tracker, then Rating & Library, then the deeper taste and collection
 analysis.
 
 **Watch time was wrong and is now right.** A TV show marked watched from the
@@ -413,6 +504,32 @@ so the layout follows the account rather than the device. A collapsed section is
 not hidden with CSS: its body is a thunk that is never called, so the Director
 Network SVG and the provider charts cost nothing (and skip their network calls)
 while closed.
+
+### Watch Diary
+
+Daily and monthly viewing, drawn from data the library already holds, so it
+needs no request:
+
+- **Month calendar.** Each day is shaded by minutes watched (one hue, darker is
+  more) and carries a small fan of that day's posters.
+- **Day reel.** A 24-hour ribbon places every film and episode at the time you
+  marked it, with the same items as a list beneath.
+- **Year strip.** Hours per month for the last twelve months, each month headed
+  by its most-watched poster. Pick a month to open it in the calendar.
+
+Films count each play (a rewatch is its own day). Episodes come from the
+per-episode log. Anything marked in bulk (a whole season, a whole show, a
+back-filled history) is bookkeeping, not viewing: it is listed on its day as
+"marked" but never shades a day or adds minutes.
+
+### Binge forecast
+
+Shows in progress say when you will finish, on the detail page and in the Stats
+TV Tracker: *"At your pace of 0.6 episodes a day, you'll finish the 6 left in 10
+days — around Sep 25."* Pace is your single ticks on that show over the last 30
+days, falling back to all of its ticks, then to your overall pace across shows.
+Bulk marks never count as pace. A show untouched for 60 days, dropped, or caught
+up gets no forecast rather than a fantasy date.
 
 ## Top 10 This Week
 
@@ -449,6 +566,17 @@ It is deliberately silent — there is no banner explaining it, the rails simply
 differ. Ranking itself never changes randomly, only which part of it you see
 first, and in-app navigation never reshuffles.
 
+### Series and what you are watching now
+
+Recommendations now include TV, and they lean toward what you are watching
+lately. Films watched in the last three weeks weigh 1.6x. Shows you are part-way
+through seed their own TMDB recommendations. Movie genres are mapped to their TV
+equivalents (Action → Action & Adventure, Sci-Fi → Sci-Fi & Fantasy…) so a film
+taste finds series too. Two rails use this: **Because you're watching …**, which
+only admits titles from that show's seed with real genre overlap, and **Series for
+You**. Shows you already track are never recommended back to you. Private mature
+viewing stays out, as before.
+
 ## Streaming regions
 
 `REGIONS` in `js/config.js` lists the 60 countries TMDB returns watch-provider
@@ -461,19 +589,21 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 600+ assertions, no dependencies and no Java
+npm run test:logic    # 680+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
-check and an import-resolution check over all 77 modules. There is no build step
+check and an import-resolution check over all 82 modules. There is no build step
 to catch a syntax error or a renamed export before Cloudflare would.
 
 `tests/logic/` runs the real application modules against a small browser shim —
 list locking, the episode ledger, CSV import, every stats figure, rewatch
-counting, and collection completion. It needs nothing installed.
+counting, collection completion, the light-theme compiler (`theme.test.mjs`), and
+the binge forecast, Watch Diary, detail parts, preferences and logo tone
+(`batch-features.test.mjs`). It needs nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.
@@ -532,6 +662,10 @@ unpin and a show returns to the automatic order in the right place. Hiding never
 touches episode progress, and hidden shows are listed while editing so bringing
 one back is a single tap. Both lists live on the profile document, which sign-in
 already reads.
+
+The rail is deliberately quiet: artwork with a thin progress line, the show's
+name, and one line for the next episode and how many are left. The count of
+shows sits beside the heading.
 
 When you are one or two episodes from your own best day, the rail says so. It
 counts single ticks only, like the record itself — a personal best you could set

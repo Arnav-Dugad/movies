@@ -217,7 +217,11 @@ test('homepage poster controls apply independently and sync one Firebase snapsho
     document.getElementById('homePage').appendChild(card);
   });
   await expect(page.getByRole('heading', { name: 'Poster controls' })).toBeVisible();
-  await expect(page.locator('.poster-controls input')).toHaveCount(10);
+  await expect(page.locator('.poster-controls input')).toHaveCount(11);
+  // Titles under posters: shown by default, hidden by one switch, synced with the rest.
+  await expect(page.locator('input[data-pref="hidePosterCaptions"]')).not.toBeChecked();
+  await page.locator('label:has(input[data-pref="hidePosterCaptions"])').click();
+  expect(await page.evaluate(() => document.documentElement.dataset.posterCaptions)).toBe('hide');
   await expect(page.locator('input[data-pref="haptics"]')).toBeChecked();
   await page.locator('label:has(input[data-pref="haptics"])').click();
   expect(await page.evaluate(() => document.documentElement.dataset.haptics)).toBe('off');
@@ -229,7 +233,40 @@ test('homepage poster controls apply independently and sync one Firebase snapsho
   await page.locator('label:has(input[data-pref="posterCommunityRating"])').click();
   await page.locator('label:has(input[data-pref="posterPreview"])').click();
   expect(await page.evaluate(() => ({ rating: document.documentElement.dataset.posterCommunityRating, preview: document.documentElement.dataset.posterPreview }))).toEqual({ rating: 'hide', preview: 'hide' });
-  await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.experiencePrefs?.posterCommunityRating === false && value.experiencePrefs?.posterPreview === false && value.experiencePrefs?.haptics === false))).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.experiencePrefs?.posterCommunityRating === false && value.experiencePrefs?.posterPreview === false && value.experiencePrefs?.haptics === false && value.experiencePrefs?.hidePosterCaptions === true))).toBe(true);
   await page.evaluate(async () => { const { togglePinned } = await import('/js/continue-prefs.js'); togglePinned('tv_55'); });
   await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.continueWatching?.pinned?.includes('tv_55')))).toBe(true);
+});
+
+test('light theme paints before boot, toggles from the profile menu and syncs', async ({ page }) => {
+  await bootGuest(page);
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('themeSeeded')) return;
+    sessionStorage.setItem('themeSeeded', '1');
+    localStorage.setItem('cv_experience_v2', JSON.stringify({ theme: 'light', _updatedAt: 1 }));
+  });
+  await page.goto('/index.html');
+  // Applied by the classic head script, before the app modules have run.
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('light');
+  await page.waitForFunction(() => window.__cvBooted === true, null, { timeout: 12_000 });
+  const paper = await page.evaluate(() => {
+    const [r, g, b] = getComputedStyle(document.body).backgroundColor.match(/\d+/g).map(Number);
+    return (r + g + b) / 3;
+  });
+  expect(paper).toBeGreaterThan(230);
+  expect(await page.evaluate(() => document.getElementById('cvLightTheme')?.textContent.length || 0)).toBeGreaterThan(50_000);
+  expect(await page.evaluate(() => document.querySelector('meta[name="theme-color"]').content)).toBe('#f6f5f1');
+
+  await page.evaluate(async () => { const { state } = await import('/js/state.js'); state.user = { uid: 'theme-browser' }; });
+  await page.locator('#navAv').click();
+  const toggle = page.locator('#ddTheme');
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await toggle.click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  expect(await page.evaluate(() => document.getElementById('cvLightTheme').media)).toBe('not all');
+  await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.experiencePrefs?.theme === 'dark'))).toBe(true);
+  const ink = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(ink).toBe('rgb(6, 6, 11)');
 });

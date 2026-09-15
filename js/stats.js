@@ -14,10 +14,11 @@ import { social } from './social.js';
 import { tmdb } from './api.js';
 import { buildCard } from './cards.js';
 import { getProviderStats, getCatalogSeries } from './provider-history.js';
-import { episodeTotals, episodeStats, showProgress, showEntry, seasonRewatchTotals } from './episodes.js';
+import { episodeTotals, episodeStats, showProgress, showEntry, seasonRewatchTotals, bingeForecast, forecastSentence } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 import { rewatchSummary, rewatchesSince, playCount } from './rewatch.js';
 import { franchiseSummary, tvFamilySummary } from './franchise.js';
+import { diaryPanel, diarySummary, initDiary } from './diary.js';
 
 let statsScope = 'all';
 let latestSnapshot = null;
@@ -437,6 +438,7 @@ function queueSnapshot(snapshot) {
 // expensive ones, and skipping them is the whole point of collapsing.
 const SECTION_META = [
   ['pulse', 'Activity Pulse', 'Streaks, recent pace, and your strongest viewing moments'],
+  ['diary', 'Watch Diary', 'Every film and episode on the day you watched it'],
   ['tv', 'TV Tracker', 'Episode progress, pace, and shows still in flight'],
   ['rewatch', 'Rewatches', 'What you keep going back to, and what that costs in hours'],
   ['critic', 'Rating & Library', 'Your critic profile beside the anatomy of your collection'],
@@ -613,7 +615,7 @@ function tvTrackerPanel() {
       <img src="${show.poster ? `${IMG}w92${show.poster}` : PH}" alt="" loading="lazy">
       <div class="tv-row-copy">
         <strong>${esc(show.title)}</strong>
-        <small>${show.watched} of ${show.aired} aired${show.next ? ` · next S${show.next.season}E${show.next.episode}` : ''}</small>
+        <small>${show.watched} of ${show.aired} aired${show.next ? ` · next S${show.next.season}E${show.next.episode}` : ''}${(() => { const forecast = bingeForecast(show.id); return forecast ? ` · <span class="tv-row-forecast" title="${esc(forecastSentence(forecast))}">${esc(forecastSentence(forecast, { short: true }))}</span>` : ''; })()}</small>
         <div class="tv-row-bar"><i style="--tv-w:${show.percent}%"></i></div>
       </div>
       <b>${show.percent}%</b>
@@ -957,6 +959,7 @@ export function renderStats() {
     tv: tvStats.shows
       ? `${tvStats.episodes.toLocaleString()} episodes · ${tvStats.completed} show${tvStats.completed === 1 ? '' : 's'} finished · ${tvStats.inProgress} in progress`
       : 'No episode history tracked yet',
+    diary: diarySummary(),
     pulse: `${stats.currentStreak}-day current streak · ${stats.last30} watched in 30 days${episodeTally.episodes ? ` · ${plural(episodeTally.episodes, 'episode')} tracked` : ''}`,
     critic: `${stats.avgRating ? `${stats.avgRating.toFixed(1)}/10 average` : 'No ratings yet'} · ${plural(stats.totalRated, 'rating')} · ${stats.completion}% of the collection watched`,
     taste: `${stats.genres[0]?.name || 'Discovering'} leads · ${plural(stats.languages.length, 'language')} · diversity ${stats.diversityScore}/100`,
@@ -985,19 +988,20 @@ export function renderStats() {
     </div>
     ${sectionIndexBar()}
     ${block('pulse', 1, summaries.pulse, () => activityPanel(stats))}
-    ${block('tv', 2, summaries.tv, () => tvTrackerPanel())}
-    ${block('rewatch', 3, summaries.rewatch, () => rewatchPanel())}
-    ${block('critic', 4, summaries.critic, () => `<div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>`)}
-    ${block('taste', 5, summaries.taste, () => tasteMap(stats))}
-    ${block('themes', 6, summaries.themes, () => tagTasteProfile(stats))}
-    ${block('evolution', 7, summaries.evolution, () => tasteChangesPanel(stats))}
-    ${block('health', 8, summaries.health, () => collectionHealthPanel(stats))}
-    ${block('franchises', 9, summaries.franchises, () => franchisePanel())}
-    ${block('providers', 10, summaries.providers, () => providerIntelligencePanels())}
-    ${block('directors', 11, summaries.directors, () => directorLoyaltyPanel(fullStats))}
-    ${block('network', 12, summaries.network, () => directorNetworkPanel(stats))}
-    ${block('smartwatch', 13, summaries.smartwatch, () => smartWatchPanel())}
-    ${block('achievements', 14, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
+    ${block('diary', 2, summaries.diary, () => diaryPanel())}
+    ${block('tv', 3, summaries.tv, () => tvTrackerPanel())}
+    ${block('rewatch', 4, summaries.rewatch, () => rewatchPanel())}
+    ${block('critic', 5, summaries.critic, () => `<div class="stats-duo">${ratingPanel(stats)}${collectionPanel(stats)}</div>`)}
+    ${block('taste', 6, summaries.taste, () => tasteMap(stats))}
+    ${block('themes', 7, summaries.themes, () => tagTasteProfile(stats))}
+    ${block('evolution', 8, summaries.evolution, () => tasteChangesPanel(stats))}
+    ${block('health', 9, summaries.health, () => collectionHealthPanel(stats))}
+    ${block('franchises', 10, summaries.franchises, () => franchisePanel())}
+    ${block('providers', 11, summaries.providers, () => providerIntelligencePanels())}
+    ${block('directors', 12, summaries.directors, () => directorLoyaltyPanel(fullStats))}
+    ${block('network', 13, summaries.network, () => directorNetworkPanel(stats))}
+    ${block('smartwatch', 14, summaries.smartwatch, () => smartWatchPanel())}
+    ${block('achievements', 15, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
     <p class="stats-footnote">${esc(scopeLabel)} stats · TV watch time comes from the episode ledger where it exists (episodes watched × episode length), falling back to stored runtime otherwise. Titles with no reported runtime are excluded rather than guessed.</p>`;
 
   const snapshot = snapshotFor(fullStats);
@@ -1165,6 +1169,7 @@ async function repairCollection(element) {
 }
 
 export function initStats() {
+  initDiary();
   registerActions({
     'stats-filter': element => { statsScope = element.dataset.filter; renderStats(); },
     'stats-toggle-block': element => {

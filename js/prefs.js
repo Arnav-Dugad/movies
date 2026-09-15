@@ -3,9 +3,12 @@
 // mirrors one compact snapshot to the user's existing Firestore profile document.
 import { state } from './state.js';
 import { REGIONS } from './config.js';
+import { cleanDetailHidden, detailHiddenCSS } from './detail-parts.js';
 
 const KEY = 'cv_experience_v2';
 export const DEFAULT_PREFS = Object.freeze({
+  // 'dark' (the cinema default), 'light', or 'system' to follow the device.
+  theme: 'dark',
   density: 'comfortable', motion: 'system', autoplay: true,
   showRatings: true, showWatched: true, spoilerShield: false,
   rememberSearch: true, rememberViewed: true, discoverable: true, shareTaste: true,
@@ -15,6 +18,8 @@ export const DEFAULT_PREFS = Object.freeze({
   cleanHomePosters: false, posterCommunityRating: true, posterPersonalRating: true,
   posterWatchedMark: true, posterListButton: true, posterRateButton: true,
   posterMatchBadge: true, posterProviderLogo: true, posterDismissButton: true, posterPreview: true,
+  // Off by default: titles, years and types stay under posters until switched off.
+  hidePosterCaptions: false,
   detailBoxOfficeExpanded: false, detailGalleryExpanded: false, detailReviewsExpanded: false,
   directorExcludeShorts: true, directorExcludeDocumentaries: true, directorExcludeUnreleased: true,
   // Mature content is OFF by default and leaves no trace in the UI until it is
@@ -23,6 +28,8 @@ export const DEFAULT_PREFS = Object.freeze({
   // Even with mature content on, adult titles never shape recommendations until
   // this is switched on too (js/recommend.js). Friends never see them either way.
   matureInRecs: false,
+  // Detail-page parts the viewer switched off (js/detail-parts.js). Empty = all shown.
+  detailHidden: [],
 });
 
 export let prefs = { ...DEFAULT_PREFS };
@@ -34,6 +41,7 @@ export const adultFlag = () => !!prefs.mature;
 let updatedAt = 0;
 
 const allowed = {
+  theme: new Set(['dark', 'light', 'system']),
   density: new Set(['comfortable', 'compact']),
   motion: new Set(['system', 'full', 'reduced']),
   glass: new Set(['rich', 'quiet']),
@@ -43,15 +51,19 @@ const allowed = {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur', 'matureInRecs'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'hidePosterCaptions', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur', 'matureInRecs'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
+  next.detailHidden = cleanDetailHidden(raw.detailHidden);
   return next;
 }
 
 export function applyPrefs() {
   const root = document.documentElement;
   delete root.dataset.accent;
+  // js/theme.js (a classic script in <head>) owns the palette swap; it already
+  // applied the stored theme before first paint, so this only acts on a change.
+  if (typeof window !== 'undefined' && window.CVTheme) window.CVTheme.apply(prefs.theme);
   root.dataset.density = prefs.density;
   root.dataset.motion = prefs.motion;
   root.dataset.autoplay = prefs.autoplay ? 'on' : 'off';
@@ -72,12 +84,25 @@ export function applyPrefs() {
   root.dataset.posterProviderLogo = prefs.posterProviderLogo ? 'show' : 'hide';
   root.dataset.posterDismissButton = prefs.posterDismissButton ? 'show' : 'hide';
   root.dataset.posterPreview = prefs.posterPreview ? 'show' : 'hide';
+  root.dataset.posterCaptions = prefs.hidePosterCaptions ? 'hide' : 'show';
   root.dataset.contrast = prefs.highContrast ? 'high' : 'standard';
   root.dataset.mature = prefs.mature ? 'on' : 'off';
   root.dataset.matureBlur = prefs.mature && prefs.matureBlur ? 'on' : 'off';
   root.dataset.compactNav = prefs.compactNav ? 'on' : 'off';
   root.dataset.haptics = prefs.haptics ? 'on' : 'off';
   root.dataset.rememberViewed = prefs.rememberViewed ? 'on' : 'off';
+  // Hidden detail-page parts become one generated rule, so an open title page
+  // changes the instant a switch is flipped.
+  if (document.head && typeof document.createElement === 'function') {
+    const css = detailHiddenCSS(prefs.detailHidden);
+    let style = document.getElementById('detailVisibility');
+    if (!style && css) {
+      style = document.createElement('style');
+      style.id = 'detailVisibility';
+      document.head.appendChild(style);
+    }
+    if (style) style.textContent = css;
+  }
 }
 
 // Every surface that shows or hides mature content listens for `cv:mature`, so

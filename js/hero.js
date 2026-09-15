@@ -9,6 +9,8 @@ import { registerActions } from './events.js';
 import { mountAmbientVideo, ambientOK } from './video-bg.js';
 
 const HERO_INTERVAL_MS = 30000;
+// How long a slide shows everything before only its title logo remains.
+export const HERO_COLLAPSE_MS = 4000;
 const models = {
   home: { hostId: 'heroWrap', endpoint: '/trending/all/day', mediaType: '', items: [], index: 0, timer: null, paused: false, ambient: null, videoGen: 0, loading: null },
   movie: { hostId: 'movieHero', endpoint: '/trending/movie/week', mediaType: 'movie', items: [], index: 0, timer: null, paused: false, ambient: null, videoGen: 0, loading: null },
@@ -42,21 +44,32 @@ function mountHeroLogos(key) {
 }
 
 function expandDescription(model) {
+  clearTimeout(model.collapseTimer);
   hostFor(model)?.querySelectorAll('.hero-slide.collapsed').forEach(slide => slide.classList.remove('collapsed'));
 }
 
-// Folding the synopsis away used to be on a blind three-second timer, whether or
-// not anything had arrived to look at instead. Tied to the trailer, it becomes
-// the thing it was meant to be: the text steps aside once there is footage
-// playing behind it. With no trailer — or with autoplay blocked — the synopsis
-// simply stays, which is the right answer for a still image.
+// A few seconds after a slide arrives, everything but its title logo steps
+// aside — the badge, score, genres, synopsis and buttons — so the artwork and the
+// trailer own the frame, identified by the one thing that names them. Anyone who
+// reaches for the hero gets it all back: hovering or focusing expands it for as
+// long as they stay, and on touch a tap on the collapsed slide brings the details
+// and buttons back before anything can be triggered by accident.
 //
-// (Only the synopsis moves; the badge, score, year and genres stay put. Hiding
-// those left a backdrop with two buttons on it and no way to tell what the title
-// was, which is the state anyone who glanced away for three seconds landed in.)
+// Reduced motion keeps everything in place: a layout that rearranges itself on a
+// timer is exactly what that preference asks us not to do.
 function collapseDescription(model) {
   if (prefersReducedMotion()) return;
-  hostFor(model)?.querySelector('.hero-slide.active')?.classList.add('collapsed');
+  const host = hostFor(model);
+  if (!host || host.matches(':hover') || host.matches(':focus-within')) return;
+  host.querySelector('.hero-slide.active')?.classList.add('collapsed');
+}
+
+function scheduleCollapse(model) {
+  clearTimeout(model.collapseTimer);
+  if (prefersReducedMotion()) return;
+  model.collapseTimer = setTimeout(() => {
+    if (hostFor(model)?.offsetParent) collapseDescription(model);
+  }, HERO_COLLAPSE_MS);
 }
 
 async function getTrailerKey(model, item) {
@@ -85,9 +98,6 @@ async function mountHeroVideo(key) {
   const slide = host.querySelector('.hero-slide.active');
   if (slide) model.ambient = mountAmbientVideo(slide, trailerKey, {
     overlaySelector: '.hero-vignette', delay: 900,
-    // Fires on the confirmed PLAYING state, so the synopsis only steps aside
-    // once there is genuinely something moving behind it.
-    onPlaying: () => { if (generation === model.videoGen) collapseDescription(model); },
   });
 }
 
@@ -125,6 +135,7 @@ function renderHero(key) {
   mountHeroVideo(key);
   mountHeroLogos(key);
   expandDescription(model);
+  scheduleCollapse(model);
 }
 
 async function loadHero(key) {
@@ -155,6 +166,7 @@ export function goHero(index, key = 'home') {
   startHeroTimer(key);
   mountHeroVideo(key);
   expandDescription(model);
+  scheduleCollapse(model);
 }
 
 export function startHeroTimer(key = 'home') {
@@ -175,7 +187,7 @@ function pauseHero(key) {
 function resumeHero(key) {
   const model = modelFor(key); if (!model.paused) return;
   model.paused = false; if (key === 'home') state.heroPaused = false;
-  startHeroTimer(key); mountHeroVideo(key); expandDescription(model);
+  startHeroTimer(key); mountHeroVideo(key); expandDescription(model); scheduleCollapse(model);
 }
 
 export function initHero() { return loadHero('home'); }
@@ -194,11 +206,23 @@ export function initHeroInteractions() {
       host.addEventListener('mouseenter', () => pauseHero(key));
       host.addEventListener('mouseleave', () => resumeHero(key));
     }
+    // Keyboard: focusing any control inside the hero keeps it expanded.
+    host.addEventListener('focusin', () => expandDescription(model));
+    host.addEventListener('focusout', event => { if (!host.contains(event.relatedTarget)) scheduleCollapse(model); });
+    // Touch: the first tap on a collapsed slide only brings the details back.
+    host.addEventListener('click', event => {
+      const slide = event.target.closest('.hero-slide.collapsed');
+      if (!slide) return;
+      event.preventDefault();
+      event.stopPropagation();
+      expandDescription(model);
+      scheduleCollapse(model);
+    }, true);
   });
   document.addEventListener('visibilitychange', () => {
     Object.entries(models).forEach(([key, model]) => {
       if (document.hidden) { clearInterval(model.timer); teardownVideo(model); expandDescription(model); }
-      else if (!model.paused && hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); expandDescription(model); }
+      else if (!model.paused && hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); expandDescription(model); scheduleCollapse(model); }
     });
   });
   // Routed pages stay mounted and only toggle display. Observe those three page
@@ -210,7 +234,7 @@ export function initHeroInteractions() {
     queueMicrotask(() => {
       visibilityQueued = false;
       Object.entries(models).forEach(([key, model]) => {
-        if (hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); expandDescription(model); }
+        if (hostFor(model)?.offsetParent) { startHeroTimer(key); mountHeroVideo(key); expandDescription(model); scheduleCollapse(model); }
         else { clearInterval(model.timer); teardownVideo(model); expandDescription(model); }
       });
     });

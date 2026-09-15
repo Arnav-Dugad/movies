@@ -885,6 +885,73 @@ export function nextUp(id) {
   return null;
 }
 
+// ===== BINGE FORECAST =====
+// When you will finish a show, from how you actually watch it. Only episodes
+// ticked ONE AT A TIME count toward pace — a whole season marked in one press is
+// bookkeeping, and a forecast built on it would promise a finish nobody is on
+// track for. Pace is episodes per day across the stretch you have been watching:
+//
+//   1. this show, over the last 30 days (from its first tick in that window);
+//   2. otherwise this show over its whole log, if you touched it in the last 60
+//      days;
+//   3. otherwise your usual pace across every show over the last 30 days, which
+//      is what someone who has only just started a show can be judged by.
+//
+// A show you have not watched in 60 days gets no forecast: a date for something
+// you have put down is a guess dressed as a fact. Only episodes that have aired
+// are counted, so a returning show forecasts when you will be caught up.
+const FORECAST_WINDOW = 30, FORECAST_STALE = 60;
+
+const soloStamps = entry => (entry?.log || []).filter(row => !row[3]).map(row => row[2]).filter(Number.isFinite);
+
+// Episodes per day across the span from the first stamp to `now` (at least one day).
+function paceOf(stamps, now) {
+  if (stamps.length < 2) return 0;
+  const days = Math.max(1, (now - Math.min(...stamps)) / DAY);
+  return stamps.length / days;
+}
+
+export function bingeForecast(id, { now = Date.now() } = {}) {
+  const entry = showEntry(id);
+  if (!entry || entry.dropped) return null;
+  const progress = showProgress(id);
+  const remaining = Math.max(0, progress.aired - progress.watched);
+  if (!progress.started || progress.caughtUp || !remaining) return null;
+
+  const own = soloStamps(entry).filter(stamp => stamp <= now);
+  const lastActivity = Math.max(0, +entry.lastWatched?.at || 0, ...own);
+  if (!lastActivity || now - lastActivity > FORECAST_STALE * DAY) return null;
+
+  const windowStart = now - FORECAST_WINDOW * DAY;
+  let pace = paceOf(own.filter(stamp => stamp >= windowStart), now), basis = 'show';
+  if (!pace) pace = paceOf(own, now);
+  if (!pace) {
+    const everyShow = Object.values(state.episodeProgress || {})
+      .flatMap(soloStamps).filter(stamp => stamp >= windowStart && stamp <= now);
+    pace = paceOf(everyShow, now);
+    basis = 'overall';
+  }
+  if (!pace) return null;
+
+  const days = Math.max(1, Math.ceil(remaining / pace));
+  return { remaining, pace: Math.round(pace * 10) / 10, days, finishAt: now + days * DAY, basis };
+}
+
+/** One sentence for a forecast, shared by the detail page and Stats. */
+export function forecastSentence(forecast, { short = false } = {}) {
+  if (!forecast) return '';
+  const { days, finishAt, pace, basis, remaining } = forecast;
+  const when = days === 1 ? 'by tomorrow'
+    : days > 365 ? 'in over a year'
+    : `in ${days} days`;
+  const date = days > 1 && days <= 365
+    ? new Date(finishAt).toLocaleDateString(undefined, { weekday: days <= 6 ? 'short' : undefined, day: 'numeric', month: 'short' })
+    : '';
+  if (short) return days > 365 ? 'Over a year to go' : `Done ${days === 1 ? 'tomorrow' : `~${date}`}`;
+  const rate = `${pace} episode${pace === 1 ? '' : 's'} a day`;
+  return `At ${basis === 'overall' ? 'your usual' : 'your'} pace of ${rate}, you'll finish the ${remaining} left ${when}${date ? ` — around ${date}` : ''}`;
+}
+
 // Shows with an available unwatched episode, most recently watched first.
 export function resumeQueue(limit = 12) {
   return Object.entries(state.episodeProgress || {})
