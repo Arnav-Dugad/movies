@@ -8,12 +8,18 @@ import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 import { fillProviderSelect, applyProviderFilter } from './provider-catalog.js';
 import { adultFlag } from './prefs.js';
-import { matureOn, matureSectionHTML, renderMatureRow } from './mature.js';
+import { matureOn, matureSectionHTML, renderMatureSection, syncMatureChrome } from './mature.js';
+import { applyAdultParams, syncAdultSelect, onMatureToggle } from './mature-filter.js';
 
 let labPage = 1;
 let labSignature = '';
 let activePreset = '';
-let collectionRegion = '';
+// What the curated rows were built for. Both halves change the answer: the
+// region decides what is streaming, and mature content decides include_adult.
+let collectionKey = '';
+const collectionKeyNow = () => `${state.region}|${adultFlag()}`;
+const LAB_WELCOME = '<div class="discover-lab-welcome"><i>✦</i><div><strong>Your filters are ready</strong><span>Use one quick start or build a precise collection above.</span></div></div>';
+const SURPRISE_EMPTY = '<div class="discover-surprise-empty"><i>?</i><strong>Your pick will appear here</strong><span>Highly rated · Streamable · Fresh</span></div>';
 let labRequest = 0;
 let moodRequest = 0;
 let surpriseRequest = 0;
@@ -70,8 +76,8 @@ function curatedDefinitions() {
 
 async function loadCollections(force = false) {
   const host = $('discoverRows'); if (!host) return;
-  if (!force && host.children.length && collectionRegion === state.region) return;
-  collectionRegion = state.region;
+  if (!force && host.children.length && collectionKey === collectionKeyNow()) return;
+  collectionKey = collectionKeyNow();
   const label = $('discoverRegionLabel'); if (label) label.textContent = `Streaming region · ${regionName()}`;
   const definitions = curatedDefinitions();
   host.innerHTML = definitions.map(definition => `<section class="discover-row-section reveal"><div class="discover-row-head"><div><span>${esc(definition.kicker)}</span><h3>${esc(definition.title)}</h3></div><button data-action="discover-jump" data-target="discoverStudio">Refine</button></div><div class="row" id="${definition.id}">${skelCards(8)}</div></section>`).join('');
@@ -128,6 +134,7 @@ function labQuery() {
   else if (release === 'this_year') { lower(`${currentYear}-01-01`); upper(`${currentYear}-12-31`); }
   else if (release === 'recent') { lower(`${currentYear - 4}-01-01`); upper(today); }
   runtimeParams(type, $('discoverRuntime')?.value || '', params);
+  applyAdultParams(params, $('discoverAdult')?.value || '');
   applyProviderFilter(params, $('discoverProvider')?.value || '');
   if ($('discoverStreaming')?.checked) { params.watch_region = state.region; params.with_watch_monetization_types = 'flatrate'; }
   if (activePreset === 'hidden') { params['vote_count.gte'] = 150; params['vote_count.lte'] = 2200; }
@@ -166,7 +173,7 @@ async function buildDiscovery({ append = false } = {}) {
 function resetStudio() {
   labRequest++;
   activePreset = '';
-  const defaults = { discoverType: 'movie', discoverGenre: '', discoverExcludeGenre: '', discoverEra: '', discoverLanguage: '', discoverRating: '0', discoverRatingMax: '0', discoverVotes: '0', discoverRuntime: '', discoverCountry: '', discoverRelease: '', discoverSort: 'popularity.desc', discoverProvider: '' };
+  const defaults = { discoverType: 'movie', discoverGenre: '', discoverExcludeGenre: '', discoverAdult: '', discoverEra: '', discoverLanguage: '', discoverRating: '0', discoverRatingMax: '0', discoverVotes: '0', discoverRuntime: '', discoverCountry: '', discoverRelease: '', discoverSort: 'popularity.desc', discoverProvider: '' };
   Object.entries(defaults).forEach(([id, value]) => { if ($(id)) $(id).value = value; });
   if ($('discoverStreaming')) $('discoverStreaming').checked = true;
   populateGenres();
@@ -229,24 +236,53 @@ export function initDiscover() {
   renderMoodDeck();
   populateGenres();
   populateProviders();
-  if (!$('discoverLabResults')?.children.length) $('discoverLabResults').innerHTML = '<div class="discover-lab-welcome"><i>✦</i><div><strong>Your filters are ready</strong><span>Use one quick start or build a precise collection above.</span></div></div>';
+  syncStudioAdult();
+  if (!$('discoverLabResults')?.children.length) $('discoverLabResults').innerHTML = LAB_WELCOME;
   loadSpotlight();
   loadCollections();
   mountMatureSection();
 }
 
+// The Adult field sits beside the genre fields it narrows, and exists only while
+// mature content is on.
+function syncStudioAdult() {
+  syncAdultSelect({
+    id: 'discoverAdult', host: '.discover-filter-grid', className: 'discover-select',
+    after: () => $('discoverExcludeGenre')?.closest('label'), wrapLabel: 'Adult content', wrapClass: 'discover-adult-field',
+  });
+}
+
 // Renders nothing at all while mature content is off — no placeholder, no empty
-// container, no hint in the DOM that the section exists.
+// container, no jump link, no hint in the DOM that the section exists.
 function mountMatureSection() {
   const host = $('discoverMature');
   if (!host) return;
-  if (!matureOn()) { host.innerHTML = ''; return; }
+  const jumpbar = document.querySelector('.discover-jumpbar');
+  const jump = jumpbar?.querySelector('[data-target="matureSection"]');
+  if (!matureOn()) {
+    host.innerHTML = '';
+    jump?.remove();
+    return;
+  }
+  if (jumpbar && !jump) {
+    // Before "Surprise me", matching the order the sections appear in.
+    const surprise = jumpbar.querySelector('[data-target="discoverSurprise"]');
+    const markup = '<button class="discover-jump-mature" data-action="discover-jump" data-target="matureSection">After Dark</button>';
+    if (surprise) surprise.insertAdjacentHTML('beforebegin', markup); else jumpbar.insertAdjacentHTML('beforeend', markup);
+  }
   host.innerHTML = matureSectionHTML();
-  renderMatureRow();
+  renderMatureSection();
 }
 
 export function initDiscoverActions() {
-  document.addEventListener('cv:mature', () => { if (location.pathname === '/discover') mountMatureSection(); });
+  // `cv:mature` also fires when only the artwork blur changes. That needs one
+  // label updated, not the whole hub rebuilt and refetched.
+  document.addEventListener('cv:mature', () => {
+    if (location.pathname !== '/discover') return;
+    syncStudioAdult();
+    if (matureOn() && $('matureSection')) syncMatureChrome();
+    else mountMatureSection();
+  });
   registerActions({
     'pick-mood': element => pickMood(+element.dataset.idx),
     'random-pick': element => randomPick(element.dataset.type === 'tv' ? 'tv' : 'movie'),
@@ -259,5 +295,19 @@ export function initDiscoverActions() {
     'discover-new-spotlight': () => loadSpotlight(true),
     'discover-refresh-collections': () => loadCollections(true),
   });
-  document.addEventListener('cv:region', () => { collectionRegion = ''; populateProviders(false); if (location.pathname === '/discover') loadCollections(true); });
+  document.addEventListener('cv:region', () => { collectionKey = ''; populateProviders(false); if (location.pathname === '/discover') loadCollections(true); });
+  // Everything already on the page was fetched under the old include_adult. The
+  // Studio, mood and surprise results are put back to their starting state
+  // rather than refetched — rebuilding them would scroll the page to results the
+  // viewer did not just ask for — and the curated rows reload now, or on the
+  // next visit if Discover is not open.
+  onMatureToggle(() => {
+    labRequest++; moodRequest++; surpriseRequest++;
+    const lab = $('discoverLabResults'); if (lab) lab.innerHTML = LAB_WELCOME;
+    const moodHost = $('moodResults'); if (moodHost) moodHost.innerHTML = '';
+    document.querySelectorAll('.mood-card.active').forEach(card => card.classList.remove('active'));
+    const picker = $('pickerResult'); if (picker) picker.innerHTML = SURPRISE_EMPTY;
+    [$('spinBtn'), $('spinBtnTV')].forEach(button => { if (button) { button.disabled = false; button.classList.remove('spinning'); } });
+    if (location.pathname === '/discover') loadCollections(true);
+  });
 }

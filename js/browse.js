@@ -9,6 +9,14 @@ import { observeReveals } from './effects.js';
 import { initBrowseHero } from './hero.js';
 import { fillProviderSelect, applyProviderFilter } from './provider-catalog.js';
 import { adultFlag } from './prefs.js';
+import { applyAdultParams, syncAdultSelect, onMatureToggle } from './mature-filter.js';
+
+// The Adult filter follows the genre controls it narrows, and exists only while
+// mature content is on.
+function syncAdultFilters() {
+  syncAdultSelect({ id: 'mAdult', host: '#moviesPage .browse-filters', after: '#mExcludeGenre', className: 'browse-select', action: 'filter-movies' });
+  syncAdultSelect({ id: 'tAdult', host: '#tvPage .browse-filters', after: '#tExcludeGenre', className: 'browse-select', action: 'filter-tv' });
+}
 
 const gridSkel = (n = 12) => Array(n).fill('<div><div class="card-img skel" style="aspect-ratio:2/3"></div></div>').join('');
 export function initFilters() {
@@ -26,6 +34,7 @@ export function initFilters() {
   $('tExcludeGenre').innerHTML = '<option value="">Nothing excluded</option>' + tGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
   fillProviderSelect($('mProvider'), 'movie');
   fillProviderSelect($('tProvider'), 'tv');
+  syncAdultFilters();
 }
 
 const dateISO = d => d.toISOString().slice(0, 10);
@@ -68,6 +77,7 @@ export async function loadMovies(append = false) {
   if (country) params.with_origin_country = country;
   if (cert) { params.certification_country = 'US'; params.certification = cert; }
   if (releaseType) params.with_release_type = releaseType;
+  applyAdultParams(params, $('mAdult')?.value || '');
   applyProviderFilter(params, provider);
   applyRuntime(params, runtime, 89, 120);
   const now = new Date(), currentYear = now.getFullYear(), today = dateISO(now);
@@ -90,7 +100,9 @@ export async function loadTV(append = false) {
   const status = $('tStatus').value, country = $('tCountry').value, provider = $('tProvider')?.value || '';
   const maxRat = $('tRatingMax')?.value || '', excludeGenre = $('tExcludeGenre')?.value || '';
   const format = $('tType')?.value || '', airWindow = $('tAirWindow')?.value || '';
-  const params = { sort_by: sort, page: state.tPg };
+  // include_adult was missing here alone of every catalogue request, so TV kept
+  // excluding adult series with mature content on.
+  const params = { sort_by: sort, page: state.tPg, include_adult: adultFlag() };
   if (sort === 'vote_average.desc') params['vote_count.gte'] = Math.max(200, +(votes || 0));
   else if (sort === 'vote_average.asc') params['vote_count.gte'] = Math.max(50, +(votes || 0));
   if (state.tGenre) params.with_genres = state.tGenre;
@@ -103,6 +115,7 @@ export async function loadTV(append = false) {
   if (status !== '') params.with_status = status;
   if (format !== '') params.with_type = format;
   if (country) params.with_origin_country = country;
+  applyAdultParams(params, $('tAdult')?.value || '');
   applyProviderFilter(params, provider);
   applyRuntime(params, runtime, 29, 60);
   const now = new Date(), today = dateISO(now), currentYear = now.getFullYear();
@@ -124,11 +137,11 @@ export function initBrowse() {
     'filter-movies': () => loadMovies(),
     'filter-tv': () => loadTV(),
     'reset-movies': () => {
-      ['mYear','mLang','mRating','mRatingMax','mRuntime','mVotes','mCert','mRelease','mReleaseType','mCountry','mProvider','mExcludeGenre'].forEach(id => { if ($(id)) $(id).value = ''; });
+      ['mYear','mLang','mRating','mRatingMax','mRuntime','mVotes','mCert','mRelease','mReleaseType','mCountry','mProvider','mExcludeGenre','mAdult'].forEach(id => { if ($(id)) $(id).value = ''; });
       $('mSort').value = 'popularity.desc'; resetGenre('movie'); loadMovies();
     },
     'reset-tv': () => {
-      ['tYear','tLang','tRating','tRatingMax','tRuntime','tVotes','tStatus','tType','tAirWindow','tCountry','tProvider','tExcludeGenre'].forEach(id => { if ($(id)) $(id).value = ''; });
+      ['tYear','tLang','tRating','tRatingMax','tRuntime','tVotes','tStatus','tType','tAirWindow','tCountry','tProvider','tExcludeGenre','tAdult'].forEach(id => { if ($(id)) $(id).value = ''; });
       $('tSort').value = 'popularity.desc'; resetGenre('tv'); loadTV();
     },
     'more-movies': () => moreMovies(),
@@ -139,5 +152,12 @@ export function initBrowse() {
   document.addEventListener('cv:region', () => {
     fillProviderSelect($('mProvider'), 'movie', { preserve: false });
     fillProviderSelect($('tProvider'), 'tv', { preserve: false });
+  });
+  // The grid on screen was fetched under the old include_adult (and possibly an
+  // Adult filter that no longer exists), so the open page reloads.
+  onMatureToggle(() => {
+    syncAdultFilters();
+    if (location.pathname === '/movies') loadMovies();
+    else if (location.pathname === '/tv') loadTV();
   });
 }

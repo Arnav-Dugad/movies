@@ -33,7 +33,11 @@ const VIDEO_DELAY = 620;
 // panel vanishing, short enough that leaving feels immediate.
 const CLOSE_DELAY = 200;
 
-const MIN_W = 300, MAX_W = 420, EDGE = 14;
+// One size for every rail. The width used to scale with the poster (x1.55,
+// clamped 300-420), so an ordinary 188px poster opened a cramped 300px panel
+// while the wider Top 10 card opened a 409px one. 409 is that Top 10 panel,
+// now the size everywhere; only a viewport too narrow to hold it shrinks it.
+const PANEL_W = 409, EDGE = 14;
 // The nav is fixed, so clamping the panel to the raw viewport would let it slide
 // underneath the bar for a card near the top of a page.
 const navHeight = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 60;
@@ -246,7 +250,7 @@ function place(el, card) {
   const raw = card.getBoundingClientRect();
   const lift = card.matches(':hover') ? 6 : 0;
   const box = { left: raw.left, width: raw.width, height: raw.height, top: raw.top + lift };
-  const width = Math.round(Math.min(MAX_W, Math.max(MIN_W, box.width * 1.55)));
+  const width = Math.min(PANEL_W, window.innerWidth - EDGE * 2);
   let left = Math.round(box.left + box.width / 2 - width / 2);
   left = Math.min(Math.max(left, EDGE), window.innerWidth - width - EDGE);
 

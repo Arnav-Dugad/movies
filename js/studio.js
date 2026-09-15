@@ -10,10 +10,12 @@ import { esc, $ } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
+import { prefs, adultFlag } from './prefs.js';
+import { applyAdultParams, adultMode, adultSelectHTML, onMatureToggle } from './mature-filter.js';
 
 let reqGen = 0;
 let company = null, kind = 'company', companyId = null;
-let view = { type: 'movie', sort: 'popularity.desc', decade: '', rating: 0 };
+let view = { type: 'movie', sort: 'popularity.desc', decade: '', rating: 0, adult: '' };
 let pages = { movie: 0, tv: 0 }, maxPages = { movie: 1, tv: 1 }, totals = { movie: 0, tv: 0 };
 let loaded = { movie: [], tv: [] };   // everything fetched so far, for the decade profile
 
@@ -38,8 +40,11 @@ function discoverParams(type, page) {
   const params = {
     page,
     sort_by: view.sort === 'date.desc' ? `${date}.desc` : view.sort === 'date.asc' ? `${date}.asc` : view.sort,
-    include_adult: false,
+    // Follows the mature-content preference like every other catalogue page; it
+    // was hard-coded off here alone.
+    include_adult: adultFlag(),
   };
+  applyAdultParams(params, view.adult);
   if (isNetwork() && type === 'tv') params.with_networks = companyId;
   else params.with_companies = companyId;
   if (view.decade === 'older') params[`${date}.lte`] = '1969-12-31';
@@ -82,6 +87,7 @@ function toolbar() {
       <label><span>Sort</span><select data-action="studio-sort">${SORTS.filter(([value]) => !(value === 'revenue.desc' && view.type === 'tv')).map(([value, label]) => option(value, label, view.sort)).join('')}</select></label>
       <label><span>Era</span><select data-action="studio-decade">${DECADES.map(([value, label]) => option(value, label, view.decade)).join('')}</select></label>
       <label><span>Rating</span><select data-action="studio-rating">${[[0, 'Any rating'], [6, '6+'], [7, '7+'], [8, '8+']].map(([value, label]) => option(value, label, view.rating)).join('')}</select></label>
+      ${prefs.mature ? `<label data-adult-filter><span>Adult</span>${adultSelectHTML({ action: 'studio-adult', value: view.adult })}</label>` : ''}
     </div>
   </div>`;
 }
@@ -142,7 +148,7 @@ async function renderResults({ reset = true } = {}) {
 export async function openStudio(id, mode = 'company') {
   const gen = ++reqGen;
   companyId = id; kind = mode;
-  view = { type: mode === 'network' ? 'tv' : 'movie', sort: 'popularity.desc', decade: '', rating: 0 };
+  view = { type: mode === 'network' ? 'tv' : 'movie', sort: 'popularity.desc', decade: '', rating: 0, adult: '' };
   pages = { movie: 0, tv: 0 }; maxPages = { movie: 1, tv: 1 }; totals = { movie: 0, tv: 0 }; loaded = { movie: [], tv: [] };
   const ct = $('studioContent');
   if (!ct) return;
@@ -199,7 +205,14 @@ export function initStudio() {
     'studio-sort': el => { view.sort = el.value; renderResults(); },
     'studio-decade': el => { view.decade = el.value; renderResults(); },
     'studio-rating': el => { view.rating = +el.value || 0; renderResults(); },
+    'studio-adult': el => { view.adult = adultMode(el.value); renderResults(); },
     'studio-more': () => renderResults({ reset: false }),
     'studio-retry': () => renderResults(),
+  });
+  // The grid was fetched under the old include_adult, and the toolbar either
+  // gains or loses its Adult control — renderResults redraws both.
+  onMatureToggle(on => {
+    if (!on) view.adult = '';
+    if (/^\/(studio|network)\/\d+\/?$/.test(location.pathname) && companyId && $('studioResults')) renderResults();
   });
 }

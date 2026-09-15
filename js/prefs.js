@@ -77,21 +77,35 @@ export function applyPrefs() {
   root.dataset.rememberViewed = prefs.rememberViewed ? 'on' : 'off';
 }
 
+// Every surface that shows or hides mature content listens for `cv:mature`, so
+// it is announced from the one place the value actually changes. It used to be
+// dispatched by the Settings toggle alone: a reset, or the preference arriving
+// from another device, left the After Dark section and every adult filter
+// describing a setting that no longer applied.
+const matureSignature = value => `${!!value.mature}|${!!value.matureBlur}`;
+function announceMature(before) {
+  if (before !== matureSignature(prefs)) document.dispatchEvent(new Event('cv:mature'));
+}
+
 export function updatePref(key, value) {
+  const before = matureSignature(prefs);
   prefs = sanitize({ ...prefs, [key]: value });
   updatedAt = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify({ ...prefs, _updatedAt: updatedAt })); } catch (_) {}
   applyPrefs();
   document.dispatchEvent(new CustomEvent('cv:prefs', { detail: { ...prefs } }));
+  announceMature(before);
   return prefs;
 }
 
 export function resetPrefs() {
+  const before = matureSignature(prefs);
   prefs = { ...DEFAULT_PREFS };
   updatedAt = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify({ ...prefs, _updatedAt: updatedAt })); } catch (_) {}
   applyPrefs();
   document.dispatchEvent(new CustomEvent('cv:prefs', { detail: { ...prefs } }));
+  announceMature(before);
 }
 
 export function loadPrefs() {
@@ -111,10 +125,12 @@ export function hydratePrefs(raw) {
   if (!raw || typeof raw !== 'object') return false;
   const incomingAt = Math.max(0, +raw._updatedAt || 0);
   if (!incomingAt || incomingAt <= updatedAt) return false;
+  const before = matureSignature(prefs);
   prefs = sanitize(raw); updatedAt = incomingAt;
   try { localStorage.setItem(KEY, JSON.stringify({ ...prefs, _updatedAt: updatedAt })); } catch (_) {}
   applyPrefs();
   document.dispatchEvent(new CustomEvent('cv:prefs', { detail: { ...prefs, cloud: true } }));
+  announceMature(before);
   return true;
 }
 

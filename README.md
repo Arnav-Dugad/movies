@@ -204,12 +204,56 @@ hints that the option exists. It lives behind a disclosure in Settings.
 
 TMDB has no "erotic" genre, so the collections are built from verified TMDB
 **keywords** (erotic, softcore, erotic thriller, erotica, erotic comedy, erotic
-romance, seduction, sensual). Turning it on adds an After Dark section to Discover
-and lets adult results into search. Artwork stays blurred until hover by default,
-and anything you save can go straight into a PIN-locked list.
+romance, seduction, sensual). Turning it on lets adult results into search and
+adds two things: the After Dark hub on Discover, and an Adult filter on every
+catalogue filter bar. Artwork stays blurred until hover by default, and anything
+you save can go straight into a PIN-locked list.
 
 Every search and discover call passes `adultFlag()` rather than a literal, so
-adult results cannot leak in while the toggle is off.
+adult results cannot leak in while the toggle is off. The preference is announced
+as `cv:mature` from `js/prefs.js` itself — on a toggle, a reset, or a value
+arriving from another device — so no surface is left describing a setting that
+no longer applies.
+
+### After Dark
+
+A hub rather than a grid: a spotlight (shuffleable), five rails that each answer a
+different question (critically acclaimed, streaming tonight in your region,
+erotic thrillers, series, world cinema), and a collection browser with tiles for
+every keyword plus "All After Dark", a Movies/Series switch, order (popular,
+acclaimed, newest, hidden gems), era, language, a streaming-now switch, a real
+count, and paging. A rail with nothing in it — "streaming tonight" in a thin
+region — is removed rather than left empty, and comes back when the region
+changes. Selections survive leaving Discover and coming back.
+
+### The Adult filter
+
+`js/mature-filter.js` is the one definition of adult, shared by Movies, TV,
+Discover Studio, Search, My List, Watched, filmographies, and studio/network
+pages: TMDB's `adult` flag, or any of the mature keywords. Each bar offers
+*Adult included* (the default), *Adult only · 18+*, and *No adult titles*.
+
+- **Pages that ask `/discover`** apply it as parameters. Verified against the live
+  API: `with_keywords` joined with `|` is an OR, and `without_keywords` excludes a
+  title carrying *any* listed keyword. "Adult only" pairs the keywords with
+  `include_adult=true`; "no adult" pairs the exclusion with `include_adult=false`,
+  because 1,528 softcore titles are flagged adult without that keyword mattering.
+- **Pages that filter titles they already hold** classify them. Stored keywords
+  settle most titles; the rest are looked up once (`/{type}/{id}/keywords`),
+  remembered on the device, and shared between pages so two surfaces never fetch
+  the same title twice. Saved documents keep only 15 keywords, so a full slice
+  without a match is treated as *unknown*, never as proof. An unknown title is
+  held back in both modes — showing it could put an adult title on a page that
+  asked for none — and the page says how many are still being checked.
+
+Every read of a control goes through `adultMode()`, which answers "no filter"
+while mature content is off, so a value left in a control can never keep
+filtering. Release Reminders has no Adult filter: its calendar is built from
+English and Hindi release schedules that exclude adult titles at the source.
+
+`tests/logic/mature-filter.test.mjs` pins the parameters, the classification
+rules (including the 15-keyword truncation), de-duplicated lookups, failure
+handling, the Watched filter, and when `cv:mature` is and is not announced.
 
 ## Importing an existing history
 

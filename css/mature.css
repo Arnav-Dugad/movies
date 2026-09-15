@@ -1,24 +1,337 @@
-/* ===== MATURE CONTENT =====
+/* ===== AFTER DARK (MATURE CONTENT) =====
    Nothing in this file applies unless prefs.mature is on: the section is never
-   rendered otherwise, and the blur hook is gated on a root attribute that only
-   exists when the toggle is enabled. */
-.mature-section{margin-top:68px;padding:clamp(20px,3vw,30px);border:1px solid rgba(236,72,153,.16);border-radius:26px;background:radial-gradient(circle at 100% 0,rgba(236,72,153,.09),transparent 34%),linear-gradient(150deg,rgba(255,255,255,.03),rgba(255,255,255,.01))}
-.mature-section .discover-section-head>div>span{color:var(--pink)}
-.mature-chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 18px}
-.mature-chips button{min-height:36px;padding:0 14px;border:1px solid var(--glass-border);border-radius:50px;background:rgba(255,255,255,.03);color:var(--text3);font-size:.55rem;font-weight:750;transition:border-color .18s,background .18s,color .18s}
-.mature-chips button:hover{border-color:rgba(236,72,153,.3);color:var(--text2)}
-.mature-chips button.active{border-color:rgba(236,72,153,.4);background:rgba(236,72,153,.12);color:#f9a8d4}
-.mature-section .discover-section-tools button{border-color:rgba(236,72,153,.22)}
-.mature-empty{padding:22px 0;color:var(--text3);font-size:.62rem}
-.mature-note{margin-top:16px;color:var(--text3);font-size:.47rem;line-height:1.6}
+   rendered otherwise, the adult filter controls are never inserted, and the
+   blur rules key off a data attribute that is only "on" while mature is. */
 
-/* Artwork stays blurred until the poster is hovered or focused. Applied through
-   a root attribute so it costs nothing when the feature is off. */
-html[data-mature-blur="on"] .mature-grid .card-img img{filter:blur(16px) saturate(.8);transition:filter .28s var(--ease-out)}
-html[data-mature-blur="on"] .mature-grid .card:hover .card-img img,
-html[data-mature-blur="on"] .mature-grid .card:focus-within .card-img img{filter:none}
+/* ---------------------------------------------------------------- shell -- */
+.mature-section {
+  margin-top: 68px;
+  padding: clamp(20px, 3vw, 34px);
+  scroll-margin-top: calc(var(--nav-h) + 86px);
+  border: 1px solid rgba(236, 72, 153, .18);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(236, 72, 153, .13), transparent 34%),
+    radial-gradient(circle at 0 100%, rgba(139, 92, 246, .1), transparent 38%),
+    linear-gradient(150deg, #150d15, #0b0b10 62%);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, .3);
+}
+.mature-section .discover-section-head > div > span { color: var(--pink); }
+.mature-section .discover-section-tools button { border-color: rgba(236, 72, 153, .22); }
+.mature-section .discover-section-tools button[aria-pressed="true"] { background: rgba(236, 72, 153, .1); color: #f9a8d4; }
 
-/* Settings disclosure */
+.ad-eyebrow { display: inline-flex !important; align-items: center; gap: 8px; }
+.ad-eyebrow > i {
+  padding: 2px 7px;
+  border: 1px solid rgba(236, 72, 153, .45);
+  border-radius: 6px;
+  background: rgba(236, 72, 153, .12);
+  color: #fbcfe8;
+  font-family: var(--font-mono);
+  font-size: .56rem;
+  font-style: normal;
+  letter-spacing: .02em;
+}
+
+/* ------------------------------------------------------------ spotlight -- */
+.ad-spotlight {
+  position: relative;
+  min-height: clamp(300px, 32vw, 420px);
+  margin-top: 24px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 22px;
+  background: #0e0a10;
+}
+.ad-spotlight-loading { border-color: transparent; }
+.ad-spot-art { position: absolute; inset: 0; z-index: -1; }
+.ad-spot-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+  opacity: .82;
+  transform: scale(1.03);
+  transition: transform 1.4s var(--ease-out), filter .35s var(--ease-out);
+}
+.ad-spotlight:hover .ad-spot-art img { transform: scale(1.06); }
+.ad-spot-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, #0e0a10 3%, rgba(14, 10, 16, .9) 34%, rgba(14, 10, 16, .3) 70%, rgba(14, 10, 16, .08)),
+    linear-gradient(0deg, #0e0a10 0, transparent 46%);
+}
+.ad-spot-inner {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(18px, 3vw, 32px);
+  min-height: inherit;
+  padding: clamp(20px, 3.4vw, 38px);
+}
+.ad-spot-poster {
+  flex: 0 0 auto;
+  display: block;
+  width: clamp(104px, 11vw, 156px);
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--bg4);
+  box-shadow: 0 22px 52px rgba(0, 0, 0, .62), 0 0 0 1px rgba(255, 255, 255, .08);
+  transition: transform .32s var(--ease-out);
+}
+.ad-spot-poster:hover { transform: translateY(-4px); }
+.ad-spot-poster img { width: 100%; height: 100%; display: block; object-fit: cover; transition: filter .35s var(--ease-out); }
+.ad-spot-copy { min-width: 0; max-width: 640px; }
+.ad-spot-eyebrow { color: #f9a8d4; font-size: .6rem; font-weight: 850; letter-spacing: .15em; text-transform: uppercase; }
+.ad-spot-copy h3 {
+  margin: 8px 0 10px;
+  font-family: var(--font-display);
+  font-size: clamp(1.7rem, 3.6vw, 2.9rem);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -.025em;
+  text-wrap: balance;
+}
+.ad-spot-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; color: var(--text2); font-size: .74rem; font-variant-numeric: tabular-nums; }
+.ad-spot-score { color: var(--gold); font-weight: 800; }
+.ad-spot-copy > p {
+  display: -webkit-box;
+  max-width: 58ch;
+  margin-top: 12px;
+  overflow: hidden;
+  color: var(--text2);
+  font-size: .8rem;
+  line-height: 1.65;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.ad-spot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+.ad-spot-actions .btn-primary,
+.ad-spot-actions .btn-glass { min-height: 42px; padding: 0 18px; font-size: .78rem; }
+.ad-spot-actions svg { width: 15px; height: 15px; }
+/* The poster's add-to-list control, standing in a row instead of floating on art. */
+.ad-spot-actions .card-wl {
+  position: static;
+  width: 42px;
+  height: 42px;
+  opacity: 1;
+  transform: none;
+  font-size: 1.05rem;
+}
+
+/* ---------------------------------------------------------------- rails -- */
+.ad-rails { margin-top: 8px; }
+.ad-rails .discover-row-head span { color: #f9a8d4; }
+
+/* --------------------------------------------------------- the browser -- */
+.ad-browser { margin-top: 38px; padding-top: 26px; border-top: 1px solid rgba(255, 255, 255, .06); }
+/* Clear of the sticky Discover jump bar when anything scrolls to these. */
+.ad-spotlight, .ad-browser, .ad-collections, .ad-toolbar { scroll-margin-top: calc(var(--nav-h) + 86px); }
+.ad-browser-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.ad-browser-head span { color: #f9a8d4; font-size: .52rem; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+.ad-browser-head h3 { margin: 5px 0 3px; font-family: var(--font-display); font-size: clamp(1.35rem, 2.6vw, 1.8rem); }
+.ad-browser-head p { color: var(--text3); font-size: .64rem; }
+.ad-count {
+  flex-shrink: 0;
+  padding: 7px 11px;
+  border: 1px solid rgba(236, 72, 153, .22);
+  border-radius: 50px;
+  background: rgba(236, 72, 153, .07);
+  color: #f9a8d4;
+  font-family: var(--font-mono);
+  font-size: .56rem;
+  white-space: nowrap;
+}
+.ad-count:empty { display: none; }
+
+/* Collections are tiles rather than chips: each one says what it is. */
+/* On a pointer device js/hscroll.js adds prev/next arrows to this strip. */
+.ad-collections {
+  display: flex;
+  gap: 9px;
+  margin-top: 18px;
+  padding: 2px 0 8px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.ad-browser .hs-wrap .hs-arrow { margin-top: -23px; }
+.ad-collections::-webkit-scrollbar { display: none; }
+.ad-tile {
+  flex: 0 0 auto;
+  width: 176px;
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 12px 14px;
+  scroll-snap-align: start;
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(236, 72, 153, .08), transparent 55%),
+    rgba(255, 255, 255, .025);
+  text-align: left;
+  transition: border-color .2s var(--ease-out), background .2s var(--ease-out), transform .2s var(--ease-out);
+}
+.ad-tile:hover { border-color: rgba(236, 72, 153, .3); transform: translateY(-2px); }
+.ad-tile b { color: var(--text); font-size: .74rem; font-weight: 750; }
+.ad-tile small { color: var(--text3); font-size: .56rem; line-height: 1.4; }
+.ad-tile.active {
+  border-color: rgba(236, 72, 153, .55);
+  background:
+    radial-gradient(circle at 100% 0, rgba(236, 72, 153, .26), transparent 60%),
+    rgba(236, 72, 153, .08);
+  box-shadow: 0 12px 30px rgba(236, 72, 153, .12);
+}
+.ad-tile.active small { color: #f9a8d4; }
+
+.ad-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 20px; }
+.ad-seg { display: inline-flex; padding: 3px; border: 1px solid var(--glass-border); border-radius: 50px; background: rgba(255, 255, 255, .025); }
+.ad-seg button {
+  min-height: 34px;
+  padding: 0 16px;
+  border-radius: 50px;
+  color: var(--text2);
+  font-size: .66rem;
+  font-weight: 750;
+  transition: background .2s, color .2s;
+}
+.ad-seg button.active { background: rgba(236, 72, 153, .16); color: #fbcfe8; }
+.ad-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .022);
+}
+.ad-field > span { color: var(--text3); font-size: .5rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.ad-field select {
+  min-height: 34px;
+  padding: 0 6px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: .66rem;
+  font-weight: 700;
+}
+.ad-field select option { background: #171720; color: #f6f6f8; }
+.ad-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .022);
+  color: var(--text2);
+  font-size: .64rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ad-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.ad-switch > i { width: 34px; height: 19px; flex-shrink: 0; padding: 3px; border-radius: 30px; background: #272832; transition: background .2s; }
+.ad-switch > i::after { content: ''; display: block; width: 13px; height: 13px; border-radius: 50%; background: #8a8b95; transition: transform .22s var(--ease-out), background .22s; }
+.ad-switch input:checked + i { background: rgba(236, 72, 153, .55); }
+.ad-switch input:checked + i::after { transform: translateX(15px); background: #fff; }
+.ad-switch input:focus-visible + i { outline: 2px solid var(--red2); outline-offset: 2px; }
+
+.mature-grid { min-height: 180px; }
+.mature-empty {
+  grid-column: 1 / -1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  min-height: 180px;
+  padding: 24px;
+  border: 1px dashed rgba(236, 72, 153, .18);
+  border-radius: 18px;
+  color: var(--text3);
+  font-size: .64rem;
+  text-align: center;
+}
+.mature-empty strong { color: var(--text); font-family: var(--font-display); font-size: 1.05rem; }
+.mature-empty .btn-glass { margin-top: 8px; }
+.ad-more-wrap:empty { display: none; }
+.mature-section .ad-more { border-color: rgba(236, 72, 153, .28); background: rgba(236, 72, 153, .07); color: #f9a8d4; }
+.mature-note { margin-top: 22px; color: var(--text3); font-size: .56rem; line-height: 1.6; }
+
+/* The jump link is only inserted while mature content is on. */
+.discover-jumpbar .discover-jump-mature { color: #f9a8d4; }
+.discover-jumpbar .discover-jump-mature:hover { background: rgba(236, 72, 153, .1); }
+
+/* ------------------------------------------------------------- blurring --
+   Blurred until hovered or focused. `:focus-within` covers a keyboard user
+   tabbing onto a poster, which a hover rule alone would leave blurred. */
+html[data-mature-blur="on"] .mature-section .card-img img,
+html[data-mature-blur="on"] .ad-spot-art img,
+html[data-mature-blur="on"] .ad-spot-poster img {
+  filter: blur(16px) saturate(.8);
+}
+html[data-mature-blur="on"] .ad-spot-art img { filter: blur(24px) saturate(.75); }
+html[data-mature-blur="on"] .mature-section .card-img img { transition: filter .28s var(--ease-out), transform .6s var(--ease-out); }
+/* The same privacy screen follows the Adult filter: a grid narrowed to "Adult
+   only" anywhere in the app is blurred exactly like After Dark. The hover and
+   focus exemption lives inside each selector — these match on ids, so no
+   class-based "unblur on hover" rule could ever outrank them. */
+html[data-mature-blur="on"] #moviesPage:has(#mAdult option[value="only"]:checked) #mGrid .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #tvPage:has(#tAdult option[value="only"]:checked) #tGrid .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #discoverStudio:has(#discoverAdult option[value="only"]:checked) #discoverLabResults .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #searchPage:has(#fltAdult option[value="only"]:checked) #searchGrid .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #wlPage:has(#wlAdult option[value="only"]:checked) #wlContent .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #watchedPage:has(#watchedAdult option[value="only"]:checked) #watchedContent .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] .person-filmography:has(.adult-select option[value="only"]:checked) .person-credit-grid .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #studioContent:has(.adult-select option[value="only"]:checked) #studioResults .card:not(:hover):not(:focus-within) .card-img img {
+  filter: blur(16px) saturate(.8);
+}
+html[data-mature-blur="on"] .page-container .card-img img { transition: transform .6s var(--ease-out), filter .28s var(--ease-out); }
+html[data-mature-blur="on"] .mature-section .card:hover .card-img img,
+html[data-mature-blur="on"] .mature-section .card:focus-visible .card-img img,
+html[data-mature-blur="on"] .mature-section .card:focus-within .card-img img,
+html[data-mature-blur="on"] .ad-spotlight:hover img,
+html[data-mature-blur="on"] .ad-spotlight:focus-within img {
+  filter: none;
+}
+
+/* ---------------------------------------------------------- adult filter --
+   The Adult control on every filter bar. It carries the After Dark accent only
+   while it is actually narrowing results, so an active adult filter is never
+   mistaken for the default. */
+.adult-select:has(option[value="only"]:checked),
+.adult-select:has(option[value="hide"]:checked) {
+  border-color: rgba(236, 72, 153, .5) !important;
+  background-color: rgba(236, 72, 153, .1) !important;
+  color: #fbcfe8 !important;
+}
+/* Discover Studio, person and studio pages label their fields, so the label is
+   what lights up there. */
+.discover-filter-grid > label[data-adult-filter]:has(option[value="only"]:checked),
+.discover-filter-grid > label[data-adult-filter]:has(option[value="hide"]:checked) {
+  border-color: rgba(236, 72, 153, .42);
+  background: rgba(236, 72, 153, .07);
+}
+.discover-filter-grid > label[data-adult-filter] .adult-select { background-color: transparent !important; border: 0 !important; }
+.discover-filter-grid > label[data-adult-filter] > span { color: #f9a8d4; }
+.srh-checking {
+  margin-left: 12px;
+  color: #f9a8d4;
+  font-size: .72rem;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------- settings -- */
 .settings-mature-disclosure{overflow:hidden;border:1px solid var(--glass-border);border-radius:16px;background:rgba(255,255,255,.018)}
 .settings-mature-disclosure summary{padding:14px 16px;color:var(--text2);font-size:.62rem;font-weight:750;cursor:pointer;list-style:none}
 .settings-mature-disclosure summary::-webkit-details-marker{display:none}
@@ -30,8 +343,34 @@ html[data-mature-blur="on"] .mature-grid .card:focus-within .card-img img{filter
 .settings-mature-body>p{margin-bottom:10px;color:var(--text3);font-size:.55rem;line-height:1.65}
 .settings-mature-body>small{display:block;margin-top:10px;color:var(--text3);font-size:.47rem;line-height:1.6}
 
-@media(max-width:700px){
-  .mature-section{margin-top:50px;padding:20px 14px;border-radius:22px}
-  .mature-chips{margin-bottom:14px}
+/* ------------------------------------------------------------- responsive -- */
+@media (max-width: 820px) {
+  .ad-spot-inner { flex-direction: column; align-items: flex-start; }
+  .ad-spot-art::after { background: linear-gradient(0deg, #0e0a10 24%, rgba(14, 10, 16, .76) 62%, rgba(14, 10, 16, .35)); }
+  .ad-spot-poster { width: 104px; }
 }
-@media(prefers-reduced-motion:reduce){html[data-mature-blur="on"] .mature-grid .card-img img{transition:none}}
+@media (max-width: 700px) {
+  .mature-section { margin-top: 50px; padding: 20px 14px; border-radius: 22px; }
+  .ad-collections { margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; scroll-padding: 0 14px; scroll-margin-top: calc(var(--nav-h) + 16px); }
+  .ad-spotlight, .ad-browser, .ad-toolbar { scroll-margin-top: calc(var(--nav-h) + 16px); }
+  .ad-tile { width: 150px; min-height: 72px; }
+  .ad-browser-head { align-items: flex-start; flex-direction: column; gap: 10px; }
+  /* Phones render select text at 16px (ultra.css, to stop iOS zooming), so each
+     field stacks its caption above a full-width select, and the order — the
+     longest labels — gets a row of its own. */
+  .ad-toolbar { display: grid; grid-template-columns: 1fr 1fr; }
+  .ad-seg { grid-column: 1 / -1; justify-self: start; }
+  .ad-field { min-width: 0; flex-direction: column; align-items: stretch; gap: 0; padding: 7px 8px 2px 12px; }
+  .ad-field:has(select[data-action="mature-sort"]) { grid-column: 1 / -1; }
+  .ad-field select { min-width: 0; width: 100%; padding: 0; }
+  .ad-switch { grid-column: 1 / -1; }
+  .ad-spot-actions { width: 100%; }
+  .ad-spot-actions .btn-primary { flex: 1; justify-content: center; }
+  .ad-spot-copy > p { -webkit-line-clamp: 4; }
+  .srh-checking { display: block; margin: 4px 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-mature-blur="on"] .mature-section .card-img img,
+  .ad-spot-art img, .ad-spot-poster img, .ad-tile { transition: none; }
+  .ad-spotlight:hover .ad-spot-art img, .ad-tile:hover, .ad-spot-poster:hover { transform: none; }
+}

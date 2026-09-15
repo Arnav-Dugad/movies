@@ -10,6 +10,7 @@ import { isListLocked, listHasPin, openPinModal, relockList } from './list-lock.
 import { markShowWatched, clearShowProgress, showProgress } from './episodes.js';
 import { createCollabList, collabLink, membersLabel } from './collab-lists.js';
 import { tmdb, pool } from './api.js';
+import { adultMode, adultPass, matureStatus, pendingMature, checkingMature, resolveMature, syncAdultSelect, onMatureToggle } from './mature-filter.js';
 
 const requireAuth = () => document.dispatchEvent(new Event('cv:open-auth'));
 
@@ -94,6 +95,7 @@ let pendingDelete = null;  // listId awaiting a second confirming click
 let duplicateOpen = false;
 let wlQuery = '', wlGenre = 'all', wlStatus = 'all', wlRating = 0, wlDecade = 'all', wlSort = 'recent';
 let wlLanguage = 'all', wlCountry = 'all', wlRuntime = 'all', wlMine = 'all', wlAdded = 'all', wlMetadata = 'all';
+let wlAdult = '', adultWaiting = false;
 const RUNTIME_CACHE_KEY = 'cv_list_runtime_cache_v1';
 const COVER_OFFSETS_KEY = 'cv_list_cover_offsets_v1';
 const runtimeLoads = new Set();
@@ -106,6 +108,12 @@ function readLocalObject(key) {
 const runtimeCache = readLocalObject(RUNTIME_CACHE_KEY);
 const coverOffsets = readLocalObject(COVER_OFFSETS_KEY);
 const itemKey = item => item.id || `${item.type}_${item.tmdbId}`;
+// A saved title as the Adult filter reads it. Older documents can lack their own
+// tmdbId/type; the document key always carries both.
+const matureRef = item => {
+  const key = String(itemKey(item)), split = key.lastIndexOf('_');
+  return { type: item.type || key.slice(0, split), id: +(item.tmdbId || key.slice(split + 1)) || 0, keywords: item.keywords };
+};
 
 function saveLocalObject(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
@@ -201,6 +209,8 @@ function filteredListItems() {
   if (state.wlFilter === 'movie' || state.wlFilter === 'tv') items = items.filter(w => w.type === state.wlFilter);
   if (wlQuery) { const q = wlQuery.toLowerCase(); items = items.filter(w => (w.title || '').toLowerCase().includes(q)); }
   if (wlGenre !== 'all') items = items.filter(w => (w.genres || []).map(String).includes(wlGenre));
+  const adult = adultMode(wlAdult);
+  if (adult) items = items.filter(w => { const ref = matureRef(w); return adultPass(matureStatus(ref.type, ref.id, ref), adult); });
   if (wlStatus === 'watched') items = items.filter(w => !!state.watched[w.id]);
   else if (wlStatus === 'unwatched') items = items.filter(w => !state.watched[w.id]);
   if (wlRating) items = items.filter(w => +(w.rating || 0) >= wlRating);
@@ -263,6 +273,9 @@ function syncWLControls(baseItems) {
       .map(id => `<option value="${id}">${esc(genreMap[id])}</option>`).join('');
     genre.value = ids.has(wlGenre) ? wlGenre : 'all';
     if (genre.value !== wlGenre) wlGenre = 'all';
+  }
+  if (syncAdultSelect({ id: 'wlAdult', host: '#wlControls', after: '#wlGenre', className: 'watched-select', action: 'wl-adult' })) {
+    const adultSelect = $('wlAdult'); if (adultSelect) adultSelect.value = adultMode(wlAdult);
   }
   const values = { wlStatus, wlRating: String(wlRating), wlDecade, wlSort };
   Object.assign(values, { wlLanguage, wlCountry, wlRuntime, wlMine, wlAdded, wlMetadata });
@@ -387,11 +400,27 @@ export function renderWL() {
   if (baseItems.length) loadListRuntimes(baseItems, state.wlList);
   syncWLControls(baseItems);
   const items = filteredListItems();
-  if (cnt) cnt.textContent = `${items.length} title${items.length !== 1 ? 's' : ''}`;
+  // Saved titles without stored keywords are classified once, then remembered.
+  // Until then they are held back and the count says what is still being checked.
+  const refs = adultMode(wlAdult) ? baseItems.map(matureRef) : [];
+  const checking = checkingMature(refs), toLookUp = pendingMature(refs);
+  if (toLookUp.length) resolveMature(toLookUp);
+  // One waiter at a time: it repaints once everything being checked is known,
+  // and that repaint attaches a new waiter if anything is still outstanding.
+  if (checking.length && !adultWaiting) {
+    adultWaiting = true;
+    resolveMature(checking).then(() => { adultWaiting = false; if (location.pathname === '/watchlist' && adultMode(wlAdult)) renderWL(); });
+  }
+  if (cnt) cnt.textContent = `${items.length} title${items.length !== 1 ? 's' : ''}${checking.length ? ` · checking ${checking.length} for adult content…` : ''}`;
+
+  if (!items.length && checking.length) {
+    ct.innerHTML = `<div class="wl-grid">${Array(Math.min(12, checking.length)).fill('<div class="card"><div class="card-img skel"></div></div>').join('')}</div>`;
+    return;
+  }
 
   if (!items.length) {
     const nm = listById(state.wlList)?.name || 'list';
-    const filtered = !!(wlQuery || wlGenre !== 'all' || wlStatus !== 'all' || wlRating || wlDecade !== 'all' || wlLanguage !== 'all' || wlCountry !== 'all' || wlRuntime !== 'all' || wlMine !== 'all' || wlAdded !== 'all' || wlMetadata !== 'all' || state.wlFilter !== 'all');
+    const filtered = !!(wlQuery || wlGenre !== 'all' || adultMode(wlAdult) || wlStatus !== 'all' || wlRating || wlDecade !== 'all' || wlLanguage !== 'all' || wlCountry !== 'all' || wlRuntime !== 'all' || wlMine !== 'all' || wlAdded !== 'all' || wlMetadata !== 'all' || state.wlFilter !== 'all');
     ct.innerHTML = filtered
       ? `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><h3>No matching titles</h3><p>Try changing or resetting your filters</p></div>`
       : `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><h3>${esc(nm[0].toUpperCase() + nm.slice(1))} is empty</h3><p>Add movies and shows with the + on any poster</p></div>`;
@@ -450,6 +479,7 @@ export function initWatchlist() {
     },
     'wl-filter': (el) => setWLFilter(el.dataset.filter, el),
     'wl-genre': (el) => { wlGenre = el.value; renderWL(); },
+    'wl-adult': (el) => { wlAdult = adultMode(el.value); renderWL(); },
     'wl-status': (el) => { wlStatus = el.value; renderWL(); },
     'wl-rating': (el) => { wlRating = +el.value || 0; renderWL(); },
     'wl-decade': (el) => { wlDecade = el.value; renderWL(); },
@@ -463,6 +493,7 @@ export function initWatchlist() {
     'wl-reset-filters': () => {
       wlQuery = ''; wlGenre = 'all'; wlStatus = 'all'; wlRating = 0; wlDecade = 'all'; wlSort = 'recent';
       wlLanguage = 'all'; wlCountry = 'all'; wlRuntime = 'all'; wlMine = 'all'; wlAdded = 'all'; wlMetadata = 'all';
+      wlAdult = '';
       state.wlFilter = 'all';
       document.querySelectorAll('.wl-typefilter .wl-tab').forEach(t => t.classList.toggle('active', t.dataset.filter === 'all'));
       renderWL();
@@ -516,6 +547,9 @@ export function initWatchlist() {
   // Reset transient edit state when leaving the page or signing out.
   document.addEventListener('cv:auth', () => { listEdit = null; pendingDelete = null; duplicateOpen = false; state.wlList = 'watchlist'; });
   document.addEventListener('cv:list-lock', () => { if (location.pathname === '/watchlist') renderWL(); });
+  // Switching mature content off removes the Adult filter; the list must stop
+  // applying it at the same moment, not on the next visit.
+  onMatureToggle(on => { if (!on) wlAdult = ''; if (location.pathname === '/watchlist') renderWL(); });
   // A shared list can change without this device doing anything — someone joins,
   // renames it, or adds a title — so the section follows the live document.
   document.addEventListener('cv:collab-lists', () => { if (location.pathname === '/watchlist') renderCollabSection(); });

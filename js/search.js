@@ -10,6 +10,7 @@ import { esc, debounce, $ } from './ui.js';
 import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { prefs, adultFlag } from './prefs.js';
+import { adultPass, matureStatus, pendingMature, checkingMature, readAdult, resolveMature, syncAdultSelect, onMatureToggle } from './mature-filter.js';
 
 // ---- module state ----
 let searchGen = 0;          // bumped on every submitted query/vibe; in-flight stragglers bail
@@ -22,6 +23,7 @@ let vibeCtx = null;         // { genres, type, lang, label } for discover mode
 let commandCtx = null;      // parsed natural-language discovery command
 let keywordCtx = null;      // exact TMDB keyword/tag match, e.g. "erotic thriller"
 let suggestItems = [], suggestIdx = -1;
+let adultWaitGen = -1;      // the search whose adult classification is being awaited
 
 const IMGw = (size, path) => path ? `${IMG}${size}${path}` : PH;
 
@@ -229,6 +231,7 @@ export function openSearch(initialQuery = '', { forceTag = false } = {}) {
   document.title = 'Search — CineVerse';
   pool = []; page = 0; suggestItems = []; suggestIdx = -1; commandCtx = null; keywordCtx = null; paintCommandHint(null);
   populateGenreFilter();
+  syncAdultFilter();
   loadTrending();
   loadTrendingSearches();
   renderVibeChips($('vibeChips'), 'Search by vibe');
@@ -322,13 +325,19 @@ function currentFilters() {
     votes: +($('fltVotes')?.value || 0),
     language: $('fltLanguage')?.value || '',
     collection: $('fltCollection')?.value || 'all',
+    adult: readAdult('fltAdult'),
     sort: $('fltSort')?.value || 'relevance',
   };
 }
 
+// Search results carry TMDB's `adult` flag but no keywords, so the Adult filter
+// classifies what the page already holds (js/mature-filter.js).
+const titleOf = r => ({ type: resolveType(r), id: r.id, adult: r.adult });
+const isTitle = r => ['movie', 'tv'].includes(resolveType(r));
+
 function applyFilters(raw) {
   const f = currentFilters();
-  const contentFilter = !!(f.genre || f.decade || f.rating || f.ratingMax || f.votes || f.language || f.collection !== 'all');
+  const contentFilter = !!(f.genre || f.decade || f.rating || f.ratingMax || f.votes || f.language || f.collection !== 'all' || f.adult);
   const seen = new Set();
   let list = [];
   raw.forEach(r => {
@@ -343,7 +352,8 @@ function applyFilters(raw) {
       if (f.ratingMax && (r.vote_average || 0) > f.ratingMax) return;
       if (f.votes && (r.vote_count || 0) < f.votes) return;
       if (f.language && r.original_language !== f.language) return;
-      const key = `${t}_${r.id}`, watched = !!state.watched[key], saved = state.watchlist.some(item => item.id === key), rated = +(state.ratings[key] || 0) > 0;
+      if (f.adult && !adultPass(matureStatus(t, r.id, { adult: r.adult }), f.adult)) return;
+      const key =`${t}_${r.id}`, watched = !!state.watched[key], saved = state.watchlist.some(item => item.id === key), rated = +(state.ratings[key] || 0) > 0;
       if (f.collection === 'unwatched' && watched) return;
       if (f.collection === 'watched' && !watched) return;
       if (f.collection === 'saved' && !saved) return;
@@ -382,9 +392,26 @@ function renderResults() {
   empty.style.display = 'none';
   const items = applyFilters(pool);
   const label = mode === 'vibe' ? `Popular ${esc(vibeCtx.label)}` : mode === 'command' ? `${items.length}${page < totalPages ? '+' : ''} curated matches for “${esc(curQuery)}”` : mode === 'tag' ? `${items.length}${page < totalPages ? '+' : ''} titles tagged “${esc(keywordCtx?.name || curQuery)}”` : `${items.length}${page < totalPages ? '+' : ''} result${items.length !== 1 ? 's' : ''} for “${esc(curQuery)}”`;
-  head.innerHTML = `<span class="srh-label">${label}</span>`;
+  // Titles the Adult filter cannot place yet are held back, never guessed at;
+  // the page says so and repaints the moment they are classified.
+  const adult = readAdult('fltAdult');
+  const refs = adult ? pool.filter(isTitle).map(titleOf) : [];
+  const checking = checkingMature(refs), toLookUp = pendingMature(refs);
+  head.innerHTML = `<span class="srh-label">${label}</span>${checking.length ? `<span class="srh-checking">Checking ${checking.length} title${checking.length === 1 ? '' : 's'} for adult content…</span>` : ''}`;
+  if (toLookUp.length) resolveMature(toLookUp);
+  // One waiter per search: it repaints once everything being checked is known,
+  // and that repaint attaches a new waiter if "load more" added titles meanwhile.
+  if (checking.length && adultWaitGen !== searchGen) {
+    const generation = adultWaitGen = searchGen;
+    resolveMature(checking).then(() => {
+      if (generation !== searchGen) return;
+      adultWaitGen = -1;
+      if (readAdult('fltAdult')) renderResults();
+    });
+  }
   g.innerHTML = items.length
     ? items.map(({ r, t }) => (t === 'person' ? personCard(r) : buildCard(r, t))).join('')
+    : checking.length ? skelCards(8)
     : `<div class="search-nomatch">No items match these filters. <button class="link-btn" data-action="search-reset">Clear filters</button></div>`;
   moreWrap.style.display = page < totalPages ? 'flex' : 'none';
   const btn = $('searchMore'); if (btn) { btn.disabled = false; btn.textContent = 'Load more results'; }
@@ -489,6 +516,10 @@ async function vibeSearch(el) {
 }
 
 // ================= genre filter options =================
+function syncAdultFilter() {
+  syncAdultSelect({ id: 'fltAdult', host: '#searchFilters', after: '#fltGenre', className: 'search-select', action: 'search-filter' });
+}
+
 function populateGenreFilter() {
   const sel = $('fltGenre'); if (!sel || sel.dataset.filled) return;
   const names = [...new Set([...mGenreList, ...tGenreList].map(g => g.n))].sort();
@@ -615,7 +646,7 @@ export function initSearch() {
   registerActions({
     'set-filter': (el) => setFilter(el.dataset.f),
     'search-filter': () => renderResults(),
-    'search-reset': () => { ['fltGenre', 'fltDecade', 'fltRating', 'fltRatingMax', 'fltVotes', 'fltLanguage'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const collection = $('fltCollection'); if (collection) collection.value = 'all'; const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
+    'search-reset': () => { ['fltGenre', 'fltAdult', 'fltDecade', 'fltRating', 'fltRatingMax', 'fltVotes', 'fltLanguage'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const collection = $('fltCollection'); if (collection) collection.value = 'all'; const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
     'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault(); input.focus(); },
     'load-more-search': () => loadMore(),
     'search-submit': (el) => { const q = el.dataset.q || $('searchIn').value.trim(); if (q.length >= 2) { addToHistory(q); doSearch(q); } },
@@ -632,6 +663,16 @@ export function initSearch() {
   });
 
   bindVoiceBridge();
+
+  // Results on screen were fetched under the old include_adult, so an open
+  // search runs again rather than filtering a pool that may now hold titles the
+  // new setting excludes.
+  onMatureToggle(() => {
+    syncAdultFilter();
+    if (!/^\/search\/?$/.test(location.pathname) || $('searchResultsWrap')?.style.display === 'none') return;
+    if (mode === 'vibe' && vibeCtx) runInitial();
+    else if (curQuery) doSearch(curQuery, { forceTag: mode === 'tag' });
+  });
 }
 
 function decodeEntities(s) { const d = document.createElement('textarea'); d.innerHTML = s; return d.value; }

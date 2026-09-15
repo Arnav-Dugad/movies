@@ -85,8 +85,8 @@ export function renderSettings() {
             <summary>Mature content${prefs.mature ? ' <b>On</b>' : ''}</summary>
             <div class="settings-mature-body">
               <p>Off by default. While it is off, adult titles are excluded from every search and Discover request and nothing about this appears anywhere in the app.</p>
-              ${toggle('mature', 'Show mature content', 'Adds an After Dark section to Discover with erotic, softcore, and sensual collections, and includes adult results in search.', prefs.mature)}
-              ${prefs.mature ? toggle('matureBlur', 'Blur mature artwork', 'Posters in the After Dark section stay blurred until you hover or focus them.', prefs.matureBlur) : ''}
+              ${toggle('mature', 'Show mature content', 'Adds the After Dark hub to Discover, an Adult filter to every catalogue filter bar, and includes adult results in search.', prefs.mature)}
+              ${prefs.mature ? toggle('matureBlur', 'Blur mature artwork', 'Artwork in After Dark, and in any results filtered to Adult only, stays blurred until you hover or focus it.', prefs.matureBlur) : ''}
               <small>Collections are built from TMDB keywords, not a genre — TMDB has no erotic genre. Titles you save can be kept in a PIN-locked list from the + button on any poster.</small>
             </div>
           </details>
@@ -127,10 +127,11 @@ export function initSettings() {
       updatePref(key, !!el.checked);
       if (key === 'rememberSearch' && !el.checked) clearSearchHistory();
       // The panel itself changes shape (the blur option only exists while mature
-      // is on), and Discover has a whole section to add or remove.
+      // is on). updatePref has already announced `cv:mature`, which is what adds
+      // or removes After Dark and the adult filters everywhere else.
       if (key === 'mature' || key === 'matureBlur') {
-        document.dispatchEvent(new Event('cv:mature'));
         if (key === 'mature') { renderSettings(); toast(el.checked ? 'Mature content is on' : 'Mature content is hidden', el.checked ? 'success' : 'info'); }
+        else toast(el.checked ? 'Mature artwork blurred' : 'Mature artwork visible', 'info');
         return;
       }
       if (key === 'rememberViewed' && !el.checked) {

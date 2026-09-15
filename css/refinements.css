@@ -160,6 +160,14 @@ input:focus-visible,
   transition: border-color .2s var(--ease-out), background .2s var(--ease-out);
 }
 
+/* --------------------------------------------------------------- discover --
+   Every rail in a Discover section was indented 60px past its own heading.
+   `.discover-row-section>.row` removes the page-level row padding, but on a
+   pointer device js/hscroll.js wraps each row in `.hs-wrap` for its arrows, so
+   the row is no longer a direct child and the rule never matched. Touch devices
+   get no wrapper, which is why the phone layout was already right. */
+.discover-row-section > .hs-wrap > .row { padding: 4px 2px 12px; }
+
 /* ------------------------------------------------------------------ cards --
    Poster badges are written in after the per-user data resolves, so they used to
    pop in a beat after the artwork. Fading them keeps the arrival quiet. */

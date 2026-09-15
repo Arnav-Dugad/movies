@@ -11,11 +11,14 @@ import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 import { state } from './state.js';
+import { prefs } from './prefs.js';
+import { adultMode, adultPass, adultSelectHTML, matureStatus, pendingMature, checkingMature, resolveMature, onMatureToggle } from './mature-filter.js';
 
 let reqGen = 0;              // bumped on every openPerson(); guards a stale fetch
 let person = null;           // the last successfully loaded person payload
 let credits = { cast: [], crew: [] };
-let view = { dept: 'Acting', sort: 'newest', type: 'all', shown: 24 };
+let view = { dept: 'Acting', sort: 'newest', type: 'all', adult: '', shown: 24 };
+let adultWaitFor = null;     // the person whose adult classification is being awaited
 
 const PAGE_SIZE = 24;
 const DEPARTMENT_ORDER = ['Acting', 'Directing', 'Writing', 'Production', 'Camera', 'Editing', 'Sound', 'Art', 'Costume & Make-Up', 'Visual Effects', 'Crew'];
@@ -55,11 +58,39 @@ function sortCredits(list, sort) {
   return copy.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 }
 
-function activeCredits(groups) {
+// The department and type filters, before the Adult filter narrows them.
+function typedCredits(groups) {
   const bucket = groups.get(view.dept);
-  let list = bucket ? [...bucket.values()] : [];
-  if (view.type !== 'all') list = list.filter(credit => (credit.media_type || 'movie') === view.type);
+  const list = bucket ? [...bucket.values()] : [];
+  return view.type === 'all' ? list : list.filter(credit => (credit.media_type || 'movie') === view.type);
+}
+
+const matureRef = credit => ({ type: credit.media_type || 'movie', id: credit.id, adult: credit.adult });
+
+function activeCredits(groups) {
+  let list = typedCredits(groups);
+  const adult = adultMode(view.adult);
+  if (adult) list = list.filter(credit => { const ref = matureRef(credit); return adultPass(matureStatus(ref.type, ref.id, ref), adult); });
   return sortCredits(list, view.sort);
+}
+
+// Credits carry TMDB's adult flag but no keywords, so the Adult filter looks the
+// rest up once (js/mature-filter.js) and repaints in place when they are known.
+function adultChecking(groups) {
+  return adultMode(view.adult) ? checkingMature(typedCredits(groups).map(matureRef)) : [];
+}
+
+function awaitAdultChecks(groups) {
+  if (!adultMode(view.adult) || !person) return;
+  const refs = typedCredits(groups).map(matureRef);
+  const toLookUp = pendingMature(refs), checking = checkingMature(refs);
+  if (toLookUp.length) resolveMature(toLookUp);
+  if (!checking.length || adultWaitFor === person.id) return;
+  const personId = adultWaitFor = person.id;
+  resolveMature(checking).then(() => {
+    if (adultWaitFor === personId) adultWaitFor = null;
+    if (person?.id === personId && adultMode(view.adult) && $('personFilmography')) renderFilmography({ keepPlace: true });
+  });
 }
 
 // A single archive-footage or awards-show credit from decades before the career
@@ -287,18 +318,23 @@ function filmographyHTML(groups) {
 
   const list = activeCredits(groups);
   const visible = list.slice(0, view.shown);
+  const checking = adultChecking(groups);
   const tabs = departments.map(department => `<button class="${department === view.dept ? 'active' : ''}" data-action="person-dept" data-dept="${esc(department)}">${esc(department)}<b>${groups.get(department).size}</b></button>`).join('');
   const option = (value, label, current) => `<option value="${value}"${value === current ? ' selected' : ''}>${label}</option>`;
+  const emptyState = checking.length
+    ? `<p class="person-empty">Checking ${checking.length} title${checking.length === 1 ? '' : 's'} for adult content…</p>`
+    : '<p class="person-empty">No credits match this filter.</p>';
 
   return `<section class="person-filmography" id="personFilmography">
     <div class="person-section-head"><div><span>Complete filmography</span><h2>Every credit</h2><p>Grouped by department, straight from TMDB — nothing is trimmed.</p></div></div>
     <div class="person-tabs" role="tablist" aria-label="Departments">${tabs}</div>
     <div class="person-filters">
       <label><span>Type</span><select data-action="person-type">${option('all', 'Movies + TV', view.type)}${option('movie', 'Movies', view.type)}${option('tv', 'TV', view.type)}</select></label>
+      ${prefs.mature ? `<label data-adult-filter><span>Adult</span>${adultSelectHTML({ action: 'person-adult', value: view.adult })}</label>` : ''}
       <label><span>Sort</span><select data-action="person-sort">${option('newest', 'Newest first', view.sort)}${option('oldest', 'Oldest first', view.sort)}${option('rating', 'Highest rated', view.sort)}${option('popularity', 'Most popular', view.sort)}${option('title', 'Title A–Z', view.sort)}</select></label>
-      <b>${list.length} credit${list.length === 1 ? '' : 's'}</b>
+      <b>${list.length} credit${list.length === 1 ? '' : 's'}${checking.length ? ` · checking ${checking.length}…` : ''}</b>
     </div>
-    ${visible.length ? `<div class="person-credit-grid">${visible.map(creditCard).join('')}</div>` : '<p class="person-empty">No credits match this filter.</p>'}
+    ${visible.length ? `<div class="person-credit-grid">${visible.map(creditCard).join('')}</div>` : emptyState}
     ${list.length > view.shown ? `<div class="person-more"><button class="btn-glass" data-action="person-more">Show ${Math.min(PAGE_SIZE, list.length - view.shown)} more of ${list.length - view.shown}</button></div>` : ''}
   </section>`;
 }
@@ -343,6 +379,7 @@ function renderFilmography({ keepPlace = false } = {}) {
   host.outerHTML = filmographyHTML(groups);
   const fresh = $('personFilmography');
   observeReveals(fresh);
+  awaitAdultChecks(groups);
   if (!keepPlace) requestAnimationFrame(() => fresh?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
 }
 
@@ -351,7 +388,7 @@ export async function openPerson(id) {
   const ct = $('personContent');
   ct.innerHTML = '<div style="text-align:center;padding:100px"><div class="loader-text">Loading...</div></div>';
   document.title = 'Loading… — CineVerse';
-  view = { dept: 'Acting', sort: 'newest', type: 'all', shown: PAGE_SIZE };
+  view = { dept: 'Acting', sort: 'newest', type: 'all', adult: '', shown: PAGE_SIZE };
   try {
     const p = await tmdb(`/person/${id}`, { append_to_response: 'combined_credits,images,external_ids' });
     if (gen !== reqGen) return;
@@ -424,6 +461,13 @@ export function initPerson() {
     'person-dept': el => { view.dept = el.dataset.dept; view.shown = PAGE_SIZE; renderFilmography(); },
     'person-sort': el => { view.sort = el.value; view.shown = PAGE_SIZE; renderFilmography(); },
     'person-type': el => { view.type = el.value; view.shown = PAGE_SIZE; renderFilmography(); },
+    'person-adult': el => { view.adult = adultMode(el.value); view.shown = PAGE_SIZE; renderFilmography(); },
     'person-more': () => appendFilmography(),
+  });
+  // The Adult control exists only while mature content is on, so the open
+  // filmography is rebuilt the moment that changes, in place.
+  onMatureToggle(on => {
+    if (!on) view.adult = '';
+    if (/^\/person\/\d+\/?$/.test(location.pathname) && person && $('personFilmography')) renderFilmography({ keepPlace: true });
   });
 }
