@@ -247,7 +247,8 @@
   // Dark islands: artwork cards whose copy sits directly on a photograph. They
   // keep the cinema palette in both themes (css/light.css re-declares the dark
   // tokens on them), because a paper wash over a film still reads as fog.
-  const ISLAND = /\.(discover-spotlight-(card|shade|copy)|coll-banner|wl-cover)\b/;
+  // The Up Next countdown sits on episode art the same way.
+  const ISLAND = /\.(discover-spotlight-(card|shade|copy)|coll-banner|wl-cover|up-next-(flag|count|scrim))\b|\.up-next-card(\.out)? \.continue-art\b/;
   const splitSelectors = text => {
     const parts = []; let depth = 0, start = 0;
     for (let i = 0; i < text.length; i++) {

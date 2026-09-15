@@ -10,6 +10,8 @@ import { movieResumeQueue, formatMovieTime } from './movie-progress.js';
 import { applyContinuePrefs, togglePinned, toggleHidden, moveContinue, isPinned, isHidden, resetContinuePrefs, hasContinueEdits } from './continue-prefs.js';
 import { franchiseSummary, toggleFranchiseDismissed, restoreAllFranchises } from './franchise.js';
 import { IMG, PH } from './config.js';
+import { upNextItems, refreshUpNext, countdownText, kindLabel, episodeArrived } from './up-next.js';
+import { localEpisodeTime } from './episode-times.js';
 import { state } from './state.js';
 import { grossingMoviesPage, formatGross, formatIndianGross, getUsdInrRate, isIndianProduction } from './box-office.js';
 
@@ -62,9 +64,15 @@ export function renderContinueWatching() {
   const source = state.user ? continueQueue() : [];
   const all = state.user ? applyContinuePrefs(source) : [];
   const queue = all;
+  // Caught-up shows with a dated next episode lead the rail with a countdown
+  // (js/up-next.js). Not while editing — pins and order are for what is in
+  // progress — and never for a show hidden from the rail.
+  if (state.user) refreshUpNext();
+  const inQueue = new Set(queue.map(row => row.key));
+  const upNext = state.user && !continueEditing ? upNextItems().filter(item => !inQueue.has(item.key) && !isHidden(item.key)) : [];
   // While editing, keep the section up even if everything has been hidden —
   // otherwise the control to unhide disappears with the last card.
-  if (!queue.length && !continueEditing) {
+  if (!queue.length && !upNext.length && !continueEditing) {
     const empty = `empty:${state.user?.uid || 'guest'}`;
     if (continueRenderSignature !== empty) host.innerHTML = '';
     continueRenderSignature = empty; continueEditing = false; return;
@@ -76,6 +84,8 @@ export function renderContinueWatching() {
     uid: state.user.uid, editing: continueEditing, hiddenCount,
     queue: queue.map(row => [row.key, row.progress?.watched, row.progress?.aired, row.progress?.percent, row.next?.season, row.next?.episode, row.entry?.position, row.entry?.updatedAt, isPinned(row.key)]),
     hidden: continueEditing ? source.filter(row => isHidden(row.key)).map(row => row.key) : [],
+    // A live count updates itself; a day count ("In 3 days") is part of the model.
+    upNext: upNext.map(item => { const count = countdownText(item); return [item.key, item.season, item.episode, item.at, item.exact, count.live ? 'live' : count.text]; }),
   });
   // Episode metadata, live listeners and the authoritative sign-in read can all
   // acknowledge the same state. Preserve the rail DOM (including loaded stills,
@@ -88,19 +98,67 @@ export function renderContinueWatching() {
   host.innerHTML = `<section class="section reveal continue-section continue-minimal${continueEditing ? ' editing' : ''}">
     <div class="section-head"><div class="continue-head"><h2 class="section-title">Continue Watching</h2><span class="continue-count">${continueEditing
       ? 'Pin, reorder, or hide titles'
-      : `${queue.length}${hiddenCount ? ` · ${hiddenCount} hidden` : ''}`}</span></div>
+      : `${queue.length}${upNext.length ? ` · ${upNext.length} coming up` : ''}${hiddenCount ? ` · ${hiddenCount} hidden` : ''}`}</span></div>
       <div class="continue-tools">
         ${continueEditing && hasContinueEdits() ? '<button class="continue-tool" data-action="continue-reset">Reset all</button>' : ''}
         <button class="continue-tool${continueEditing ? ' on' : ''}" data-action="continue-edit" aria-pressed="${continueEditing}">${continueEditing ? 'Done' : 'Edit'}</button>
       </div>
     </div>
-    <div class="row continue-row">${queue.map((row, index) => continueCard(row, index, queue.length)).join('')}${continueEditing ? hiddenCardsHTML() : ''}</div>
+    <div class="row continue-row">${upNext.map(upNextCard).join('')}${queue.map((row, index) => continueCard(row, index, queue.length)).join('')}${continueEditing ? hiddenCardsHTML() : ''}</div>
   </section>`;
   observeReveals();
   requestAnimationFrame(() => host.querySelectorAll('.continue-bar i').forEach(bar => { bar.style.width = `${+bar.dataset.w || 0}%`; }));
   stillsDone.clear();
   hydrateContinueStills(queue);
-  watchContinueScroll(queue);
+  watchContinueScroll(queue, upNext.length);
+  startUpNextTicker();
+}
+
+// ----- Up Next cards -----
+function upNextCard(item) {
+  const art = item.still ? `${IMG}w500${item.still}` : item.backdrop ? `${IMG}w500${item.backdrop}` : item.poster ? `${IMG}w342${item.poster}` : PH;
+  const count = countdownText(item);
+  if (count.out) episodeArrived(item);
+  const [y, m, d] = item.airDate.split('-').map(Number);
+  const when = item.exact ? localEpisodeTime(item.airstamp) : new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  const label = `${item.title}: ${kindLabel(item)}, season ${item.season} episode ${item.episode}, ${count.out ? 'out now' : `${count.text.toLowerCase()}, ${when}`}`;
+  return `<article class="continue-card up-next-card${count.out ? ' out' : ''}" data-up-next="${item.key}" data-type="tv">
+    <div class="continue-art-shell"><a class="continue-art" href="/tv/${item.id}" data-action="open-detail" data-id="${item.id}" data-type="tv" aria-label="${esc(label)}">
+      <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
+      <span class="continue-scrim up-next-scrim" aria-hidden="true"></span>
+      <span class="up-next-flag" aria-hidden="true">${esc(kindLabel(item))}</span>
+      <span class="up-next-count${count.live ? ' live' : ''}" data-countdown="${item.key}" aria-hidden="true">${esc(count.text)}</span>
+    </a></div>
+    <div class="continue-body">
+      <h3>${esc(item.title)}</h3>
+      <p class="continue-next"><span>S${item.season} E${item.episode}${item.name ? ` · ${esc(item.name)}` : ''}</span><i>${esc(when)}</i></p>
+    </div>
+  </article>`;
+}
+
+// One interval for every live countdown on the page, running only while one is
+// on screen and the tab is visible. Day-count cards change at most once a day
+// and are refreshed by the rail's own re-renders.
+let upNextTimer = 0;
+function tickUpNext() {
+  const nodes = document.querySelectorAll('[data-countdown].live');
+  if (!nodes.length || document.visibilityState === 'hidden') { clearInterval(upNextTimer); upNextTimer = 0; return; }
+  const items = new Map(upNextItems().map(item => [item.key, item]));
+  nodes.forEach(node => {
+    const item = items.get(node.dataset.countdown);
+    if (!item) return;
+    const count = countdownText(item);
+    if (node.textContent !== count.text) node.textContent = count.text;
+    if (count.out) {
+      node.classList.remove('live');
+      node.closest('.up-next-card')?.classList.add('out');
+      episodeArrived(item);
+    }
+  });
+}
+function startUpNextTicker() {
+  if (upNextTimer || !document.querySelector('[data-countdown].live')) return;
+  upNextTimer = setInterval(tickUpNext, 1000);
 }
 
 // Hidden shows are only listed while editing — visible enough to bring back,
@@ -179,7 +237,7 @@ async function hydrateContinueStills(queue, from = 0, count = 8) {
 
 // Fill the next batch as the rail is scrolled, so a long queue costs nothing
 // until it is actually looked at.
-function watchContinueScroll(queue) {
+function watchContinueScroll(queue, lead = 0) {
   const row = document.querySelector('.continue-row');
   if (!row || queue.length <= 8) return;
   let filled = 8;
@@ -187,7 +245,8 @@ function watchContinueScroll(queue) {
     const cards = row.querySelectorAll('.continue-card');
     if (!cards.length) return;
     const width = cards[0].getBoundingClientRect().width + 16;
-    const visibleEnd = Math.ceil((row.scrollLeft + row.clientWidth) / Math.max(1, width));
+    // Up Next cards sit ahead of the queue, so they do not count as filled slots.
+    const visibleEnd = Math.ceil((row.scrollLeft + row.clientWidth) / Math.max(1, width)) - lead;
     if (visibleEnd + 4 > filled) { hydrateContinueStills(queue, filled, 8); filled += 8; }
   }, 200);
   row.addEventListener('scroll', onScroll, { passive: true });
@@ -299,6 +358,8 @@ export function initHomeActions() {
   document.addEventListener('cv:episode-progress', renderContinueWatching);
   document.addEventListener('cv:movie-progress', renderContinueWatching);
   document.addEventListener('cv:continue-prefs', renderContinueWatching);
+  document.addEventListener('cv:up-next', renderContinueWatching);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { startUpNextTicker(); if ($('continueWatchingRow')?.isConnected) renderContinueWatching(); } });
   document.addEventListener('cv:library-sync', () => {
     renderContinueWatching();
     debouncedFranchiseRail();

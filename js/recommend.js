@@ -20,6 +20,7 @@ import { registerActions } from './events.js';
 import { ensureWatchedMeta } from './watched-meta.js';
 import { prefs } from './prefs.js';
 import { MATURE_KEYWORD_IDS, matureStatus, matureVerdictVersion, pendingMature, resolveMature } from './mature-filter.js';
+import { loadWatchingMood, movieGenresFor, recentEpisodes, episodesLabel } from './watching-mood.js';
 
 const MOVIE_GENRES = new Set(mGenreList.map(g => g.id));
 const TV_GENRES = new Set(tGenreList.map(g => g.id));
@@ -397,6 +398,7 @@ export async function fetchCandidates(profile, { only = null } = {}) {
   // are fetched alongside (cached) so the rail can refuse titles that only share
   // TMDB's "recommendations" link without sharing the show's kind.
   profile.watchingGenres = profile.watchingGenres || {};
+  profile.watchingMood = profile.watchingMood || {};
   (profile.nowWatching || []).slice(0, 3).filter(item => !only || item.type === only).forEach(item => {
     const key = `${item.type}_${item.id}`;
     calls.push(tmdb(`/${item.type}/${item.id}/recommendations`)
@@ -406,6 +408,32 @@ export async function fetchCandidates(profile, { only = null } = {}) {
       .then(d => { profile.watchingGenres[key] = (d.genres || []).map(genre => genre.id); return []; })
       .catch(() => []));
   });
+  // The show you are in the middle of also seeds titles in the MOOD of the
+  // episodes you just watched (js/watching-mood.js): its detected TMDB keywords,
+  // kept to the show's own genres so a tense drama does not surface a comedy
+  // that merely shares a word.
+  const moodSeed = (profile.nowWatching || [])[0];
+  if (moodSeed?.type === 'tv' && !only) {
+    const key = `tv_${moodSeed.id}`;
+    calls.push(Promise.all([tmdb(`/tv/${moodSeed.id}`), loadWatchingMood(moodSeed.id, state.episodeProgress?.[key])])
+      .then(async ([detail, mood]) => {
+        if (!mood?.ids?.length) return [];
+        profile.watchingMood[key] = mood;
+        // Drama is on most shows, so it says little about kind; a show's more
+        // specific genres (War & Politics for Shōgun) keep the mood on-target.
+        const allGenres = (detail?.genres || []).map(genre => genre.id);
+        const tvGenres = allGenres.some(id => id !== 18) ? allGenres.filter(id => id !== 18) : allGenres;
+        const filmGenres = movieGenresFor(tvGenres);
+        const provenance = { __seedKey: key };
+        const keywords = mood.ids.join('|');
+        const [series, films] = await Promise.all([
+          wantTV ? tmdb('/discover/tv', { with_keywords: keywords, ...(tvGenres.length ? { with_genres: tvGenres.join('|') } : {}), sort_by: 'popularity.desc', 'vote_count.gte': 100, ...outT }).then(d => tag(d.results, 'tv', 'watchingMood', provenance)).catch(() => []) : [],
+          wantMovie && (filmGenres.length || !tvGenres.length) ? tmdb('/discover/movie', { with_keywords: keywords, ...(filmGenres.length ? { with_genres: filmGenres.join('|') } : {}), sort_by: 'popularity.desc', 'vote_count.gte': 150, ...outM }).then(d => tag(d.results, 'movie', 'watchingMood', provenance)).catch(() => []) : [],
+        ]);
+        return [...series, ...films];
+      })
+      .catch(() => []));
+  }
   (profile.seedIds || []).slice(0, 3).filter(s => !only || s.type === only)
     .forEach(s => calls.push(tmdb(`/${s.type}/${s.id}/recommendations`)
       .then(d => tag(d.results, s.type, 'rec', { __seedKey: `${s.type}_${s.id}` }))
@@ -418,7 +446,7 @@ export async function fetchCandidates(profile, { only = null } = {}) {
 // ----- Scoring & ranking -----
 // Where a candidate CAME FROM is itself evidence: a TMDB "more like this" off a
 // title you rated 9 is a better bet than a broad popularity sweep.
-const SOURCE_BONUS = { watching: 1.5, rec: 1.4, keyword: 1.3, cast: 1.2, castmore: 1.15, director: 1.1, quality: 0.7, genre: 0.6, trending: 0.4 };
+const SOURCE_BONUS = { watchingMood: 1.6, watching: 1.5, rec: 1.4, keyword: 1.3, cast: 1.2, castmore: 1.15, director: 1.1, quality: 0.7, genre: 0.6, trending: 0.4 };
 
 // Genres that DEFINE a title's audience rather than just flavour it. Sharing a
 // broad bucket like Comedy or Adventure means little — an animated kids' film and
@@ -453,14 +481,19 @@ export function isRelatedToSeed(candidate, seed) {
   return overlap >= minimum && !genres.some(genre => DEFINING_GENRES.has(genre) && !seedGenres.has(genre));
 }
 
-// The "Because you're watching" rail: the candidate must come from that title's
-// own TMDB recommendations, share at least one of its genres once they are
-// known, and not introduce an audience-defining genre the title does not have.
-export function isRelatedToWatching(candidate, item, profile) {
-  if (!item || !hasCandidateSource(candidate, 'watching')) return false;
+// The "Because you're watching" rail: the candidate must come from that title
+// — its TMDB recommendations, or (with `mood`) the mood of its latest episodes —
+// share at least one of its genres once they are known, and not introduce an
+// audience-defining genre the title does not have. A show's genres are compared
+// with their film equivalents too, so a film in the same mood can qualify.
+export function isRelatedToWatching(candidate, item, profile, { mood = false } = {}) {
+  if (!item) return false;
+  const viaMood = hasCandidateSource(candidate, 'watchingMood');
+  if (mood ? !viaMood : !(viaMood || hasCandidateSource(candidate, 'watching'))) return false;
   const key = `${item.type}_${item.id}`;
   if (!(candidate.__seedKeys || []).includes(key)) return false;
-  const seedGenres = new Set((profile?.watchingGenres?.[key] || []).map(Number));
+  const own = (profile?.watchingGenres?.[key] || []).map(Number);
+  const seedGenres = new Set(item.type === 'tv' ? [...own, ...movieGenresFor(own)] : own);
   if (!seedGenres.size) return true;
   const genres = (candidate.genre_ids || []).map(Number);
   return genres.some(genre => seedGenres.has(genre)) && !genres.some(genre => DEFINING_GENRES.has(genre) && !seedGenres.has(genre));
@@ -838,8 +871,10 @@ export async function renderRecommendations() {
     dismissed: [...(state.recommendationFeedback?.dismissed || [])].sort(),
     // A newly classified title or the opt-in changing alters what may be used.
     matureInRecs: matureShapesTaste(), verdicts: matureVerdictVersion(),
-    // The shows being watched now decide a rail, so a new one rebuilds the rails.
+    // The shows being watched now decide a rail, so a new one rebuilds the rails —
+    // and so does a newly watched episode, whose mood may differ.
     watching: (profile.nowWatching || []).map(item => `${item.type}_${item.id}`),
+    watchingEpisodes: (profile.nowWatching || []).filter(item => item.type === 'tv').slice(0, 1).map(item => episodesLabel(recentEpisodes(state.episodeProgress?.[`tv_${item.id}`]))),
   });
   if (sourceSignature === recommendationSignature && wrap.firstElementChild) return;
   recommendationSignature = sourceSignature;
@@ -912,7 +947,24 @@ export async function renderRecommendations() {
   // The label and every card now share the exact same recommendation seed.
   // Strict similarity removes the row entirely if fewer than four honest matches
   // remain; a missing row is better than a confident but misleading explanation.
-  if (watchingNow) fillRow('rowWatching', () => rowFrom(c => isRelatedToWatching(c, watchingNow, profile), 4), run);
+  if (watchingNow) fillRow('rowWatching', async () => {
+    const ranked = await pool;
+    const key = `${watchingNow.type}_${watchingNow.id}`;
+    const mood = profile.watchingMood?.[key];
+    const kicker = $('rowWatching')?.closest('.section')?.querySelector('.rec-kicker');
+    const moodItems = mood?.moods?.length ? ranked.filter(c => isRelatedToWatching(c, watchingNow, profile, { mood: true })) : [];
+    // Mood-led only when it has enough honest matches; otherwise the rail follows
+    // the show as a whole and its line says so.
+    if (moodItems.length >= 4) {
+      if (run === recommendationRun && kicker) kicker.textContent = `Tuned to ${mood.label}: ${mood.moods.map(entry => entry.label).join(', ')}`;
+      const lead = rotatedWindow(moodItems, rotation, 20);
+      const shown = new Set(lead.map(c => `${c.__type}_${c.id}`));
+      const rest = ranked.filter(c => !shown.has(`${c.__type}_${c.id}`) && isRelatedToWatching(c, watchingNow, profile)).slice(0, Math.max(0, 20 - lead.length));
+      return [...lead, ...rest].map(c => recommendationCard(c)).join('');
+    }
+    if (run === recommendationRun && kicker) kicker.textContent = watchingNow.reason === 'watching' ? 'Following the show you are in the middle of' : 'Following the last film you finished';
+    return rowFrom(c => isRelatedToWatching(c, watchingNow, profile), 4);
+  }, run);
   fillRow('rowSeries', () => rowFrom(c => c.__type === 'tv', 4), run);
   if (seed) fillRow('rowSeed', () => rowFrom(c => isRelatedToSeed(c, seed), 4), run);
   if (topActor) fillRow('rowActor', () => rowFrom(c => hasCandidateSource(c, 'cast')), run);

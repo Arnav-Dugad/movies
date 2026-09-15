@@ -418,7 +418,13 @@ The choice syncs with your other preferences.
 
 **Settings → Poster controls → Hide titles under posters** removes the title,
 year and type line from every poster on the site. It is off by default and syncs
-to your account. Rails on Home, Movies and TV have wider gaps between posters.
+to your account.
+
+Posters on Home, Movies and TV are larger and further apart: 218px wide on
+desktop Home rails (was 188px) with 30px between them, and a 190px minimum column
+on the Movies and TV grids (was 145px) with 30px gaps. Tablets and phones get 120-152px rail
+posters and two roomy columns. Compact density keeps a tighter version of the same
+rhythm, and Top 10 and wide cards keep their own proportions.
 
 ## Hero
 
@@ -514,22 +520,40 @@ needs no request:
   more) and carries a small fan of that day's posters.
 - **Day reel.** A 24-hour ribbon places every film and episode at the time you
   marked it, with the same items as a list beneath.
-- **Year strip.** Hours per month for the last twelve months, each month headed
-  by its most-watched poster. Pick a month to open it in the calendar.
+- **TV this month.** Episodes, TV time, shows, days with TV, and binge days
+  (three or more episodes) for the month in view. Every show you watched is
+  listed with its episode span ("S1 E8 – S2 E2"), episodes, days and time, ranked
+  by episodes. A show whose runtime TMDB does not report shows a dash, not a
+  guess.
+- **Year strip.** Hours per month for the last twelve months, stacked films and
+  TV with a legend, each month headed by its most-watched poster. Pick a month to
+  open it in the calendar.
 
 Films count each play (a rewatch is its own day). Episodes come from the
-per-episode log. Anything marked in bulk (a whole season, a whole show, a
-back-filled history) is bookkeeping, not viewing: it is listed on its day as
-"marked" but never shades a day or adds minutes.
+per-episode log, read with one rule shared with the binge forecast
+(`viewingLog` in `js/episodes.js`): single ticks are viewing, and so is a batch
+the size of one sitting (at most six hours of the show, or six episodes when the
+runtime is unknown), such as **Up to here** after an evening. The show's first
+batch is the catch-up everyone does when they start tracking, and a whole season,
+a whole show or a back-filled history is bookkeeping: listed on its day as
+"marked", never shading a day or adding minutes. The personal-best binge record in
+the TV Tracker still counts single ticks only.
 
 ### Binge forecast
 
 Shows in progress say when you will finish, on the detail page and in the Stats
-TV Tracker: *"At your pace of 0.6 episodes a day, you'll finish the 6 left in 10
-days — around Sep 25."* Pace is your single ticks on that show over the last 30
-days, falling back to all of its ticks, then to your overall pace across shows.
-Bulk marks never count as pace. A show untouched for 60 days, dropped, or caught
-up gets no forecast rather than a fantasy date.
+TV Tracker: *"At your pace of 5 episodes a week, you'll finish the 6 left in 10
+days — around Sep 25."* Pace is your viewing on that show over the last 30 days,
+falling back to all of it, then to your usual pace across shows you have not
+dropped. Slow paces read per week or per month rather than "0 episodes a day".
+
+**Why it was missing.** Pace used to count single ticks only, so anyone who marks
+with **Up to here** or **Set position** had no pace at all, and the forecast
+silently never appeared. It now uses the Diary's viewing rule above. When there is
+still no date it says why instead of disappearing: *"Mark a couple of episodes as
+you watch them and a finish date appears here"*, or *"Paused for 3 months — a
+finish date comes back when you pick it up again"*. Dropped and caught-up shows
+have nothing to forecast.
 
 ## Top 10 This Week
 
@@ -577,6 +601,29 @@ only admits titles from that show's seed with real genre overlap, and **Series f
 You**. Shows you already track are never recommended back to you. Private mature
 viewing stays out, as before.
 
+### Tuned to the episodes you just watched
+
+For the show you are in the middle of, **Because you're watching …** follows the
+mood of your latest episodes rather than the whole show, and says so: *"Tuned to
+S1 E3–E5: betrayal, espionage, murder"*.
+
+TMDB has no keywords for episodes (that endpoint returns 404), and an episode's
+overview is a sentence or two. So `js/watching-mood.js` reads the overviews of
+the last three episodes you marked (the newest counts most) and that season's
+overview, and matches them against a lexicon of about 45 moods. Each mood is a
+set of phrases that clearly signal it ("betrays", "cover-up", "on the run") and
+the TMDB keyword ids that catalogue it. Every id was checked against TMDB for an
+exact name and a real body of titles. Ambiguous words ("loss", "team") are left
+out, and episode titles are not read because they are often metaphors. The show's
+own TMDB keywords corroborate a mood, and become moods themselves when an episode
+names them as whole words.
+
+Titles in that mood come from TMDB Discover (the mood keywords, restricted to the
+show's own genres, with Drama set aside when a more specific genre exists). They
+lead the rail only when at least four honest matches exist. Otherwise the rail
+follows the show as before, and its line says so rather than claiming a mood it
+did not find.
+
 ## Streaming regions
 
 `REGIONS` in `js/config.js` lists the 60 countries TMDB returns watch-provider
@@ -589,21 +636,22 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 680+ assertions, no dependencies and no Java
+npm run test:logic    # 750+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
-check and an import-resolution check over all 82 modules. There is no build step
+check and an import-resolution check over all 84 modules. There is no build step
 to catch a syntax error or a renamed export before Cloudflare would.
 
 `tests/logic/` runs the real application modules against a small browser shim —
 list locking, the episode ledger, CSV import, every stats figure, rewatch
 counting, collection completion, the light-theme compiler (`theme.test.mjs`), and
 the binge forecast, Watch Diary, detail parts, preferences and logo tone
-(`batch-features.test.mjs`). It needs nothing installed.
+(`batch-features.test.mjs`), and the viewing rule, forecast reasons, the Diary's TV
+month, episode moods and Up Next countdowns (`tv-intelligence.test.mjs`). It needs nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.
@@ -666,6 +714,19 @@ already reads.
 The rail is deliberately quiet: artwork with a thin progress line, the show's
 name, and one line for the next episode and how many are left. The count of
 shows sits beside the heading.
+
+### Up Next
+
+Shows you are caught up on lead the rail with a countdown when their next episode
+has a date within 30 days: *Season finale · Tomorrow*, *In 5 days*, or a live
+*1d 04:12:33*. The date is TMDB's next episode. A live hours-minutes-seconds count
+runs only when TVmaze publishes that episode with a real airtime. Streaming drops
+with no time are stamped noon UTC by TVmaze, which is a placeholder, so those
+cards count calendar days instead of inventing a moment. When an episode is out,
+the card says **Out now**, the show is re-checked with TMDB, and once its aired
+marker moves it returns to the rail as a normal card. A card stays at most three
+days after release. Ended, dropped and hidden shows never get one, and one timer
+drives every countdown, only while one is on screen.
 
 When you are one or two episodes from your own best day, the rail says so. It
 counts single ticks only, like the record itself — a personal best you could set

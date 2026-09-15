@@ -201,6 +201,7 @@
 #statsContent .diary-switch button { font-size: 1.3rem; }
 #statsContent .diary-tiles span { font-size: 0.822rem; }
 #statsContent .diary-tiles strong { font-size: 1.05rem; }
+#statsContent .diary-tiles small { font-size: 0.822rem; }
 #statsContent .diary-kicker { font-size: 0.822rem; }
 #statsContent .diary-weekdays span { font-size: 0.831rem; }
 #statsContent .diary-cell > b { font-size: 0.839rem; }
@@ -216,6 +217,15 @@
 #statsContent .diary-list a { font-size: .88rem; }
 #statsContent .diary-list li > span { font-size: 0.839rem; }
 #statsContent .diary-list li > b { font-size: 0.848rem; }
+#statsContent .diary-year-legend { font-size: 0.839rem; }
+#statsContent .diary-tv-head small { font-size: 0.839rem; }
+#statsContent .diary-tv-empty { font-size: .88rem; }
+#statsContent .diary-tv-tiles span { font-size: 0.822rem; }
+#statsContent .diary-tv-tiles strong { font-size: 1.05rem; }
+#statsContent .diary-tv-tiles small { font-size: 0.822rem; }
+#statsContent .diary-tv-shows a { font-size: .9rem; }
+#statsContent .diary-tv-shows li > div > span { font-size: 0.839rem; }
+#statsContent .diary-tv-shows strong { font-size: 0.856rem; }
 #statsContent .diary-month > b { font-size: 0.813rem; }
 #statsContent .diary-month > span:last-child { font-size: 0.839rem; }
 

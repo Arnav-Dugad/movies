@@ -11,7 +11,7 @@ import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone, isEpisodeAvailable } from './episode-times.js';
 import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setEpisodePosition, episodeLabel, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
   seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch,
-  isDropped, setDropped, bingeForecast, forecastSentence } from './episodes.js';
+  isDropped, setDropped, forecastStatus, forecastSentence, forecastNote } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
@@ -1154,7 +1154,14 @@ function showProgressPanel(id, det, progress, next) {
       <strong>${esc(dropped ? 'You stopped watching this' : nextLabel)}</strong>
       <p>${progress.watched}/${progress.aired} watched${progress.total > progress.aired ? ` · ${progress.total} total` : ''}${dropped ? ' · hidden from Continue Watching' : ''}</p>
       <div class="show-progress-bar"><i style="width:0" data-w="${progress.percent}"></i></div>
-      ${(() => { const forecast = dropped ? null : bingeForecast(id); return forecast ? `<p class="show-forecast" data-dp="bingeForecast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>${esc(forecastSentence(forecast))}</p>` : ''; })()}
+      ${(() => {
+        // A finish date when there is one; otherwise the reason there is not, so
+        // the forecast never silently disappears.
+        const status = dropped ? null : forecastStatus(id);
+        if (!status) return '';
+        const text = status.kind === 'forecast' ? forecastSentence(status.forecast) : forecastNote(status);
+        return `<p class="show-forecast${status.kind === 'forecast' ? '' : ` quiet ${status.kind}`}" data-dp="bingeForecast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>${esc(text)}</p>`;
+      })()}
     </div>
     <div class="show-progress-actions">
       <b>${progress.percent}%</b>

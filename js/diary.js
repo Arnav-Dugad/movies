@@ -7,20 +7,25 @@
 //   - a DAY REEL for the selected day: a 24-hour ribbon that places every film
 //     and episode at the time you marked it, with the same items as a list
 //     beneath (the table view of the ribbon);
-//   - a YEAR STRIP of hours per month, each month headed by its most-watched
-//     poster; picking a month opens it in the calendar.
+//   - TV THIS MONTH: episodes, TV time, shows and binge days for the month in
+//     view, with every show you watched ranked by time and the episode span;
+//   - a YEAR STRIP of hours per month, split into films and TV, each month
+//     headed by its most-watched poster; picking a month opens it in the calendar.
 //
 // What counts as viewing. Films come from each play of a watched film (a rewatch
-// is its own day). Episodes come from the per-episode log. Anything marked in
-// bulk — a whole season, a whole show, a back-filled history — is bookkeeping,
-// not viewing: it is listed on its day as "marked", never shades a day, and never
-// adds minutes. A series marked watched with no episode log is treated the same.
+// is its own day). Episodes come from the per-episode log, read through
+// viewingLog (js/episodes.js): single ticks and sitting-sized batches such as
+// "Up to here" after an evening are viewing; a whole season, a whole show or a
+// back-filled history is bookkeeping — listed on its day as "marked", never
+// shading a day and never adding minutes. A series marked watched with no
+// episode log is treated the same.
 // Minutes use the title's reported runtime; a title without one still counts as
 // an item and adds no invented time.
 import { IMG, PH } from './config.js';
 import { state } from './state.js';
 import { $, esc } from './ui.js';
 import { registerActions } from './events.js';
+import { viewingLog } from './episodes.js';
 
 const DAY = 86400000;
 const pad = n => String(n).padStart(2, '0');
@@ -42,14 +47,12 @@ export function diaryEvents({ watched = {}, episodeProgress = {} } = {}) {
   for (const entry of Object.values(episodeProgress || {})) {
     const id = +entry?.tmdbId;
     if (!id) continue;
-    const log = Array.isArray(entry.log) ? entry.log : [];
+    const log = viewingLog(entry);
     if (log.length) logged.add(`tv_${id}`);
     for (const row of log) {
-      const at = +row?.[2];
-      if (!at) continue;
       events.push({
         kind: 'episode', key: `tv_${id}`, id, type: 'tv', title: entry.title || 'TV show', poster: entry.poster || '',
-        season: +row[0], episode: +row[1], at, bulk: !!+row[3], minutes: +row[3] ? 0 : Math.max(0, +entry.episodeRuntime || 0),
+        season: row.season, episode: row.episode, at: row.at, bulk: !row.viewing, minutes: row.viewing ? Math.max(0, +entry.episodeRuntime || 0) : 0,
       });
     }
   }
@@ -77,12 +80,13 @@ export function diaryDays(events) {
   const days = new Map();
   for (const event of events) {
     const key = dayKey(event.at);
-    if (!days.has(key)) days.set(key, { key, minutes: 0, items: 0, films: 0, episodes: 0, marked: 0, titles: new Map(), events: [] });
+    if (!days.has(key)) days.set(key, { key, minutes: 0, filmMinutes: 0, tvMinutes: 0, items: 0, films: 0, episodes: 0, marked: 0, titles: new Map(), events: [] });
     const day = days.get(key);
     day.events.push(event);
     if (event.bulk) { day.marked++; continue; }
     day.items++;
     day.minutes += event.minutes;
+    if (event.kind === 'movie') day.filmMinutes += event.minutes; else day.tvMinutes += event.minutes;
     if (event.kind === 'movie') day.films++; else day.episodes++;
     const title = day.titles.get(event.key) || { key: event.key, id: event.id, type: event.type, title: event.title, poster: event.poster, count: 0, minutes: 0 };
     title.count++; title.minutes += event.minutes;
@@ -98,7 +102,7 @@ export function diaryMonths(days, { months = 12, now = Date.now() } = {}) {
   for (let back = months - 1; back >= 0; back--) {
     const date = new Date(base.getFullYear(), base.getMonth() - back, 1);
     const key = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
-    const month = { key, label: date.toLocaleDateString(undefined, { month: 'short' }), year: date.getFullYear(), minutes: 0, items: 0, titles: new Map() };
+    const month = { key, label: date.toLocaleDateString(undefined, { month: 'short' }), year: date.getFullYear(), minutes: 0, filmMinutes: 0, tvMinutes: 0, items: 0, titles: new Map() };
     out.push(month);
   }
   const byKey = new Map(out.map(month => [month.key, month]));
@@ -106,6 +110,8 @@ export function diaryMonths(days, { months = 12, now = Date.now() } = {}) {
     const month = byKey.get(day.key.slice(0, 7));
     if (!month) continue;
     month.minutes += day.minutes;
+    month.filmMinutes += day.filmMinutes || 0;
+    month.tvMinutes += day.tvMinutes || 0;
     month.items += day.items;
     for (const title of day.titles.values()) {
       const held = month.titles.get(title.key) || { ...title, count: 0, minutes: 0 };
@@ -114,6 +120,49 @@ export function diaryMonths(days, { months = 12, now = Date.now() } = {}) {
     }
   }
   return out;
+}
+
+// A day with this many episodes watched is a binge day.
+export const BINGE_EPISODES = 3;
+
+const epOrder = point => point.season * 100000 + point.episode;
+
+/** "S2 E5", "S2 E1–E5", or "S1 E8 – S2 E2" for the span of episodes watched. */
+export function episodeSpan(first, last) {
+  if (!first || !last) return '';
+  if (first.season === last.season && first.episode === last.episode) return `S${first.season} E${first.episode}`;
+  if (first.season === last.season) return `S${first.season} E${first.episode}–E${last.episode}`;
+  return `S${first.season} E${first.episode} – S${last.season} E${last.episode}`;
+}
+
+/** TV figures for one month (`YYYY-MM`): totals, binge days, and every show ranked by episodes watched. */
+export function diaryMonthTV(days, monthValue) {
+  const shows = new Map();
+  let episodes = 0, minutes = 0, marked = 0, activeDays = 0, bingeDays = 0;
+  for (const day of days.values()) {
+    if (!day.key.startsWith(monthValue)) continue;
+    let dayEpisodes = 0;
+    for (const event of day.events) {
+      if (event.kind !== 'episode' && event.kind !== 'series') continue;
+      if (event.bulk) { marked++; continue; }
+      episodes++; dayEpisodes++;
+      minutes += event.minutes;
+      const show = shows.get(event.key) || { key: event.key, id: event.id, title: event.title, poster: event.poster, episodes: 0, minutes: 0, days: new Set(), first: null, last: null };
+      show.episodes++;
+      show.minutes += event.minutes;
+      show.days.add(day.key);
+      const point = { season: event.season, episode: event.episode };
+      if (!show.first || epOrder(point) < epOrder(show.first)) show.first = point;
+      if (!show.last || epOrder(point) > epOrder(show.last)) show.last = point;
+      shows.set(event.key, show);
+    }
+    if (dayEpisodes) activeDays++;
+    if (dayEpisodes >= BINGE_EPISODES) bingeDays++;
+  }
+  const list = [...shows.values()]
+    .map(show => ({ ...show, days: show.days.size, span: episodeSpan(show.first, show.last) }))
+    .sort((a, b) => b.episodes - a.episodes || b.minutes - a.minutes || a.title.localeCompare(b.title));
+  return { episodes, minutes, marked, activeDays, bingeDays, shows: list };
 }
 
 /** Shade step 0-4 for a day's minutes against the busiest day in view. */
@@ -229,12 +278,54 @@ function yearHTML(days, monthValue) {
     const lead = topTitles(month.titles)[0];
     const height = month.minutes ? Math.max(6, Math.round(month.minutes / max * 100)) : 0;
     const name = new Date(`${month.key}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    return `<button class="diary-month${month.key === monthValue ? ' active' : ''}" data-action="diary-month-pick" data-month="${month.key}" aria-pressed="${month.key === monthValue}" aria-label="${esc(`${name}: ${formatMinutes(month.minutes)} across ${month.items} watched${lead ? `, most of all ${lead.title}` : ''}`)}" data-tip="${esc(`${name} · ${month.minutes ? formatMinutes(month.minutes) : 'nothing watched'}${lead ? ` · ${lead.title}` : ''}`)}">
-      <span class="diary-month-bar"><span class="diary-month-fill" style="--h:${height}%">${lead?.poster ? `<img src="${IMG}w92${lead.poster}" alt="" loading="lazy">` : ''}</span></span>
+    const split = month.minutes ? ` (${formatMinutes(month.tvMinutes)} TV, ${formatMinutes(month.filmMinutes)} films)` : '';
+    // Stacked: TV at the base, films above, a 2px gap between them. A title with
+    // no reported runtime adds no height, so a split can only show known time.
+    const segments = month.minutes
+      ? `${month.filmMinutes ? `<i class="film" style="flex:${month.filmMinutes}"></i>` : ''}${month.tvMinutes ? `<i class="tv" style="flex:${month.tvMinutes}"></i>` : ''}`
+      : '';
+    return `<button class="diary-month${month.key === monthValue ? ' active' : ''}" data-action="diary-month-pick" data-month="${month.key}" aria-pressed="${month.key === monthValue}" aria-label="${esc(`${name}: ${formatMinutes(month.minutes)}${split} across ${month.items} watched${lead ? `, most of all ${lead.title}` : ''}`)}" data-tip="${esc(`${name} · ${month.minutes ? `${formatMinutes(month.minutes)}${split}` : 'nothing watched'}${lead ? ` · ${lead.title}` : ''}`)}">
+      <span class="diary-month-bar"><span class="diary-month-fill" style="--h:${height}%">${segments}${lead?.poster ? `<img src="${IMG}w92${lead.poster}" alt="" loading="lazy">` : ''}</span></span>
       <b>${month.minutes ? formatMinutes(month.minutes) : ''}</b>
       <span>${esc(month.label)}</span>
     </button>`;
-  }).join('')}</div>`;
+  }).join('')}</div>
+    <div class="diary-year-legend" aria-hidden="true"><span><i class="film"></i>Films</span><span><i class="tv"></i>TV</span></div>`;
+}
+
+function tvHTML(days, monthValue, monthName) {
+  const tv = diaryMonthTV(days, monthValue);
+  const note = tv.marked ? `<small>${tv.marked} more marked in bulk, not counted</small>` : '';
+  if (!tv.episodes) {
+    return `<div class="diary-tv"><div class="diary-tv-head"><span class="diary-kicker">TV this month</span>${note}</div><p class="diary-tv-empty">No episodes watched in ${esc(monthName)}.</p></div>`;
+  }
+  // Bars measure episodes, the one unit every show has; time is the figure beside
+  // them, and a show with no reported runtime shows a dash rather than a guess.
+  const top = Math.max(1, ...tv.shows.map(show => show.episodes));
+  const rows = tv.shows.map(show => {
+    const share = Math.max(4, Math.round(show.episodes / top * 100));
+    const detail = `${show.span} · ${show.episodes} episode${show.episodes === 1 ? '' : 's'} · ${show.days} day${show.days === 1 ? '' : 's'}`;
+    return `<li>
+      <img src="${show.poster ? `${IMG}w92${show.poster}` : PH}" alt="" loading="lazy">
+      <div>
+        <a href="/tv/${show.id}" data-action="open-detail" data-id="${show.id}" data-type="tv">${esc(show.title)}</a>
+        <span>${esc(detail)}</span>
+        <i class="diary-tv-bar" aria-hidden="true"><b style="--w:${share}%"></b></i>
+      </div>
+      <strong>${show.minutes ? formatMinutes(show.minutes) : '—'}</strong>
+    </li>`;
+  }).join('');
+  return `<div class="diary-tv">
+    <div class="diary-tv-head"><span class="diary-kicker">TV this month</span>${note}</div>
+    <div class="diary-tv-tiles">
+      <div><span>Episodes</span><strong>${tv.episodes}</strong></div>
+      <div><span>TV time</span><strong>${formatMinutes(tv.minutes)}</strong></div>
+      <div><span>Shows</span><strong>${tv.shows.length}</strong></div>
+      <div><span>Days with TV</span><strong>${tv.activeDays}</strong></div>
+      <div><span>Binge days</span><strong>${tv.bingeDays}</strong><small>${BINGE_EPISODES}+ episodes</small></div>
+    </div>
+    <ol class="diary-tv-shows" aria-label="${esc(`Shows watched in ${monthName}, most episodes first`)}">${rows}</ol>
+  </div>`;
 }
 
 function bodyHTML() {
@@ -249,7 +340,7 @@ function bodyHTML() {
   const [year, month] = view.month.split('-').map(Number);
   const monthName = new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   const monthDays = [...days.values()].filter(day => day.key.startsWith(view.month));
-  const totals = monthDays.reduce((sum, day) => ({ minutes: sum.minutes + day.minutes, items: sum.items + day.items, active: sum.active + (day.items ? 1 : 0) }), { minutes: 0, items: 0, active: 0 });
+  const totals = monthDays.reduce((sum, day) => ({ minutes: sum.minutes + day.minutes, tv: sum.tv + (day.tvMinutes || 0), film: sum.film + (day.filmMinutes || 0), items: sum.items + day.items, active: sum.active + (day.items ? 1 : 0) }), { minutes: 0, tv: 0, film: 0, items: 0, active: 0 });
   const busiest = monthDays.reduce((best, day) => (day.minutes > (best?.minutes || 0) ? day : best), null);
   return `<div class="diary-top">
       <div class="diary-switch">
@@ -258,7 +349,7 @@ function bodyHTML() {
         <button data-action="diary-month" data-dir="1" aria-label="Next month"${view.month >= current ? ' disabled' : ''}>›</button>
       </div>
       <div class="diary-tiles">
-        <div><span>Watched</span><strong>${formatMinutes(totals.minutes)}</strong></div>
+        <div><span>Watched</span><strong>${formatMinutes(totals.minutes)}</strong>${totals.minutes ? `<small>${formatMinutes(totals.tv)} TV · ${formatMinutes(totals.film)} films</small>` : ''}</div>
         <div><span>Titles &amp; episodes</span><strong>${totals.items}</strong></div>
         <div><span>Days with viewing</span><strong>${totals.active}</strong></div>
         <div><span>Biggest day</span><strong>${busiest?.minutes ? esc(new Date(`${busiest.key}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })) : '—'}</strong></div>
@@ -268,12 +359,13 @@ function bodyHTML() {
       <div class="diary-calendar">${calendarHTML(days, view.month, view.day)}</div>
       ${reelHTML(days.get(view.day), view.day)}
     </div>
+    ${tvHTML(days, view.month, monthName)}
     <div class="diary-year-wrap"><span class="diary-kicker">Last 12 months</span>${yearHTML(days, view.month)}</div>`;
 }
 
 export function diaryPanel() {
   return `<section class="stats-panel watch-diary">
-    <div class="stats-section-head"><div><span>Daily &amp; monthly</span><h2>Watch Diary</h2><p>Every film and episode on the day you watched it. Days are shaded by minutes watched; whole seasons marked at once are listed, never counted as viewing.</p></div></div>
+    <div class="stats-section-head"><div><span>Daily &amp; monthly</span><h2>Watch Diary</h2><p>Every film and episode on the day you watched it, with a month of TV at a glance. Days are shaded by minutes watched; whole seasons marked at once are listed, never counted as viewing.</p></div></div>
     <div id="diaryRoot">${bodyHTML()}</div>
   </section>`;
 }

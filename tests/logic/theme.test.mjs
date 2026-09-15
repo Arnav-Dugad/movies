@@ -72,6 +72,8 @@ const css = T.compileRules([
   style('.coll-banner h3', 'color: rgb(255, 255, 255);'),
   style('.coll-banner h3, .other', 'color: rgb(255, 255, 255);'),
   style('.nothing', 'display: grid;'),
+  style('.up-next-count', 'color: rgb(255, 255, 255);'),
+  style('.up-next-card .continue-next i', 'color: rgb(255, 255, 255);'),
 ], {});
 const rules = css.trim().split('\n');
 check('source order is preserved among copies', css.indexOf('.a{color:rgb') < css.indexOf('.a{color:var(--red)'));
@@ -80,6 +82,8 @@ check('colour keyframes are copied whole', /@keyframes pulse\{0%\{opacity: 1;\}1
 check('keyframes without colour are skipped', !css.includes('spin'));
 check('dark-island rules are copied untouched', css.includes('.coll-banner h3{color:rgb(255, 255, 255);}'));
 check('a selector list only partly on an island is still themed', !css.includes('.coll-banner h3, .other{color:rgb(255, 255, 255);}'));
+check('the Up Next countdown on artwork is an island', css.includes('.up-next-count{color:rgb(255, 255, 255);}'));
+check('Up Next text below the artwork is themed', !css.includes('.up-next-card .continue-next i{color:rgb(255, 255, 255);}'));
 check('rules without colour produce nothing', !css.includes('.nothing'));
 check('no empty rules are emitted', rules.every(line => !/\{\}$/.test(line)), css);
 

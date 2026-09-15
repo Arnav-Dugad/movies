@@ -885,24 +885,57 @@ export function nextUp(id) {
   return null;
 }
 
-// ===== BINGE FORECAST =====
-// When you will finish a show, from how you actually watch it. Only episodes
-// ticked ONE AT A TIME count toward pace — a whole season marked in one press is
-// bookkeeping, and a forecast built on it would promise a finish nobody is on
-// track for. Pace is episodes per day across the stretch you have been watching:
+// ===== WHAT COUNTS AS VIEWING =====
+// The log's `bulk` flag says HOW an episode was marked, not whether it was
+// watched. Treating every bulk row as bookkeeping was too strict: "Up to here"
+// after an evening of three episodes, or a position set to where you stopped, is
+// real viewing — and people who track that way got no forecast and an empty
+// diary. So a bulk batch (rows sharing one stamp) counts as viewing when it is
+// the size of a plausible sitting — at most six hours of the show's runtime, or
+// six episodes when the runtime is unknown — and is not the show's FIRST batch,
+// which is the catch-up everyone does when they start tracking a show part-way.
+// Whole seasons, whole shows and back-filled history stay bookkeeping.
 //
-//   1. this show, over the last 30 days (from its first tick in that window);
+// The personal-best binge record still counts single ticks only (see
+// episodeStats): a record you can set by pressing one button is worth nothing.
+const SITTING_MINUTES = 360, SITTING_EPISODES = 6;
+
+/** Log rows as objects, each marked `viewing` (watched then) or not (bookkeeping). */
+export function viewingLog(entry) {
+  const rows = (Array.isArray(entry?.log) ? entry.log : [])
+    .filter(row => Array.isArray(row) && Number.isFinite(+row[2]) && +row[2] > 0)
+    .map(row => ({ season: +row[0], episode: +row[1], at: +row[2], bulk: !!+row[3] }));
+  if (!rows.length) return [];
+  const batchSize = new Map();
+  for (const row of rows) if (row.bulk) batchSize.set(row.at, (batchSize.get(row.at) || 0) + 1);
+  const firstAt = Math.min(...rows.map(row => row.at));
+  const runtime = +entry?.episodeRuntime || 0;
+  return rows.map(row => {
+    if (!row.bulk) return { ...row, viewing: true };
+    const size = batchSize.get(row.at) || 1;
+    const sitting = runtime > 0 ? size * runtime <= SITTING_MINUTES : size <= SITTING_EPISODES;
+    return { ...row, viewing: sitting && row.at !== firstAt };
+  });
+}
+
+// ===== BINGE FORECAST =====
+// When you will finish a show, from how you actually watch it. Pace is episodes
+// per day across the stretch you have been watching (see viewingLog for what
+// counts):
+//
+//   1. this show, over the last 30 days (from its first viewing in that window);
 //   2. otherwise this show over its whole log, if you touched it in the last 60
 //      days;
 //   3. otherwise your usual pace across every show over the last 30 days, which
 //      is what someone who has only just started a show can be judged by.
 //
-// A show you have not watched in 60 days gets no forecast: a date for something
-// you have put down is a guess dressed as a fact. Only episodes that have aired
-// are counted, so a returning show forecasts when you will be caught up.
+// A show you have not watched in 60 days gets no date: a date for something you
+// have put down is a guess dressed as a fact. Only aired episodes are counted, so
+// a returning show forecasts when you will be caught up. When there is no date,
+// forecastStatus says why, so the page can say so instead of showing nothing.
 const FORECAST_WINDOW = 30, FORECAST_STALE = 60;
 
-const soloStamps = entry => (entry?.log || []).filter(row => !row[3]).map(row => row[2]).filter(Number.isFinite);
+const viewingStamps = entry => viewingLog(entry).filter(row => row.viewing).map(row => row.at);
 
 // Episodes per day across the span from the first stamp to `now` (at least one day).
 function paceOf(stamps, now) {
@@ -911,30 +944,53 @@ function paceOf(stamps, now) {
   return stamps.length / days;
 }
 
-export function bingeForecast(id, { now = Date.now() } = {}) {
+/**
+ * { kind: 'forecast', forecast } — a finish date;
+ * { kind: 'learning', remaining } — active, but not enough viewing to judge pace;
+ * { kind: 'paused', days, remaining } — untouched for over 60 days;
+ * null — nothing to forecast (not started, caught up, dropped).
+ */
+export function forecastStatus(id, { now = Date.now() } = {}) {
   const entry = showEntry(id);
   if (!entry || entry.dropped) return null;
   const progress = showProgress(id);
   const remaining = Math.max(0, progress.aired - progress.watched);
   if (!progress.started || progress.caughtUp || !remaining) return null;
 
-  const own = soloStamps(entry).filter(stamp => stamp <= now);
-  const lastActivity = Math.max(0, +entry.lastWatched?.at || 0, ...own);
-  if (!lastActivity || now - lastActivity > FORECAST_STALE * DAY) return null;
+  const stamps = viewingLog(entry).map(row => row.at).filter(stamp => stamp <= now);
+  const lastActivity = Math.max(0, +entry.lastWatched?.at || 0, ...stamps);
+  if (lastActivity && now - lastActivity > FORECAST_STALE * DAY) {
+    return { kind: 'paused', days: Math.floor((now - lastActivity) / DAY), remaining };
+  }
 
+  const own = viewingStamps(entry).filter(stamp => stamp <= now);
   const windowStart = now - FORECAST_WINDOW * DAY;
   let pace = paceOf(own.filter(stamp => stamp >= windowStart), now), basis = 'show';
   if (!pace) pace = paceOf(own, now);
   if (!pace) {
     const everyShow = Object.values(state.episodeProgress || {})
-      .flatMap(soloStamps).filter(stamp => stamp >= windowStart && stamp <= now);
+      .filter(other => !other?.dropped)
+      .flatMap(viewingStamps).filter(stamp => stamp >= windowStart && stamp <= now);
     pace = paceOf(everyShow, now);
     basis = 'overall';
   }
-  if (!pace) return null;
+  if (!pace) return { kind: 'learning', remaining };
 
   const days = Math.max(1, Math.ceil(remaining / pace));
-  return { remaining, pace: Math.round(pace * 10) / 10, days, finishAt: now + days * DAY, basis };
+  return { kind: 'forecast', forecast: { remaining, pace, days, finishAt: now + days * DAY, basis } };
+}
+
+export function bingeForecast(id, options = {}) {
+  const status = forecastStatus(id, options);
+  return status?.kind === 'forecast' ? status.forecast : null;
+}
+
+// A slow pace reads per week or per month: "0 episodes a day" is not a pace.
+export function paceLabel(pace) {
+  const unit = (count, span) => `${count} episode${count === 1 ? '' : 's'} a ${span}`;
+  if (pace >= 0.95) return unit(Math.round(pace * 10) / 10, 'day');
+  if (pace * 7 >= 0.95) return unit(Math.round(pace * 7), 'week');
+  return unit(Math.max(1, Math.round(pace * 30)), 'month');
 }
 
 /** One sentence for a forecast, shared by the detail page and Stats. */
@@ -948,8 +1004,17 @@ export function forecastSentence(forecast, { short = false } = {}) {
     ? new Date(finishAt).toLocaleDateString(undefined, { weekday: days <= 6 ? 'short' : undefined, day: 'numeric', month: 'short' })
     : '';
   if (short) return days > 365 ? 'Over a year to go' : `Done ${days === 1 ? 'tomorrow' : `~${date}`}`;
-  const rate = `${pace} episode${pace === 1 ? '' : 's'} a day`;
-  return `At ${basis === 'overall' ? 'your usual' : 'your'} pace of ${rate}, you'll finish the ${remaining} left ${when}${date ? ` — around ${date}` : ''}`;
+  return `At ${basis === 'overall' ? 'your usual' : 'your'} pace of ${paceLabel(pace)}, you'll finish the ${remaining} left ${when}${date ? ` — around ${date}` : ''}`;
+}
+
+/** What to say when there is no date: why, and what would produce one. */
+export function forecastNote(status, { short = false } = {}) {
+  if (!status || status.kind === 'forecast') return '';
+  if (status.kind === 'paused') {
+    const span = status.days >= 60 ? `${Math.round(status.days / 30)} months` : `${status.days} days`;
+    return short ? `Paused ${span}` : `Paused for ${span} — a finish date comes back when you pick it up again`;
+  }
+  return short ? 'Finish date after 2 episodes' : 'Mark a couple of episodes as you watch them and a finish date appears here';
 }
 
 // Shows with an available unwatched episode, most recently watched first.

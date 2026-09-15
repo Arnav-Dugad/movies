@@ -31,11 +31,11 @@ check('the forecast counts what is left', forecast?.remaining === 6);
 check('pace is episodes per day over the span watched', forecast && Math.abs(forecast.pace - 0.5) < 0.06, String(forecast?.pace));
 check('days to finish follow from the pace', forecast?.days === Math.ceil(6 / (4 / ((NOW - noon(8)) / DAY))), String(forecast?.days));
 check('the finish date is that many days out', forecast && forecast.finishAt === NOW + forecast.days * DAY);
-check('the sentence names pace, remainder and a date', /pace of 0\.5 episodes a day, you'll finish the 6 left in \d+ days — around /.test(ep.forecastSentence(forecast)), ep.forecastSentence(forecast));
+check('the sentence names pace, remainder and a date', /pace of 3 episodes a week, you'll finish the 6 left in \d+ days — around /.test(ep.forecastSentence(forecast)), ep.forecastSentence(forecast));
 check('the short form reads as a date', /^Done ~/.test(ep.forecastSentence(forecast, { short: true })));
 
 state.episodeProgress = { tv_7: show([[1, 1, noon(3), 1], [1, 2, noon(3), 1], [1, 3, noon(3), 1]]) };
-check('bulk marks alone give no pace, so no forecast', ep.bingeForecast(7, { now: NOW }) === null);
+check('a lone catch-up batch gives no pace, so no forecast', ep.bingeForecast(7, { now: NOW }) === null);
 state.episodeProgress = { tv_7: show([[1, 1, noon(90), 0], [1, 2, noon(80), 0]]) };
 check('a show untouched for two months gets no forecast', ep.bingeForecast(7, { now: NOW }) === null);
 state.episodeProgress = { tv_7: show([[1, 1, noon(4), 0], [1, 2, noon(2), 0]], { dropped: true }) };

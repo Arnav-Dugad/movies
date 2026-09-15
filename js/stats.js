@@ -14,7 +14,7 @@ import { social } from './social.js';
 import { tmdb } from './api.js';
 import { buildCard } from './cards.js';
 import { getProviderStats, getCatalogSeries } from './provider-history.js';
-import { episodeTotals, episodeStats, showProgress, showEntry, seasonRewatchTotals, bingeForecast, forecastSentence } from './episodes.js';
+import { episodeTotals, episodeStats, showProgress, showEntry, seasonRewatchTotals, forecastStatus, forecastSentence, forecastNote } from './episodes.js';
 import { prefs, updatePref } from './prefs.js';
 import { rewatchSummary, rewatchesSince, playCount } from './rewatch.js';
 import { franchiseSummary, tvFamilySummary } from './franchise.js';
@@ -615,7 +615,12 @@ function tvTrackerPanel() {
       <img src="${show.poster ? `${IMG}w92${show.poster}` : PH}" alt="" loading="lazy">
       <div class="tv-row-copy">
         <strong>${esc(show.title)}</strong>
-        <small>${show.watched} of ${show.aired} aired${show.next ? ` · next S${show.next.season}E${show.next.episode}` : ''}${(() => { const forecast = bingeForecast(show.id); return forecast ? ` · <span class="tv-row-forecast" title="${esc(forecastSentence(forecast))}">${esc(forecastSentence(forecast, { short: true }))}</span>` : ''; })()}</small>
+        <small>${show.watched} of ${show.aired} aired${show.next ? ` · next S${show.next.season}E${show.next.episode}` : ''}${(() => {
+          const status = forecastStatus(show.id);
+          if (!status) return '';
+          if (status.kind === 'forecast') return ` · <span class="tv-row-forecast" title="${esc(forecastSentence(status.forecast))}">${esc(forecastSentence(status.forecast, { short: true }))}</span>`;
+          return ` · <span class="tv-row-forecast quiet" title="${esc(forecastNote(status))}">${esc(forecastNote(status, { short: true }))}</span>`;
+        })()}</small>
         <div class="tv-row-bar"><i style="--tv-w:${show.percent}%"></i></div>
       </div>
       <b>${show.percent}%</b>

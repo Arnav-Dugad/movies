@@ -325,22 +325,36 @@ input:focus-visible,
 /* ---------------------------------------------------------- poster spacing --
    Rails and grids on Home, Movies and TV packed posters 12-14px apart, so a row
    read as one continuous strip of artwork. More air lets each title stand on its
-   own. Compact density keeps a tighter rhythm, but still wider than before. */
-#homePage .row { gap: 22px; }
+   own. Compact density keeps a tighter rhythm, but still wider than before.
+   Posters are larger too: 218px on desktop Home rails (was 188px) and a 190px
+   minimum column on the Movies and TV grids (was 145px). Top 10 and wide cards
+   keep their own proportions. */
+#homePage .row { gap: 30px; }
+#homePage .row > .card:not(.card-w):not(.card-t10) { width: 218px; }
 #moviesPage .browse-grid,
-#tvPage .browse-grid { gap: 34px 22px; }
-html[data-density="compact"] #homePage .row { gap: 14px; }
+#tvPage .browse-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 44px 30px; }
+html[data-density="compact"] #homePage .row { gap: 18px; }
+html[data-density="compact"] #homePage .row > .card:not(.card-w):not(.card-t10) { width: 180px; }
 html[data-density="compact"] #moviesPage .browse-grid,
-html[data-density="compact"] #tvPage .browse-grid { gap: 24px 14px; }
+html[data-density="compact"] #tvPage .browse-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 30px 18px; }
 @media (max-width: 900px) {
-  #homePage .row { gap: 16px; }
+  #homePage .row { gap: 20px; }
+  #homePage .row > .card:not(.card-w):not(.card-t10) { width: 152px; }
   #moviesPage .browse-grid,
-  #tvPage .browse-grid { gap: 26px 14px; }
+  #tvPage .browse-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 32px 20px; }
+  html[data-density="compact"] #homePage .row > .card:not(.card-w):not(.card-t10) { width: 136px; }
 }
 @media (max-width: 430px) {
-  #homePage .row { gap: 12px; }
+  #homePage .row { gap: 16px; }
+  #homePage .row > .card:not(.card-w):not(.card-t10) { width: 140px; }
   #moviesPage .browse-grid,
-  #tvPage .browse-grid { gap: 22px 12px; }
+  #tvPage .browse-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 26px 16px; }
+  html[data-density="compact"] #homePage .row > .card:not(.card-w):not(.card-t10) { width: 124px; }
+}
+@media (max-width: 380px) {
+  #homePage .row > .card:not(.card-w):not(.card-t10) { width: 120px; }
+  #moviesPage .browse-grid,
+  #tvPage .browse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 14px; }
 }
 
 /* ---------------------------------------------------------- poster captions --
@@ -364,6 +378,39 @@ html[data-poster-captions="hide"] .card > .card-info { display: none; }
 }
 .show-progress-copy .show-forecast svg { width: 15px; height: 15px; flex-shrink: 0; }
 .tv-row-forecast { color: var(--cyan2); font-weight: 650; }
+/* No date yet (too little viewing) or paused: the same line, in quiet ink. */
+.show-progress-copy .show-forecast.quiet { color: var(--text3); font-weight: 500; }
+.tv-row-forecast.quiet { color: var(--text3); font-weight: 500; }
+
+/* ---------------------------------------------------------------- up next --
+   A caught-up show with a dated next episode leads Continue Watching. The art
+   is dimmed a touch so the countdown reads; digits are tabular so a live count
+   does not shimmer as it ticks. */
+.up-next-card .continue-art img { filter: saturate(.85) brightness(.82); }
+.continue-minimal .up-next-card .up-next-scrim { background: linear-gradient(to top, rgba(4, 4, 9, .78) 0%, rgba(4, 4, 9, .25) 55%, rgba(4, 4, 9, .1) 100%); }
+.up-next-flag {
+  position: absolute; left: 10px; top: 10px; z-index: 2;
+  padding: 4px 9px; border-radius: 999px;
+  background: rgba(8, 8, 12, .6); border: 1px solid rgba(255, 255, 255, .16);
+  color: #fff; font-size: .7rem; font-weight: 750; letter-spacing: .04em;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.up-next-count {
+  position: absolute; left: 12px; bottom: 10px; z-index: 2;
+  color: #fff; font-family: var(--font-mono); font-size: 1.35rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .6);
+}
+.up-next-count.live::before {
+  content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%;
+  background: #ff3b47; vertical-align: .22em; box-shadow: 0 0 0 0 rgba(255, 59, 71, .6);
+  animation: up-next-pulse 2s ease-out infinite;
+}
+.up-next-card.out .up-next-count { color: #34d399; }
+.up-next-card.out .continue-art img { filter: none; }
+.up-next-card .continue-next i { font-style: normal; }
+@keyframes up-next-pulse { to { box-shadow: 0 0 0 9px rgba(255, 59, 71, 0); } }
+@media (prefers-reduced-motion: reduce) { .up-next-count.live::before { animation: none; } }
 
 /* The lone "Import from Letterboxd, Trakt or IMDb" button spans the vault row. */
 .settings-vault-actions > :only-child { grid-column: 1 / -1; }
@@ -376,8 +423,9 @@ html[data-poster-captions="hide"] .card > .card-info { display: none; }
    Controls appear only when the pointer or focus arrives. */
 .continue-minimal.continue-section { padding-block: 10px 6px; margin-top: 4px; overflow: visible; }
 .continue-minimal.continue-section::before { display: none; }
-.continue-minimal .continue-head { display: flex; align-items: baseline; gap: 12px; }
+.continue-minimal .continue-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
 .continue-minimal .continue-count {
+  white-space: nowrap;
   color: var(--text3);
   font-family: var(--font-mono);
   font-size: .8rem;
