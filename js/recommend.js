@@ -18,6 +18,8 @@ import { observeReveals } from './effects.js';
 import { db, firebase } from './firebase.js';
 import { registerActions } from './events.js';
 import { ensureWatchedMeta } from './watched-meta.js';
+import { prefs } from './prefs.js';
+import { MATURE_KEYWORD_IDS, matureStatus, matureVerdictVersion, pendingMature, resolveMature } from './mature-filter.js';
 
 const MOVIE_GENRES = new Set(mGenreList.map(g => g.id));
 const TV_GENRES = new Set(tGenreList.map(g => g.id));
@@ -73,6 +75,44 @@ function seedMetaForKey(type, id) {
   return r ? { title: r.title, genres: r.genres || [], keywords: r.keywords || [], poster: r.poster || '' } : null;
 }
 
+// ----- Mature titles stay private -----
+// What you watch in After Dark is nobody's business but yours, so by default it
+// never shapes a recommendation: it adds no genre, theme, actor, director, or
+// seed weight, it cannot head a "Because you…" rail, and no mature title is ever
+// recommended back. Opting in takes both switches in Settings — mature content
+// on, and "Let mature titles shape recommendations". What friends can see is
+// stricter still: js/social.js publishes with mature titles excluded, always.
+export const matureShapesTaste = () => !!(prefs.mature && prefs.matureInRecs);
+
+/** Is the library title behind this key ("movie_123") known to be adult? */
+export function keyIsMature(key) {
+  const [type, id] = splitKey(String(key || ''));
+  const meta = seedMetaForKey(type, id);
+  return matureStatus(type, id, { keywords: meta?.keywords }) === true;
+}
+
+// Every title in the library, as the adult classifier reads it.
+function libraryRefs(sources = state) {
+  const refs = [];
+  (sources.watchlist || []).forEach(w => { const [type, id] = splitKey(String(w.id || '')); refs.push({ type: w.type || type, id: w.tmdbId || id, keywords: w.keywords }); });
+  Object.entries(sources.watched || {}).forEach(([key, d]) => { const [type, id] = splitKey(key); refs.push({ type: d?.type || type, id: d?.tmdbId || id, keywords: d?.keywords }); });
+  (sources.recentlyViewed || []).forEach(r => refs.push({ type: r.type, id: r.id, keywords: r.keywords }));
+  return refs;
+}
+
+// Stored keywords settle most titles; the rest (saved documents keep only 15
+// keywords) are looked up once in the background and remembered. Each batch of
+// verdicts announces `cv:mature-verdicts`, which rebuilds the rails and
+// republishes the friend-visible summary without whatever was just learned.
+let libraryCheck = null;
+export function classifyLibraryInBackground() {
+  if (libraryCheck) return libraryCheck;
+  const pending = pendingMature(libraryRefs());
+  if (!pending.length) return Promise.resolve(0);
+  libraryCheck = resolveMature(pending, { concurrency: 3 }).finally(() => { libraryCheck = null; });
+  return libraryCheck;
+}
+
 // A rating recentres on 5: a 10 adds +5, a 3 subtracts 2. Unrated contributes 0,
 // so an unrated title still counts via its base weight.
 const ratingW = (s) => (s ? s - 5 : 0);
@@ -99,11 +139,16 @@ function topOf(weights, names, min = 1.5, images = {}) {
 // Parameterized so it can build a profile for the signed-in user (default),
 // or for any explicit {watchlist, ratings, watched, recentlyViewed} set (used
 // by the Watch-Party matcher to build a profile from a friend's stored data).
-export function buildTasteProfile(sources = state) {
-  const watchlist = sources.watchlist || [];
+export function buildTasteProfile(sources = state, { includeMature = matureShapesTaste() } = {}) {
+  // Mature titles are removed before a single weight is counted, so nothing about
+  // them can surface anywhere downstream — not a genre, a theme, a face, or a seed.
+  const privateTitle = (type, id, keywords) => !includeMature && matureStatus(type, id, { keywords }) === true;
+  const matureKeyword = keyword => !includeMature && MATURE_KEYWORD_IDS.has(+keyword.id);
+  const watchlist = (sources.watchlist || []).filter(w => { const [type, id] = splitKey(String(w.id || '')); return !privateTitle(w.type || type, w.tmdbId || id, w.keywords); });
   const ratings = sources.ratings || {};
-  const watched = sources.watched || {};
-  const recentlyViewed = sources.recentlyViewed || [];
+  const allWatched = sources.watched || {};
+  const watched = Object.fromEntries(Object.entries(allWatched).filter(([key, d]) => { const [type, id] = splitKey(key); return !privateTitle(d?.type || type, d?.tmdbId || id, d?.keywords); }));
+  const recentlyViewed = (sources.recentlyViewed || []).filter(r => !privateTitle(r.type, r.id, r.keywords));
 
   const genreWeights = {}, actorWeights = {}, directorWeights = {}, decadeWeights = {}, keywordWeights = {}, languageWeights = {};
   const actorNames = {}, directorNames = {}, keywordNames = {};
@@ -120,7 +165,7 @@ export function buildTasteProfile(sources = state) {
   watchlist.forEach(w => {
     const weight = (2 + ratingW(ratings[`${w.type}_${w.tmdbId}`])) * recencyWeight(w.added);
     addG(w.genres, weight);
-    keywordList(w.keywords).forEach(keyword => { bump(keywordWeights, keyword.id, weight * .72); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
+    keywordList(w.keywords).filter(keyword => !matureKeyword(keyword)).forEach(keyword => { bump(keywordWeights, keyword.id, weight * .72); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
     if (w.language) bump(languageWeights, w.language, weight * .35);
   });
 
@@ -131,7 +176,7 @@ export function buildTasteProfile(sources = state) {
     if (!d) return;
     const rw = ratingW(ratings[key]), recent = recencyWeight(d.watchedAt), signal = (1.5 + rw) * recent;
     addG(d.genres, signal);          // a poorly-rated genre can go negative
-    keywordList(d.keywords).forEach(keyword => { bump(keywordWeights, keyword.id, signal * .85); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
+    keywordList(d.keywords).filter(keyword => !matureKeyword(keyword)).forEach(keyword => { bump(keywordWeights, keyword.id, signal * .85); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
     if (d.language) bump(languageWeights, d.language, signal * .4);
     const y = parseInt(d.year);
     if (y) bump(decadeWeights, decadeOf(y), 1 + 0.3 * rw);
@@ -151,7 +196,7 @@ export function buildTasteProfile(sources = state) {
   recentlyViewed.forEach(r => {
     const signal = .7 + .5 * Math.exp(-Math.max(0, Date.now() - +(r.ts || 0)) / (14 * 86400000));
     addG(r.genres, signal);
-    keywordList(r.keywords).forEach(keyword => { bump(keywordWeights, keyword.id, signal * .55); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
+    keywordList(r.keywords).filter(keyword => !matureKeyword(keyword)).forEach(keyword => { bump(keywordWeights, keyword.id, signal * .55); if (keyword.name) keywordNames[keyword.id] = keyword.name; });
   });
 
   // A dismissal is a soft negative taste signal, never a permanent genre ban.
@@ -169,7 +214,12 @@ export function buildTasteProfile(sources = state) {
   // Seeds for /recommendations: highly-rated titles first, then most-recent.
   const seedIds = [];
   Object.entries(ratings).forEach(([key, score]) => {
-    if (score >= 8) { const [type, id] = splitKey(key); if (type && id) seedIds.push({ id, type, score, reason: 'liked' }); }
+    if (score >= 8) {
+      const [type, id] = splitKey(key);
+      // Classified from the unfiltered library, so a rated title is recognised
+      // even when it lives in no list any more.
+      if (type && id && !privateTitle(type, id, seedMetaForKey(type, id)?.keywords)) seedIds.push({ id, type, score, reason: 'liked' });
+    }
   });
   seedIds.sort((a, b) => b.score - a.score);
   recentlyViewed.slice(0, 2).forEach(r => {
@@ -179,7 +229,9 @@ export function buildTasteProfile(sources = state) {
   // "Seen" means actually watched. Being in a list or recently opened should not
   // hide a strong recommendation; it often means the user is considering it.
   const dismissed = new Set(sources.recommendationFeedback?.dismissed || []);
-  const seen = new Set([...Object.keys(watched), ...dismissed]);
+  // Everything watched stays excluded from results, private titles included —
+  // this set never leaves the device (social.js filters its own copy).
+  const seen = new Set([...Object.keys(allWatched), ...dismissed]);
 
   const topGenres = Object.entries(genreWeights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([g]) => +g);
   const topActors = topOf(actorWeights, actorNames, 1.5, actorImages);
@@ -189,6 +241,7 @@ export function buildTasteProfile(sources = state) {
 
   return {
     genreWeights, topGenres, seedIds, seen, dismissed, movieBias: movie >= tv,
+    excludeMature: !includeMature, recent: recentlyViewed,
     keywordWeights, keywordNames, topKeywords, languageWeights,
     actorWeights, actorNames, actorImages, topActors,
     directorWeights, directorNames, directorImages, topDirectors,
@@ -207,7 +260,7 @@ export function profileFromShared(shared) {
   const genreWeights = shared?.genreWeights || {};
   const topGenres = (shared?.topGenres || []).map(Number);
   const seen = new Set(shared?.seen || []);
-  return { ...EMPTY_PEOPLE, genreWeights, topGenres, seedIds: [], seen, movieBias: shared?.movieBias !== false, hasSignal: topGenres.length > 0 };
+  return { ...EMPTY_PEOPLE, genreWeights, topGenres, seedIds: [], seen, movieBias: shared?.movieBias !== false, hasSignal: topGenres.length > 0, excludeMature: true };
 }
 
 // Blend N profiles into one group profile. Genres liked by MORE members rank
@@ -237,7 +290,10 @@ export function blendProfiles(profiles) {
   // Seeds: pool everyone's liked seeds so /recommendations pulls broadly-loved titles.
   const seedIds = [];
   list.forEach(p => (p.seedIds || []).forEach(s => { if (s.score >= 8 && !seedIds.some(x => x.id === s.id && x.type === s.type)) seedIds.push(s); }));
-  return { ...EMPTY_PEOPLE, genreWeights, decadeWeights, topGenres, seedIds: seedIds.slice(0, 3), seen, movieBias: movie >= tv, hasSignal: topGenres.length > 0, genreMembers, members: n };
+  // A group pick is shown to everyone in the room, so it stays clear of mature
+  // titles unless every member's profile allows them.
+  const excludeMature = !list.length || list.some(p => p.excludeMature !== false);
+  return { ...EMPTY_PEOPLE, genreWeights, decadeWeights, topGenres, seedIds: seedIds.slice(0, 3), seen, movieBias: movie >= tv, hasSignal: topGenres.length > 0, genreMembers, members: n, excludeMature };
 }
 
 // ----- Candidate generation -----
@@ -396,7 +452,7 @@ export function rankAndDedupe(cands, profile) {
     maxLang: Math.max(1, ...Object.values(profile.languageWeights || {}).map(Math.abs)),
   };
   const byId = new Map();
-  const audit = { considered: (cands || []).length, accepted: 0, rejected: { invalid: 0, unreleased: 0, lowVotes: 0, seen: 0 }, duplicates: 0, decisions: [] };
+  const audit = { considered: (cands || []).length, accepted: 0, rejected: { invalid: 0, unreleased: 0, lowVotes: 0, seen: 0, mature: 0 }, duplicates: 0, decisions: [] };
   const decision = (c, result, reason) => audit.decisions.push({
     title: c?.title || c?.name || 'Untitled', type: c?.__type || c?.media_type || 'movie',
     id: c?.id || 0, result, reason,
@@ -411,6 +467,11 @@ export function rankAndDedupe(cands, profile) {
     if (!isOut(c)) { audit.rejected.unreleased++; decision(c, 'Filtered', 'Not released or release date unknown'); return; }
     if ((c.vote_count || 0) < MIN_VOTES) { audit.rejected.lowVotes++; decision(c, 'Filtered', `Only ${c.vote_count || 0} community votes`); return; }
     const key = `${type}_${c.id}`;
+    // TMDB's adult flag, a mature keyword the candidate was fetched by, or a
+    // verdict already known on this device.
+    if (profile.excludeMature !== false && (c.adult === true || (c.__keywordIds || []).some(id => MATURE_KEYWORD_IDS.has(+id)) || matureStatus(type, c.id, { adult: c.adult }) === true)) {
+      audit.rejected.mature++; decision(c, 'Filtered', 'Mature title kept out of recommendations'); return;
+    }
     if (profile.seen.has(key)) {
       audit.rejected.seen++;
       decision(c, 'Filtered', profile.dismissed?.has(key) ? 'Marked not interested' : 'Already watched');
@@ -499,7 +560,7 @@ function pickLabeledSeed(profile) {
       if (meta?.title) return { id: s.id, type: s.type, title: meta.title, genres: meta.genres, poster: meta.poster || '', reason: 'liked' };
     }
   }
-  const r = state.recentlyViewed[0];
+  const r = (profile.recent || [])[0];
   return r ? { id: r.id, type: r.type, title: r.title, genres: r.genres || [], poster: r.poster || '', reason: 'viewed' } : null;
 }
 
@@ -624,7 +685,7 @@ function auditHTML(profile, ranked, seed, { closable = true } = {}) {
     <div class="rec-audit-metrics"><div><span>Fetched</span><strong>${summary.considered || 0}</strong></div><div><span>Ranked</span><strong>${summary.accepted || 0}</strong></div><div><span>Duplicates merged</span><strong>${summary.duplicates || 0}</strong></div><div><span>Dismissed</span><strong>${feedbackState().dismissed.length}</strong></div></div>
     <div class="rec-audit-grid">
       <section><div class="mini-panel-title"><span>Filter decisions</span><b>before ranking</b></div><div class="audit-filters">
-        ${[['Missing card data', rejected.invalid], ['Not released', rejected.unreleased], ['Too few community votes', rejected.lowVotes], ['Watched or not interested', rejected.seen]].map(([label, count]) => `<div><span>${label}</span><strong>${count || 0}</strong></div>`).join('')}
+        ${[['Missing card data', rejected.invalid], ['Not released', rejected.unreleased], ['Too few community votes', rejected.lowVotes], ['Watched or not interested', rejected.seen], ['Mature, kept private', rejected.mature]].map(([label, count]) => `<div><span>${label}</span><strong>${count || 0}</strong></div>`).join('')}
       </div><details class="audit-decisions"><summary>Every filter decision <b>${(summary.decisions || []).length}</b></summary><div>${(summary.decisions || []).length ? summary.decisions.map(item => `<p><strong>${esc(item.title)}</strong><span>${esc(item.result)} · ${esc(item.reason)}</span></p>`).join('') : '<p><span>No candidates were filtered or merged.</span></p>'}</div></details><p class="audit-formula">Score = genres + story themes + source trust + confidence-weighted quality + era + language + multi-signal agreement + controlled discovery − off-taste penalty.</p>${seed ? `<p class="audit-seed">Title row seed: <strong>${esc(seed.title)}</strong> · requires exact seed provenance and real genre overlap.</p>` : ''}</section>
       <section><div class="mini-panel-title"><span>Not interested history</span><b>Firestore backed</b></div><div class="audit-history">${history.length ? history.map(item => `<div><img src="${item.poster ? `${IMG}w92${item.poster}` : PH}" alt=""><span><strong>${esc(item.title || 'Untitled')}</strong><small>${new Date(item.dismissedAt || Date.now()).toLocaleDateString()}</small></span><button data-action="restore-recommendation" data-key="${esc(item.key)}">Restore</button></div>`).join('') : '<p>No dismissed recommendations yet.</p>'}</div></section>
     </div>
@@ -706,6 +767,7 @@ export async function renderRecommendations() {
   // Rendering never waits for old watched records to be enriched. When the
   // one-time metadata pass lands, its event refreshes these rails with themes.
   ensureWatchedMeta();
+  classifyLibraryInBackground();
   let profile = buildTasteProfile();
   if (!profile.hasSignal) {
     recommendationRun++;
@@ -721,6 +783,8 @@ export async function renderRecommendations() {
     watched: Object.keys(state.watched).sort(),
     ratings: Object.entries(state.ratings).sort(([a], [b]) => a.localeCompare(b)),
     dismissed: [...(state.recommendationFeedback?.dismissed || [])].sort(),
+    // A newly classified title or the opt-in changing alters what may be used.
+    matureInRecs: matureShapesTaste(), verdicts: matureVerdictVersion(),
   });
   if (sourceSignature === recommendationSignature && wrap.firstElementChild) return;
   recommendationSignature = sourceSignature;
@@ -813,7 +877,7 @@ export async function renderRecommendationInsights() {
     <article><span>Story-theme fingerprint</span><strong>${topThemes.map(esc).join(' · ') || 'Still learning'}</strong><p>Specific themes separate a true match from a title that only shares a broad genre.</p></article>
     <article><span>Trusted people</span><strong>${leadingPeople.map(esc).join(' · ') || 'Still learning'}</strong><p>Recurring directors and cast add a focused source bonus.</p></article>
     <article><span>Title seed</span><strong>${esc(seed?.title || 'Quality discovery')}</strong><p>${seed ? `Real similarity must overlap with this ${seed.reason} title.` : 'High-quality discoveries fill gaps without inventing a link.'}</p></article>
-    <article><span>Privacy rule</span><strong>Watched titles stay out</strong><p>Saved titles can remain useful; watched and dismissed titles are filtered.</p></article>
+    <article><span>Privacy rule</span><strong>Watched titles stay out</strong><p>Saved titles can remain useful; watched and dismissed titles are filtered. ${matureShapesTaste() ? 'Mature titles shape these picks because you allowed it in Settings.' : 'Mature titles never shape or appear in these picks.'}</p></article>
     <article><span>Freshness rhythm</span><strong>A new slice every visit</strong><p>Opening CineVerse rotates the window over your ranked pool, and Shuffle skips ahead on demand. Ranking itself never changes randomly — only which part of it you see first.</p></article>
   </div><aside class="rec-audit active profile-rec-audit" id="recAudit" aria-hidden="false">${auditHTML(profile, null, seed, { closable: false })}</aside>`;
   try {
@@ -849,6 +913,14 @@ export function initRecommendations() {
   };
   document.addEventListener('visibilitychange', refreshNamedRails);
   setInterval(refreshNamedRails, 30 * 60 * 1000);
+  // Learning that a title is adult, or the opt-in changing, alters what the rails
+  // may use. The signature check makes an unrelated preference change free.
+  const refreshPrivate = () => {
+    renderRecommendations();
+    if ($('recommendationProfileInsights')) renderRecommendationInsights();
+  };
+  document.addEventListener('cv:mature-verdicts', refreshPrivate);
+  document.addEventListener('cv:prefs', () => renderRecommendations());
   document.addEventListener('cv:meta-backfilled', () => {
     if ($('personalRows')) renderRecommendations();
     if ($('recommendationProfileInsights')) renderRecommendationInsights();

@@ -13,7 +13,7 @@
 // edges. Nothing here touches layout: the panel is positioned once and animated
 // with transform and opacity only.
 import { tmdb } from './api.js';
-import { IMG } from './config.js';
+import { IMG, certificationFor } from './config.js';
 import { esc, prefersReducedMotion } from './ui.js';
 import { state, inWL, isWatched } from './state.js';
 import { mountAmbientVideo } from './video-bg.js';
@@ -23,8 +23,10 @@ import { movieProgressEntry } from './movie-progress.js';
 const metaCache = new Map();
 const DESKTOP_HOVER = '(hover:hover) and (pointer:fine) and (min-width:901px)';
 
-// Dwell before anything opens, so sweeping the pointer along a rail never fires.
-const OPEN_DELAY = 340;
+// Dwell before anything opens, so sweeping the pointer along a rail — or simply
+// pausing over a poster on the way to its + button — never fires. 340ms opened a
+// panel over the rail far too eagerly; a second and a half is a deliberate rest.
+const OPEN_DELAY = 1500;
 // The still is up as soon as the panel is, so the trailer can wait for the open
 // animation to finish. Mounting an iframe during a transform animation forces
 // composite work on every frame of it.
@@ -67,19 +69,6 @@ function pickLogo(images) {
   return (logos.find(logo => logo.iso_639_1 === 'en') || logos.find(logo => logo.iso_639_1 === null) || logos[0])?.file_path || '';
 }
 
-// The certificate for the viewer's own region where TMDB has one, falling back
-// to US — an unlabeled preview is better than one labeled for the wrong country.
-function pickCertificate(detail, type) {
-  const region = (navigator.language || 'en-US').split('-')[1] || 'US';
-  if (type === 'movie') {
-    const rows = detail.release_dates?.results || [];
-    const find = code => (rows.find(row => row.iso_3166_1 === code)?.release_dates || [])
-      .map(entry => entry.certification).find(Boolean);
-    return find(region) || find('US') || '';
-  }
-  const rows = detail.content_ratings?.results || [];
-  return rows.find(row => row.iso_3166_1 === region)?.rating || rows.find(row => row.iso_3166_1 === 'US')?.rating || '';
-}
 
 const runtimeLabel = minutes => {
   const total = Math.round(+minutes || 0);
@@ -111,7 +100,7 @@ async function metaFor(card) {
         title: detail.title || detail.name || card.dataset.title || '',
         year: (detail.release_date || detail.first_air_date || card.dataset.year || '').slice(0, 4),
         rating: +detail.vote_average || 0,
-        certificate: pickCertificate(detail, type),
+        certificate: certificationFor(detail, type, state.region),
         runtime: +detail.runtime || 0,
         length: type === 'tv'
           ? (seasons ? `${seasons} season${seasons === 1 ? '' : 's'}` : '')
@@ -395,6 +384,8 @@ export function initCardPreviews() {
   // resizing under it would leave it stranded away from its poster.
   window.addEventListener('scroll', () => close(true), { passive: true, capture: true });
   window.addEventListener('resize', () => close(true), { passive: true });
+  // Cached panels carry the old region's certificate.
+  document.addEventListener('cv:region', () => { metaCache.clear(); close(true); });
   window.matchMedia?.(DESKTOP_HOVER).addEventListener?.('change', event => { if (!event.matches) close(true); });
 }
 

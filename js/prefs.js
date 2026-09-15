@@ -20,6 +20,9 @@ export const DEFAULT_PREFS = Object.freeze({
   // Mature content is OFF by default and leaves no trace in the UI until it is
   // turned on: no section, no chips, no badge, and include_adult stays false.
   mature: false, matureBlur: true,
+  // Even with mature content on, adult titles never shape recommendations until
+  // this is switched on too (js/recommend.js). Friends never see them either way.
+  matureInRecs: false,
 });
 
 export let prefs = { ...DEFAULT_PREFS };
@@ -40,7 +43,7 @@ const allowed = {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur', 'matureInRecs'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   return next;

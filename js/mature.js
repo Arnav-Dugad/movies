@@ -22,6 +22,7 @@ import { observeReveals } from './effects.js';
 import { prefs, updatePref } from './prefs.js';
 import { state } from './state.js';
 import { MATURE_KEYWORD_QUERY } from './mature-filter.js';
+import { queryParams, writeFilterQuery } from './url-state.js';
 
 export const matureOn = () => !!prefs.mature;
 
@@ -53,6 +54,43 @@ const view = { keyword: 0, type: 'movie', sort: 'popular', era: '', language: ''
 let page = 1, totalPages = 1;
 let gridGen = 0, spotlightGen = 0, railsGen = 0;
 let spotlightPool = [], spotlightIndex = 0;
+
+// ---------- the address bar ----------
+// The collection browser's choices ride in Discover's URL under their own
+// `ad_` names, beside the Studio's, so a link to "Erotic thrillers · Series ·
+// 2010s" opens exactly that. Defaults are never written, and none of this is
+// written or read while mature content is off.
+const AD_PARAMS = ['ad', 'ad_type', 'ad_sort', 'ad_era', 'ad_lang', 'ad_stream'];
+
+function writeAfterDarkQuery() {
+  if (!matureOn()) return;
+  writeFilterQuery('/discover', [], {
+    ad: view.keyword ? String(view.keyword) : '',
+    ad_type: view.type === 'tv' ? 'tv' : '',
+    ad_sort: view.sort === 'popular' ? '' : view.sort,
+    ad_era: view.era, ad_lang: view.language, ad_stream: view.streaming ? '1' : '',
+  });
+}
+
+/** Take the collection browser's state from the URL, when it names any. */
+export function restoreAfterDarkFromURL() {
+  const params = queryParams();
+  if (!matureOn() || !AD_PARAMS.some(key => params.has(key))) return false;
+  const keyword = +(params.get('ad') || 0);
+  view.keyword = COLLECTIONS.some(collection => collection.id === keyword) ? keyword : 0;
+  view.type = params.get('ad_type') === 'tv' ? 'tv' : 'movie';
+  view.sort = SORTS.some(([value]) => value === params.get('ad_sort')) ? params.get('ad_sort') : 'popular';
+  view.era = ERAS.some(([value]) => value && value === params.get('ad_era')) ? params.get('ad_era') : '';
+  view.language = LANGUAGES.some(([value]) => value && value === params.get('ad_lang')) ? params.get('ad_lang') : '';
+  view.streaming = params.get('ad_stream') === '1';
+  return true;
+}
+
+/** Drop the collection browser's params — mature content was switched off. */
+export function clearAfterDarkQuery() {
+  if (!AD_PARAMS.some(key => queryParams().has(key))) return;
+  writeFilterQuery('/discover', [], Object.fromEntries(AD_PARAMS.map(key => [key, ''])));
+}
 
 const dateField = type => (type === 'tv' ? 'first_air_date' : 'primary_release_date');
 const today = () => new Date().toISOString().slice(0, 10);
@@ -182,7 +220,7 @@ export function matureSectionHTML() {
       <div class="browse-grid mature-grid" id="matureGrid">${skelCards(12)}</div>
       <div class="ad-more-wrap" id="adMoreWrap"></div>
     </div>
-    <p class="mature-note">Adult titles appear in search, Discover, and the Adult filter on every catalogue page only while mature content is on. Keep anything private in a PIN-locked list from the + on a poster.</p>
+    <p class="mature-note">Adult titles appear in search, Discover, and as a genre in every genre filter only while mature content is on — and never shape your recommendations or what friends see unless you allow it in Settings. Keep anything private in a PIN-locked list from the + on a poster.</p>
   </section>`;
 }
 
@@ -238,6 +276,7 @@ async function renderGrid({ append = false } = {}) {
   if (!grid) return;
   const gen = ++gridGen;
   const wanted = append ? page + 1 : 1;
+  if (!append) writeAfterDarkQuery();
   if (append) {
     const button = more?.querySelector('button');
     if (button) { button.disabled = true; button.textContent = 'Loading…'; }

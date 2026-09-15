@@ -6,7 +6,7 @@
 import { db, firebase } from './firebase.js';
 import { state } from './state.js';
 import { debounce, toast } from './ui.js';
-import { buildTasteProfile } from './recommend.js';
+import { buildTasteProfile, keyIsMature, classifyLibraryInBackground } from './recommend.js';
 import { clean, fromKey } from './lists.js';
 import { prefs } from './prefs.js';
 
@@ -51,12 +51,27 @@ export async function publishTaste() {
     catch (e) { console.error('remove shared taste', e); }
     return;
   }
-  const p = buildTasteProfile(state);
+  // Friends read this document, so it is built with mature titles excluded no
+  // matter what the owner allows for their own recommendations: no genre weight,
+  // no "seen" id, no favourite poster may come from an adult title. Titles kept in
+  // a PIN-protected list are left out of the favourites too — the PIN promises
+  // those titles are never shown, and a friend's screen is somewhere else.
+  //
+  // Titles whose stored keywords cannot settle the question are classified first,
+  // so the document is never written with an adult title that is merely unknown
+  // yet. After the first run on a device this is instant.
+  await classifyLibraryInBackground();
+  if (!state.user) return;
+  const p = buildTasteProfile(state, { includeMature: false });
+  const pinned = new Set((state.lists || []).filter(list => list?.lock?.hash).map(list => list.id));
+  const inPinnedList = w => (w.lists?.length ? w.lists : ['watchlist']).some(id => pinned.has(id));
   // Same trap as the shared-list snapshot: an older watchlist entry can lack
   // tmdbId/type, and Firestore throws on undefined — which silently killed the
   // whole taste publish (and with it the watch-party matcher). Recover both from
   // the doc key, and drop anything still incomplete.
-  const favTitles = (state.watchlist || []).slice(0, 8)
+  const favTitles = (state.watchlist || [])
+    .filter(w => !inPinnedList(w) && !keyIsMature(w.id))
+    .slice(0, 8)
     .map(w => {
       const k = fromKey(w.id);
       return clean({
@@ -69,7 +84,7 @@ export async function publishTaste() {
     .filter(t => t.id != null && t.type);
   const doc = {
     name: state.user.displayName || (state.user.email || '').split('@')[0] || 'User',
-    genreWeights: p.genreWeights, topGenres: p.topGenres, seen: [...p.seen],
+    genreWeights: p.genreWeights, topGenres: p.topGenres, seen: [...p.seen].filter(key => !keyIsMature(key)),
     favTitles, movieBias: p.movieBias, updatedAt: ts(),
   };
   try { await db.collection('users').doc(state.user.uid).collection('shared').doc('taste').set(doc); }
@@ -211,10 +226,16 @@ export function initSocial() {
     if (!state.user) { social.code = ''; social.friends = []; social.reqIn = []; social.reqOut = []; social.ready = false; document.dispatchEvent(new Event('cv:social')); return; }
     await ensurePublicProfile(state.user);
     subscribeFriends();                 // live; fires cv:social on each snapshot
-    await publishTaste();
     document.dispatchEvent(new Event('cv:social'));
+    // Not awaited: publishing classifies unclassified titles first, which on a
+    // large library's first run takes a while, and the friends UI must not wait.
+    publishTaste();
   });
   document.addEventListener('cv:wl-changed', () => { if (state.user) republish(); });
+  // Republished the moment anything changes what friends may see: a title is
+  // newly known to be adult, or a list gains or loses its PIN.
+  document.addEventListener('cv:mature-verdicts', () => { if (state.user) republish(); });
+  document.addEventListener('cv:list-lock', () => { if (state.user) republish(); });
   document.addEventListener('cv:privacy', async () => {
     if (!state.user) return;
     await ensurePublicProfile(state.user);

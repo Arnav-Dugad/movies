@@ -9,32 +9,66 @@ import { observeReveals } from './effects.js';
 import { initBrowseHero } from './hero.js';
 import { fillProviderSelect, applyProviderFilter } from './provider-catalog.js';
 import { adultFlag } from './prefs.js';
-import { applyAdultParams, syncAdultSelect, onMatureToggle } from './mature-filter.js';
+import { applyAdultParams, adultFromGenre, realGenre, adultGenreOptionsHTML, syncAdultGenreOptions, onMatureToggle } from './mature-filter.js';
+import { queryParams, urlNamesFilters, applyFilterQuery, writeFilterQuery } from './url-state.js';
 
-// The Adult filter follows the genre controls it narrows, and exists only while
-// mature content is on.
-function syncAdultFilters() {
-  syncAdultSelect({ id: 'mAdult', host: '#moviesPage .browse-filters', after: '#mExcludeGenre', className: 'browse-select', action: 'filter-movies' });
-  syncAdultSelect({ id: 'tAdult', host: '#tvPage .browse-filters', after: '#tExcludeGenre', className: 'browse-select', action: 'filter-tv' });
-}
+// Every filter, as [URL param, control id, default]. The same table restores a
+// shared link and writes the page's state back into its address.
+export const MOVIE_FIELDS = [
+  ['genre', 'mGenres'], ['exclude', 'mExcludeGenre'], ['provider', 'mProvider'], ['sort', 'mSort', 'popularity.desc'],
+  ['year', 'mYear'], ['lang', 'mLang'], ['rating', 'mRating'], ['max', 'mRatingMax'], ['runtime', 'mRuntime'],
+  ['votes', 'mVotes'], ['cert', 'mCert'], ['release', 'mRelease'], ['rtype', 'mReleaseType'], ['country', 'mCountry'],
+];
+export const TV_FIELDS = [
+  ['genre', 'tGenres'], ['exclude', 'tExcludeGenre'], ['provider', 'tProvider'], ['sort', 'tSort', 'popularity.desc'],
+  ['year', 'tYear'], ['lang', 'tLang'], ['rating', 'tRating'], ['max', 'tRatingMax'], ['runtime', 'tRuntime'],
+  ['votes', 'tVotes'], ['status', 'tStatus'], ['format', 'tType'], ['air', 'tAirWindow'], ['country', 'tCountry'],
+];
+const PAGES = {
+  movie: { path: '/movies', fields: MOVIE_FIELDS, genre: 'mGenres', exclude: 'mExcludeGenre', provider: 'mProvider', stateKey: 'mGenre' },
+  tv: { path: '/tv', fields: TV_FIELDS, genre: 'tGenres', exclude: 'tExcludeGenre', provider: 'tProvider', stateKey: 'tGenre' },
+};
+
+// A newer load owns the grid. Without this, a slow response for an older filter
+// could land after a fast one and paint results for choices no longer selected.
+const loadGen = { movie: 0, tv: 0 };
 
 const gridSkel = (n = 12) => Array(n).fill('<div><div class="card-img skel" style="aspect-ratio:2/3"></div></div>').join('');
+
+// Built once. The route can render /movies before the app's own boot reaches
+// this (a direct link or a refresh), so the loaders call it too — and a filter
+// restored from the URL needs these options to exist before it can be selected.
+let filtersReady = false;
 export function initFilters() {
+  if (filtersReady) return;
+  filtersReady = true;
   const yr = $('mYear'), tyr = $('tYear');
-  yr.innerHTML = '<option value="">All Years</option>';
-  tyr.innerHTML = '<option value="">All Years</option>';
   const cy = new Date().getFullYear();
-  for (let y = cy + 2; y >= 1950; y--) {
-    yr.innerHTML += `<option value="${y}">${y}</option>`;
-    tyr.innerHTML += `<option value="${y}">${y}</option>`;
-  }
-  $('mGenres').innerHTML = '<option value="">All movie genres</option>' + mGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
-  $('tGenres').innerHTML = '<option value="">All TV genres</option>' + tGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('');
-  $('mExcludeGenre').innerHTML = '<option value="">Nothing excluded</option>' + mGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
-  $('tExcludeGenre').innerHTML = '<option value="">Nothing excluded</option>' + tGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('');
+  let years = '<option value="">All Years</option>';
+  for (let y = cy + 2; y >= 1950; y--) years += `<option value="${y}">${y}</option>`;
+  yr.innerHTML = years;
+  tyr.innerHTML = years;
+  // Adult sits in the genre lists themselves ("Adult · 18+" / "No Adult"), and
+  // only while mature content is on.
+  $('mGenres').innerHTML = '<option value="">All movie genres</option>' + mGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('') + adultGenreOptionsHTML('genre');
+  $('tGenres').innerHTML = '<option value="">All TV genres</option>' + tGenreList.map(g => `<option value="${g.id}">${g.n}</option>`).join('') + adultGenreOptionsHTML('genre');
+  $('mExcludeGenre').innerHTML = '<option value="">Nothing excluded</option>' + mGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('') + adultGenreOptionsHTML('exclude');
+  $('tExcludeGenre').innerHTML = '<option value="">Nothing excluded</option>' + tGenreList.map(g => `<option value="${g.id}">No ${g.n}</option>`).join('') + adultGenreOptionsHTML('exclude');
   fillProviderSelect($('mProvider'), 'movie');
   fillProviderSelect($('tProvider'), 'tv');
-  syncAdultFilters();
+}
+
+// A URL naming any filter decides all of them. The provider list loads per
+// region, so its value is applied once that list exists.
+async function restoreFromURL(kind) {
+  const page = PAGES[kind];
+  const params = queryParams();
+  if (!urlNamesFilters(page.fields, [], params)) return;
+  applyFilterQuery(page.fields, { params, skip: ['provider'] });
+  state[page.stateKey] = $(page.genre)?.value || '';
+  const provider = params.get('provider') || '';
+  const select = $(page.provider);
+  if (select && select.value !== provider) await fillProviderSelect(select, kind, { wanted: provider });
 }
 
 const dateISO = d => d.toISOString().slice(0, 10);
@@ -42,6 +76,14 @@ function applyRuntime(params, value, shortMax, mediumMax) {
   if (value === 'short') params['with_runtime.lte'] = shortMax;
   else if (value === 'medium') { params['with_runtime.gte'] = shortMax + 1; params['with_runtime.lte'] = mediumMax; }
   else if (value === 'long') params['with_runtime.gte'] = mediumMax + 1;
+}
+
+// The genre controls as TMDB sees them: real genre ids, and the adult choice
+// turned into keyword parameters.
+function applyGenres(params, genre, exclude) {
+  if (realGenre(genre)) params.with_genres = realGenre(genre);
+  if (realGenre(exclude)) params.without_genres = realGenre(exclude);
+  applyAdultParams(params, adultFromGenre(genre, exclude));
 }
 
 function resetGenre(kind) {
@@ -57,9 +99,14 @@ function paintResults(grid, results, type, append) {
   observeReveals(grid);
 }
 
-export async function loadMovies(append = false) {
+// `route` is set only by the router: arriving at the page is when the URL gets a
+// say. A filter change must never be overwritten by the address it is replacing.
+export async function loadMovies(append = false, { route = false } = {}) {
+  initFilters();
+  const gen = ++loadGen.movie;
   if (!append) initBrowseHero('movie');
   if (!append) { state.mPg = 1; $('mGrid').innerHTML = gridSkel(); }
+  if (route && !append) { await restoreFromURL('movie'); if (gen !== loadGen.movie) return; }
   const sort = $('mSort').value, year = $('mYear').value, lang = $('mLang').value, minRat = $('mRating').value;
   const runtime = $('mRuntime').value, votes = $('mVotes').value, cert = $('mCert').value;
   const release = $('mRelease').value, country = $('mCountry').value, provider = $('mProvider')?.value || '';
@@ -67,8 +114,7 @@ export async function loadMovies(append = false) {
   const params = { sort_by: sort, page: state.mPg, include_adult: adultFlag() };
   if (sort === 'vote_average.desc') params['vote_count.gte'] = Math.max(200, +(votes || 0));
   else if (sort === 'vote_average.asc') params['vote_count.gte'] = Math.max(50, +(votes || 0));
-  if (state.mGenre) params.with_genres = state.mGenre;
-  if (excludeGenre) params.without_genres = excludeGenre;
+  applyGenres(params, state.mGenre, excludeGenre);
   if (year) params.primary_release_year = year;
   if (lang) params.with_original_language = lang;
   if (minRat) params['vote_average.gte'] = minRat;
@@ -77,7 +123,6 @@ export async function loadMovies(append = false) {
   if (country) params.with_origin_country = country;
   if (cert) { params.certification_country = 'US'; params.certification = cert; }
   if (releaseType) params.with_release_type = releaseType;
-  applyAdultParams(params, $('mAdult')?.value || '');
   applyProviderFilter(params, provider);
   applyRuntime(params, runtime, 89, 120);
   const now = new Date(), currentYear = now.getFullYear(), today = dateISO(now);
@@ -85,16 +130,21 @@ export async function loadMovies(append = false) {
   else if (release === 'upcoming') params['primary_release_date.gte'] = today;
   else if (release === 'this_year') { params['primary_release_date.gte'] = `${currentYear}-01-01`; params['primary_release_date.lte'] = `${currentYear}-12-31`; }
   else if (release === 'five_years') { params['primary_release_date.gte'] = `${currentYear - 4}-01-01`; params['primary_release_date.lte'] = today; }
+  if (!append) writeFilterQuery('/movies', MOVIE_FIELDS);
   try {
     const d = await tmdb('/discover/movie', params);
+    if (gen !== loadGen.movie) return;
     paintResults($('mGrid'), d.results, 'movie', append);
-  } catch (e) { if (!append) $('mGrid').innerHTML = '<div class="row-error">Couldn\'t load movies. <button data-action="reload-movies">Retry</button></div>'; }
+  } catch (e) { if (!append && gen === loadGen.movie) $('mGrid').innerHTML = '<div class="row-error">Couldn\'t load movies. <button data-action="reload-movies">Retry</button></div>'; }
 }
 export function moreMovies() { state.mPg++; loadMovies(true); }
 
-export async function loadTV(append = false) {
+export async function loadTV(append = false, { route = false } = {}) {
+  initFilters();
+  const gen = ++loadGen.tv;
   if (!append) initBrowseHero('tv');
   if (!append) { state.tPg = 1; $('tGrid').innerHTML = gridSkel(); }
+  if (route && !append) { await restoreFromURL('tv'); if (gen !== loadGen.tv) return; }
   const sort = $('tSort').value, year = $('tYear').value, lang = $('tLang').value;
   const minRat = $('tRating').value, runtime = $('tRuntime').value, votes = $('tVotes').value;
   const status = $('tStatus').value, country = $('tCountry').value, provider = $('tProvider')?.value || '';
@@ -105,8 +155,7 @@ export async function loadTV(append = false) {
   const params = { sort_by: sort, page: state.tPg, include_adult: adultFlag() };
   if (sort === 'vote_average.desc') params['vote_count.gte'] = Math.max(200, +(votes || 0));
   else if (sort === 'vote_average.asc') params['vote_count.gte'] = Math.max(50, +(votes || 0));
-  if (state.tGenre) params.with_genres = state.tGenre;
-  if (excludeGenre) params.without_genres = excludeGenre;
+  applyGenres(params, state.tGenre, excludeGenre);
   if (year) params.first_air_date_year = year;
   if (lang) params.with_original_language = lang;
   if (minRat) params['vote_average.gte'] = minRat;
@@ -115,7 +164,6 @@ export async function loadTV(append = false) {
   if (status !== '') params.with_status = status;
   if (format !== '') params.with_type = format;
   if (country) params.with_origin_country = country;
-  applyAdultParams(params, $('tAdult')?.value || '');
   applyProviderFilter(params, provider);
   applyRuntime(params, runtime, 29, 60);
   const now = new Date(), today = dateISO(now), currentYear = now.getFullYear();
@@ -123,10 +171,12 @@ export async function loadTV(append = false) {
   else if (airWindow === 'upcoming') params['first_air_date.gte'] = today;
   else if (airWindow === 'recent') { const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - 90); params['first_air_date.gte'] = dateISO(cutoff); params['first_air_date.lte'] = today; }
   else if (airWindow === 'this_year') { params['first_air_date.gte'] = `${currentYear}-01-01`; params['first_air_date.lte'] = `${currentYear}-12-31`; }
+  if (!append) writeFilterQuery('/tv', TV_FIELDS);
   try {
     const d = await tmdb('/discover/tv', params);
+    if (gen !== loadGen.tv) return;
     paintResults($('tGrid'), d.results, 'tv', append);
-  } catch (e) { if (!append) $('tGrid').innerHTML = '<div class="row-error">Couldn\'t load shows. <button data-action="reload-tv">Retry</button></div>'; }
+  } catch (e) { if (!append && gen === loadGen.tv) $('tGrid').innerHTML = '<div class="row-error">Couldn\'t load shows. <button data-action="reload-tv">Retry</button></div>'; }
 }
 export function moreTV() { state.tPg++; loadTV(true); }
 
@@ -137,11 +187,11 @@ export function initBrowse() {
     'filter-movies': () => loadMovies(),
     'filter-tv': () => loadTV(),
     'reset-movies': () => {
-      ['mYear','mLang','mRating','mRatingMax','mRuntime','mVotes','mCert','mRelease','mReleaseType','mCountry','mProvider','mExcludeGenre','mAdult'].forEach(id => { if ($(id)) $(id).value = ''; });
+      ['mYear','mLang','mRating','mRatingMax','mRuntime','mVotes','mCert','mRelease','mReleaseType','mCountry','mProvider','mExcludeGenre'].forEach(id => { if ($(id)) $(id).value = ''; });
       $('mSort').value = 'popularity.desc'; resetGenre('movie'); loadMovies();
     },
     'reset-tv': () => {
-      ['tYear','tLang','tRating','tRatingMax','tRuntime','tVotes','tStatus','tType','tAirWindow','tCountry','tProvider','tExcludeGenre','tAdult'].forEach(id => { if ($(id)) $(id).value = ''; });
+      ['tYear','tLang','tRating','tRatingMax','tRuntime','tVotes','tStatus','tType','tAirWindow','tCountry','tProvider','tExcludeGenre'].forEach(id => { if ($(id)) $(id).value = ''; });
       $('tSort').value = 'popularity.desc'; resetGenre('tv'); loadTV();
     },
     'more-movies': () => moreMovies(),
@@ -153,10 +203,15 @@ export function initBrowse() {
     fillProviderSelect($('mProvider'), 'movie', { preserve: false });
     fillProviderSelect($('tProvider'), 'tv', { preserve: false });
   });
-  // The grid on screen was fetched under the old include_adult (and possibly an
-  // Adult filter that no longer exists), so the open page reloads.
+  // The adult choices come and go with the preference, and the grid on screen was
+  // fetched under the old include_adult, so the open page reloads.
   onMatureToggle(() => {
-    syncAdultFilters();
+    if (!filtersReady) return;
+    Object.values(PAGES).forEach(page => {
+      syncAdultGenreOptions($(page.genre), 'genre');
+      syncAdultGenreOptions($(page.exclude), 'exclude');
+      state[page.stateKey] = $(page.genre)?.value || '';
+    });
     if (location.pathname === '/movies') loadMovies();
     else if (location.pathname === '/tv') loadTV();
   });

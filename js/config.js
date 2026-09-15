@@ -18,6 +18,24 @@ export function pickLogo(logos) {
   return (en || neutral || any || {}).file_path || null;
 }
 
+// The age certificate for the viewer's chosen streaming region, falling back to
+// the US only when TMDB has nothing for that region. One definition for the
+// hover preview and the detail page: the preview used to go by the browser's
+// language (en-US reads as US on a laptop in India) and the detail page was
+// hard-wired to the US, so the same film could show two different badges.
+export function certificationFor(detail, type, region = 'US') {
+  const code = String(region || 'US').toUpperCase();
+  if (type === 'movie') {
+    const rows = detail?.release_dates?.results || [];
+    const find = country => (rows.find(row => row.iso_3166_1 === country)?.release_dates || [])
+      .map(entry => entry.certification).find(Boolean) || '';
+    return find(code) || find('US');
+  }
+  const rows = detail?.content_ratings?.results || [];
+  const find = country => rows.find(row => row.iso_3166_1 === country)?.rating || '';
+  return find(code) || find('US');
+}
+
 export const firebaseConfig = {
   apiKey: "AIzaSyDtcGPY2iCh4SsjFIid_H0lwMfIj9ocN8I",
   authDomain: "movies-2b6dd.firebaseapp.com",

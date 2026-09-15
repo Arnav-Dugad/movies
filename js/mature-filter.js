@@ -8,10 +8,12 @@
 // (MATURE_KEYWORDS in config.js). TMDB has no adult genre, so the keywords ARE
 // the category.
 //
-// Like the rest of mature content, the filter exists only while the preference
-// is on: its controls are never rendered otherwise, and every read of a control
-// goes through adultMode(), which answers "no filter" while the preference is off
-// — a value left behind in a control can never keep filtering.
+// It is offered as a GENRE, not as a filter of its own: every genre dropdown gains
+// "Adult · 18+", every exclude-genre dropdown gains "No Adult", and a genre
+// dropdown with no exclude partner gains both, grouped under "Mature". Those
+// options exist only while the preference is on, and every read goes through
+// adultMode(), which answers "no filter" while it is off — a value left behind
+// in a control can never keep filtering.
 //
 // Two ways to apply it:
 //   - Pages that ask TMDB /discover (Movies, TV, Discover Studio, studios) pass
@@ -22,7 +24,6 @@
 import { tmdb, pool } from './api.js';
 import { MATURE_KEYWORDS } from './config.js';
 import { prefs } from './prefs.js';
-import { esc } from './ui.js';
 
 export const MATURE_KEYWORD_IDS = new Set(MATURE_KEYWORDS.map(keyword => keyword.id));
 // Pipe-separated: TMDB reads `with_keywords` with pipes as OR, and excludes a
@@ -34,15 +35,62 @@ export const MATURE_KEYWORD_QUERY = [...MATURE_KEYWORD_IDS].join('|');
 // cannot prove the title has none — the 16th might be one.
 export const STORED_KEYWORD_LIMIT = 15;
 
-export const ADULT_OPTIONS = [
-  ['', 'Adult included'],
-  ['only', 'Adult only · 18+'],
-  ['hide', 'No adult titles'],
-];
+// The option values a genre dropdown can hold besides real genre ids and names.
+// Neither can collide with a TMDB genre id or a genre name.
+export const ADULT_GENRE = 'adult';          // "Adult · 18+"  (or "No Adult" in an exclude list)
+export const NOT_ADULT_GENRE = 'not-adult';  // "Everything but adult", where no exclude list exists
 
 /** '' (no filter), 'only' or 'hide'. Always '' while mature content is off. */
 export function adultMode(value) {
   return prefs.mature && (value === 'only' || value === 'hide') ? value : '';
+}
+
+/** A genre dropdown's value with the adult choices removed — what TMDB/genre matching sees. */
+export const realGenre = value => (value === ADULT_GENRE || value === NOT_ADULT_GENRE ? '' : (value ?? ''));
+
+/**
+ * The adult mode a genre dropdown (and its exclude partner, if any) asks for.
+ * Choosing Adult as the genre wins over "No Adult" in the exclude list: the
+ * genre is the positive choice, and the pair would otherwise match nothing.
+ */
+export function adultFromGenre(genre, exclude = '') {
+  if (genre === ADULT_GENRE) return adultMode('only');
+  if (genre === NOT_ADULT_GENRE || exclude === ADULT_GENRE) return adultMode('hide');
+  return '';
+}
+
+/**
+ * The adult choices to append to a genre dropdown. `kind`:
+ *   'genre'   — "Adult · 18+" (the page has a separate exclude dropdown)
+ *   'exclude' — "No Adult"
+ *   'both'    — both choices under a "Mature" group, for a lone genre dropdown
+ */
+export function adultGenreOptionsHTML(kind = 'genre', selected = '') {
+  if (!prefs.mature) return '';
+  const opt = (value, label) => `<option value="${value}"${selected === value ? ' selected' : ''}>${label}</option>`;
+  if (kind === 'exclude') return opt(ADULT_GENRE, 'No Adult');
+  if (kind === 'both') return `<optgroup label="Mature">${opt(ADULT_GENRE, 'Adult · 18+')}${opt(NOT_ADULT_GENRE, 'Everything but adult')}</optgroup>`;
+  return opt(ADULT_GENRE, 'Adult · 18+');
+}
+
+/**
+ * Add or remove the adult choices on a dropdown that is built once and kept
+ * (Movies, TV, Search). Returns true when the selected value had to change —
+ * the adult choice was selected and mature content was switched off.
+ */
+export function syncAdultGenreOptions(select, kind = 'genre') {
+  if (!select) return false;
+  const present = [...select.querySelectorAll(`option[value="${ADULT_GENRE}"], option[value="${NOT_ADULT_GENRE}"]`)];
+  if (prefs.mature) {
+    if (!present.length) select.insertAdjacentHTML('beforeend', adultGenreOptionsHTML(kind));
+    return false;
+  }
+  if (!present.length) return false;
+  const wasAdult = present.some(option => option.selected);
+  select.querySelectorAll('optgroup[label="Mature"]').forEach(group => group.remove());
+  present.forEach(option => option.remove());
+  if (wasAdult) select.value = '';
+  return wasAdult;
 }
 
 // ---------- server side: /discover parameters ----------
@@ -73,6 +121,10 @@ const VERDICTS_LIMIT = 5000;
 let verdicts = null;            // Map<"movie_123", 0 | 1>, loaded on first use
 const attempted = new Set();    // looked up this page load, whatever the outcome
 const inflight = new Map();     // key -> the lookup currently fetching it
+let verdictVersion = 0;         // bumps whenever lookups learn something
+
+/** Changes whenever a lookup learns a verdict — part of a cache signature. */
+export const matureVerdictVersion = () => verdictVersion;
 
 const titleKey = (type, id) => ((type === 'movie' || type === 'tv') && +id > 0 ? `${type}_${+id}` : '');
 const keywordId = keyword => +(keyword && typeof keyword === 'object' ? keyword.id : keyword) || 0;
@@ -185,7 +237,13 @@ export async function resolveMature(items, { concurrency = 5 } = {}) {
       learned++;
     }, concurrency).finally(() => {
       fresh.forEach(item => inflight.delete(titleKey(item.type, item.id)));
-      if (learned) persist();
+      if (learned) {
+        persist();
+        verdictVersion++;
+        // Recommendations and the friend-visible taste summary exclude adult
+        // titles, so newly classified ones change what those may use.
+        document.dispatchEvent(new Event('cv:mature-verdicts'));
+      }
     });
     fresh.forEach(item => inflight.set(titleKey(item.type, item.id), run));
     waiting.push(run);
@@ -194,46 +252,7 @@ export async function resolveMature(items, { concurrency = 5 } = {}) {
   return learned;
 }
 
-// ---------- controls ----------
-
-/** The select itself. Callers that render their own toolbars embed this. */
-export function adultSelectHTML({ id = '', className = '', action = '', value = '', label = 'Adult content' } = {}) {
-  const current = adultMode(value);
-  const options = ADULT_OPTIONS.map(([optionValue, text]) =>
-    `<option value="${optionValue}"${optionValue === current ? ' selected' : ''}>${esc(text)}</option>`).join('');
-  return `<select${id ? ` id="${esc(id)}"` : ''} class="${esc(`${className} adult-select`.trim())}"${action ? ` data-action="${esc(action)}"` : ''} aria-label="${esc(label)}">${options}</select>`;
-}
-
-/** The current mode of a rendered control, by id. */
-export const readAdult = id => adultMode(document.getElementById(id)?.value);
-
-/**
- * Add the control to a static filter bar while mature content is on, and take it
- * out entirely while it is off. Idempotent.
- *
- * `after` is a selector inside `host`, or a function returning the element the
- * control follows. `wrapLabel` wraps it in a <label> with that caption, for
- * filter bars whose fields are labelled.
- */
-export function syncAdultSelect({ id, host, after = null, className = '', action = '', wrapLabel = '', wrapClass = '' }) {
-  const existing = document.getElementById(id);
-  const outer = existing ? (existing.closest('[data-adult-filter]') || existing) : null;
-  if (!prefs.mature) {
-    if (outer) outer.remove();
-    return false;
-  }
-  if (existing) return true;
-  const hostEl = typeof host === 'string' ? document.querySelector(host) : host;
-  if (!hostEl) return false;
-  const select = adultSelectHTML({ id, className, action });
-  const markup = wrapLabel
-    ? `<label data-adult-filter${wrapClass ? ` class="${esc(wrapClass)}"` : ''}><span>${esc(wrapLabel)}</span>${select}</label>`
-    : select.replace('<select', '<select data-adult-filter');
-  const anchor = typeof after === 'function' ? after(hostEl) : after ? hostEl.querySelector(after) : null;
-  if (anchor && hostEl.contains(anchor)) anchor.insertAdjacentHTML('afterend', markup);
-  else hostEl.insertAdjacentHTML('beforeend', markup);
-  return true;
-}
+// ---------- change signals ----------
 
 /**
  * Run `fn(on)` when mature content is switched on or off — not when only the

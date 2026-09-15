@@ -205,8 +205,8 @@ hints that the option exists. It lives behind a disclosure in Settings.
 TMDB has no "erotic" genre, so the collections are built from verified TMDB
 **keywords** (erotic, softcore, erotic thriller, erotica, erotic comedy, erotic
 romance, seduction, sensual). Turning it on lets adult results into search and
-adds two things: the After Dark hub on Discover, and an Adult filter on every
-catalogue filter bar. Artwork stays blurred until hover by default, and anything
+adds two things: the After Dark hub on Discover, and an **Adult** choice in every
+genre filter. Artwork stays blurred until hover by default, and anything
 you save can go straight into a PIN-locked list.
 
 Every search and discover call passes `adultFlag()` rather than a literal, so
@@ -222,38 +222,124 @@ different question (critically acclaimed, streaming tonight in your region,
 erotic thrillers, series, world cinema), and a collection browser with tiles for
 every keyword plus "All After Dark", a Movies/Series switch, order (popular,
 acclaimed, newest, hidden gems), era, language, a streaming-now switch, a real
-count, and paging. A rail with nothing in it — "streaming tonight" in a thin
+count, paging, and its choices in the URL. A rail with nothing in it — "streaming tonight" in a thin
 region — is removed rather than left empty, and comes back when the region
 changes. Selections survive leaving Discover and coming back.
 
-### The Adult filter
+### Adult is a genre
 
-`js/mature-filter.js` is the one definition of adult, shared by Movies, TV,
-Discover Studio, Search, My List, Watched, filmographies, and studio/network
-pages: TMDB's `adult` flag, or any of the mature keywords. Each bar offers
-*Adult included* (the default), *Adult only · 18+*, and *No adult titles*.
+`js/mature-filter.js` is the one definition of adult, shared by every genre
+filter in the app: TMDB's `adult` flag, or any of the mature keywords. It is not a
+separate filter — it is a genre choice, offered only while mature content is on:
+
+| Page | Genre dropdown | Exclude dropdown |
+|---|---|---|
+| Movies, TV, Discover Studio | **Adult · 18+** | **No Adult** |
+| Search, My List, Watched, filmographies, studio pages | **Adult · 18+** and **Everything but adult**, grouped under *Mature* | — |
+
+Filmographies and studio/network pages had no genre filter at all; they have one
+now, so adult has somewhere to live. Choosing Adult as the genre wins over "No
+Adult" in the exclude list — the pair would otherwise match nothing.
 
 - **Pages that ask `/discover`** apply it as parameters. Verified against the live
   API: `with_keywords` joined with `|` is an OR, and `without_keywords` excludes a
-  title carrying *any* listed keyword. "Adult only" pairs the keywords with
-  `include_adult=true`; "no adult" pairs the exclusion with `include_adult=false`,
+  title carrying *any* listed keyword. Adult pairs the keywords with
+  `include_adult=true`; No Adult pairs the exclusion with `include_adult=false`,
   because 1,528 softcore titles are flagged adult without that keyword mattering.
 - **Pages that filter titles they already hold** classify them. Stored keywords
   settle most titles; the rest are looked up once (`/{type}/{id}/keywords`),
   remembered on the device, and shared between pages so two surfaces never fetch
   the same title twice. Saved documents keep only 15 keywords, so a full slice
   without a match is treated as *unknown*, never as proof. An unknown title is
-  held back in both modes — showing it could put an adult title on a page that
-  asked for none — and the page says how many are still being checked.
+  held back either way — showing it could put an adult title on a page that asked
+  for none — and the page says how many are still being checked.
 
-Every read of a control goes through `adultMode()`, which answers "no filter"
-while mature content is off, so a value left in a control can never keep
-filtering. Release Reminders has no Adult filter: its calendar is built from
-English and Hindi release schedules that exclude adult titles at the source.
+Every read goes through `adultFromGenre()`, which answers "no filter" while mature
+content is off, so an adult value left in a control — or in a shared link — can
+never keep filtering. A dropdown with an adult choice selected carries the After
+Dark accent, and with artwork blur on, its results are blurred like After Dark.
+Release Reminders has no adult genre: its calendar is built from English and Hindi
+release schedules that exclude adult titles at the source.
 
-`tests/logic/mature-filter.test.mjs` pins the parameters, the classification
-rules (including the 15-keyword truncation), de-duplicated lookups, failure
-handling, the Watched filter, and when `cv:mature` is and is not announced.
+### Mature viewing stays private
+
+An audit found two leaks, both closed:
+
+- **Friends could see it.** The friend-readable taste document
+  (`users/{uid}/shared/taste`) carried `seen` — every watched title id — and
+  `favTitles`, the first eight saved titles with posters, including titles inside
+  PIN-locked lists. It is now built with mature titles excluded from genre
+  weights, `seen`, and favourites, and favourites skip every PIN-protected list.
+  This holds no matter what the owner allows for their own recommendations.
+  Before writing, publishing classifies any title its stored keywords cannot
+  settle, so an adult title is never published for being merely unknown; it
+  republishes whenever a verdict is learned or a list gains or loses a PIN.
+- **Home learned from it.** Watching an erotic thriller made "erotic" a top story
+  theme, which queried TMDB for more, headed a "Because you enjoy…" rail, and
+  could put "Because you viewed <that title>" on Home. Now mature titles add no
+  genre, theme, cast, director, or seed weight; cannot head a rail; and any
+  candidate that is adult-flagged, fetched by a mature keyword, or known adult on
+  the device is dropped before ranking (the recommendation audit counts these as
+  *Mature, kept private*). Watch-party picks are shown to the whole room, so they
+  exclude mature titles unless every member allows them.
+
+Opting in takes two switches: mature content on, and **Let mature titles shape
+recommendations** (off by default). Friends are excluded either way.
+
+`tests/logic/mature-filter.test.mjs` pins the parameters, the adult genre choices,
+the classification rules (including the 15-keyword truncation), de-duplicated
+lookups, failure handling, the Watched filter, and when `cv:mature` is announced.
+`tests/logic/mature-privacy.test.mjs` pins every privacy rule above.
+
+## Filters live in the URL
+
+Movies, TV, and Discover kept their filters in the page alone, so a reload reset
+them and a copied link opened the unfiltered page. `js/url-state.js` now moves
+each page's controls to and from the query string:
+
+```
+/movies?genre=adult&sort=vote_average.desc&year=2016
+/tv?genre=10765&format=4&provider=8
+/discover?type=tv&genre=35&streaming=0&ad=207767&ad_sort=acclaimed
+```
+
+- Only non-default values are written, so an untouched page keeps a clean URL.
+- The address is rewritten with `replaceState`, never pushed: changing a filter is
+  not a navigation, and Back should leave the page rather than undo a dropdown.
+- A URL naming **any** of a page's filters decides **all** of them, so a shared link
+  shows exactly what was shared. A URL naming none leaves the controls alone,
+  which is what keeps filters across in-app visits.
+- A value no option matches — an old link, or an adult genre while mature content
+  is off — falls back to the default instead of selecting nothing.
+- The streaming-provider list loads per region, so a provider in a link is applied
+  once that list exists, before the first results are fetched.
+- Discover's Studio rebuilds its collection from a link; arriving back at an
+  identical, already-built collection does not refetch it. After Dark's browser
+  keeps its own `ad_`-prefixed params beside the Studio's and drops them when
+  mature content is switched off.
+
+Movies and TV also gained a request guard: a slow response for an older filter can
+no longer land after a newer one and paint results for choices no longer selected.
+
+## Hover previews
+
+Every rail opens the same 409px panel (the size the Top 10 cards always had), after
+the pointer rests on a poster for **1.5 seconds** — long enough that sweeping
+across a rail, or pausing on the way to a poster's + button, never fires one.
+
+The age certificate on the panel, and on the detail page, is the one for your
+chosen streaming region (`certificationFor` in `js/config.js`), falling back to
+the US only when TMDB has none for that region. The preview used to read the
+browser's language — `en-US` on a laptop in India showed the US rating — and the
+detail page was hard-wired to the US and read only the first release entry, which
+is often blank. Changing region clears the preview cache.
+
+## Discover type scale
+
+Measured in the browser, Discover's supporting text rendered at 7.7-10.4px. It now
+follows one scale by role (the Discover block in `css/refinements.css`): uppercase
+captions 11.5px, buttons, pills and meta 13px, select values 13.8px, descriptions
+14.4px. After Dark follows the same scale. Nothing on the page renders below 11px.
 
 ## Importing an existing history
 
@@ -375,14 +461,14 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 430+ assertions, no dependencies and no Java
+npm run test:logic    # 600+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
-check and an import-resolution check over all 62 modules. There is no build step
+check and an import-resolution check over all 77 modules. There is no build step
 to catch a syntax error or a renamed export before Cloudflare would.
 
 `tests/logic/` runs the real application modules against a small browser shim —

@@ -1,6 +1,6 @@
 // ===== DETAIL PAGE =====
 import { tmdb, pool } from './api.js';
-import { IMG, PH, REGIONS, pickLogo, providerUrl, regionLabel } from './config.js';
+import { IMG, PH, REGIONS, pickLogo, providerUrl, regionLabel, certificationFor } from './config.js';
 import { state, pushRecentlyViewed } from './state.js';
 import { esc, fmt, debounce, $, prefersReducedMotion, toast } from './ui.js';
 import { buildCard } from './cards.js';
@@ -1051,10 +1051,10 @@ export function closeDetail() {
   if (clampResize) { window.removeEventListener('resize', clampResize); clampResize = null; }
 }
 
-function getCert(d, t) {
-  if (t === 'movie') { const u = d.release_dates?.results?.find(r => r.iso_3166_1 === 'US'); return u?.release_dates?.[0]?.certification || ''; }
-  return d.content_ratings?.results?.find(r => r.iso_3166_1 === 'US')?.rating || '';
-}
+// The streaming region's certificate, as on the hover preview. The US lookup this
+// replaces also read only the first release entry, which is often blank while a
+// later entry for the same country carries the rating.
+const getCert = (d, t) => certificationFor(d, t, state.region);
 
 function startCD(id, ds, doneMsg = 'Available now') {
   if (countdownTimers.has(id)) {

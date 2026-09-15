@@ -85,8 +85,9 @@ export function renderSettings() {
             <summary>Mature content${prefs.mature ? ' <b>On</b>' : ''}</summary>
             <div class="settings-mature-body">
               <p>Off by default. While it is off, adult titles are excluded from every search and Discover request and nothing about this appears anywhere in the app.</p>
-              ${toggle('mature', 'Show mature content', 'Adds the After Dark hub to Discover, an Adult filter to every catalogue filter bar, and includes adult results in search.', prefs.mature)}
-              ${prefs.mature ? toggle('matureBlur', 'Blur mature artwork', 'Artwork in After Dark, and in any results filtered to Adult only, stays blurred until you hover or focus it.', prefs.matureBlur) : ''}
+              ${toggle('mature', 'Show mature content', 'Adds the After Dark hub to Discover, an Adult choice to every genre filter, and includes adult results in search.', prefs.mature)}
+              ${prefs.mature ? toggle('matureInRecs', 'Let mature titles shape recommendations', 'Off by default. While it is off, adult titles you save, watch, rate, or open never steer Home, never head a Because-you rail, and are never recommended back. Friends never see them either way.', prefs.matureInRecs) : ''}
+              ${prefs.mature ? toggle('matureBlur', 'Blur mature artwork', 'Artwork in After Dark, and in any results filtered to the Adult genre, stays blurred until you hover or focus it.', prefs.matureBlur) : ''}
               <small>Collections are built from TMDB keywords, not a genre — TMDB has no erotic genre. Titles you save can be kept in a PIN-locked list from the + button on any poster.</small>
             </div>
           </details>

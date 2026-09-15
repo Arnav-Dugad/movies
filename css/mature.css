@@ -1,6 +1,6 @@
 /* ===== AFTER DARK (MATURE CONTENT) =====
    Nothing in this file applies unless prefs.mature is on: the section is never
-   rendered otherwise, the adult filter controls are never inserted, and the
+   rendered otherwise, the adult genre choices are never offered, and the
    blur rules key off a data attribute that is only "on" while mature is. */
 
 /* ---------------------------------------------------------------- shell -- */
@@ -28,7 +28,7 @@
   background: rgba(236, 72, 153, .12);
   color: #fbcfe8;
   font-family: var(--font-mono);
-  font-size: .56rem;
+  font-size: .7rem;
   font-style: normal;
   letter-spacing: .02em;
 }
@@ -85,7 +85,7 @@
 .ad-spot-poster:hover { transform: translateY(-4px); }
 .ad-spot-poster img { width: 100%; height: 100%; display: block; object-fit: cover; transition: filter .35s var(--ease-out); }
 .ad-spot-copy { min-width: 0; max-width: 640px; }
-.ad-spot-eyebrow { color: #f9a8d4; font-size: .6rem; font-weight: 850; letter-spacing: .15em; text-transform: uppercase; }
+.ad-spot-eyebrow { color: #f9a8d4; font-size: .72rem; font-weight: 850; letter-spacing: .15em; text-transform: uppercase; }
 .ad-spot-copy h3 {
   margin: 8px 0 10px;
   font-family: var(--font-display);
@@ -95,7 +95,7 @@
   letter-spacing: -.025em;
   text-wrap: balance;
 }
-.ad-spot-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; color: var(--text2); font-size: .74rem; font-variant-numeric: tabular-nums; }
+.ad-spot-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; color: var(--text2); font-size: .86rem; font-variant-numeric: tabular-nums; }
 .ad-spot-score { color: var(--gold); font-weight: 800; }
 .ad-spot-copy > p {
   display: -webkit-box;
@@ -103,14 +103,14 @@
   margin-top: 12px;
   overflow: hidden;
   color: var(--text2);
-  font-size: .8rem;
+  font-size: .92rem;
   line-height: 1.65;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
 .ad-spot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
 .ad-spot-actions .btn-primary,
-.ad-spot-actions .btn-glass { min-height: 42px; padding: 0 18px; font-size: .78rem; }
+.ad-spot-actions .btn-glass { min-height: 44px; padding: 0 20px; font-size: .88rem; }
 .ad-spot-actions svg { width: 15px; height: 15px; }
 /* The poster's add-to-list control, standing in a row instead of floating on art. */
 .ad-spot-actions .card-wl {
@@ -131,9 +131,9 @@
 /* Clear of the sticky Discover jump bar when anything scrolls to these. */
 .ad-spotlight, .ad-browser, .ad-collections, .ad-toolbar { scroll-margin-top: calc(var(--nav-h) + 86px); }
 .ad-browser-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
-.ad-browser-head span { color: #f9a8d4; font-size: .52rem; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+.ad-browser-head span { color: #f9a8d4; font-size: .72rem; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
 .ad-browser-head h3 { margin: 5px 0 3px; font-family: var(--font-display); font-size: clamp(1.35rem, 2.6vw, 1.8rem); }
-.ad-browser-head p { color: var(--text3); font-size: .64rem; }
+.ad-browser-head p { color: var(--text3); font-size: .88rem; }
 .ad-count {
   flex-shrink: 0;
   padding: 7px 11px;
@@ -142,7 +142,7 @@
   background: rgba(236, 72, 153, .07);
   color: #f9a8d4;
   font-family: var(--font-mono);
-  font-size: .56rem;
+  font-size: .76rem;
   white-space: nowrap;
 }
 .ad-count:empty { display: none; }
@@ -162,8 +162,8 @@
 .ad-collections::-webkit-scrollbar { display: none; }
 .ad-tile {
   flex: 0 0 auto;
-  width: 176px;
-  min-height: 78px;
+  width: 196px;
+  min-height: 86px;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -179,8 +179,8 @@
   transition: border-color .2s var(--ease-out), background .2s var(--ease-out), transform .2s var(--ease-out);
 }
 .ad-tile:hover { border-color: rgba(236, 72, 153, .3); transform: translateY(-2px); }
-.ad-tile b { color: var(--text); font-size: .74rem; font-weight: 750; }
-.ad-tile small { color: var(--text3); font-size: .56rem; line-height: 1.4; }
+.ad-tile b { color: var(--text); font-size: .88rem; font-weight: 750; }
+.ad-tile small { color: var(--text3); font-size: .74rem; line-height: 1.4; }
 .ad-tile.active {
   border-color: rgba(236, 72, 153, .55);
   background:
@@ -193,11 +193,11 @@
 .ad-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 20px; }
 .ad-seg { display: inline-flex; padding: 3px; border: 1px solid var(--glass-border); border-radius: 50px; background: rgba(255, 255, 255, .025); }
 .ad-seg button {
-  min-height: 34px;
-  padding: 0 16px;
+  min-height: 36px;
+  padding: 0 18px;
   border-radius: 50px;
   color: var(--text2);
-  font-size: .66rem;
+  font-size: .82rem;
   font-weight: 750;
   transition: background .2s, color .2s;
 }
@@ -212,7 +212,7 @@
   border-radius: 12px;
   background: rgba(255, 255, 255, .022);
 }
-.ad-field > span { color: var(--text3); font-size: .5rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.ad-field > span { color: var(--text3); font-size: .72rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .ad-field select {
   min-height: 34px;
   padding: 0 6px;
@@ -221,7 +221,7 @@
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: .66rem;
+  font-size: .84rem;
   font-weight: 700;
 }
 .ad-field select option { background: #171720; color: #f6f6f8; }
@@ -236,7 +236,7 @@
   border-radius: 12px;
   background: rgba(255, 255, 255, .022);
   color: var(--text2);
-  font-size: .64rem;
+  font-size: .82rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -259,14 +259,14 @@
   border: 1px dashed rgba(236, 72, 153, .18);
   border-radius: 18px;
   color: var(--text3);
-  font-size: .64rem;
+  font-size: .84rem;
   text-align: center;
 }
 .mature-empty strong { color: var(--text); font-family: var(--font-display); font-size: 1.05rem; }
 .mature-empty .btn-glass { margin-top: 8px; }
 .ad-more-wrap:empty { display: none; }
 .mature-section .ad-more { border-color: rgba(236, 72, 153, .28); background: rgba(236, 72, 153, .07); color: #f9a8d4; }
-.mature-note { margin-top: 22px; color: var(--text3); font-size: .56rem; line-height: 1.6; }
+.mature-note { margin-top: 22px; color: var(--text3); font-size: .78rem; line-height: 1.6; }
 
 /* The jump link is only inserted while mature content is on. */
 .discover-jumpbar .discover-jump-mature { color: #f9a8d4; }
@@ -282,18 +282,18 @@ html[data-mature-blur="on"] .ad-spot-poster img {
 }
 html[data-mature-blur="on"] .ad-spot-art img { filter: blur(24px) saturate(.75); }
 html[data-mature-blur="on"] .mature-section .card-img img { transition: filter .28s var(--ease-out), transform .6s var(--ease-out); }
-/* The same privacy screen follows the Adult filter: a grid narrowed to "Adult
-   only" anywhere in the app is blurred exactly like After Dark. The hover and
+/* The same privacy screen follows the adult genre: a grid narrowed to "Adult ·
+   18+" anywhere in the app is blurred exactly like After Dark. The hover and
    focus exemption lives inside each selector — these match on ids, so no
    class-based "unblur on hover" rule could ever outrank them. */
-html[data-mature-blur="on"] #moviesPage:has(#mAdult option[value="only"]:checked) #mGrid .card:not(:hover):not(:focus-within) .card-img img,
-html[data-mature-blur="on"] #tvPage:has(#tAdult option[value="only"]:checked) #tGrid .card:not(:hover):not(:focus-within) .card-img img,
-html[data-mature-blur="on"] #discoverStudio:has(#discoverAdult option[value="only"]:checked) #discoverLabResults .card:not(:hover):not(:focus-within) .card-img img,
-html[data-mature-blur="on"] #searchPage:has(#fltAdult option[value="only"]:checked) #searchGrid .card:not(:hover):not(:focus-within) .card-img img,
-html[data-mature-blur="on"] #wlPage:has(#wlAdult option[value="only"]:checked) #wlContent .card:not(:hover):not(:focus-within) .card-img img,
-html[data-mature-blur="on"] #watchedPage:has(#watchedAdult option[value="only"]:checked) #watchedContent .card:not(:hover):not(:focus-within) .card-img img,
-html[data-mature-blur="on"] .person-filmography:has(.adult-select option[value="only"]:checked) .person-credit-grid .card:not(:hover):not(:focus-within) .card-img img,
-html[data-mature-blur="on"] #studioContent:has(.adult-select option[value="only"]:checked) #studioResults .card:not(:hover):not(:focus-within) .card-img img {
+html[data-mature-blur="on"] #moviesPage:has(#mGenres option[value="adult"]:checked) #mGrid .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #tvPage:has(#tGenres option[value="adult"]:checked) #tGrid .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #discoverStudio:has(#discoverGenre option[value="adult"]:checked) #discoverLabResults .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #searchPage:has(#fltGenre option[value="adult"]:checked) #searchGrid .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #wlPage:has(#wlGenre option[value="adult"]:checked) #wlContent .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #watchedPage:has(#watchedGenre option[value="adult"]:checked) #watchedContent .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] .person-filmography:has([data-action="person-genre"] option[value="adult"]:checked) .person-credit-grid .card:not(:hover):not(:focus-within) .card-img img,
+html[data-mature-blur="on"] #studioContent:has([data-action="studio-genre"] option[value="adult"]:checked) #studioResults .card:not(:hover):not(:focus-within) .card-img img {
   filter: blur(16px) saturate(.8);
 }
 html[data-mature-blur="on"] .page-container .card-img img { transition: transform .6s var(--ease-out), filter .28s var(--ease-out); }
@@ -305,25 +305,25 @@ html[data-mature-blur="on"] .ad-spotlight:focus-within img {
   filter: none;
 }
 
-/* ---------------------------------------------------------- adult filter --
-   The Adult control on every filter bar. It carries the After Dark accent only
-   while it is actually narrowing results, so an active adult filter is never
-   mistaken for the default. */
-.adult-select:has(option[value="only"]:checked),
-.adult-select:has(option[value="hide"]:checked) {
+/* ---------------------------------------------------------- adult genre --
+   Adult is a choice inside the genre dropdowns. A dropdown carries the After
+   Dark accent only while that choice is selected, so an adult filter is never
+   mistaken for an ordinary genre — or for no filter at all. */
+select:has(option[value="adult"]:checked),
+select:has(option[value="not-adult"]:checked) {
   border-color: rgba(236, 72, 153, .5) !important;
   background-color: rgba(236, 72, 153, .1) !important;
   color: #fbcfe8 !important;
 }
-/* Discover Studio, person and studio pages label their fields, so the label is
-   what lights up there. */
-.discover-filter-grid > label[data-adult-filter]:has(option[value="only"]:checked),
-.discover-filter-grid > label[data-adult-filter]:has(option[value="hide"]:checked) {
+select option[value="adult"],
+select option[value="not-adult"] { color: #f9a8d4; }
+/* Discover Studio fields are labelled boxes; the box lights up, not the bare select. */
+.discover-filter-grid > label:has(select option[value="adult"]:checked) {
   border-color: rgba(236, 72, 153, .42);
   background: rgba(236, 72, 153, .07);
 }
-.discover-filter-grid > label[data-adult-filter] .adult-select { background-color: transparent !important; border: 0 !important; }
-.discover-filter-grid > label[data-adult-filter] > span { color: #f9a8d4; }
+.discover-filter-grid > label:has(select option[value="adult"]:checked) > span { color: #f9a8d4; }
+.discover-filter-grid .discover-select:has(option[value="adult"]:checked) { background-color: transparent !important; border: 0 !important; }
 .srh-checking {
   margin-left: 12px;
   color: #f9a8d4;
@@ -353,7 +353,7 @@ html[data-mature-blur="on"] .ad-spotlight:focus-within img {
   .mature-section { margin-top: 50px; padding: 20px 14px; border-radius: 22px; }
   .ad-collections { margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; scroll-padding: 0 14px; scroll-margin-top: calc(var(--nav-h) + 16px); }
   .ad-spotlight, .ad-browser, .ad-toolbar { scroll-margin-top: calc(var(--nav-h) + 16px); }
-  .ad-tile { width: 150px; min-height: 72px; }
+  .ad-tile { width: 168px; min-height: 80px; }
   .ad-browser-head { align-items: flex-start; flex-direction: column; gap: 10px; }
   /* Phones render select text at 16px (ultra.css, to stop iOS zooming), so each
      field stacks its caption above a full-width select, and the order — the

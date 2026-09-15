@@ -168,6 +168,76 @@ input:focus-visible,
    get no wrapper, which is why the phone layout was already right. */
 .discover-row-section > .hs-wrap > .row { padding: 4px 2px 12px; }
 
+/* ------------------------------------------------------ discover: type scale --
+   Measured in the browser, Discover's supporting text rendered at 7.7-10.4px:
+   field captions at 7.7px, section and row labels at 7.8-9.3px, every pill and
+   button at 8-9.8px, and the paragraph under each heading at 10.4px. Below 11px
+   uppercase tracking stops helping and the words simply cannot be read at arm's
+   length. One scale, applied by role rather than by patching sizes one at a time:
+     caption (uppercase, tracked)   .72rem  11.5px
+     control (buttons, pills, meta) .82rem  13px
+     value   (select text)          .86rem  13.8px
+     body    (descriptions)         .9rem   14.4px
+   Loaded after ultra.css, so it also replaces that file's phone sizes. */
+.discover-eyebrow,
+.discover-section-head > div > span,
+.discover-row-head span,
+.discover-filter-grid > label > span,
+.discover-presets > span,
+.discover-result-head span,
+.discover-mood-result-head span,
+.discover-spotlight-copy > span,
+.discover-surprise-copy > span,
+.discover-surprise-card section > span,
+.discover-lab-loading > span {
+  font-size: .72rem;
+  letter-spacing: .11em;
+}
+.discover-hero-copy > p { font-size: clamp(.95rem, 1.2vw, 1.05rem); }
+.discover-section-head p,
+.discover-surprise-copy p { font-size: .9rem; line-height: 1.6; }
+.discover-section-head > b,
+.discover-section-tools > b,
+.discover-section-tools > button { min-height: 34px; display: inline-flex; align-items: center; padding: 0 13px; font-size: .78rem; }
+.discover-proof > span { padding: 8px 12px; font-size: .78rem; }
+.discover-proof strong { font-size: .88rem; }
+.discover-jumpbar button { min-height: 42px; padding: 0 18px; font-size: .84rem; }
+.discover-select { height: 34px; font-size: .86rem; }
+.discover-filter-grid > label { min-height: 80px; gap: 6px; }
+.discover-stream-toggle > strong { font-size: .86rem; }
+.discover-build-btn { min-height: 80px; font-size: .92rem; }
+.discover-presets button { min-height: 36px; padding: 0 14px; font-size: .82rem; }
+.discover-lab-welcome strong { font-size: .92rem; }
+.discover-lab-welcome span { font-size: .8rem; }
+.discover-result-head p,
+.discover-mood-result-head p { font-size: .82rem; }
+.discover-result-head > button,
+.discover-mood-result-head > button,
+.discover-row-head button { min-height: 34px; padding: 0 13px; font-size: .8rem; }
+.discover-more { min-height: 44px; font-size: .84rem; }
+.discover-no-results span,
+.discover-inline-empty { font-size: .84rem; }
+.discover-moods .mood-name { font-size: .95rem; }
+.discover-moods .mood-sub { font-size: .78rem; }
+.discover-moods .mood-index { font-size: .72rem; }
+.discover-moods .mood-card > i { font-size: .76rem; }
+.discover-spotlight-copy p { font-size: .86rem; }
+.discover-spotlight-copy a { font-size: .84rem; }
+.discover-surprise .spin-btn { min-height: 46px; font-size: .86rem; }
+.discover-surprise-empty span { font-size: .8rem; }
+.discover-surprise-card p { font-size: .84rem; }
+.discover-surprise-card section b { font-size: .74rem; }
+.discover-surprise-card .btn-primary { min-height: 42px; font-size: .82rem; }
+@media (max-width: 700px) {
+  .discover-proof > span { padding: 7px 10px; font-size: .74rem; }
+  .discover-jumpbar button { min-height: 44px; padding: 0 14px; }
+  /* Phones render select text at 16px (to stop iOS zooming into the field), so
+     the two-column cells give the value every pixel they can. */
+  .discover-filter-grid > label { min-height: 82px; padding: 9px 6px 9px 10px; }
+  .discover-filter-grid .discover-select { padding-right: 0; letter-spacing: -.01em; }
+  .discover-moods .mood-sub { min-height: 34px; }
+}
+
 /* ------------------------------------------------------------------ cards --
    Poster badges are written in after the per-user data resolves, so they used to
    pop in a beat after the artwork. Fading them keeps the arrival quiet. */

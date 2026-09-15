@@ -30,7 +30,8 @@ check('off: every control value reads as "no filter"', ['only', 'hide', '', 'jun
   filter.applyAdultParams(params, 'only');
   check('off: a leftover "only" cannot change a request', JSON.stringify(params) === JSON.stringify({ include_adult: false, sort_by: 'popularity.desc' }));
 }
-check('off: the select is never built', filter.syncAdultSelect({ id: 'x', host: null }) === false);
+check('off: no adult genre choice is offered', filter.adultGenreOptionsHTML('genre') === '' && filter.adultGenreOptionsHTML('both') === '' && filter.adultGenreOptionsHTML('exclude') === '');
+check('off: a leftover "adult" genre filters nothing', filter.adultFromGenre('adult') === '' && filter.adultFromGenre('not-adult') === '' && filter.adultFromGenre('28', 'adult') === '');
 
 // ================= the request parameters =================
 setMature(true);
@@ -48,6 +49,21 @@ check('it is pipe-separated, which TMDB reads as OR', !filter.MATURE_KEYWORD_QUE
   check('"hide" keeps an existing exclusion instead of overwriting it', merged.without_keywords.split('|')[0] === '999' && merged.without_keywords.split('|').length === MATURE_KEYWORDS.length + 1);
   const none = filter.applyAdultParams({ include_adult: true, with_genres: '18' }, '');
   check('no filter leaves the request alone', JSON.stringify(none) === JSON.stringify({ include_adult: true, with_genres: '18' }));
+}
+
+// ================= adult as a genre =================
+check('"Adult · 18+" as the genre means adult only', filter.adultFromGenre('adult') === 'only');
+check('"No Adult" in the exclude list hides adult', filter.adultFromGenre('', 'adult') === 'hide' && filter.adultFromGenre('28', 'adult') === 'hide');
+check('"Everything but adult" in a lone genre list hides adult', filter.adultFromGenre('not-adult') === 'hide');
+check('choosing Adult as the genre wins over "No Adult"', filter.adultFromGenre('adult', 'adult') === 'only');
+check('a real genre asks for no adult filter', filter.adultFromGenre('28') === '' && filter.adultFromGenre('') === '');
+check('realGenre strips only the adult choices', filter.realGenre('adult') === '' && filter.realGenre('not-adult') === '' && filter.realGenre('10749') === '10749' && filter.realGenre('all') === 'all' && filter.realGenre(undefined) === '');
+{
+  const genre = filter.adultGenreOptionsHTML('genre'), exclude = filter.adultGenreOptionsHTML('exclude'), both = filter.adultGenreOptionsHTML('both', 'not-adult');
+  check('a genre list gains "Adult · 18+"', genre.includes('value="adult"') && genre.includes('Adult · 18+') && !genre.includes('not-adult'));
+  check('an exclude list gains "No Adult"', exclude.includes('value="adult"') && exclude.includes('No Adult'));
+  check('a lone genre list gains both, grouped', both.startsWith('<optgroup label="Mature">') && both.includes('value="adult"') && both.includes('value="not-adult"'));
+  check('the chosen adult option is rendered selected', /value="not-adult" selected/.test(both) && !/value="adult" selected/.test(both));
 }
 
 // ================= what stored keywords prove =================

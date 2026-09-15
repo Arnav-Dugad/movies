@@ -8,8 +8,18 @@ import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
 import { fillProviderSelect, applyProviderFilter } from './provider-catalog.js';
 import { adultFlag } from './prefs.js';
-import { matureOn, matureSectionHTML, renderMatureSection, syncMatureChrome } from './mature.js';
-import { applyAdultParams, syncAdultSelect, onMatureToggle } from './mature-filter.js';
+import { matureOn, matureSectionHTML, renderMatureSection, syncMatureChrome, restoreAfterDarkFromURL, clearAfterDarkQuery } from './mature.js';
+import { applyAdultParams, adultFromGenre, realGenre, adultGenreOptionsHTML, onMatureToggle } from './mature-filter.js';
+import { queryParams, urlNamesFilters, applyFilterQuery, writeFilterQuery } from './url-state.js';
+
+// The Studio's controls as [URL param, control id, default] — see js/url-state.js.
+export const STUDIO_FIELDS = [
+  ['type', 'discoverType', 'movie'], ['genre', 'discoverGenre'], ['exclude', 'discoverExcludeGenre'], ['era', 'discoverEra'],
+  ['lang', 'discoverLanguage'], ['provider', 'discoverProvider'], ['rating', 'discoverRating', '0'], ['max', 'discoverRatingMax', '0'],
+  ['votes', 'discoverVotes', '0'], ['runtime', 'discoverRuntime'], ['country', 'discoverCountry'], ['release', 'discoverRelease'],
+  ['sort', 'discoverSort', 'popularity.desc'], ['streaming', 'discoverStreaming', '1'],
+];
+const PRESETS = new Set(['critics', 'hindi', 'family', 'hidden', 'classic']);
 
 let labPage = 1;
 let labSignature = '';
@@ -32,16 +42,17 @@ const regionName = () => countryName(state.region);
 function populateGenres() {
   const type = $('discoverType')?.value || 'movie';
   const genres = type === 'tv' ? tGenreList : mGenreList;
-  [['discoverGenre', 'Any genre', ''], ['discoverExcludeGenre', 'Nothing excluded', 'No ']].forEach(([id, first, prefix]) => {
+  [['discoverGenre', 'Any genre', '', 'genre'], ['discoverExcludeGenre', 'Nothing excluded', 'No ', 'exclude']].forEach(([id, first, prefix, adultKind]) => {
     const select = $(id); if (!select) return;
     const selected = select.value;
-    select.innerHTML = `<option value="">${first}</option>` + genres.map(genre => `<option value="${genre.id}">${prefix}${esc(genre.n)}</option>`).join('');
+    // Adult is offered as a genre ("Adult · 18+" / "No Adult"), only while mature content is on.
+    select.innerHTML = `<option value="">${first}</option>` + genres.map(genre => `<option value="${genre.id}">${prefix}${esc(genre.n)}</option>`).join('') + adultGenreOptionsHTML(adultKind);
     if ([...select.options].some(option => option.value === selected)) select.value = selected;
   });
 }
 
-function populateProviders(preserve = true) {
-  return fillProviderSelect($('discoverProvider'), $('discoverType')?.value === 'tv' ? 'tv' : 'movie', { preserve });
+function populateProviders(preserve = true, wanted = null) {
+  return fillProviderSelect($('discoverProvider'), $('discoverType')?.value === 'tv' ? 'tv' : 'movie', { preserve, wanted });
 }
 
 function renderMoodDeck() {
@@ -115,8 +126,8 @@ function labQuery() {
   const params = { include_adult: adultFlag(), page: labPage, sort_by: sortBy };
   const genre = $('discoverGenre')?.value, excludeGenre = $('discoverExcludeGenre')?.value, language = $('discoverLanguage')?.value;
   const rating = +($('discoverRating')?.value || 0), maxRating = +($('discoverRatingMax')?.value || 0), votes = +($('discoverVotes')?.value || 0);
-  if (genre) params.with_genres = genre;
-  if (excludeGenre) params.without_genres = excludeGenre;
+  if (realGenre(genre)) params.with_genres = realGenre(genre);
+  if (realGenre(excludeGenre)) params.without_genres = realGenre(excludeGenre);
   if (language) params.with_original_language = language;
   if (rating) params['vote_average.gte'] = rating;
   if (maxRating) params['vote_average.lte'] = maxRating;
@@ -134,7 +145,7 @@ function labQuery() {
   else if (release === 'this_year') { lower(`${currentYear}-01-01`); upper(`${currentYear}-12-31`); }
   else if (release === 'recent') { lower(`${currentYear - 4}-01-01`); upper(today); }
   runtimeParams(type, $('discoverRuntime')?.value || '', params);
-  applyAdultParams(params, $('discoverAdult')?.value || '');
+  applyAdultParams(params, adultFromGenre(genre, excludeGenre));
   applyProviderFilter(params, $('discoverProvider')?.value || '');
   if ($('discoverStreaming')?.checked) { params.watch_region = state.region; params.with_watch_monetization_types = 'flatrate'; }
   if (activePreset === 'hidden') { params['vote_count.gte'] = 150; params['vote_count.lte'] = 2200; }
@@ -148,6 +159,7 @@ async function buildDiscovery({ append = false } = {}) {
   const signature = `${type}|${JSON.stringify({ ...params, page: 0 })}`;
   if (append && signature !== labSignature) { labPage = 1; return buildDiscovery(); }
   labSignature = signature;
+  if (!append) writeStudioQuery();
   const request = ++labRequest;
   if (!append) host.innerHTML = `<div class="discover-lab-loading"><span>Building your collection</span>${sectionSkeleton()}</div>`;
   const loadButton = host.querySelector('[data-action="discover-more"]'); if (loadButton) { loadButton.disabled = true; loadButton.textContent = 'Loading…'; }
@@ -173,12 +185,41 @@ async function buildDiscovery({ append = false } = {}) {
 function resetStudio() {
   labRequest++;
   activePreset = '';
-  const defaults = { discoverType: 'movie', discoverGenre: '', discoverExcludeGenre: '', discoverAdult: '', discoverEra: '', discoverLanguage: '', discoverRating: '0', discoverRatingMax: '0', discoverVotes: '0', discoverRuntime: '', discoverCountry: '', discoverRelease: '', discoverSort: 'popularity.desc', discoverProvider: '' };
+  labSignature = '';
+  const defaults = { discoverType: 'movie', discoverGenre: '', discoverExcludeGenre: '', discoverEra: '', discoverLanguage: '', discoverRating: '0', discoverRatingMax: '0', discoverVotes: '0', discoverRuntime: '', discoverCountry: '', discoverRelease: '', discoverSort: 'popularity.desc', discoverProvider: '' };
   Object.entries(defaults).forEach(([id, value]) => { if ($(id)) $(id).value = value; });
   if ($('discoverStreaming')) $('discoverStreaming').checked = true;
   populateGenres();
   populateProviders(false);
   const host = $('discoverLabResults'); if (host) host.innerHTML = '';
+  writeStudioQuery();
+}
+
+function writeStudioQuery() {
+  writeFilterQuery('/discover', STUDIO_FIELDS, { preset: activePreset });
+}
+
+// A link that names Studio filters opens with them set and the collection built.
+// Arriving back at an identical, already-built collection does not rebuild it.
+async function restoreStudioFromURL() {
+  const params = queryParams();
+  if (!urlNamesFilters(STUDIO_FIELDS, ['preset'], params)) {
+    if (labSignature) writeStudioQuery();
+    return;
+  }
+  // The content type decides which genres exist, so it is applied first.
+  const type = $('discoverType');
+  if (type) type.value = params.get('type') === 'tv' ? 'tv' : 'movie';
+  populateGenres();
+  applyFilterQuery(STUDIO_FIELDS, { params, skip: ['provider'] });
+  activePreset = PRESETS.has(params.get('preset')) ? params.get('preset') : '';
+  document.querySelectorAll('.discover-presets button').forEach(button => button.classList.toggle('active', button.dataset.preset === activePreset));
+  await populateProviders(true, params.get('provider') || '');
+  if (location.pathname !== '/discover') return;
+  const { type: kind, params: query } = labQuery();
+  const signature = `${kind}|${JSON.stringify({ ...query, page: 0 })}`;
+  if (signature === labSignature && $('discoverLabResults')?.querySelector('.discover-result-grid')) return;
+  buildDiscovery();
 }
 
 function applyPreset(name) {
@@ -236,20 +277,11 @@ export function initDiscover() {
   renderMoodDeck();
   populateGenres();
   populateProviders();
-  syncStudioAdult();
   if (!$('discoverLabResults')?.children.length) $('discoverLabResults').innerHTML = LAB_WELCOME;
   loadSpotlight();
   loadCollections();
   mountMatureSection();
-}
-
-// The Adult field sits beside the genre fields it narrows, and exists only while
-// mature content is on.
-function syncStudioAdult() {
-  syncAdultSelect({
-    id: 'discoverAdult', host: '.discover-filter-grid', className: 'discover-select',
-    after: () => $('discoverExcludeGenre')?.closest('label'), wrapLabel: 'Adult content', wrapClass: 'discover-adult-field',
-  });
+  restoreStudioFromURL();
 }
 
 // Renders nothing at all while mature content is off — no placeholder, no empty
@@ -262,6 +294,7 @@ function mountMatureSection() {
   if (!matureOn()) {
     host.innerHTML = '';
     jump?.remove();
+    clearAfterDarkQuery();
     return;
   }
   if (jumpbar && !jump) {
@@ -270,6 +303,7 @@ function mountMatureSection() {
     const markup = '<button class="discover-jump-mature" data-action="discover-jump" data-target="matureSection">After Dark</button>';
     if (surprise) surprise.insertAdjacentHTML('beforebegin', markup); else jumpbar.insertAdjacentHTML('beforeend', markup);
   }
+  restoreAfterDarkFromURL();
   host.innerHTML = matureSectionHTML();
   renderMatureSection();
 }
@@ -279,7 +313,7 @@ export function initDiscoverActions() {
   // label updated, not the whole hub rebuilt and refetched.
   document.addEventListener('cv:mature', () => {
     if (location.pathname !== '/discover') return;
-    syncStudioAdult();
+    populateGenres();
     if (matureOn() && $('matureSection')) syncMatureChrome();
     else mountMatureSection();
   });

@@ -5,17 +5,18 @@
 // rating, with real counts and a decade profile so a studio's era is visible at
 // a glance.
 import { tmdb } from './api.js';
-import { IMG, regionName } from './config.js';
+import { IMG, regionName, mGenreList, tGenreList } from './config.js';
 import { esc, $ } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
-import { prefs, adultFlag } from './prefs.js';
-import { applyAdultParams, adultMode, adultSelectHTML, onMatureToggle } from './mature-filter.js';
+import { adultFlag } from './prefs.js';
+import { applyAdultParams, adultFromGenre, realGenre, adultGenreOptionsHTML, onMatureToggle } from './mature-filter.js';
 
 let reqGen = 0;
 let company = null, kind = 'company', companyId = null;
-let view = { type: 'movie', sort: 'popularity.desc', decade: '', rating: 0, adult: '' };
+let view = { type: 'movie', sort: 'popularity.desc', decade: '', rating: 0, genre: '' };
+const genresFor = type => (type === 'tv' ? tGenreList : mGenreList);
 let pages = { movie: 0, tv: 0 }, maxPages = { movie: 1, tv: 1 }, totals = { movie: 0, tv: 0 };
 let loaded = { movie: [], tv: [] };   // everything fetched so far, for the decade profile
 
@@ -44,7 +45,8 @@ function discoverParams(type, page) {
     // was hard-coded off here alone.
     include_adult: adultFlag(),
   };
-  applyAdultParams(params, view.adult);
+  if (realGenre(view.genre)) params.with_genres = realGenre(view.genre);
+  applyAdultParams(params, adultFromGenre(view.genre));
   if (isNetwork() && type === 'tv') params.with_networks = companyId;
   else params.with_companies = companyId;
   if (view.decade === 'older') params[`${date}.lte`] = '1969-12-31';
@@ -87,7 +89,7 @@ function toolbar() {
       <label><span>Sort</span><select data-action="studio-sort">${SORTS.filter(([value]) => !(value === 'revenue.desc' && view.type === 'tv')).map(([value, label]) => option(value, label, view.sort)).join('')}</select></label>
       <label><span>Era</span><select data-action="studio-decade">${DECADES.map(([value, label]) => option(value, label, view.decade)).join('')}</select></label>
       <label><span>Rating</span><select data-action="studio-rating">${[[0, 'Any rating'], [6, '6+'], [7, '7+'], [8, '8+']].map(([value, label]) => option(value, label, view.rating)).join('')}</select></label>
-      ${prefs.mature ? `<label data-adult-filter><span>Adult</span>${adultSelectHTML({ action: 'studio-adult', value: view.adult })}</label>` : ''}
+      <label><span>Genre</span><select data-action="studio-genre">${option('', 'All genres', view.genre)}${genresFor(view.type).map(genre => option(genre.id, genre.n, view.genre)).join('')}${adultGenreOptionsHTML('both', view.genre)}</select></label>
     </div>
   </div>`;
 }
@@ -148,7 +150,7 @@ async function renderResults({ reset = true } = {}) {
 export async function openStudio(id, mode = 'company') {
   const gen = ++reqGen;
   companyId = id; kind = mode;
-  view = { type: mode === 'network' ? 'tv' : 'movie', sort: 'popularity.desc', decade: '', rating: 0, adult: '' };
+  view = { type: mode === 'network' ? 'tv' : 'movie', sort: 'popularity.desc', decade: '', rating: 0, genre: '' };
   pages = { movie: 0, tv: 0 }; maxPages = { movie: 1, tv: 1 }; totals = { movie: 0, tv: 0 }; loaded = { movie: [], tv: [] };
   const ct = $('studioContent');
   if (!ct) return;
@@ -201,18 +203,23 @@ export function initStudio() {
   registerActions({
     'open-studio': (el, e) => { if (e) e.stopPropagation(); document.dispatchEvent(new CustomEvent('cv:go', { detail: `/studio/${+el.dataset.id}` })); },
     'open-network': (el, e) => { if (e) e.stopPropagation(); document.dispatchEvent(new CustomEvent('cv:go', { detail: `/network/${+el.dataset.id}` })); },
-    'studio-type': el => { view.type = el.dataset.type; renderResults(); },
+    'studio-type': el => {
+      view.type = el.dataset.type;
+      // Movie and TV genre ids differ (Action is 28 for film, 10759 for TV).
+      if (realGenre(view.genre) && !genresFor(view.type).some(genre => String(genre.id) === view.genre)) view.genre = '';
+      renderResults();
+    },
     'studio-sort': el => { view.sort = el.value; renderResults(); },
     'studio-decade': el => { view.decade = el.value; renderResults(); },
     'studio-rating': el => { view.rating = +el.value || 0; renderResults(); },
-    'studio-adult': el => { view.adult = adultMode(el.value); renderResults(); },
+    'studio-genre': el => { view.genre = el.value; renderResults(); },
     'studio-more': () => renderResults({ reset: false }),
     'studio-retry': () => renderResults(),
   });
   // The grid was fetched under the old include_adult, and the toolbar either
-  // gains or loses its Adult control — renderResults redraws both.
+  // gains or loses its adult genre choices — renderResults redraws both.
   onMatureToggle(on => {
-    if (!on) view.adult = '';
+    if (!on && realGenre(view.genre) !== view.genre) view.genre = '';
     if (/^\/(studio|network)\/\d+\/?$/.test(location.pathname) && companyId && $('studioResults')) renderResults();
   });
 }

@@ -10,7 +10,7 @@ import { esc, debounce, $ } from './ui.js';
 import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { prefs, adultFlag } from './prefs.js';
-import { adultPass, matureStatus, pendingMature, checkingMature, readAdult, resolveMature, syncAdultSelect, onMatureToggle } from './mature-filter.js';
+import { adultPass, matureStatus, pendingMature, checkingMature, resolveMature, adultFromGenre, realGenre, syncAdultGenreOptions, onMatureToggle } from './mature-filter.js';
 
 // ---- module state ----
 let searchGen = 0;          // bumped on every submitted query/vibe; in-flight stragglers bail
@@ -318,14 +318,15 @@ async function loadMore() {
 // ================= rendering =================
 function currentFilters() {
   return {
-    genre: $('fltGenre')?.value || '',
+    genre: realGenre($('fltGenre')?.value || ''),
     decade: $('fltDecade')?.value || '',
     rating: +($('fltRating')?.value || 0),
     ratingMax: +($('fltRatingMax')?.value || 0),
     votes: +($('fltVotes')?.value || 0),
     language: $('fltLanguage')?.value || '',
     collection: $('fltCollection')?.value || 'all',
-    adult: readAdult('fltAdult'),
+    // Adult is a choice in the genre dropdown ("Adult · 18+" / "Everything but adult").
+    adult: adultFromGenre($('fltGenre')?.value || ''),
     sort: $('fltSort')?.value || 'relevance',
   };
 }
@@ -394,7 +395,7 @@ function renderResults() {
   const label = mode === 'vibe' ? `Popular ${esc(vibeCtx.label)}` : mode === 'command' ? `${items.length}${page < totalPages ? '+' : ''} curated matches for “${esc(curQuery)}”` : mode === 'tag' ? `${items.length}${page < totalPages ? '+' : ''} titles tagged “${esc(keywordCtx?.name || curQuery)}”` : `${items.length}${page < totalPages ? '+' : ''} result${items.length !== 1 ? 's' : ''} for “${esc(curQuery)}”`;
   // Titles the Adult filter cannot place yet are held back, never guessed at;
   // the page says so and repaints the moment they are classified.
-  const adult = readAdult('fltAdult');
+  const adult = adultFromGenre($('fltGenre')?.value || '');
   const refs = adult ? pool.filter(isTitle).map(titleOf) : [];
   const checking = checkingMature(refs), toLookUp = pendingMature(refs);
   head.innerHTML = `<span class="srh-label">${label}</span>${checking.length ? `<span class="srh-checking">Checking ${checking.length} title${checking.length === 1 ? '' : 's'} for adult content…</span>` : ''}`;
@@ -406,7 +407,7 @@ function renderResults() {
     resolveMature(checking).then(() => {
       if (generation !== searchGen) return;
       adultWaitGen = -1;
-      if (readAdult('fltAdult')) renderResults();
+      if (adultFromGenre($('fltGenre')?.value || '')) renderResults();
     });
   }
   g.innerHTML = items.length
@@ -516,8 +517,10 @@ async function vibeSearch(el) {
 }
 
 // ================= genre filter options =================
+// Search has no exclude-genre dropdown, so its genre list carries both adult
+// choices, grouped under "Mature", while mature content is on.
 function syncAdultFilter() {
-  syncAdultSelect({ id: 'fltAdult', host: '#searchFilters', after: '#fltGenre', className: 'search-select', action: 'search-filter' });
+  syncAdultGenreOptions($('fltGenre'), 'both');
 }
 
 function populateGenreFilter() {
@@ -646,7 +649,7 @@ export function initSearch() {
   registerActions({
     'set-filter': (el) => setFilter(el.dataset.f),
     'search-filter': () => renderResults(),
-    'search-reset': () => { ['fltGenre', 'fltAdult', 'fltDecade', 'fltRating', 'fltRatingMax', 'fltVotes', 'fltLanguage'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const collection = $('fltCollection'); if (collection) collection.value = 'all'; const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
+    'search-reset': () => { ['fltGenre', 'fltDecade', 'fltRating', 'fltRatingMax', 'fltVotes', 'fltLanguage'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const collection = $('fltCollection'); if (collection) collection.value = 'all'; const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
     'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault(); input.focus(); },
     'load-more-search': () => loadMore(),
     'search-submit': (el) => { const q = el.dataset.q || $('searchIn').value.trim(); if (q.length >= 2) { addToHistory(q); doSearch(q); } },

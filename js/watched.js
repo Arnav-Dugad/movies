@@ -11,9 +11,9 @@ import { registerActions } from './events.js';
 import { rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { ensureWatchedMeta } from './watched-meta.js';
 import { playCount, lastPlayMs } from './rewatch.js';
-import { adultMode, matureStatus, pendingMature, checkingMature, resolveMature, syncAdultSelect, onMatureToggle } from './mature-filter.js';
+import { matureStatus, pendingMature, checkingMature, resolveMature, adultFromGenre, realGenre, adultGenreOptionsHTML, onMatureToggle } from './mature-filter.js';
 
-let watchedAdult = '', adultWaiting = false;
+let adultWaiting = false;
 let watchedSort = 'recent', watchedGenre = 'all', watchedQuery = '';
 let watchedDecade = 'all', watchedLanguage = 'all', watchedCountry = 'all';
 let watchedCommunity = 0, watchedMine = 'all', watchedRuntime = 'all', watchedWhen = 'all';
@@ -120,10 +120,10 @@ export function applyWatchedFilters(source, filters = {}) {
 
 function watchedItems() {
   return applyWatchedFilters(allItems(), {
-    type: state.watchedFilter, genre: watchedGenre, query: watchedQuery, decade: watchedDecade,
+    type: state.watchedFilter, genre: realGenre(watchedGenre) || 'all', query: watchedQuery, decade: watchedDecade,
     language: watchedLanguage, country: watchedCountry, community: watchedCommunity, mine: watchedMine,
     runtime: watchedRuntime, when: watchedWhen, director: watchedDirector, actor: watchedActor, theme: watchedTheme, metadata: watchedMetadata,
-    plays: watchedPlays, adult: adultMode(watchedAdult), sort: watchedSort,
+    plays: watchedPlays, adult: adultFromGenre(watchedGenre), sort: watchedSort,
   });
 }
 
@@ -132,7 +132,7 @@ function genreOptions() {
   const ids = new Set();
   allItems().forEach(i => (i.genres || []).forEach(g => { if (genreMap[g]) ids.add(g); }));
   const opts = [...ids].map(id => [String(id), genreMap[id]]).sort((a, b) => a[1].localeCompare(b[1]));
-  return `<option value="all">All genres</option>` + opts.map(([v, name]) => `<option value="${v}">${esc(name)}</option>`).join('');
+  return `<option value="all">All genres</option>` + opts.map(([v, name]) => `<option value="${v}">${esc(name)}</option>`).join('') + adultGenreOptionsHTML('both');
 }
 
 function languageName(code) {
@@ -156,7 +156,7 @@ function decadeOptions(items) {
 }
 
 function activeFilterCount() {
-  return [state.watchedFilter !== 'all', watchedGenre !== 'all', !!adultMode(watchedAdult), !!watchedQuery, watchedDecade !== 'all', watchedLanguage !== 'all', watchedCountry !== 'all', watchedCommunity > 0, watchedMine !== 'all', watchedPlays !== 'all', watchedRuntime !== 'all', watchedWhen !== 'all', watchedDirector !== 'all', watchedActor !== 'all', watchedTheme !== 'all', watchedMetadata !== 'all'].filter(Boolean).length;
+  return [state.watchedFilter !== 'all', watchedGenre !== 'all', !!watchedQuery, watchedDecade !== 'all', watchedLanguage !== 'all', watchedCountry !== 'all', watchedCommunity > 0, watchedMine !== 'all', watchedPlays !== 'all', watchedRuntime !== 'all', watchedWhen !== 'all', watchedDirector !== 'all', watchedActor !== 'all', watchedTheme !== 'all', watchedMetadata !== 'all'].filter(Boolean).length;
 }
 
 function watchedDateLabel(seconds) {
@@ -177,12 +177,12 @@ function renderGrid() {
   const items = watchedItems(), total = Object.keys(state.watched).length, active = activeFilterCount();
   // Titles whose keywords do not settle the question are looked up once and
   // remembered; until then they are held back and the status line says so.
-  const refs = adultMode(watchedAdult) ? allItems() : [];
+  const refs = adultFromGenre(watchedGenre) ? allItems() : [];
   const checking = checkingMature(refs), toLookUp = pendingMature(refs);
   if (toLookUp.length) resolveMature(toLookUp);
   if (checking.length && !adultWaiting) {
     adultWaiting = true;
-    resolveMature(checking).then(() => { adultWaiting = false; if (location.pathname === '/watched' && adultMode(watchedAdult)) renderGrid(); });
+    resolveMature(checking).then(() => { adultWaiting = false; if (location.pathname === '/watched' && adultFromGenre(watchedGenre)) renderGrid(); });
   }
   if (cnt) cnt.textContent = active ? `${items.length} of ${total} titles` : `${items.length} title${items.length !== 1 ? 's' : ''}`;
   const status = $('watchedFilterStatus'), badge = $('watchedActiveCount');
@@ -227,9 +227,6 @@ export function renderWatched() {
     const items = allItems();
     const gsel = $('watchedGenre');
     if (gsel) { gsel.innerHTML = genreOptions(); gsel.value = watchedGenre; if (gsel.value !== watchedGenre) { watchedGenre = 'all'; gsel.value = 'all'; } }
-    if (syncAdultSelect({ id: 'watchedAdult', host: controls.querySelector('.watched-controls'), after: '#watchedGenre', className: 'watched-select', action: 'watched-adult' })) {
-      const adultSelect = $('watchedAdult'); if (adultSelect) adultSelect.value = adultMode(watchedAdult);
-    }
     const dsel = $('watchedDecade'); if (dsel) { dsel.innerHTML = decadeOptions(items); dsel.value = watchedDecade; if (dsel.value !== watchedDecade) { watchedDecade = 'all'; dsel.value = 'all'; } }
     const lsel = $('watchedLanguage'); if (lsel) { lsel.innerHTML = valueOptions(items, 'language', 'Any language', languageName); lsel.value = watchedLanguage; if (lsel.value !== watchedLanguage) { watchedLanguage = 'all'; lsel.value = 'all'; } }
     const csel = $('watchedCountry'); if (csel) { csel.innerHTML = valueOptions(items, 'country', 'Any country', countryName); csel.value = watchedCountry; if (csel.value !== watchedCountry) { watchedCountry = 'all'; csel.value = 'all'; } }
@@ -259,7 +256,6 @@ export function initWatched() {
     'watched-filter': (el) => setWatchedFilter(el.dataset.filter, el),
     'watched-sort': (el) => { watchedSort = el.value; renderGrid(); },
     'watched-genre': (el) => { watchedGenre = el.value; renderGrid(); },
-    'watched-adult': (el) => { watchedAdult = adultMode(el.value); renderGrid(); },
     'watched-decade': (el) => { watchedDecade = el.value; renderGrid(); },
     'watched-language': (el) => { watchedLanguage = el.value; renderGrid(); },
     'watched-country': (el) => { watchedCountry = el.value; renderGrid(); },
@@ -280,7 +276,7 @@ export function initWatched() {
       document.dispatchEvent(new CustomEvent('cv:go', { detail: `/${item.type}/${item.id}` }));
     },
     'watched-reset': () => {
-      watchedSort = 'recent'; watchedGenre = 'all'; watchedQuery = ''; watchedDecade = 'all'; watchedLanguage = 'all'; watchedCountry = 'all'; watchedCommunity = 0; watchedMine = 'all'; watchedRuntime = 'all'; watchedWhen = 'all'; watchedDirector = 'all'; watchedActor = 'all'; watchedTheme = 'all'; watchedMetadata = 'all'; watchedPlays = 'all'; watchedAdult = '';
+      watchedSort = 'recent'; watchedGenre = 'all'; watchedQuery = ''; watchedDecade = 'all'; watchedLanguage = 'all'; watchedCountry = 'all'; watchedCommunity = 0; watchedMine = 'all'; watchedRuntime = 'all'; watchedWhen = 'all'; watchedDirector = 'all'; watchedActor = 'all'; watchedTheme = 'all'; watchedMetadata = 'all'; watchedPlays = 'all';
       state.watchedFilter = 'all';
       document.querySelectorAll('#watchedPage .wl-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.filter === 'all'));
       renderWatched();
@@ -292,5 +288,5 @@ export function initWatched() {
   // full renderWatched(), not renderGrid(): only the former rebuilds the genre
   // <select>, whose options are derived from the genres the backfill just added.
   document.addEventListener('cv:meta-backfilled', () => { if (state.user) renderWatched(); });
-  onMatureToggle(on => { if (!on) watchedAdult = ''; if (location.pathname === '/watched' && state.user) renderWatched(); });
+  onMatureToggle(on => { if (!on && realGenre(watchedGenre) !== watchedGenre) watchedGenre = 'all'; if (location.pathname === '/watched' && state.user) renderWatched(); });
 }

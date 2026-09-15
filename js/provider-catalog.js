@@ -19,9 +19,11 @@ export async function providerCatalog(type, region = state.region) {
   return request;
 }
 
-export async function fillProviderSelect(select, type, { preserve = true } = {}) {
+// `wanted` selects a provider once the options exist — a filter restored from
+// the URL names a provider before this region's catalogue has loaded.
+export async function fillProviderSelect(select, type, { preserve = true, wanted = null } = {}) {
   if (!select) return;
-  const current = preserve ? select.value : '', region = state.region;
+  const current = wanted != null ? String(wanted) : preserve ? select.value : '', region = state.region;
   const requestId = String(+(select.dataset.providerLoad || 0) + 1);
   select.dataset.providerLoad = requestId;
   select.disabled = true;

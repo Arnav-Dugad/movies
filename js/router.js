@@ -41,8 +41,8 @@ let personalDirty = false;
 // render() must be safe to call again with the same params.
 const ROUTES = [
   { test: /^\/$/, page: 'homePage', render: () => { if (personalDirty) { personalDirty = false; renderPersonalRows(); } } },
-  { test: /^\/movies\/?$/, page: 'moviesPage', render: () => loadMovies() },
-  { test: /^\/tv\/?$/, page: 'tvPage', render: () => loadTV() },
+  { test: /^\/movies\/?$/, page: 'moviesPage', render: () => loadMovies(false, { route: true }) },
+  { test: /^\/tv\/?$/, page: 'tvPage', render: () => loadTV(false, { route: true }) },
   { test: /^\/discover\/?$/, page: 'discoverPage', render: () => initDiscover() },
   { test: /^\/reminders\/?$/, page: 'remindersPage', render: () => renderReleaseReminders() },
   { test: /^\/franchises\/?$/, page: 'franchisesPage', render: () => renderFranchisePage() },
