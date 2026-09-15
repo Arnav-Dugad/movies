@@ -25,7 +25,7 @@ check('the lightness curve is monotonic', Array.from({ length: 21 }, (_, i) => T
 
 // ---------- neutrals flip, accents hold ----------
 const paper = flip('#06060b');
-check('the darkest surface becomes paper', T.rgbToOklch(...paper).L > 0.95, JSON.stringify(paper));
+check('the darkest surface becomes warm stone, not white', T.rgbToOklch(...paper).L > 0.88 && T.rgbToOklch(...paper).L < 0.94 && paper[0] > paper[2], JSON.stringify(paper));
 check('primary ink becomes charcoal', T.rgbToOklch(...flip('#f0f0f5')).L < 0.3);
 check('secondary ink (--text3) still clears 4.5:1 on the new paper', contrast(flip('#767f8d', 'ink'), paper) >= 4.5, contrast(flip('#767f8d', 'ink'), paper).toFixed(2));
 check('--text2 clears AA with room to spare and stays above --text3', contrast(flip('#9ca3af', 'ink'), paper) >= 6 && contrast(flip('#9ca3af', 'ink'), paper) > contrast(flip('#767f8d', 'ink'), paper), contrast(flip('#9ca3af', 'ink'), paper).toFixed(2));

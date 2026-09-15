@@ -235,6 +235,7 @@
   #statsContent .diary-cell > b { font-size: 0.805rem; }
 }
 
+#statsContent .tv-pacing { font-size: .95rem; }
 #settingsContent .watched-select { font-size: 0.865rem; }
 #settingsContent .wl-empty h3 { font-size: 1.15rem; }
 #settingsContent .wl-empty p { font-size: .88rem; }

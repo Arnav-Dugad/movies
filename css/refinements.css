@@ -382,6 +382,11 @@ html[data-poster-captions="hide"] .card > .card-info { display: none; }
 .show-progress-copy .show-forecast.quiet { color: var(--text3); font-weight: 500; }
 .tv-row-forecast.quiet { color: var(--text3); font-weight: 500; }
 
+/* Viewing pattern (js/pacing.js): under the forecast, and above the TV Tracker charts. */
+.show-progress-copy .show-pacing { display: flex; align-items: center; gap: 7px; margin-top: 6px; color: var(--text2); font-size: .82rem; font-weight: 550; line-height: 1.45; }
+.show-progress-copy .show-pacing svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--purple2); }
+.tv-pacing { margin: 16px 0 2px; padding: 12px 16px; border: 1px solid rgba(167, 139, 250, .2); border-radius: 14px; background: rgba(167, 139, 250, .06); color: var(--text); font-size: .95rem; font-weight: 600; }
+
 /* ---------------------------------------------------------------- up next --
    A caught-up show with a dated next episode leads Continue Watching. The art
    is dimmed a touch so the countdown reads; digits are tabular so a live count
@@ -606,3 +611,76 @@ button.profile-dd-item.theme-switch { width: 100%; text-align: left; font: inher
 .pi-ring { stroke: #0d0e14; }
 .pi-last { fill: #e5e7eb; }
 .pi-spark-line { stroke: rgba(255,255,255,.3); }
+
+/* ------------------------------------------------------ notification badge --
+   The unread pulse was a ring drawn inside the bell button. It read as a stray
+   pink circle sitting in the button (worse on the light theme, and offset while
+   the menu was opening). The pulse now belongs to the red count badge itself,
+   and only for items that need attention. */
+.notification-nav-btn.has-unread::after,
+.notification-nav-btn.has-urgent::after { content: none; animation: none; }
+.notification-nav-btn > span { font-size: .62rem; line-height: 1; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); }
+.notification-nav-btn.has-urgent > span { animation: notification-badge-pulse 2s ease-out infinite; }
+@keyframes notification-badge-pulse {
+  0% { box-shadow: 0 2px 6px rgba(0, 0, 0, .25), 0 0 0 0 rgba(229, 9, 20, .5); }
+  70%, 100% { box-shadow: 0 2px 6px rgba(0, 0, 0, .25), 0 0 0 7px rgba(229, 9, 20, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .notification-nav-btn.has-urgent > span { animation: none; } }
+
+/* --------------------------------------------------------- detail poster --
+   The title row is a flex row, so the poster card stretched to the height of
+   the copy beside it: with a rewatch strip under the buttons, a blank band hung
+   below the artwork. The card now keeps the height of its own poster. */
+/* Phones stack the row and centre the poster, which must stay as it is. */
+@media (min-width: 769px) { .detail-top > .detail-poster { align-self: flex-start; } }
+
+/* ------------------------------------------------------- rail shadows --
+   A horizontal scroller clips in both directions, so the hover lift and the
+   poster shadow were cut at the rail's edges (plainly visible with titles under
+   posters hidden). Room above and below, taken back with negative margins so
+   the page layout does not move; the scroll arrows stay centred on the posters. */
+#homePage .row { padding-top: 12px; padding-bottom: 52px; margin-top: -12px; margin-bottom: -44px; }
+#homePage .hs-wrap > .hs-arrow { margin-top: -40px; }
+
+/* ------------------------------------------------------ rail title logos --
+   "Because you liked The Dark Knight" names the title with its official logo
+   (js/recommend.js); the plain name stays until a logo has loaded. A logo that
+   is dark artwork is lifted to white on the dark theme (js/logo-tone.js tags
+   it); the light theme's own tone rules live in css/light.css. */
+.rail-title-about { display: flex; flex-wrap: wrap; align-items: center; column-gap: .45em; row-gap: 4px; }
+.rail-logo {
+  display: block; width: auto; height: clamp(26px, 2.3vw, 36px); max-width: min(240px, 46vw);
+  object-fit: contain; object-position: left center;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, .45));
+}
+:root:not([data-theme="light"]) .rail-logo[data-tone="dark"] { filter: brightness(0) invert(1) opacity(.92); }
+@media (max-width: 700px) { .rail-logo { height: 24px; max-width: 52vw; } }
+
+/* ---------------------------------------------------------- season recap --
+   A "Recap" button beside a finished season's rewatch control, and a prompt
+   when a season is finished by watching its last episode (js/season-recap.js). */
+.season-recap-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px;
+  border: 1px solid rgba(229, 9, 20, .3); border-radius: 50px; background: rgba(229, 9, 20, .08);
+  color: var(--red2); font: inherit; font-size: .72rem; font-weight: 800; letter-spacing: .02em; cursor: pointer;
+  transition: background .18s var(--ease), border-color .18s var(--ease);
+}
+.season-recap-btn:hover { background: rgba(229, 9, 20, .16); border-color: rgba(229, 9, 20, .5); }
+.season-recap-btn svg { width: 13px; height: 13px; }
+.toast.recap-prompt { gap: 12px; padding: 8px 8px 8px 20px; }
+.recap-prompt > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+.recap-prompt > button[data-action] { padding: 8px 14px; border-radius: 50px; background: var(--red); color: #fff; font-size: .8rem; font-weight: 800; white-space: nowrap; }
+.recap-prompt > button[data-action]:hover { background: var(--red2); }
+.recap-prompt-close { width: 30px; height: 30px; border-radius: 50%; color: var(--text3); font-size: 1.1rem; line-height: 1; }
+.recap-prompt-close:hover { background: var(--glass); color: var(--text); }
+
+/* ------------------------------------------------------- returning rail --
+   The premiere badge on "Returning this month" cards (js/returning.js). */
+.returning-badge {
+  position: absolute; left: 8px; bottom: 8px; z-index: 5;
+  padding: 4px 9px; border-radius: 50px;
+  background: rgba(8, 8, 12, .78); border: 1px solid rgba(255, 255, 255, .16);
+  color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: .02em; white-space: nowrap;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.returning-badge.out { background: linear-gradient(135deg, var(--red), #ff5a3c); border-color: transparent; }

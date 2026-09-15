@@ -28,7 +28,7 @@
 
   const PREFS_KEY = 'cv_experience_v2';
   const STYLE_ID = 'cvLightTheme';
-  const META = { dark: '#06060b', light: '#f6f5f1' };
+  const META = { dark: '#06060b', light: '#e6e2da' };
 
   // ---------- colour maths (OKLab / OKLCH, Björn Ottosson) ----------
   const toLinear = c => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
@@ -70,9 +70,10 @@
   }
 
   // Lightness curve for neutrals: [dark-theme L, light-theme L]. Surfaces
-  // (L .08–.3) land on warm paper .98–.88; secondary ink (.6–.75) lands where it
+  // (L .08–.3) land on warm stone .92–.82 (never white: a light theme for a site
+  // that is mostly artwork should not glare); secondary ink (.6–.75) lands where it
   // still clears 4.5:1 on paper; primary ink (.95) becomes charcoal.
-  const CURVE = [[0, 1], [0.1, 0.978], [0.14, 0.962], [0.2, 0.935], [0.3, 0.875], [0.45, 0.74], [0.6, 0.52], [0.73, 0.45], [0.85, 0.33], [0.95, 0.235], [1, 0.19]];
+  const CURVE = [[0, 0.93], [0.1, 0.91], [0.14, 0.895], [0.2, 0.87], [0.3, 0.815], [0.45, 0.7], [0.6, 0.49], [0.73, 0.42], [0.85, 0.31], [0.95, 0.225], [1, 0.19]];
   function flipL(L) {
     if (L <= 0) return CURVE[0][1];
     for (let i = 1; i < CURVE.length; i++) {
@@ -111,7 +112,7 @@
       nextL = flipL(L);
       // Neutral surfaces pick up the faintest warmth instead of the dark theme's
       // blue cast: paper, not a cold screen.
-      if (nextL > 0.8) return [...inGamut(nextL, 0.0045, 1.35).map(v => clamp(Math.round(v * 255), 0, 255)), a];
+      if (nextL > 0.8) return [...inGamut(nextL, 0.009, 1.4).map(v => clamp(Math.round(v * 255), 0, 255)), a];
       nextC = C * 0.8;
     } else if (L < 0.42) {
       // Dark tinted surfaces (the After Dark plum, deep reds) become pale tints.

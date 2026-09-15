@@ -55,6 +55,8 @@ import { initContinuePrefsSync } from './continue-prefs.js';
 import { initLibraryRealtime } from './library-sync.js';
 import { initHaptics } from './haptics.js';
 import { initThemeToggle } from './theme-toggle.js';
+import { initSeasonRecap } from './season-recap.js';
+import { initReturningRail } from './returning.js';
 
 function hideLoader() { window.__cvBooted = true; const l = $('loader'); if (l) l.classList.add('hidden'); }
 
@@ -64,6 +66,8 @@ async function init() {
   // Wire delegation + all action handlers before any content renders.
   initDelegation();
   initThemeToggle();
+  initSeasonRecap();
+  initReturningRail();
   initImageFallback();
   initCardSync();
   initCardPreviews();

@@ -16,6 +16,13 @@ try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') || {}; } catch
 const cleanTitle = value => String(value || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim();
 const episodeKey = (showId, season, episode) => `${+showId || 0}:${+season || 0}:${+episode || 0}`;
 
+// TVmaze stamps a release that has no published time — most streaming drops —
+// at 12:00 UTC. That is a placeholder, not a moment: it read as "Fri, Jul 9,
+// 5:30 PM" in India for a show that simply drops that day. Only a stamp that
+// comes with a real airtime is exact; the rest fall back to TMDB's date. Entries
+// cached before this rule are read through it too.
+export const exactStamp = entry => (entry?.airstamp && entry?.airtime ? entry.airstamp : '');
+
 /**
  * The single availability rule used by detail pages, tracker writes and tests.
  * A confirmed broadcaster timestamp wins. TMDB only supplies a calendar date,
@@ -23,7 +30,7 @@ const episodeKey = (showId, season, episode) => `${+showId || 0}:${+season || 0}
  * viewer's timezone. A missing date is unknown, never silently "already aired".
  */
 export function episodeAvailability(episode, { showId = 0, airstamp = '', now = Date.now() } = {}) {
-  const exact = airstamp || cache[episodeKey(showId, episode?.season_number, episode?.episode_number)]?.airstamp || '';
+  const exact = airstamp || exactStamp(cache[episodeKey(showId, episode?.season_number, episode?.episode_number)]);
   if (exact) {
     const at = new Date(exact).getTime();
     if (Number.isFinite(at)) return { available: now >= at, at, precision: 'exact' };
@@ -78,8 +85,8 @@ export async function exactEpisodeTime(show) {
   const episode = show?.next_episode_to_air;
   if (!show?.id || !episode?.air_date) return null;
   const key = episodeKey(show.id, episode.season_number, episode.episode_number);
-  const saved = cache[key], ttl = saved?.airstamp ? POSITIVE_TTL : EMPTY_TTL;
-  if (saved && Date.now() - saved.checkedAt < ttl) return saved.airstamp ? saved : null;
+  const saved = cache[key], ttl = exactStamp(saved) ? POSITIVE_TTL : EMPTY_TTL;
+  if (saved && Date.now() - saved.checkedAt < ttl) return exactStamp(saved) ? saved : null;
   if (inflight.has(key)) return inflight.get(key);
 
   const request = (async () => {
@@ -93,11 +100,11 @@ export async function exactEpisodeTime(show) {
     const titleMatches = cleanTitle(data?.name) === cleanTitle(title) || cleanTitle(data?.name) === cleanTitle(show.original_name);
     const yearMatches = !tmdbYear || !mazeYear || Math.abs(tmdbYear - mazeYear) <= 1;
     const episodeMatches = +mazeEpisode?.season === +episode.season_number && +mazeEpisode?.number === +episode.episode_number;
-    const result = titleMatches && yearMatches && episodeMatches && mazeEpisode?.airstamp
-      ? { airstamp: mazeEpisode.airstamp, airtime: mazeEpisode.airtime || '', source: 'TVmaze', checkedAt: Date.now() }
+    const result = titleMatches && yearMatches && episodeMatches && mazeEpisode?.airstamp && mazeEpisode?.airtime
+      ? { airstamp: mazeEpisode.airstamp, airtime: mazeEpisode.airtime, source: 'TVmaze', checkedAt: Date.now() }
       : { airstamp: '', checkedAt: Date.now() };
     cache[key] = result; persist();
-    return result.airstamp ? result : null;
+    return exactStamp(result) ? result : null;
   })();
   inflight.set(key, request);
   try { return await request; }

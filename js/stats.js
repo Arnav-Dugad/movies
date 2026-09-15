@@ -15,6 +15,7 @@ import { tmdb } from './api.js';
 import { buildCard } from './cards.js';
 import { getProviderStats, getCatalogSeries } from './provider-history.js';
 import { episodeTotals, episodeStats, showProgress, showEntry, seasonRewatchTotals, forecastStatus, forecastSentence, forecastNote } from './episodes.js';
+import { pacingInsight } from './pacing.js';
 import { prefs, updatePref } from './prefs.js';
 import { rewatchSummary, rewatchesSince, playCount } from './rewatch.js';
 import { franchiseSummary, tvFamilySummary } from './franchise.js';
@@ -642,6 +643,10 @@ function tvTrackerPanel() {
         ? tile('Seasons rewatched', tv.seasonRewatches.extraSeasons, `${tv.seasonRewatches.rows[0].title} S${tv.seasonRewatches.rows[0].season} leads at ${tv.seasonRewatches.rows[0].plays}\u00d7${tv.seasonRewatches.extraMinutes ? ` \u00b7 ${Math.round(tv.seasonRewatches.extraMinutes / 60)}h on repeats` : ''}`)
         : tile('Seasons rewatched', '\u2014', 'Finish a season and “Rewatched it” appears on its toolbar')}
     </div>
+    ${(() => {
+      const insight = pacingInsight(Object.values(state.episodeProgress || {}));
+      return insight ? `<p class="tv-pacing" data-tip="Read from when you marked episodes over the last 90 days">${esc(insight)}</p>` : '';
+    })()}
 
     <div class="tv-grid">
       <figure class="tv-card">

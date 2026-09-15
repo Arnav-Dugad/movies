@@ -89,7 +89,7 @@ export function setTheme(choice, origin) {
 function wipe(to, commit, { x, y, radius }) {
   const disc = document.createElement('div');
   disc.className = 'theme-wipe';
-  disc.style.background = window.CVTheme?.META?.[to] || (to === 'light' ? '#f6f5f1' : '#06060b');
+  disc.style.background = window.CVTheme?.META?.[to] || (to === 'light' ? '#e6e2da' : '#06060b');
   document.body.appendChild(disc);
   const grow = disc.animate(
     { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },

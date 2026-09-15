@@ -19,7 +19,7 @@ export const DETAIL_PART_GROUPS = [
   { id: 'panels', title: 'Panels', parts: [
     ['movieProgress', 'Film progress'], ['countdown', 'Release countdown'], ['collection', 'Franchise banner'],
     ['overview', 'Overview'], ['boxOffice', 'Box office'], ['whereToWatch', 'Where to watch'],
-    ['episodes', 'Episode tracker'], ['bingeForecast', 'Binge forecast'],
+    ['episodes', 'Episode tracker'], ['bingeForecast', 'Binge forecast'], ['pacingInsight', 'Viewing pattern'],
   ] },
   { id: 'facts', title: 'Facts', parts: [
     ['status', 'Status'], ['language', 'Original language'], ['votes', 'Vote count'], ['director', 'Director or creator'],

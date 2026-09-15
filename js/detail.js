@@ -12,6 +12,7 @@ import { exactEpisodeTime, localEpisodeTime, localTimeZone, isEpisodeAvailable }
 import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setEpisodePosition, episodeLabel, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
   seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch,
   isDropped, setDropped, forecastStatus, forecastSentence, forecastNote } from './episodes.js';
+import { showPacing, pacingSentence } from './pacing.js';
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
@@ -1162,6 +1163,10 @@ function showProgressPanel(id, det, progress, next) {
         const text = status.kind === 'forecast' ? forecastSentence(status.forecast) : forecastNote(status);
         return `<p class="show-forecast${status.kind === 'forecast' ? '' : ` quiet ${status.kind}`}" data-dp="bingeForecast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>${esc(text)}</p>`;
       })()}
+      ${(() => {
+        const pattern = dropped ? null : showPacing(state.episodeProgress?.[`tv_${id}`]);
+        return pattern ? `<p class="show-pacing" data-dp="pacingInsight" data-tip="From when you marked episodes: ${pattern.sittings} sittings over ${pattern.days} days"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>${esc(pacingSentence(det.name || 'this show', pattern))}</p>` : '';
+      })()}
     </div>
     <div class="show-progress-actions">
       <b>${progress.percent}%</b>
@@ -1205,7 +1210,9 @@ function seasonRewatchHTML(id, season, meta) {
   return `${plays > 1 ? `<b class="season-plays" title="${esc(seasonPlayLabel(id, season))}">${plays}&times;</b>` : ''}
     <button class="season-rw-btn" data-action="season-rewatch" data-tid="${id}" data-sn="${season}" data-meta="${meta}">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>${plays > 1 ? 'Again' : 'Rewatched it'}</button>
-    ${plays > 1 ? `<button class="season-rw-undo" data-action="season-rewatch-undo" data-tid="${id}" data-sn="${season}" data-meta="${meta}">Undo</button>` : ''}`;
+    ${plays > 1 ? `<button class="season-rw-undo" data-action="season-rewatch-undo" data-tid="${id}" data-sn="${season}" data-meta="${meta}">Undo</button>` : ''}
+    <button class="season-recap-btn" data-action="season-recap" data-tid="${id}" data-sn="${season}" aria-label="Season ${season} recap card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 15v2M12 11v6M16 8v9"/></svg>Recap</button>`;
 }
 
 function paintSeasonRewatch(id, season, meta) {

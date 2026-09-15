@@ -253,9 +253,9 @@ test('light theme paints before boot, toggles from the profile menu and syncs', 
     const [r, g, b] = getComputedStyle(document.body).backgroundColor.match(/\d+/g).map(Number);
     return (r + g + b) / 3;
   });
-  expect(paper).toBeGreaterThan(230);
+  expect(paper).toBeGreaterThan(210);
   expect(await page.evaluate(() => document.getElementById('cvLightTheme')?.textContent.length || 0)).toBeGreaterThan(50_000);
-  expect(await page.evaluate(() => document.querySelector('meta[name="theme-color"]').content)).toBe('#f6f5f1');
+  expect(await page.evaluate(() => document.querySelector('meta[name="theme-color"]').content)).toBe('#e6e2da');
 
   await page.evaluate(async () => { const { state } = await import('/js/state.js'); state.user = { uid: 'theme-browser' }; });
   await page.locator('#navAv').click();

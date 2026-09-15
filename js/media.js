@@ -17,7 +17,7 @@ export function isTrailerOpen() { return $('trailerOv').classList.contains('acti
 
 let shareBlob = null, shareObjectURL = '', shareData = null, shareRelease = null, shareGen = 0;
 
-function roundedRect(ctx, x, y, width, height, radius) {
+export function roundedRect(ctx, x, y, width, height, radius) {
   const r = Math.min(radius, width / 2, height / 2);
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + width, y, x + width, y + height, r); ctx.arcTo(x + width, y + height, x, y + height, r); ctx.arcTo(x, y + height, x, y, r); ctx.arcTo(x, y, x + width, y, r); ctx.closePath();
 }
@@ -40,7 +40,7 @@ function roundedRect(ctx, x, y, width, height, radius) {
  * Sharing is a deliberate, occasional action, so one revalidated download is a
  * fair price for a card that always has its artwork.
  */
-async function bitmap(path) {
+export async function bitmap(path) {
   if (!path) return null;
   const url = `${IMG}original${path}`;
   try {
@@ -58,20 +58,20 @@ async function bitmap(path) {
   } catch (_) { return null; }
 }
 
-function cover(ctx, image, x, y, width, height) {
+export function cover(ctx, image, x, y, width, height) {
   if (!image) return;
   const scale = Math.max(width / image.width, height / image.height), sw = width / scale, sh = height / scale;
   ctx.drawImage(image, (image.width - sw) / 2, (image.height - sh) / 2, sw, sh, x, y, width, height);
 }
 
-function contain(ctx, image, x, y, width, height) {
+export function contain(ctx, image, x, y, width, height) {
   if (!image) return;
   const scale = Math.min(width / image.width, height / image.height);
   const w = image.width * scale, h = image.height * scale;
   ctx.drawImage(image, x + (width - w) / 2, y + (height - h) / 2, w, h);
 }
 
-function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 4) {
+export function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 4) {
   const words = String(text || '').split(/\s+/); let line = '', lines = [];
   words.forEach(word => {
     const next = line ? `${line} ${word}` : word;
@@ -85,7 +85,7 @@ function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 4) {
   lines.forEach((value, index) => ctx.fillText(value, x, y + index * lineHeight));
 }
 
-function fittedTitle(ctx, text, x, y, maxWidth, maxLines = 5) {
+export function fittedTitle(ctx, text, x, y, maxWidth, maxLines = 5) {
   let lines = [], size = 68;
   const lineBreaks = value => {
     const words = String(value || '').trim().split(/\s+/), output = []; let line = '';
@@ -146,29 +146,60 @@ async function buildSpoilerCard(detail, type) {
   return await new Promise(resolve => canvas.toBlob(resolve, 'image/png', .94));
 }
 
-export async function shareItem(title, id, type) {
+// The share studio is one overlay used by more than one card. Each card brings
+// its own copy; the spoiler-free card is the default.
+const SPOILER_COPY = {
+  eyebrow: 'Zero spoilers · Beautiful by default', heading: 'Spoiler-Free Share',
+  lede: 'Share the title and artwork without plot details, ratings, or review scores.',
+  preparing: 'Preparing your spoiler-free card…', ready: 'Ready to share · No description or ratings included.',
+  failed: 'Could not prepare the card. You can still copy the title link.',
+  shareText: 'A spoiler-free pick from CineVerse', copied: 'Spoiler-free link copied', alt: 'Spoiler-free share card for',
+};
+
+/**
+ * Open the share studio with any card: `build` resolves to { blob, title }.
+ * `copy` overrides the studio's wording (see SPOILER_COPY for the keys).
+ */
+export async function openShareStudio({ title, url, build, copy = {} }) {
   const overlay = $('shareOv'), preview = $('sharePreview'), status = $('shareStudioStatus'), nativeButton = $('shareNativeBtn'); if (!overlay) return;
   if (overlay.classList.contains('active')) closeSpoilerShare();
+  const words = { ...SPOILER_COPY, ...copy };
+  const head = overlay.querySelector('.spoiler-share-head');
+  if (head) {
+    head.querySelector('span').textContent = words.eyebrow;
+    head.querySelector('h2').textContent = words.heading;
+    head.querySelector('p').textContent = words.lede;
+  }
+  const nativeLabel = $('shareNativeBtn'); if (nativeLabel) nativeLabel.textContent = words.shareLabel || 'Share card';
   shareGen++; const request = shareGen;
   if (shareObjectURL) URL.revokeObjectURL(shareObjectURL); shareObjectURL = ''; shareBlob = null;
-  shareData = { title, id, type, url: `${location.origin}/${type}/${id}` };
+  shareData = { title, url, words };
   overlay.classList.add('active'); lockScroll(); shareRelease = trapFocus(overlay, document.activeElement);
-  preview.innerHTML = '<div class="skel"></div>'; if (status) status.textContent = 'Preparing your spoiler-free card…'; if (nativeButton) nativeButton.disabled = true;
+  preview.innerHTML = '<div class="skel"></div>'; if (status) status.textContent = words.preparing; if (nativeButton) nativeButton.disabled = true;
   try {
-    const detail = await tmdb(`/${type}/${id}`, { append_to_response: 'images', include_image_language: 'en,null' }); if (request !== shareGen) return;
-    shareData.title = detail.title || detail.name || title;
-    const blob = await buildSpoilerCard(detail, type); if (request !== shareGen || !blob) return;
-    shareBlob = blob;
+    const result = await build(); if (request !== shareGen || !result?.blob) { if (request === shareGen && status) status.textContent = words.failed; return; }
+    shareData.title = result.title || title;
+    shareBlob = result.blob;
     shareObjectURL = URL.createObjectURL(shareBlob);
-    preview.innerHTML = `<img src="${shareObjectURL}" alt="Spoiler-free share card for ${esc(shareData.title)}">`;
-    if (status) status.textContent = 'Ready to share · No description or ratings included.';
+    preview.innerHTML = `<img src="${shareObjectURL}" alt="${esc(`${words.alt} ${shareData.title}`)}">`;
+    if (status) status.textContent = words.ready;
     if (nativeButton) nativeButton.disabled = false;
-  } catch (_) { if (status) status.textContent = 'Could not prepare the card. You can still copy the title link.'; }
+  } catch (_) { if (request === shareGen && status) status.textContent = words.failed; }
+}
+
+export function shareItem(title, id, type) {
+  return openShareStudio({
+    title, url: `${location.origin}/${type}/${id}`,
+    build: async () => {
+      const detail = await tmdb(`/${type}/${id}`, { append_to_response: 'images', include_image_language: 'en,null' });
+      return { title: detail.title || detail.name || title, blob: await buildSpoilerCard(detail, type) };
+    },
+  });
 }
 
 async function nativeSpoilerShare() {
   if (!shareData) return;
-  const payload = { title: `CineVerse: ${shareData.title}`, text: 'A spoiler-free pick from CineVerse', url: shareData.url };
+  const payload = { title: `CineVerse: ${shareData.title}`, text: shareData.words?.shareText || SPOILER_COPY.shareText, url: shareData.url };
   if (shareBlob && window.File) {
     const file = new File([shareBlob], `${shareData.title || 'cineverse-pick'}.png`.replace(/[^\w.-]+/g, '-'), { type: 'image/png' });
     if (navigator.canShare?.({ files: [file] })) payload.files = [file];
@@ -190,7 +221,7 @@ async function copySpoilerLink() {
       const field = document.createElement('textarea'); field.value = shareData.url; field.setAttribute('readonly', ''); field.style.position = 'fixed'; field.style.opacity = '0'; document.body.appendChild(field); field.select();
       const copied = document.execCommand('copy'); field.remove(); if (!copied) throw new Error('copy failed');
     }
-    toast('Spoiler-free link copied', 'success');
+    toast(shareData.words?.copied || SPOILER_COPY.copied, 'success');
   }
   catch (_) { toast('Could not copy link', 'error'); }
 }

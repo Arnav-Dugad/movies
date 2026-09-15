@@ -10,7 +10,7 @@
 // affinity enters through `with_cast`/`with_people` QUERY params plus a per-source
 // bonus — never a per-candidate /credits fetch (that would be 20+ extra requests).
 import { tmdb } from './api.js';
-import { genreMap, mGenreList, tGenreList, IMG, PH } from './config.js';
+import { genreMap, mGenreList, tGenreList, IMG, PH, pickLogo } from './config.js';
 import { state } from './state.js';
 import { esc, $, toast } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
@@ -650,6 +650,36 @@ function pickLabeledSeed(profile) {
   return r ? { id: r.id, type: r.type, title: r.title, genres: r.genres || [], poster: r.poster || '', reason: 'viewed' } : null;
 }
 
+// Rails about one title name it with its official logo ("Because you liked
+// [The Dark Knight logo]"). The heading renders with the plain name first and
+// the logo replaces it when TMDB has one; the image keeps the name as its alt
+// text, so the heading reads the same to assistive technology either way.
+const railLogoCache = new Map();
+function railLogo(type, id) {
+  const key = `${type}_${id}`;
+  if (!railLogoCache.has(key)) {
+    railLogoCache.set(key, tmdb(`/${type}/${id}/images`, { include_image_language: 'en,null' })
+      .then(data => pickLogo(data.logos))
+      .catch(() => null));
+  }
+  return railLogoCache.get(key);
+}
+
+function mountRailLogos(root) {
+  root.querySelectorAll('.rail-title-name[data-logo-id]').forEach(name => {
+    railLogo(name.dataset.logoType, name.dataset.logoId).then(path => {
+      if (!path || !name.isConnected) return;
+      const image = document.createElement('img');
+      image.className = 'rail-logo';
+      image.src = `${IMG}w300${path}`;
+      image.alt = name.textContent;
+      image.decoding = 'async';
+      // Only swap once the logo has loaded, so the heading never goes blank.
+      image.onload = () => { if (name.isConnected) name.replaceWith(image); };
+    });
+  });
+}
+
 function shell(d) {
   const art = d.art
     ? (d.art.kind === 'face'
@@ -659,8 +689,9 @@ function shell(d) {
   return `<div class="section reveal rec-section"><div class="section-head rec-head">
       ${art}
       <div class="rec-head-copy">
-        <h2 class="section-title">${esc(d.title)}</h2>
-        ${d.kicker ? `<p class="rec-kicker">${esc(d.kicker)}</p>` : ''}
+        ${d.about
+          ? `<h2 class="section-title rail-title-about">${esc(d.title)} <span class="rail-title-name" data-logo-type="${d.about.type}" data-logo-id="${d.about.id}">${esc(d.about.name)}</span></h2>`
+          : `<h2 class="section-title">${esc(d.title)}</h2>`}
       </div>
     </div><div class="row" id="${d.id}">${skelCards(8)}</div></div>`;
 }
@@ -890,32 +921,31 @@ export async function renderRecommendations() {
   const genreId = profile.topGenres.find(g => MOVIE_GENRES.has(g));
   const watchingNow = (profile.nowWatching || [])[0] || null;
 
-  const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You', kicker: 'Ranked from everything you have watched, saved, and rated' }];
+  // Headings only: the rails carry no sub-heading lines.
+  const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You' }];
   if (watchingNow) descriptors.push({
     id: 'rowWatching', icon: watchingNow.type === 'tv' ? '📺' : '🍿',
-    title: `Because you're ${watchingNow.reason === 'watching' ? 'watching' : 'just watched'} ${watchingNow.title}`,
-    kicker: watchingNow.reason === 'watching' ? 'Following the show you are in the middle of' : 'Following the last film you finished',
+    title: `Because you're ${watchingNow.reason === 'watching' ? 'watching' : 'just watched'}`,
+    about: { type: watchingNow.type, id: watchingNow.id, name: watchingNow.title },
     art: watchingNow.poster ? { kind: 'poster', src: `${IMG}w154${watchingNow.poster}`, alt: watchingNow.title, id: watchingNow.id, type: watchingNow.type } : null,
   });
-  descriptors.push({ id: 'rowSeries', icon: '📺', title: 'Series for You', kicker: 'Shows ranked from your taste and what you are watching lately' });
+  descriptors.push({ id: 'rowSeries', icon: '📺', title: 'Series for You' });
   if (seed) descriptors.push({
     id: 'rowSeed', icon: seed.reason === 'liked' ? '⭐' : '🍿',
-    title: `Because you ${seed.reason} ${seed.title}`,
-    kicker: seed.reason === 'liked' ? 'Titles with real overlap, not just a shared genre' : 'Following the last thing you opened',
+    title: `Because you ${seed.reason}`,
+    about: { type: seed.type, id: seed.id, name: seed.title },
     art: seed.poster ? { kind: 'poster', src: `${IMG}w154${seed.poster}`, alt: seed.title, id: seed.id, type: seed.type } : null,
   });
   if (topActor) descriptors.push({
     id: 'rowActor', icon: '🌟', title: `Starring ${topActor.name}`,
-    kicker: 'Appears across your watch history',
     art: topActor.image ? { kind: 'face', src: `${IMG}w185${topActor.image}`, alt: topActor.name, personId: topActor.id } : null,
   });
   if (topDirector) descriptors.push({
     id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}`,
-    kicker: 'A filmmaker you keep returning to',
     art: topDirector.image ? { kind: 'face', src: `${IMG}w185${topDirector.image}`, alt: topDirector.name, personId: topDirector.id } : null,
   });
-  if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}`, kicker: 'A story theme, not a genre — the sharper signal of the two' });
-  if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}`, kicker: 'Your strongest genre by weight' });
+  if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}` });
+  if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
 
   const shellHTML = descriptors.map(shell).join('');
   // Keep populated rows in place while an updated recommendation pool resolves.
@@ -923,6 +953,7 @@ export async function renderRecommendations() {
   if (!wrap.firstElementChild || wrap.dataset.shellSignature !== shellHTML) {
     wrap.innerHTML = shellHTML;
     wrap.dataset.shellSignature = shellHTML;
+    mountRailLogos(wrap);
     observeReveals(wrap);
   }
 
@@ -951,18 +982,19 @@ export async function renderRecommendations() {
     const ranked = await pool;
     const key = `${watchingNow.type}_${watchingNow.id}`;
     const mood = profile.watchingMood?.[key];
-    const kicker = $('rowWatching')?.closest('.section')?.querySelector('.rec-kicker');
+    // With no sub-heading line, what the rail is tuned to lives in the heading's tooltip.
+    const heading = $('rowWatching')?.closest('.section')?.querySelector('.section-title');
     const moodItems = mood?.moods?.length ? ranked.filter(c => isRelatedToWatching(c, watchingNow, profile, { mood: true })) : [];
     // Mood-led only when it has enough honest matches; otherwise the rail follows
     // the show as a whole and its line says so.
     if (moodItems.length >= 4) {
-      if (run === recommendationRun && kicker) kicker.textContent = `Tuned to ${mood.label}: ${mood.moods.map(entry => entry.label).join(', ')}`;
+      if (run === recommendationRun && heading) heading.dataset.tip = `Tuned to ${mood.label}: ${mood.moods.map(entry => entry.label).join(', ')}`;
       const lead = rotatedWindow(moodItems, rotation, 20);
       const shown = new Set(lead.map(c => `${c.__type}_${c.id}`));
       const rest = ranked.filter(c => !shown.has(`${c.__type}_${c.id}`) && isRelatedToWatching(c, watchingNow, profile)).slice(0, Math.max(0, 20 - lead.length));
       return [...lead, ...rest].map(c => recommendationCard(c)).join('');
     }
-    if (run === recommendationRun && kicker) kicker.textContent = watchingNow.reason === 'watching' ? 'Following the show you are in the middle of' : 'Following the last film you finished';
+    if (run === recommendationRun && heading) delete heading.dataset.tip;
     return rowFrom(c => isRelatedToWatching(c, watchingNow, profile), 4);
   }, run);
   fillRow('rowSeries', () => rowFrom(c => c.__type === 'tv', 4), run);

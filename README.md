@@ -363,7 +363,7 @@ stylesheet would drift from the dark one on the first commit. Instead
   declarations into a new rule with the same selector, inside the same
   `@media`/`@supports` wrappers, in the same order.
 - Each colour is rewritten in OKLCH. Neutrals flip lightness along a tuned curve
-  (near-black surfaces become warm paper, near-white ink becomes charcoal) and
+  (near-black surfaces become warm stone, near-white ink becomes charcoal) and
   keep their hue. Saturated accents keep their colour and are only deepened where
   they were too bright to read on paper. Type is deepened more than fills, so a
   pale cyan figure still clears contrast. Dark shadows stay dark and soften.
@@ -380,6 +380,12 @@ originals did. Switching back to dark disables the compiled sheet.
 `css/light.css` holds what no formula can know: the hand-tuned palette, nav
 glass, the hero and backdrop washes, and the dark-island tokens.
 
+**Not white.** The first light palette sat at near-white with white cards, and it
+glared on a site that is mostly artwork. The page is now warm stone (`#e6e2da`),
+cards step up a shade rather than to white, and the compiler's lightness curve
+tops out at the same stone. Every ink token was measured: text 13.4:1, secondary
+7.4:1, tertiary 5.6:1 on the page and 5.0:1 on cards, accents above 4.5:1.
+
 `js/theme.js` is a classic script in `<head>`, placed after the stylesheets, so
 it runs before first paint: a light reader never sees a dark flash. The compile
 takes about 65 ms on a desktop and happens only for light readers.
@@ -390,9 +396,12 @@ Two details matter on paper that the dark theme hid:
   each logo once (a tiny canvas read of a CORS copy) and tags it: white logos
   become ink, and white type beside a colourful mark has its lightness inverted
   with the hue kept, so The Dark Knight's bat stays blue.
-- **Trailer letterboxing.** Ambient trailers are sized to cover their frame. The
-  hero washes are opaque across the top and bottom tenth, where scope films carry
-  black bars inside a 16:9 video.
+- **The film comes first.** The hero and title-page washes used to fog most of the
+  trailer. They now cover only what text needs: an oval behind the copy at the
+  bottom left, a short band under the navigation, and a fade into the page at the
+  very bottom (a stronger bottom fade on phones, where the copy spans the width).
+  Scope films carry black bars inside a 16:9 video, so the hero trailer is zoomed
+  1.28x to push them out of frame rather than hide them under paper.
 
 The switch itself: going light, the paper page opens as a circle from the switch
 with a warm bloom that lingers; going dark, it closes back into the switch. Both
@@ -426,6 +435,19 @@ on the Movies and TV grids (was 145px) with 30px gaps. Tablets and phones get 12
 posters and two roomy columns. Compact density keeps a tighter version of the same
 rhythm, and Top 10 and wide cards keep their own proportions.
 
+## Title page poster
+
+The title row is a flex row, so the poster card stretched to the height of the
+copy beside it. With a rewatch strip under the buttons, a blank band hung below
+the artwork. On desktop the card now keeps the height of its own poster.
+
+## Rail shadows
+
+A horizontal scroller clips in both directions, so a poster's hover lift and
+shadow were cut off at the rail's edges, most visibly with titles under posters
+hidden. Home rails have room above and below, taken back with negative margins so
+nothing moves, and the scroll arrows stay centred on the posters.
+
 ## Hero
 
 After four seconds, the home, Movies and TV heroes collapse to the title logo
@@ -456,8 +478,21 @@ and can never delete one or overwrite a rating you already gave.
 ## Notification center
 
 The inbox is derived, never invented. Episode dates come from TMDB, exact
-timestamps only when TVmaze publishes an airstamp, and streaming uses `flatrate`
-(subscription) offers only — rent and buy are never counted.
+timestamps only when TVmaze publishes an airstamp with a real airtime, and
+streaming uses `flatrate` (subscription) offers only — rent and buy are never
+counted.
+
+**Placeholder times are not exact times.** TVmaze stamps a release that has no
+published time (most streaming drops) at 12:00 UTC. The title page, Release
+Reminders and notifications used to show that as an exact local time: Silo's next
+episode read "Fri, Jul 9, 5:30 PM · TVmaze" in India. `exactStamp` in
+`js/episode-times.js` now accepts a stamp only when TVmaze also gives an airtime,
+including stamps cached before the fix. Everything else counts down to TMDB's
+date and says "Date confirmed". Episode availability uses the same rule.
+
+The bell's unread pulse used to be a ring drawn inside the button, and it read as
+a stray pink circle. The pulse now belongs to the red count badge, only for items
+that need attention.
 
 Items are scored and grouped by urgency (Needs attention / Today / This week /
 Coming later / Recently detected), carry live countdowns inside three days, and
@@ -539,6 +574,40 @@ a whole show or a back-filled history is bookkeeping: listed on its day as
 "marked", never shading a day or adding minutes. The personal-best binge record in
 the TV Tracker still counts single ticks only.
 
+### Season recap
+
+Finish a season and CineVerse offers a shareable card. A prompt appears when the
+last episode was actually watched, not swept in by a whole-season mark, and every
+finished season has a **Recap** button on its toolbar. The card shows:
+
+- when you started and finished;
+- days taken, your pace, binge days (three or more episodes) and longest sitting;
+- watch time, from TMDB's per-episode runtimes;
+- when you tend to watch (below);
+- the season's top-rated episode, which is TMDB's community rating (the card
+  says so), ignoring episodes with fewer than three votes.
+
+Pace, binge days and sittings use the Diary's viewing rule. A season marked in one
+press has none of them, and the card says "Marked as watched" instead. It shares
+through the same studio as the spoiler-free card: native share, download, or copy
+the show's link.
+
+### Viewing patterns
+
+*"You watch Severance in the evenings, The Bear on weekend afternoons"* heads the
+TV Tracker, and each show's title page names its own pattern under the forecast.
+`js/pacing.js` reads when episodes were marked, the only clock CineVerse has, as
+a stand-in for when they were watched:
+
+- Bookkeeping marks are excluded, and a batch counts once, as one sitting.
+- After midnight belongs to the night before, so 1 a.m. on Saturday is a Friday
+  night.
+- A pattern is claimed only with five or more sittings over at least three days,
+  and a clear lean: 60% on weekends or at most 20% on weekends, and/or half the
+  sittings in one part of the day. Otherwise nothing is said.
+- The cross-show sentence uses shows watched in the last 90 days, one per pattern.
+- **Settings → Detail pages** can hide it like any other part.
+
 ### Binge forecast
 
 Shows in progress say when you will finish, on the detail page and in the Stats
@@ -582,6 +651,24 @@ theme and a genre have no picture. The artwork costs no extra request; director
 headshots and the top five cast profiles are already on the watched documents
 from the metadata backfill.
 
+Rails carry a heading only, with no sub-heading line under it. A rail about one
+title names it with the title's official logo: "Because you liked" followed by
+The Dark Knight's logo. The plain name shows until the logo has loaded and stays
+as the image's alt text. `js/logo-tone.js` samples rail logos in both themes, so
+dark artwork is lifted to white on the dark theme and white lettering becomes ink
+on the light one.
+
+### Returning this month
+
+A Home rail, just under Continue Watching, of shows you have finished (caught up
+in the tracker, or marked watched) whose next season premieres this calendar
+month. Each poster carries its premiere, *S38 · Sep 27* or *S14 · Out now*. The
+date is TMDB's: a season's `air_date` is its first episode, and a next episode
+that opens a later season covers seasons listed without a date. A tracked show
+counts as finished through its latest aired season, never through an announced
+one. Ended, cancelled and dropped shows are left out. The badge is its own
+element, so hiding match badges in Settings does not hide premiere dates.
+
 The rails show a different slice of your ranked pool every time CineVerse is
 opened. A device-local counter bumps once per page load (no Firestore write) and
 is added to the stored cross-device rotation; discover pages are varied by the
@@ -604,7 +691,8 @@ viewing stays out, as before.
 ### Tuned to the episodes you just watched
 
 For the show you are in the middle of, **Because you're watching …** follows the
-mood of your latest episodes rather than the whole show, and says so: *"Tuned to
+mood of your latest episodes rather than the whole show, and its heading's
+tooltip says so: *"Tuned to
 S1 E3–E5: betrayal, espionage, murder"*.
 
 TMDB has no keywords for episodes (that endpoint returns 404), and an episode's
@@ -621,8 +709,8 @@ names them as whole words.
 Titles in that mood come from TMDB Discover (the mood keywords, restricted to the
 show's own genres, with Drama set aside when a more specific genre exists). They
 lead the rail only when at least four honest matches exist. Otherwise the rail
-follows the show as before, and its line says so rather than claiming a mood it
-did not find.
+follows the show as before rather than claiming a mood it did not find. With no
+sub-heading line, what the rail is tuned to is the heading's tooltip.
 
 ## Streaming regions
 
@@ -636,14 +724,14 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 750+ assertions, no dependencies and no Java
+npm run test:logic    # 790+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
-check and an import-resolution check over all 84 modules. There is no build step
+check and an import-resolution check over all 87 modules. There is no build step
 to catch a syntax error or a renamed export before Cloudflare would.
 
 `tests/logic/` runs the real application modules against a small browser shim —
@@ -651,7 +739,9 @@ list locking, the episode ledger, CSV import, every stats figure, rewatch
 counting, collection completion, the light-theme compiler (`theme.test.mjs`), and
 the binge forecast, Watch Diary, detail parts, preferences and logo tone
 (`batch-features.test.mjs`), and the viewing rule, forecast reasons, the Diary's TV
-month, episode moods and Up Next countdowns (`tv-intelligence.test.mjs`). It needs nothing installed.
+month, episode moods and Up Next countdowns (`tv-intelligence.test.mjs`), and viewing
+patterns, season recaps, the season-complete signal, the returning rail and exact
+episode times (`season-intelligence.test.mjs`). It needs nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.

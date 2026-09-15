@@ -119,10 +119,9 @@ export function refreshUpNext({ force = false } = {}) {
     // Exact moments arrive afterwards (TVmaze is rate-limited); each one upgrades
     // its card from a day count to a live countdown.
     const exact = await Promise.all(shows.map(({ show, item }) => exactEpisodeTime(show)
-      // TVmaze stamps a release with no published time (most streaming drops) at
-      // 12:00 UTC. That is a placeholder, not a moment, so only a stamp with a real
-      // airtime becomes a live countdown.
-      .then(time => (time?.airstamp && time.airtime ? upNextItem(show, { airstamp: time.airstamp }) : item))
+      // exactEpisodeTime only returns stamps with a real airtime (never TVmaze's
+      // noon-UTC placeholder), so any stamp here is a live countdown.
+      .then(time => (time?.airstamp ? upNextItem(show, { airstamp: time.airstamp }) : item))
       .catch(() => item)));
     if (state.user?.uid !== uid) return [];
     const upgraded = byTime(exact.filter(Boolean));

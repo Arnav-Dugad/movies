@@ -5,58 +5,70 @@
    components that must stay dark. Every rule is scoped to
    :root[data-theme="light"], so the dark theme never sees any of it. */
 
-/* ---------- Palette: warm paper, charcoal ink, the same cinema red ---------- */
+/* ---------- Palette: warm stone, charcoal ink, the same cinema red ----------
+   The first light palette sat at near-white (#f5f4f0 with white cards) and was
+   glaring for a site that is mostly artwork. The page is now a warm stone
+   (#e6e2da), cards step UP a shade rather than to white, and every ink token
+   was measured on --bg and on --bg3: --text 13.4:1, --text2 7.4:1,
+   --text3 5.6:1 (5.0:1 on --bg3), and the accents all clear 4.5:1. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f5f4f0; --bg2: #fbfaf7; --bg3: #ecebe6; --bg4: #e2e0da; --bg5: #d6d3cc;
-  --surface: rgba(255, 255, 255, .82); --surface2: rgba(255, 255, 255, .9); --surface3: rgba(250, 249, 246, .94);
-  --red: #d7070f; --red2: #e5121c; --red-glow: rgba(215, 7, 15, .2); --red-soft: rgba(215, 7, 15, .07);
-  --gold: #c2850a; --gold2: #b07406; --gold-glow: rgba(194, 133, 10, .16);
-  --cyan: #0891b2; --cyan2: #0e7490; --cyan-glow: rgba(8, 145, 178, .12);
-  --green: #059669; --green2: #047857; --green-glow: rgba(5, 150, 105, .12);
-  --purple: #7c3aed; --purple2: #6d28d9;
-  --pink: #db2777;
-  /* Ink: --text3 measures 5.0:1 on --bg and 4.6:1 on --bg3, like its dark twin. */
-  --text: #18181d; --text2: #464953; --text3: #686c77;
-  --shadow: 0 8px 28px rgba(40, 32, 20, .10), 0 1px 2px rgba(40, 32, 20, .06);
-  --shadow-lg: 0 22px 60px rgba(40, 32, 20, .14), 0 2px 6px rgba(40, 32, 20, .06);
-  --glass: rgba(24, 24, 32, .035); --glass-border: rgba(24, 24, 32, .09);
+  --bg: #e6e2da; --bg2: #ece9e2; --bg3: #dcd7ce; --bg4: #d1cbc1; --bg5: #c6c0b5;
+  --surface: rgba(240, 237, 231, .82); --surface2: rgba(236, 233, 226, .92); --surface3: rgba(228, 224, 216, .94);
+  --red: #c8060e; --red2: #b8050c; --red-glow: rgba(200, 6, 14, .2); --red-soft: rgba(200, 6, 14, .07);
+  --gold: #8a5f00; --gold2: #7d5600; --gold-glow: rgba(138, 95, 0, .16);
+  --cyan: #0e7490; --cyan2: #0a5f73; --cyan-glow: rgba(14, 116, 144, .12);
+  --green: #047857; --green2: #03654a; --green-glow: rgba(4, 120, 87, .12);
+  --purple: #6d28d9; --purple2: #5b21b6;
+  --pink: #be185d;
+  --text: #1b1a1f; --text2: #43454d; --text3: #54575f;
+  --shadow: 0 8px 28px rgba(45, 36, 22, .12), 0 1px 2px rgba(45, 36, 22, .08);
+  --shadow-lg: 0 22px 60px rgba(45, 36, 22, .16), 0 2px 6px rgba(45, 36, 22, .08);
+  --glass: rgba(30, 26, 20, .045); --glass-border: rgba(30, 26, 20, .1);
 }
-:root[data-theme="light"][data-contrast="high"] { --text2: #2f323a; --text3: #4b4f59; --glass-border: rgba(24, 24, 32, .18); }
-:root[data-theme="light"][data-glass="quiet"] { --glass: rgba(24, 24, 32, .02); --glass-border: rgba(24, 24, 32, .07); }
+:root[data-theme="light"][data-contrast="high"] { --text2: #2f3037; --text3: #3f424a; --glass-border: rgba(30, 26, 20, .2); }
+:root[data-theme="light"][data-glass="quiet"] { --glass: rgba(30, 26, 20, .025); --glass-border: rgba(30, 26, 20, .08); }
 
-:root[data-theme="light"] ::selection { background: rgba(215, 7, 15, .16); color: var(--text); }
+:root[data-theme="light"] ::selection { background: rgba(200, 6, 14, .18); color: var(--text); }
 :root[data-theme="light"] #loader { background: var(--bg); }
 /* The film grain is tuned for black; on paper it only greys the page. */
-:root[data-theme="light"] body::before { opacity: .025; mix-blend-mode: multiply; }
+:root[data-theme="light"] body::before { opacity: .03; mix-blend-mode: multiply; }
 
 /* ---------- Navigation glass ---------- */
-:root[data-theme="light"] .navbar::after { background: linear-gradient(to bottom, rgba(245, 244, 240, .94), rgba(245, 244, 240, 0)); }
-:root[data-theme="light"] .navbar.scrolled { background: rgba(251, 250, 247, .8); border-bottom-color: rgba(24, 24, 32, .07); box-shadow: 0 1px 0 rgba(255, 255, 255, .6) inset, 0 8px 30px rgba(40, 32, 20, .06); }
+:root[data-theme="light"] .navbar::after { background: linear-gradient(to bottom, rgba(230, 226, 218, .92), rgba(230, 226, 218, 0)); }
+:root[data-theme="light"] .navbar.scrolled { background: rgba(232, 228, 221, .84); border-bottom-color: rgba(30, 26, 20, .08); box-shadow: 0 8px 30px rgba(45, 36, 22, .08); }
 :root[data-theme="light"] .nav-link.active { color: var(--text); }
-:root[data-theme="light"] .mobile-nav-inner { box-shadow: 0 -10px 40px rgba(40, 32, 20, .08); }
+:root[data-theme="light"] .mobile-nav-inner { box-shadow: 0 -10px 40px rgba(45, 36, 22, .1); }
 
-/* ---------- Hero: the film stays vivid on the right, paper carries the copy ----------
-   Most trailers are scope films inside a 16:9 frame, so the video carries black
-   bars about a tenth of the height top and bottom. The top and bottom washes are
-   opaque across that tenth: the nav sits on paper, and the bars never show. */
+/* ---------- Hero and backdrop: the film is the point ----------
+   The washes used to cover most of the trailer in fog. They now cover only
+   what text needs: an oval behind the copy at the bottom left, a short band
+   under the navigation, and a fade into the page at the very bottom. Scope
+   films carry black bars inside a 16:9 video; the hero trailer is zoomed just
+   enough (1.28x, cropping the sides of an ambient loop) to push them out of
+   frame instead of hiding them under paper. */
 :root[data-theme="light"] .hero-vignette {
   background:
-    linear-gradient(to right, rgba(245, 244, 240, .94) 0%, rgba(245, 244, 240, .62) 32%, rgba(245, 244, 240, .1) 62%, rgba(245, 244, 240, 0) 100%),
-    linear-gradient(to top, var(--bg) 0%, rgba(245, 244, 240, .97) 11%, rgba(245, 244, 240, .5) 21%, rgba(245, 244, 240, 0) 44%),
-    linear-gradient(to bottom, var(--bg) 0%, rgba(245, 244, 240, .96) max(11%, 64px), rgba(245, 244, 240, .32) max(19%, 110px), rgba(245, 244, 240, 0) max(30%, 160px));
+    radial-gradient(ellipse 58% 62% at 0% 84%, rgba(230, 226, 218, .9) 0%, rgba(230, 226, 218, .62) 42%, rgba(230, 226, 218, 0) 74%),
+    linear-gradient(to top, var(--bg) 0%, rgba(230, 226, 218, .72) 6%, rgba(230, 226, 218, 0) 22%),
+    linear-gradient(to bottom, rgba(230, 226, 218, .88) 0, rgba(230, 226, 218, .4) 64px, rgba(230, 226, 218, 0) 132px);
 }
-:root[data-theme="light"] .hero-title { text-shadow: 0 2px 24px rgba(255, 255, 255, .55); }
+:root[data-theme="light"] .hero-content :is(.hero-desc, .hero-meta, .hero-title) { text-shadow: 0 0 18px rgba(230, 226, 218, .85), 0 0 2px rgba(230, 226, 218, .6); }
 :root[data-theme="light"] .detail-back-grad {
   background:
-    linear-gradient(to bottom, var(--bg) 0%, rgba(245, 244, 240, .95) max(12%, 64px), rgba(245, 244, 240, .25) max(21%, 104px), rgba(245, 244, 240, 0) max(32%, 150px)),
-    linear-gradient(to top, var(--bg) 0%, rgba(245, 244, 240, .5) 40%, rgba(245, 244, 240, .12) 70%, rgba(245, 244, 240, 0) 100%),
-    linear-gradient(to right, rgba(245, 244, 240, .55), rgba(245, 244, 240, 0) 60%);
+    linear-gradient(to bottom, rgba(230, 226, 218, .86) 0, rgba(230, 226, 218, .35) 70px, rgba(230, 226, 218, 0) 140px),
+    linear-gradient(to top, var(--bg) 0%, rgba(230, 226, 218, .6) 14%, rgba(230, 226, 218, 0) 42%);
+}
+@media (max-width: 768px) {
+  /* On a phone the copy spans the full width at the bottom of the hero. */
+  :root[data-theme="light"] .hero-vignette {
+    background:
+      linear-gradient(to top, var(--bg) 0%, rgba(230, 226, 218, .86) 28%, rgba(230, 226, 218, .4) 46%, rgba(230, 226, 218, 0) 60%),
+      linear-gradient(to bottom, rgba(230, 226, 218, .88) 0, rgba(230, 226, 218, 0) 110px);
+  }
 }
 
-/* A YouTube embed letterboxes inside its frame. Black bars vanish into the dark
-   theme but read as grey bands on paper, so the frame is sized to cover (bars
-   baked into the film itself are hidden by the washes above). */
+/* A YouTube embed letterboxes inside its frame, so it is sized to cover. */
 :root[data-theme="light"] .hero-slide,
 :root[data-theme="light"] .detail-back { container-type: size; }
 :root[data-theme="light"] .hero-slide > .ambient-video,
@@ -65,18 +77,19 @@
   width: max(100cqw, 177.78cqh); height: max(100cqh, 56.25cqw);
   translate: -50% -50%;
 }
+:root[data-theme="light"] .hero-slide > .ambient-video { transform: scale(1.28); }
 
 /* ---------- Title logos: white lettering becomes ink (js/logo-tone.js) ---------- */
-:root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo) { transition: filter .5s var(--ease-out); }
-:root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo)[data-tone="light"] {
-  filter: brightness(0) opacity(.88) drop-shadow(0 1px 0 rgba(255, 255, 255, .55));
+:root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo, .rail-logo) { transition: filter .5s var(--ease-out); }
+:root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo, .rail-logo)[data-tone="light"] {
+  filter: brightness(0) opacity(.86) drop-shadow(0 1px 0 rgba(255, 255, 255, .35));
 }
 /* Lightness inverted, hue turned back: white type goes dark, a pale blue mark
    becomes a deep blue one. */
-:root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo)[data-tone="mixed"] {
-  filter: invert(1) hue-rotate(180deg) saturate(1.25) drop-shadow(0 1px 0 rgba(255, 255, 255, .5));
+:root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo, .rail-logo)[data-tone="mixed"] {
+  filter: invert(1) hue-rotate(180deg) saturate(1.25) drop-shadow(0 1px 0 rgba(255, 255, 255, .35));
 }
-:root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo)[data-tone="color"] {
+:root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo, .rail-logo)[data-tone="color"] {
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .25)) drop-shadow(0 4px 14px rgba(0, 0, 0, .16));
 }
 
@@ -93,9 +106,9 @@
   --glass: rgba(255, 255, 255, .03); --glass-border: rgba(255, 255, 255, .06);
   color: var(--text);
 }
-:root[data-theme="light"] :is(.discover-spotlight-card, .coll-banner, .wl-cover) { box-shadow: 0 24px 60px rgba(40, 32, 20, .18); }
+:root[data-theme="light"] :is(.discover-spotlight-card, .coll-banner, .wl-cover) { box-shadow: 0 24px 60px rgba(45, 36, 22, .2); }
 
 /* ---------- Motion ---------- */
 @media (prefers-reduced-motion: reduce) {
-  :root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo) { transition: none; }
+  :root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo, .rail-logo) { transition: none; }
 }

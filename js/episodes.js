@@ -1259,9 +1259,13 @@ export function initEpisodeRefresh() {
   });
 }
 
+const completedSeasons = id => Object.keys(showEntry(id)?.structure || {}).map(Number).filter(season => isSeasonComplete(id, season));
+
 function apply(id, meta, mutate) {
   if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   const { key, entry } = ensure(id, meta);
+  // Which seasons this action finishes, for the season recap (js/season-recap.js).
+  const completedBefore = new Set(completedSeasons(id));
   mutate(entry);
   for (const [season, episodes] of Object.entries(entry.seasons)) if (!episodes.length) delete entry.seasons[season];
   entry.log = cleanLog(entry.log);
@@ -1289,6 +1293,8 @@ function apply(id, meta, mutate) {
     }
   }
   persist(key);
+  const finished = completedSeasons(id).filter(season => !completedBefore.has(season));
+  if (finished.length) document.dispatchEvent(new CustomEvent('cv:season-complete', { detail: { id: +id, seasons: finished } }));
   return { key, entry };
 }
 
