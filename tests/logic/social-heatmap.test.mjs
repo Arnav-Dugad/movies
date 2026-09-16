@@ -31,7 +31,7 @@ check('a badge knows its club, the next one and how far along it is', badges[1].
 check('the top club has nowhere further to go', badges[0].club === 1000 && badges[0].next === 0 && badges[0].progress === 1);
 check('the limit caps the badges', cast.clubBadges(badges.map((badge, i) => ({ ...badge, minutes: (20 + i) * H })), 2).length === 2);
 const gauge = cast.clubGaugeHTML({ club: 100, profile: '/a.jpg' }, { delay: 240 });
-check('the gauge carries its club colour, delay, ring and number', /club-gauge club-100/.test(gauge) && /--delay:240ms/.test(gauge) && /pathLength="1"/.test(gauge) && />100h</.test(gauge));
+check('the gauge carries its club colour, delay, ring and rolling number', /club-gauge club-100/.test(gauge) && /--delay:240ms/.test(gauge) && /pathLength="1"/.test(gauge) && /class="odo"/.test(gauge) && gauge.includes('h</b>'));
 
 // ---------- person-to-person links ----------
 const nolan = { id: 525, name: 'Christopher Nolan' }, murphy = { id: 2037, name: 'Cillian Murphy' }, caine = { id: 3895, name: 'Michael Caine' }, hardy = { id: 2524, name: 'Tom Hardy' };

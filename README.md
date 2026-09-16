@@ -484,6 +484,38 @@ weighted by vividness, so a flame's orange beats a large brown background; a
 colourless poster keeps the site's red. It is fitted in OKLCH so white text on the
 button clears 4.5:1. **Settings → Appearance → Title colour** turns it off.
 
+The glow is a box centred on the poster whose gradient reaches transparent at
+its own edges, so it can never end in a visible line.
+
+The trailer behind a title (and behind the home hero) plays in a 16:9 frame that
+covers the banner. The banner is capped at 60% of the screen height, so on a
+wide window its box is far wider than 16:9, and a YouTube embed letterboxes
+inside whatever box it gets: it used to play as a narrow strip with dark sides.
+
+## Layout audit
+
+Every main page was measured at 1920, 1440, 1024, 768, 390 and 360px for
+horizontal overflow, elements escaping the screen, overlapping siblings in grids
+and flex rows, and cut-off select and search text. What it found and fixed:
+
+- **Profile:** the dashboard's main column is a grid with no column template, so
+  its track grew to the Completed series row and pushed every panel under the
+  sidebar. It is now a 0-minimum track.
+- **Continue Watching (phones):** the Edit button grew into the row and squeezed
+  the heading onto two lines.
+- **Filter rows (phones):** selects took equal shares whatever their longest
+  option, cutting off "Worldwide gross", "Recently watched" and "Any metadata
+  quality", and crushing the Releases search field. Controls now take the width
+  their content needs and wrap. Person-page filters stack two to a row, with the
+  label above.
+- **Collection pages:** the title sat under the fixed Back button.
+- **Stats provider chart (≤768px):** the date row overlapped the line.
+- **Discover rows (360px):** the edge bleed overshot the gutter by 2px.
+- **Completed series cards:** a two-line finish date misaligned a card's buttons.
+
+The overlaps that remain are deliberate: stacked provider logos, Top 10 numerals
+behind posters, the award logo stack and the profile's poster wall.
+
 ## Icons
 
 Every emoji and text symbol in the interface is a drawn SVG from `js/icons.js`:
@@ -674,9 +706,12 @@ runtime or an un-tick never triggers one. **Settings → Cast milestones** turns
 toast off.
 
 **Hours clubs** are the badges: 10, 25, 50, 100, 250, 500 and 1,000 hours with one
-person. Your profile shows them as rings that fill like a gauge before the club's
-number pops in (the milestone toast uses the same gauge), with progress to the
-next club. Friends see them under your name on their Friends page. They are
+person. Your profile shows them as rings with progress to the next club. The
+first time a badge appears on a device its ring fills like a gauge and the club
+number rolls up like an odometer, each digit spinning a full turn before it
+settles. After that it rests, finished. The milestone toast always rolls. A
+title page's cast list marks everyone you are in a club with (a chip in the
+club's colour under their photo), from credits the device already holds. Friends see them under your name on their Friends page. They are
 published to `users/{uid}/shared/milestones`, the same friend-readable surface as
 the taste profile, so no new security rule was needed.
 
@@ -752,6 +787,20 @@ start. Reduced motion shows the finished card.
 
 Your **profile** has a **Completed series** shelf: every series you have
 finished (dropped shows excluded), newest first, each with its finale card.
+Hovering a card (or its turn button on touch and keyboard) flips it to the run
+in numbers: seasons, episodes, days, watch time, and the fastest season or pace.
+
+**Year in series.** The shelf offers a card for each of your three most recent
+years with finishes (`js/series-year.js`). It shows:
+
+- how many series you finished that year;
+- episodes and watch time across those runs;
+- your fastest finish (viewing only, so a run marked in one press never wins);
+- your biggest run;
+- a centred wall of their posters, and a bar for each month you finished one.
+
+A series belongs to the year its last episode was marked. Like the finale card,
+it assembles itself in the share studio and shares its final frame.
 
 ### Viewing patterns
 
@@ -885,14 +934,14 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 900+ assertions, no dependencies and no Java
+npm run test:logic    # 920+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
-check (`tests/parse.mjs`) and an import-resolution check over all 95 modules.
+check (`tests/parse.mjs`) and an import-resolution check over all 96 modules.
 There is no build step to catch a syntax error or a renamed export before
 Cloudflare would. The parse check reads each file as the ES module the browser
 loads: `node --check` passed a module with a template placeholder left in a plain
@@ -909,7 +958,9 @@ episode times (`season-intelligence.test.mjs`), and the icon set, poster colour,
 transition geometry, completionist, cast milestones, series finale and season
 heatmap (`premium-batch.test.mjs`), and hours clubs, person-to-person links, heatmap
 standouts, insights and watch order, the finale build-up and the Completed series
-shelf (`social-heatmap.test.mjs`). It needs nothing installed.
+shelf (`social-heatmap.test.mjs`), and the year-in-series card, shelf flip figures,
+odometer numbers and first-sight badges (`year-shelf.test.mjs`). It needs
+nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.

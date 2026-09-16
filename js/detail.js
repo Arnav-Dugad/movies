@@ -1,5 +1,6 @@
 // ===== DETAIL PAGE =====
 import { tmdb, pool } from './api.js';
+import { markCastClubs } from './cast-hours.js';
 import { heatmapShell, mountHeatmap, refreshHeatmapTicks } from './season-heatmap.js';
 import { NAMES, captureArt, hintFrom, armSources, transitionSettled } from './transitions.js';
 import { applyAmbient, clearAmbient } from './ambient.js';
@@ -304,6 +305,8 @@ export async function openDetail(id, type) {
     if (type === 'tv' && initialSeason) loadEps(id, initialSeason);
     if (type === 'tv' && prefs.detailHeatmapExpanded && det.seasons?.length) openHeatmap(id, det, gen);
     observeReveals(ct); observeCountUps(ct);
+    // Hours-club marks on the cast you have spent real time with (cached credits only).
+    markCastClubs(ct).catch(() => {});
     // Title colour from the poster (js/ambient.js); fades in when sampled.
     applyAmbient(ct, posterPath);
     // Animate the Box Office bar widths after paint (horizontal %-widths resolve
@@ -1474,7 +1477,7 @@ export async function openCollection(cid) {
       const sorted = d.parts.sort((a, b) => new Date(a.release_date || '9999') - new Date(b.release_date || '9999'));
       const progress = collectionProgress(sorted);
       document.title = `${d.name} — CineVerse`;
-      ct.innerHTML = `<div style="padding:calc(var(--nav-h) + 20px) clamp(16px,4vw,40px) 100px;max-width:1100px;margin:0 auto">
+      ct.innerHTML = `<div class="collection-page-body" style="padding:calc(var(--nav-h) + 20px) clamp(16px,4vw,40px) 100px;max-width:1100px;margin:0 auto">
         <h1 style="font-family:var(--font-display);font-size:2rem;margin-bottom:4px">${esc(d.name)}</h1>
         ${d.overview ? `<p style="color:var(--text2);font-size:.92rem;line-height:1.7;margin-bottom:20px;max-width:600px">${esc(d.overview)}</p>` : ''}
         ${collectionHeaderHTML(progress)}

@@ -68,15 +68,7 @@
   }
 }
 
-/* A YouTube embed letterboxes inside its frame, so it is sized to cover. */
-:root[data-theme="light"] .hero-slide,
-:root[data-theme="light"] .detail-back { container-type: size; }
-:root[data-theme="light"] .hero-slide > .ambient-video,
-:root[data-theme="light"] .detail-back .ambient-video {
-  inset: auto; left: 50%; top: 50%;
-  width: max(100cqw, 177.78cqh); height: max(100cqh, 56.25cqw);
-  translate: -50% -50%;
-}
+/* The trailer's cover sizing is shared by both themes (css/refinements.css). */
 :root[data-theme="light"] .hero-slide > .ambient-video { transform: scale(1.28); }
 
 /* ---------- Title logos: white lettering becomes ink (js/logo-tone.js) ---------- */
@@ -160,3 +152,18 @@
 :root[data-theme="light"] .finale-shelf-btn, :root[data-theme="light"] .finale-shelf-ribbon { color: #a16207; }
 :root[data-theme="light"] .finale-shelf-ribbon { background: rgba(255, 255, 255, .88); }
 :root[data-theme="light"] .person-link { background: rgba(20, 20, 30, .02); }
+:root[data-theme="light"] .finale-back { background: radial-gradient(circle at 80% 0%, rgba(217, 119, 6, .16), transparent 55%), linear-gradient(160deg, #fbf8f2, #efe9df); color: #1c1a17; }
+:root[data-theme="light"] .finale-back em, :root[data-theme="light"] .finale-year-btn, :root[data-theme="light"] .finale-flip-btn[aria-pressed="true"] { color: #a16207; }
+:root[data-theme="light"] .cast-club, :root[data-theme="light"] .club-num { color: #fff; }
+:root[data-theme="light"] .cast-club.club-10 { --club: #a15c24; } :root[data-theme="light"] .cast-club.club-25 { --club: #64748b; }
+:root[data-theme="light"] .cast-club.club-50 { --club: #b7791f; } :root[data-theme="light"] .cast-club.club-100 { --club: #0e7490; }
+:root[data-theme="light"] .cast-club.club-250 { --club: #7c3aed; } :root[data-theme="light"] .cast-club.club-500 { --club: #e11d48; }
+:root[data-theme="light"] .cast-club.club-1000 { --club: #c026d3; }
+:root[data-theme="light"] .cast-item:has(.club-10) { --club-ring: #a15c24; } :root[data-theme="light"] .cast-item:has(.club-25) { --club-ring: #64748b; }
+:root[data-theme="light"] .cast-item:has(.club-50) { --club-ring: #b7791f; } :root[data-theme="light"] .cast-item:has(.club-100) { --club-ring: #0e7490; }
+:root[data-theme="light"] .cast-item:has(.club-250) { --club-ring: #7c3aed; } :root[data-theme="light"] .cast-item:has(.club-500) { --club-ring: #e11d48; }
+:root[data-theme="light"] .cast-item:has(.club-1000) { --club-ring: #c026d3; }
+:root[data-theme="light"] .friend-club.club-10 { --club: #a15c24; } :root[data-theme="light"] .friend-club.club-25 { --club: #64748b; }
+:root[data-theme="light"] .friend-club.club-50 { --club: #b7791f; } :root[data-theme="light"] .friend-club.club-100 { --club: #0e7490; }
+:root[data-theme="light"] .friend-club.club-250 { --club: #7c3aed; } :root[data-theme="light"] .friend-club.club-500 { --club: #e11d48; }
+:root[data-theme="light"] .friend-club.club-1000 { --club: #c026d3; }

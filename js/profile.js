@@ -14,7 +14,11 @@ import { renderRecommendationInsights } from './recommend.js';
 import { tmdb } from './api.js';
 import { prefs } from './prefs.js';
 import { showProgress } from './episodes.js';
-import { computeCastHours, clubBadges, clubGaugeHTML } from './cast-hours.js';
+import { computeCastHours, clubBadges, clubGaugeHTML, takeNewBadges } from './cast-hours.js';
+import { seriesRecap } from './series-finale.js';
+import { formatDuration } from './season-recap.js';
+import { paceLabel } from './episodes.js';
+import { finishYears, initSeriesYear } from './series-year.js';
 
 let editing = false;
 let draftAvatar = undefined;   // undefined = untouched; null = cleared to initial
@@ -105,7 +109,7 @@ export function completedSeries(progress = state.episodeProgress, isComplete = i
   return Object.values(progress || {})
     .filter(entry => entry && +entry.tmdbId && !entry.dropped && isComplete(+entry.tmdbId))
     .map(entry => ({
-      id: +entry.tmdbId, title: entry.title || 'TV show', poster: entry.poster || '',
+      id: +entry.tmdbId, title: entry.title || 'TV show', poster: entry.poster || '', entry,
       finishedAt: +entry.completedAt || +entry.caughtUpAt || +entry.lastWatched?.at || 0,
       seasons: Object.keys(entry.seasons || {}).filter(season => +season > 0 && (entry.seasons[season] || []).length).length,
       episodes: Object.entries(entry.seasons || {}).filter(([season]) => +season > 0).reduce((sum, [, list]) => sum + (list || []).length, 0),
@@ -113,15 +117,34 @@ export function completedSeries(progress = state.episodeProgress, isComplete = i
     .sort((a, b) => b.finishedAt - a.finishedAt || a.title.localeCompare(b.title));
 }
 
+/** Pure: the finale card's key figures for a shelf card's back face. */
+export function shelfFigures(entry) {
+  const recap = seriesRecap(entry || {}, {});
+  const figures = [['Seasons', String(recap.seasonCount)], ['Episodes', String(recap.episodes)]];
+  if (!recap.marked && recap.spanDays) figures.push(['Days', String(recap.spanDays)]);
+  if (recap.minutes) figures.push(['Watch time', formatDuration(recap.minutes)]);
+  if (recap.fastest) figures.push(['Fastest', `Season ${recap.fastest.season}`]);
+  else if (recap.pace) figures.push(['Pace', paceLabel(recap.pace).replace(/ episodes?/, '')]);
+  return figures.slice(0, 5);
+}
+
 function completedShelf() {
   const shows = completedSeries();
-  const cards = shows.map((show, index) => `<article class="finale-shelf-card" style="--i:${Math.min(index, 12)}">
-      <a class="finale-shelf-art" href="/tv/${show.id}" data-action="open-detail" data-id="${show.id}" data-type="tv" data-title="${esc(show.title)}" aria-label="${esc(show.title)}">${show.poster ? `<img src="${IMG}w342${show.poster}" alt="" loading="lazy" data-ph="${PH}">` : `<i>${icon('tv')}</i>`}<span class="finale-shelf-ribbon">${icon('trophy')}Complete</span></a>
+  const cards = shows.map((show, index) => {
+    const poster = show.poster ? `<img src="${IMG}w342${show.poster}" alt="" loading="lazy" data-ph="${PH}">` : `<i>${icon('tv')}</i>`;
+    const figures = shelfFigures(show.entry).map(([label, value]) => `<span><small>${label}</small><b>${esc(value)}</b></span>`).join('');
+    return `<article class="finale-shelf-card" style="--i:${Math.min(index, 12)}">
+      <div class="finale-flip">
+        <a class="finale-face finale-shelf-art" href="/tv/${show.id}" data-action="open-detail" data-id="${show.id}" data-type="tv" data-title="${esc(show.title)}" aria-label="${esc(show.title)}">${poster}<span class="finale-shelf-ribbon">${icon('trophy')}Complete</span></a>
+        <a class="finale-face finale-back" href="/tv/${show.id}" data-action="open-detail" data-id="${show.id}" data-type="tv" data-title="${esc(show.title)}" tabindex="-1" aria-hidden="true"><em>Your run</em>${figures}</a>
+      </div>
       <strong>${esc(show.title)}</strong>
       <small>${show.finishedAt ? `Finished ${new Date(show.finishedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : 'Finished'} · ${show.seasons} season${show.seasons === 1 ? '' : 's'}</small>
-      <button type="button" class="finale-shelf-btn" data-action="series-finale" data-tid="${show.id}">${icon('sparkles')}Finale card</button>
-    </article>`).join('');
-  return `<section class="profile-panel profile-finales"><div class="profile-panel-head"><div><span>Every episode watched</span><h2>Completed series</h2></div><b>${shows.length}</b></div>
+      <div class="finale-shelf-actions"><button type="button" class="finale-shelf-btn" data-action="series-finale" data-tid="${show.id}">${icon('sparkles')}Finale card</button><button type="button" class="finale-flip-btn" data-action="finale-flip" aria-pressed="false" aria-label="${esc(`Show the figures for ${show.title}`)}" data-tip="Your run in numbers">${icon('rotate')}</button></div>
+    </article>`;
+  }).join('');
+  const years = finishYears(shows).slice(0, 3).map(year => `<button type="button" class="finale-year-btn" data-action="series-year" data-year="${year}">${icon('calendar')}${year} in series</button>`).join('');
+  return `<section class="profile-panel profile-finales"><div class="profile-panel-head"><div><span>Every episode watched</span><h2>Completed series</h2></div><div class="finale-head-tools">${years}<b>${shows.length}</b></div></div>
     ${shows.length ? `<div class="finale-shelf">${cards}</div>` : '<p class="finale-shelf-empty">Finish a series and it lands here, with a finale card of your whole run.</p>'}
   </section>`;
 }
@@ -140,8 +163,10 @@ async function paintClubs() {
   const badges = clubBadges(result?.people || [], 12);
   const count = $('profileClubCount'); if (count) count.textContent = String(badges.length);
   if (!badges.length) { host.innerHTML = '<p class="finale-shelf-empty">Watch ten hours of episodes with someone in the cast and your first badge appears here.</p>'; return; }
-  host.innerHTML = badges.map((badge, index) => `<a class="club-badge" href="/person/${badge.id}" data-action="open-person" data-id="${badge.id}" aria-label="${esc(`${badge.name}: ${badge.club} hours club, ${badge.hours} hours watched`)}">
-      ${clubGaugeHTML(badge, { delay: 120 + index * 90 })}
+  const fresh = takeNewBadges(badges);
+  let stagger = 0;
+  host.innerHTML = badges.map(badge => `<a class="club-badge" href="/person/${badge.id}" data-action="open-person" data-id="${badge.id}" aria-label="${esc(`${badge.name}: ${badge.club} hours club, ${badge.hours} hours watched`)}">
+      ${clubGaugeHTML(badge, fresh.has(`${badge.id}:${badge.club}`) ? { delay: 120 + (stagger++) * 90 } : { animate: false })}
       <strong>${esc(badge.name)}</strong>
       <small>${badge.club}h club · ${badge.hours}h</small>
       ${badge.next ? `<span class="club-next" aria-hidden="true"><i style="width:${Math.round(badge.progress * 100)}%"></i></span><em>${Math.round(badge.progress * 100)}% to ${badge.next}h</em>` : '<em>Top club</em>'}
@@ -259,7 +284,17 @@ export function renderProfile() {
 }
 
 export function initProfile() {
+  initSeriesYear(() => completedSeries());
   registerActions({
+    // Touch and keyboard: flip a shelf card to its figures and back.
+    'finale-flip': el => {
+      const card = el.closest('.finale-shelf-card'); if (!card) return;
+      const on = !card.classList.contains('flipped');
+      card.classList.toggle('flipped', on);
+      el.setAttribute('aria-pressed', String(on));
+      card.querySelector('.finale-back')?.setAttribute('aria-hidden', String(!on));
+      card.querySelector('.finale-shelf-art')?.setAttribute('aria-hidden', String(on));
+    },
     // The dropdown name/email block is the profile button now (the separate
     // "Profile" item is gone). Signed out, there's no profile to show — open auth.
     'open-profile-page': () => {

@@ -741,11 +741,18 @@ button.profile-dd-item.theme-switch { width: 100%; text-align: left; font: inher
    browser refuses to run). */
 #detailContent { overflow-x: clip; }
 #detailContent .detail-top { position: relative; }
+/* The glow is a box centred on the poster whose gradient reaches transparent
+   exactly at the box's own edges (closest-side), so no edge of it can ever show
+   as a line. (It used to overrun its box and end in a hard vertical edge.) */
 #detailContent .detail-top::before {
   content: ''; position: absolute; z-index: -1; pointer-events: none;
-  inset: -160px -14% -140px -22%;
-  background: radial-gradient(ellipse 52% 58% at 24% 48%, rgba(var(--amb-glow, 229, 9, 20), .34), rgba(var(--amb-glow, 229, 9, 20), .08) 48%, transparent 72%);
+  left: -360px; top: -260px; width: 920px; height: 820px;
+  background: radial-gradient(closest-side, rgba(var(--amb-glow, 229, 9, 20), .32), rgba(var(--amb-glow, 229, 9, 20), .12) 45%, rgba(var(--amb-glow, 229, 9, 20), .04) 72%, transparent 100%);
   opacity: 0; transition: opacity .9s var(--ease-out);
+}
+/* Stacked and centred on phones and tablets: centred on the smaller poster. */
+@media (max-width: 768px) {
+  #detailContent .detail-top::before { left: calc(50% - 340px); top: -210px; width: 680px; height: 660px; }
 }
 #detailContent[data-ambient="on"] .detail-top::before { opacity: 1; }
 #detailContent[data-ambient="on"] .detail-poster { box-shadow: 0 30px 80px rgba(var(--amb-glow), .3), var(--shadow-lg); transition: box-shadow .9s var(--ease-out); }
@@ -1141,11 +1148,13 @@ html[data-backdrop-art="hide"] .detail-back { background: none !important; }
 .club-250 { --club: #a78bfa; } .club-500 { --club: #fb7185; } .club-1000 { --club: #f0abfc; }
 .club-gauge svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
 .club-track { fill: none; stroke: rgba(255, 255, 255, .1); stroke-width: 4; }
-.club-fill { fill: none; stroke: var(--club); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--club) 55%, transparent)); animation: cv-gauge-fill .95s cubic-bezier(.65, 0, .35, 1) forwards; animation-delay: var(--delay, 0ms); }
+.club-fill { fill: none; stroke: var(--club); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 0; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--club) 55%, transparent)); }
+.club-arrive .club-fill { stroke-dashoffset: 1; animation: cv-gauge-fill .95s cubic-bezier(.65, 0, .35, 1) forwards; animation-delay: var(--delay, 0ms); }
 .club-face { width: calc(var(--size) - 16px); height: calc(var(--size) - 16px); display: grid; place-items: center; overflow: hidden; border-radius: 50%; background: linear-gradient(135deg, #0e7490, #1e293b); color: #fff; }
 .club-face img { width: 100%; height: 100%; object-fit: cover; }
 .club-face .cv-icon { width: 45%; height: 45%; }
-.club-num { position: absolute; left: 50%; bottom: -7px; padding: 2px 7px; border-radius: 99px; background: var(--club); color: #0b0b10; font-size: .7rem; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, .35); transform: translateX(-50%); animation: cv-club-pop .55s cubic-bezier(.34, 1.56, .64, 1) both; animation-delay: calc(var(--delay, 0ms) + 900ms); }
+.club-num { position: absolute; left: 50%; bottom: -7px; display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 99px; background: var(--club); color: #0b0b10; font-size: .7rem; font-weight: 900; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, .35); transform: translateX(-50%); }
+.club-arrive .club-num { animation: cv-club-pop .45s cubic-bezier(.34, 1.56, .64, 1) both; animation-delay: calc(var(--delay, 0ms) + 820ms); }
 @keyframes cv-gauge-fill { to { stroke-dashoffset: 0; } }
 @keyframes cv-club-pop { from { opacity: 0; transform: translateX(-50%) scale(.3); } 70% { opacity: 1; transform: translateX(-50%) scale(1.15); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 .toast .club-gauge.cast-milestone-photo { --size: 50px; margin: 2px 4px 6px 2px; }
@@ -1166,8 +1175,7 @@ html[data-backdrop-art="hide"] .detail-back { background: none !important; }
 /* profile: Completed series */
 .finale-shelf { display: flex; gap: 14px; overflow-x: auto; padding: 4px 2px 10px; scroll-snap-type: x proximity; scrollbar-width: thin; }
 .finale-shelf-card { flex: 0 0 150px; display: grid; gap: 4px; scroll-snap-align: start; animation: cv-detail-rise .5s var(--ease-out) both; animation-delay: calc(var(--i) * 50ms); }
-.finale-shelf-art { position: relative; display: grid; place-items: center; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 12px; background: var(--bg3); box-shadow: 0 0 0 1px rgba(251, 191, 36, .28), 0 12px 28px rgba(0, 0, 0, .35); transition: transform .35s var(--ease-out), box-shadow .3s; }
-.finale-shelf-art:hover { transform: translateY(-4px); box-shadow: 0 0 0 1px rgba(251, 191, 36, .55), 0 18px 36px rgba(0, 0, 0, .45); }
+.finale-shelf-art { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--bg3); }
 .finale-shelf-art img { width: 100%; height: 100%; object-fit: cover; }
 .finale-shelf-art > i .cv-icon { width: 30px; height: 30px; color: var(--text3); }
 .finale-shelf-ribbon { position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 99px; background: rgba(8, 8, 14, .82); color: var(--gold); font-size: .68rem; font-weight: 800; backdrop-filter: blur(8px); }
@@ -1182,7 +1190,8 @@ html[data-backdrop-art="hide"] .detail-back { background: none !important; }
 /* friends: their shared clubs */
 .friend-clubs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 .friend-clubs:empty { display: none; }
-.friend-club { --club: #22d3ee; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 2px 8px 2px 2px; border: 1px solid color-mix(in srgb, var(--club) 35%, transparent); border-radius: 99px; font-size: .72rem; }
+:where(.friend-club) { --club: #22d3ee; }
+.friend-club { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 2px 8px 2px 2px; border: 1px solid color-mix(in srgb, var(--club) 35%, transparent); border-radius: 99px; font-size: .72rem; }
 .friend-club b { padding: 1px 6px; border-radius: 99px; background: var(--club); color: #0b0b10; font-size: .66rem; font-weight: 900; }
 .friend-club span { overflow: hidden; max-width: 130px; color: var(--text2); text-overflow: ellipsis; white-space: nowrap; }
 .friend-club-more { color: var(--text3); font-size: .72rem; align-self: center; }
@@ -1211,3 +1220,118 @@ html[data-backdrop-art="hide"] .detail-back { background: none !important; }
 /* A fitted size (js/season-heatmap.js fitCells) wins over the stylesheet's. */
 .hm-grid[style*="--hm-fit"] .hm-cell { width: var(--hm-fit); height: var(--hm-fit); }
 .hm-grid[style*="--hm-fit"] .hm-trend, .hm-grid[style*="--hm-fit"] .hm-label { min-height: var(--hm-fit); }
+
+/* ===== Layout fixes =====
+   Profile: the dashboard's main column is itself a grid with no column
+   template, so its one implicit track grew to fit its widest content (the
+   Completed series row), pushing every panel under the sidebar and off the
+   screen. A 0-minimum track keeps panels in their column; rows scroll inside. */
+.profile-dashboard > main { grid-template-columns: minmax(0, 1fr); }
+.profile-panel { min-width: 0; }
+
+/* A YouTube embed letterboxes its 16:9 video inside whatever box it is given.
+   The title backdrop is capped at 60vh, so on a wide window its box is far wider
+   than 16:9 and the trailer played as a narrow strip with dark sides. The frame
+   is now a 16:9 box that covers the backdrop (and the home hero), centred, with
+   the existing zoom that crops the player's chrome. */
+.hero-slide, .detail-back { container-type: size; }
+.hero-slide > .ambient-video, .detail-back .ambient-video {
+  inset: auto; left: 50%; top: 50%;
+  width: max(100cqw, 177.78cqh); height: max(100cqh, 56.25cqw);
+  translate: -50% -50%;
+}
+
+/* ===== Odometer club numbers (js/cast-hours.js odometerHTML) =====
+   Each digit column is a strip of 0–9 twice; it spins a full turn and stops on
+   its digit, the leftmost first, once the gauge has filled. */
+.odo { display: inline-flex; height: 1.15em; overflow: hidden; }
+.odo-col { display: flex; flex-direction: column; transform: translateY(calc(var(--d) * -1.15em)); animation: cv-odo 1.15s cubic-bezier(.2, .75, .15, 1) both; animation-delay: calc(var(--delay, 0ms) + 900ms + var(--k) * 110ms); }
+.odo-col i { display: block; height: 1.15em; font-style: normal; text-align: center; }
+@keyframes cv-odo { from { transform: translateY(0); } }
+
+/* ===== Hours club on a title page's cast ===== */
+/* The chip sits just under the photo, overlapping its lower edge, outside the
+   photo's circular clip; the photo gets a ring in the club's colour. */
+:where(.cast-club) { --club: #22d3ee; }
+.cast-club { position: relative; z-index: 1; display: table; margin: -11px auto 3px; padding: 1px 7px; border-radius: 99px; background: var(--club); color: #0b0b10; font-size: .64rem; font-weight: 900; font-style: normal; line-height: 1.5; white-space: nowrap; box-shadow: 0 3px 10px rgba(0, 0, 0, .4); animation: cv-club-chip .5s cubic-bezier(.34, 1.56, .64, 1) both; }
+.cast-item:has(.cast-club) .cast-pic { box-shadow: 0 0 0 2px color-mix(in srgb, var(--club-ring, #22d3ee) 75%, transparent); }
+.cast-item:has(.club-10) { --club-ring: #d08b52; } .cast-item:has(.club-25) { --club-ring: #cbd5e1; } .cast-item:has(.club-50) { --club-ring: #fbbf24; }
+.cast-item:has(.club-100) { --club-ring: #22d3ee; } .cast-item:has(.club-250) { --club-ring: #a78bfa; } .cast-item:has(.club-500) { --club-ring: #fb7185; }
+.cast-item:has(.club-1000) { --club-ring: #f0abfc; }
+@keyframes cv-club-chip { from { opacity: 0; transform: scale(.4); } }
+
+/* ===== Completed series: cards flip to their figures ===== */
+.finale-shelf-card { perspective: 900px; }
+.finale-flip { position: relative; aspect-ratio: 2 / 3; border-radius: 12px; transform-style: preserve-3d; transition: transform .65s cubic-bezier(.2, .8, .2, 1); }
+.finale-face { position: absolute; inset: 0; overflow: hidden; border-radius: 12px; backface-visibility: hidden; -webkit-backface-visibility: hidden; box-shadow: 0 0 0 1px rgba(251, 191, 36, .28), 0 12px 28px rgba(0, 0, 0, .35); }
+.finale-back { display: flex; flex-direction: column; justify-content: center; gap: 9px; padding: 14px; background: radial-gradient(circle at 80% 0%, rgba(251, 191, 36, .22), transparent 55%), linear-gradient(160deg, #1b1a24, #0d0d13); transform: rotateY(180deg); }
+.finale-back em { color: var(--gold); font-size: .68rem; font-style: normal; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.finale-back span { display: grid; gap: 1px; }
+.finale-back small { color: var(--text3); font-size: .64rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.finale-back b { font-size: .94rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.finale-shelf-card.flipped .finale-flip { transform: rotateY(180deg); }
+@media (hover: hover) and (pointer: fine) {
+  .finale-shelf-card:hover .finale-flip, .finale-shelf-card:focus-within .finale-flip { transform: rotateY(180deg); }
+  .finale-shelf-card.flipped:hover .finale-flip { transform: rotateY(180deg); }
+}
+.finale-shelf-actions { display: flex; gap: 6px; margin-top: 4px; }
+.finale-shelf-actions .finale-shelf-btn { flex: 1; margin-top: 0; }
+.finale-flip-btn { width: 32px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--glass-border); border-radius: 999px; color: var(--text2); }
+.finale-flip-btn[aria-pressed="true"] { border-color: rgba(251, 191, 36, .4); color: var(--gold); }
+.finale-flip-btn .cv-icon { width: 14px; height: 14px; }
+.finale-head-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.finale-year-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border: 1px solid rgba(251, 191, 36, .32); border-radius: 999px; color: var(--gold); font-size: .74rem; font-weight: 750; white-space: nowrap; }
+.finale-year-btn:hover { background: rgba(251, 191, 36, .1); }
+.finale-year-btn .cv-icon { width: 14px; height: 14px; }
+.profile-finales .profile-panel-head { flex-wrap: wrap; gap: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .finale-flip { transition: none; }
+  .odo-col, .cast-club { animation: none; }
+}
+
+/* ===== Phone and tablet alignment (found by the layout audit) ===== */
+
+/* A collection's title sat under the fixed Back pill. The pill is pinned at
+   the top-left of the viewport, so the page clears it wherever the content's
+   left edge comes within reach of it. */
+@media (max-width: 1400px) {
+  #detailContent .collection-page-body { padding-top: calc(var(--nav-h) + 68px) !important; }
+}
+
+/* Continue Watching: on a phone the Edit button was set to grow into the rest of
+   the row, squeezing the heading onto two lines. The heading takes the room;
+   the tools keep their own size at the end of the row. */
+@media (max-width: 640px) {
+  .section-head:has(> .continue-tools) { flex-wrap: wrap; row-gap: 8px; }
+  .section-head > .continue-head { flex: 1 1 auto; min-width: 0; }
+  .section-head > .continue-tools { width: auto; margin: 0 0 0 auto; }
+  .section-head > .continue-tools .continue-tool { flex: 0 0 auto; }
+}
+
+/* Filter rows: every select got an equal share of the row whatever its longest
+   option, so "Worldwide gross", "Recently watched" or "Any metadata quality"
+   were cut off, and the Releases search field was squeezed to a few pixels.
+   On narrow screens each control takes the width its content needs and the
+   row wraps; search always takes a full line. */
+@media (max-width: 560px) {
+  :is(.watched-controls, .bo-page-tools, .release-tools) > .watched-select { flex: 1 1 auto; max-width: 100%; }
+  .release-tools > .release-search { flex: 1 1 100%; }
+  .release-tools > .release-pref-btn { flex: 1 1 auto; justify-content: center; }
+  /* Person and studio filmographies: label above its select, two to a row. */
+  :is(.person-filters, .studio-filters) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; }
+  :is(.person-filters, .studio-filters) label { display: grid; gap: 5px; min-width: 0; }
+  :is(.person-filters, .studio-filters) select { width: 100%; min-width: 0; }
+  :is(.person-filters, .studio-filters) > b { grid-column: 1 / -1; margin-left: 0; }
+  /* Discover: the service picker's "All streaming services" needs the full row. */
+  .discover-filter-grid > label:has(#discoverProvider) { grid-column: 1 / -1; }
+}
+/* Stacked on narrow screens the chart sits closer to its date row, whose -14px
+   tuck (for the side-by-side desktop layout) pushed the dates into the line. */
+@media (max-width: 768px) { #statsContent .provider-trend-dates { margin-top: -2px; } }
+/* Discover rows bleed to the screen edge; below 380px the page gutter is 10px,
+   so the bleed matches it rather than overshooting by 2px. */
+@media (max-width: 380px) { .discover-row-section > .row, .discover-row-section > .hs-wrap > .row { margin-left: -10px; margin-right: -10px; padding-left: 10px; padding-right: 10px; } }
+/* Every shelf card the same width and height: one line each for title and
+   finish date, so the buttons line up across the row. */
+.finale-shelf-card { flex: 0 0 160px; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.finale-shelf-card > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -135,9 +135,55 @@ export function clubBadges(people, limit = 12) {
  * The club badge: a ring that fills like a gauge, then the club's number pops
  * in. `delay` staggers a row of badges; `size` is the ring's CSS size.
  */
-export function clubGaugeHTML({ club, profile = '', name = '' }, { delay = 0, cls = '' } = {}) {
+export function clubGaugeHTML({ club, profile = '', name = '' }, { delay = 0, cls = '', animate = true } = {}) {
   const face = profile ? `<img src="${IMG}w185${profile}" alt="" loading="lazy" data-ph="${PH}">` : `<i>${icon('person')}</i>`;
-  return `<span class="club-gauge club-${club}${cls ? ` ${cls}` : ''}" style="--delay:${delay}ms" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle class="club-track" cx="32" cy="32" r="29"/><circle class="club-fill" cx="32" cy="32" r="29" pathLength="1"/></svg><span class="club-face">${face}</span><b class="club-num">${club}h</b></span>`;
+  const number = animate ? odometerHTML(club) : `${club}`;
+  return `<span class="club-gauge club-${club}${animate ? ' club-arrive' : ' club-static'}${cls ? ` ${cls}` : ''}" style="--delay:${delay}ms" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle class="club-track" cx="32" cy="32" r="29"/><circle class="club-fill" cx="32" cy="32" r="29" pathLength="1"/></svg><span class="club-face">${face}</span><b class="club-num">${number}h</b></span>`;
+}
+
+/**
+ * Digits that roll up like an odometer: each column spins through a full turn
+ * of 0–9 and stops on its digit, the leftmost first. Pure markup; the motion is
+ * CSS (.odo), after the gauge has filled.
+ */
+export function odometerHTML(value) {
+  const digits = String(Math.max(0, Math.floor(+value || 0))).split('');
+  const strip = Array.from({ length: 20 }, (_, index) => `<i>${index % 10}</i>`).join('');
+  return `<span class="odo">${digits.map((digit, index) => `<span class="odo-col" style="--d:${10 + +digit};--k:${index}">${strip}</span>`).join('')}</span>`;
+}
+
+// Badges seen before on this device appear finished; a new one (a club you have
+// just reached) fills and rolls up once.
+const seenKey = () => `cv_clubs_seen_v1_${state.user?.uid || 'guest'}`;
+export function takeNewBadges(badges) {
+  let seen;
+  try { seen = new Set(JSON.parse(localStorage.getItem(seenKey()) || '[]')); } catch (_) { seen = new Set(); }
+  const fresh = new Set(badges.map(badge => `${badge.id}:${badge.club}`).filter(key => !seen.has(key)));
+  if (fresh.size) {
+    try { localStorage.setItem(seenKey(), JSON.stringify([...seen, ...fresh].slice(-400))); } catch (_) {}
+  }
+  return fresh;
+}
+
+/**
+ * On a title page, marks each cast member you are in an hours club with, from
+ * credits this device already holds (no requests).
+ */
+export async function markCastClubs(host) {
+  if (!state.user || !host) return;
+  const items = [...host.querySelectorAll('.cast-item[data-id]')];
+  if (!items.length) return;
+  const result = await computeCastHours({ fetch: false });
+  const clubs = new Map(result.people.map(row => [+row.id, { club: clubFor(row.minutes), hours: Math.floor(row.minutes / 60) }]).filter(([, value]) => value.club));
+  for (const item of items) {
+    const found = clubs.get(+item.dataset.id);
+    if (!found || !item.isConnected || item.querySelector('.cast-club')) continue;
+    const pic = item.querySelector('.cast-pic');
+    if (!pic) continue;
+    // After the photo, not inside it: the photo is a clipped circle.
+    pic.insertAdjacentHTML('afterend', `<span class="cast-club club-${found.club}" title="${found.club} hours club · ${found.hours}h watched">${found.club}h</span>`);
+    item.setAttribute('aria-label', `${item.querySelector('.cast-name')?.textContent || ''}, ${found.club} hours club, ${found.hours} hours watched`);
+  }
 }
 
 export const hoursLabel = minutes => {
