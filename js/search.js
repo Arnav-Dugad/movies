@@ -4,6 +4,7 @@
 // no-results, skeletons, retry). Stale responses are dropped via a generation token
 // since tmdb() exposes no abort.
 import { tmdb } from './api.js';
+import { icon } from './icons.js';
 import { IMG, PH, genreMap, mGenreList, tGenreList, moods } from './config.js';
 import { state } from './state.js';
 import { esc, debounce, $ } from './ui.js';
@@ -497,14 +498,14 @@ async function loadTrendingSearches() {
 }
 function renderVibeChips(wrap, title) {
   if (!wrap) return;
-  const chips = moods.map(m => `<button class="chip vibe-chip" data-action="vibe-search" data-genres="${m.genres}" data-type="${m.type}"${m.lang ? ` data-lang="${m.lang}"` : ''} data-label="${esc(m.name)}"><span class="vibe-emoji">${m.emoji}</span><span></span></button>`).join('');
+  const chips = moods.map(m => `<button class="chip vibe-chip" data-action="vibe-search" data-genres="${m.genres}" data-type="${m.type}"${m.lang ? ` data-lang="${m.lang}"` : ''} data-label="${esc(m.name)}"><span class="vibe-emoji">${icon(m.icon)}</span><span></span></button>`).join('');
   wrap.innerHTML = `${title ? `<div class="search-section-title">${esc(title)}</div>` : ''}<div class="chip-row vibe-row">${chips}</div>`;
   wrap.querySelectorAll('.vibe-chip span:last-child').forEach((el, i) => el.textContent = moods[i].name);
 }
 function renderCommandExamples() {
   const wrap = $('advancedSearchExamples'); if (!wrap) return;
   const examples = ['Hindi thrillers after 2020', 'Korean TV dramas rated 8+', 'Titles tagged erotic thriller', 'Animated movies under 100 minutes', 'Top rated sci-fi movies I have not watched', 'Upcoming Japanese movies not in my list'];
-  wrap.innerHTML = `<div class="search-section-title">Try a smart command</div><div class="command-examples">${examples.map(example => `<button data-action="command-search" data-q="${esc(example)}"><span>⌘</span>${esc(example)}</button>`).join('')}</div>`;
+  wrap.innerHTML = `<div class="search-section-title">Try a smart command</div><div class="command-examples">${examples.map(example => `<button data-action="command-search" data-q="${esc(example)}"><span>${icon('command')}</span>${esc(example)}</button>`).join('')}</div>`;
 }
 async function vibeSearch(el) {
   mode = 'vibe';
@@ -543,7 +544,7 @@ function addToHistory(q) {
 function renderSearchHistory() {
   const w = $('searchHistoryWrap'); if (!w) return;
   if (!prefs.rememberSearch || !state.searchHistory.length) { w.innerHTML = ''; return; }
-  w.innerHTML = `<div class="search-section-title">Recent Searches</div><div class="search-history">${state.searchHistory.map((h, i) => `<div class="search-history-item" role="button" tabindex="0" data-action="history-search" data-q="${esc(h)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span></span><span class="remove" data-action="history-remove" data-i="${i}">✕</span></div>`).join('')}</div>`;
+  w.innerHTML = `<div class="search-section-title">Recent Searches</div><div class="search-history">${state.searchHistory.map((h, i) => `<div class="search-history-item" role="button" tabindex="0" data-action="history-search" data-q="${esc(h)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span></span><span class="remove" data-action="history-remove" data-i="${i}" aria-label="Remove from history">${icon('close')}</span></div>`).join('')}</div>`;
   w.querySelectorAll('.search-history-item').forEach((el, i) => { el.querySelector('span:not(.remove)').textContent = state.searchHistory[i]; });
 }
 function renderRecentStrip() {

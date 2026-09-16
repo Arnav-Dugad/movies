@@ -56,6 +56,8 @@ import { initLibraryRealtime } from './library-sync.js';
 import { initHaptics } from './haptics.js';
 import { initThemeToggle } from './theme-toggle.js';
 import { initSeasonRecap } from './season-recap.js';
+import { initCastMilestones } from './cast-hours.js';
+import { initSeriesFinale } from './series-finale.js';
 import { initReturningRail } from './returning.js';
 
 function hideLoader() { window.__cvBooted = true; const l = $('loader'); if (l) l.classList.add('hidden'); }
@@ -67,6 +69,8 @@ async function init() {
   initDelegation();
   initThemeToggle();
   initSeasonRecap();
+  initCastMilestones();
+  initSeriesFinale();
   initReturningRail();
   initImageFallback();
   initCardSync();

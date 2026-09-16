@@ -14,6 +14,7 @@
 // with its own type, order, era, language and streaming controls, a real count
 // and paging.
 import { tmdb } from './api.js';
+import { icon } from './icons.js';
 import { MATURE_KEYWORDS, IMG, PH, genreMap, regionName } from './config.js';
 import { $, esc, toast } from './ui.js';
 import { buildCard, skelCards, wlBtnHTML, wlPayload } from './cards.js';
@@ -148,7 +149,7 @@ function spotlightHTML(item) {
   const title = titleOf(item);
   const genres = (item.genre_ids || []).map(id => genreMap[id]).filter(Boolean).slice(0, 3);
   const meta = [
-    item.vote_average ? `<b class="ad-spot-score">★ ${item.vote_average.toFixed(1)}</b>` : '',
+    item.vote_average ? `<b class="ad-spot-score">${icon('starSolid', { cls: 'cv-star' })} ${item.vote_average.toFixed(1)}</b>` : '',
     yearOf(item) ? `<span>${esc(yearOf(item))}</span>` : '',
     ...genres.map(genre => `<span>${esc(genre)}</span>`),
   ].filter(Boolean).join('');

@@ -112,3 +112,24 @@
 @media (prefers-reduced-motion: reduce) {
   :root[data-theme="light"] :is(.hero-logo, .title-logo, .cvp-logo, .rail-logo) { transition: none; }
 }
+
+/* ===== Title colour, Completionist, Cast Milestones, Series finale, Season heatmap =====
+   Light-theme values for the panels in css/refinements.css. They live here, not
+   there, because this file is the one the light engine (js/theme.js) never
+   recompiles: a hand-picked light colour placed in any other stylesheet would be
+   flipped a second time (the heatmap's pale bands turned near-black). */
+:root[data-theme="light"] #detailContent[data-ambient="on"] .dbtn-icon.active { border-color: rgb(var(--amb-ink-light)); color: rgb(var(--amb-ink-light)); }
+:root[data-theme="light"] #detailContent[data-ambient="on"] .show-progress-bar i { background: linear-gradient(90deg, rgb(var(--amb-solid)), rgb(var(--amb-ink-light))); }
+:root[data-theme="light"] #detailContent[data-ambient="on"] .season-card:not(.complete) .season-ring { background: conic-gradient(rgb(var(--amb-ink-light)) var(--season-progress, 0deg), rgba(10, 10, 16, .75) 0); }
+:root[data-theme="light"] .completion-gap { background: rgba(20, 20, 30, .035); }
+:root[data-theme="light"] .completion-gap b { color: #a16207; }
+:root[data-theme="light"] .completion-roles { background: rgba(20, 20, 30, .04); }
+:root[data-theme="light"] .person-completion { background: radial-gradient(circle at 92% 0%, rgba(217, 119, 6, .08), transparent 40%), rgba(20, 20, 30, .02); }
+:root[data-theme="light"] .cast-milestones { background: radial-gradient(circle at 8% 0%, rgba(8, 145, 178, .08), transparent 32%), var(--surface, #fff); }
+:root[data-theme="light"] .cast-headline .cv-icon { color: #0e7490; }
+:root[data-theme="light"] .cast-band { background: rgba(20, 20, 30, .08); }
+:root[data-theme="light"] .person-cast-hours .cv-icon { color: #0e7490; }
+:root[data-theme="light"] .finale-btn { color: #a16207 !important; border-color: rgba(161, 98, 7, .35) !important; }
+:root[data-theme="light"] .ep-heatmap { --hm-0: #f8eed5; --hm-1: #efd8a6; --hm-2: #e5be77; --hm-3: #d6a04b; --hm-4: #c27e24; --hm-5: #a85b05; --hm-6: #883c00; --hm-edge: rgba(20, 20, 30, .1); --hm-none: rgba(20, 20, 30, .18); background: rgba(20, 20, 30, .02); }
+:root[data-theme="light"] :is(.hm-cell, .hm-swatch):is(.b0, .b1, .b2, .b3, .b4, .none, .unaired).watched .hm-tick { background: #111114; }
+:root[data-theme="light"] :is(.hm-cell, .hm-swatch):is(.b5, .b6).watched .hm-tick { background: #fff; }

@@ -17,7 +17,8 @@ import { IMG, pickLogo } from './config.js';
 import { state } from './state.js';
 import { toast, esc } from './ui.js';
 import { registerActions } from './events.js';
-import { viewingLog, showEntry, isSeasonComplete, paceLabel } from './episodes.js';
+import { viewingLog, showEntry, isSeasonComplete, paceLabel, showProgress } from './episodes.js';
+import { icon } from './icons.js';
 import { pacingProfile } from './pacing.js';
 import { openShareStudio, bitmap, cover, contain, roundedRect, fittedTitle } from './media.js';
 
@@ -102,6 +103,19 @@ export function recapFigures(recap) {
   return figures.slice(0, 6);
 }
 
+// A five-point star drawn as a path, not a font glyph, so it matches the site's
+// icon set on every platform.
+export function drawStar(ctx, cx, cy, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const radius = i % 2 ? r * 0.46 : r;
+    const angle = -Math.PI / 2 + i * Math.PI / 5;
+    ctx[i ? 'lineTo' : 'moveTo'](cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
 // ---------- the card ----------
 async function buildRecapCard(show, seasonData, recap) {
   const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 1500;
@@ -155,7 +169,7 @@ async function buildRecapCard(show, seasonData, recap) {
     ctx.restore();
     ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '700 20px Arial'; ctx.fillText('TOP-RATED EPISODE · TMDB', 440, y + 70);
     ctx.fillStyle = '#fff'; ctx.font = '800 38px Arial'; ctx.fillText(`E${recap.topEpisode.number}${recap.topEpisode.name ? ` · ${recap.topEpisode.name}` : ''}`, 440, y + 125, 640);
-    ctx.fillStyle = '#fbbf24'; ctx.font = '800 34px Arial'; ctx.fillText(`★ ${recap.topEpisode.rating.toFixed(1)}`, 440, y + 178);
+    ctx.fillStyle = '#fbbf24'; drawStar(ctx, 454, y + 166, 14); ctx.font = '800 34px Arial'; ctx.fillText(recap.topEpisode.rating.toFixed(1), 478, y + 178);
   }
   ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = '500 20px Arial'; ctx.fillText('Tracked on CineVerse', 88, 1405);
 
@@ -199,7 +213,7 @@ function promptRecap(id, season) {
   card.className = 'toast success recap-prompt';
   card.dataset.recapPrompt = `${id}_${season}`;
   card.setAttribute('role', 'status');
-  card.innerHTML = `<span>${esc(`${entry.title || 'Season'} · Season ${season} complete`)}</span><button type="button" data-action="season-recap" data-tid="${id}" data-sn="${season}">See your recap</button><button type="button" class="recap-prompt-close" aria-label="Dismiss">×</button>`;
+  card.innerHTML = `<span>${esc(`${entry.title || 'Season'} · Season ${season} complete`)}</span><button type="button" data-action="season-recap" data-tid="${id}" data-sn="${season}">See your recap</button><button type="button" class="recap-prompt-close" aria-label="Dismiss">${icon('close')}</button>`;
   card.querySelector('.recap-prompt-close').addEventListener('click', () => card.remove());
   card.querySelector('[data-action="season-recap"]').addEventListener('click', () => card.remove());
   zone.appendChild(card);
@@ -216,6 +230,9 @@ export function initSeasonRecap() {
     const { id, seasons = [] } = event.detail || {};
     const entry = showEntry(id);
     if (!state.user || !entry) return;
+    // Finishing the last season finishes the series: the finale card
+    // (js/series-finale.js) is offered instead of a second prompt.
+    if (showProgress(id).seriesCompleted) return;
     const season = [...seasons].sort((a, b) => b - a).find(number => {
       if (!isSeasonComplete(id, number)) return false;
       const rows = viewingLog(entry).filter(row => row.season === +number);

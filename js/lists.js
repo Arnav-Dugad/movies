@@ -10,6 +10,7 @@
 // Import direction is watchlist.js -> lists.js ONLY (lists.js never imports
 // watchlist.js) so there's no cycle; cards.js stays state-only.
 import { db, firebase } from './firebase.js';
+import { icon, listIcon } from './icons.js';
 import { state } from './state.js';
 import { addToCollabList } from './collab-lists.js';
 import { $, esc, toast, trapFocus, lockScroll, unlockScroll } from './ui.js';
@@ -18,9 +19,9 @@ import { refreshWLBtns } from './cards.js';
 
 const RESERVED = new Set(['watchlist', 'watched']);   // ids a custom list can never take
 const DEFAULT_LISTS = [
-  { id: 'watchlist', name: 'Watchlist', icon: '📋', color: 'red', order: 0 },
-  { id: 'favorites', name: 'Favorites', icon: '❤️', color: 'red', order: 1 },
-  { id: 'watchlater', name: 'Watch Later', icon: '🕒', color: 'cyan', order: 2 },
+  { id: 'watchlist', name: 'Watchlist', icon: 'bookmark', color: 'red', order: 0 },
+  { id: 'favorites', name: 'Favorites', icon: 'heart', color: 'red', order: 1 },
+  { id: 'watchlater', name: 'Watch Later', icon: 'clock', color: 'cyan', order: 2 },
 ];
 
 const ts = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -179,14 +180,14 @@ function slugId(name) {
   return id;
 }
 
-export async function createList(name, { icon = '🎬', color = 'purple' } = {}) {
+export async function createList(name, { icon: iconName = 'folder', color = 'purple' } = {}) {
   const nm = (name || '').trim();
   if (!state.user || !nm) return null;
   const id = slugId(nm);
   const order = state.lists.reduce((m, l) => Math.max(m, l.order || 0), 0) + 1;
   try {
-    await listCol().doc(id).set(clean({ name: nm, icon, color, order, created: ts() }));
-    const list = { id, name: nm, icon, color, order };
+    await listCol().doc(id).set(clean({ name: nm, icon: iconName, color, order, created: ts() }));
+    const list = { id, name: nm, icon: iconName, color, order };
     state.lists.push(list);
     return list;
   } catch (e) { console.error('createList', e); toast(`Could not create list${errCode(e)}`, 'error'); return null; }
@@ -276,7 +277,7 @@ function itemsInList(listId) {
 async function writeSharedList(list) {
   const items = itemsInList(list.id);
   await sharedListRef(state.user.uid, list.id).set(clean({
-    kind: 'list', listId: list.id, name: list.name || 'List', icon: list.icon || '📁',
+    kind: 'list', listId: list.id, name: list.name || 'List', icon: list.icon || 'folder',
     owner: state.user.uid,
     ownerName: state.user.displayName || (state.user.email || '').split('@')[0] || 'A friend',
     items, count: items.length, updatedAt: ts(),
@@ -322,10 +323,10 @@ function renderPickerRows() {
   // and the operation is idempotent. Removing still requires unlocking the list.
   rows.innerHTML = state.lists.map(l => {
     if (listIsLocked(l.id)) {
-      return `<div class="list-row locked"><span class="list-ico">🔒</span><span class="list-nm">${esc(l.name)}</span><button type="button" class="list-add-locked" data-action="add-to-locked-list" data-list="${esc(l.id)}">Add</button></div>`;
+      return `<div class="list-row locked"><span class="list-ico">${icon('lock')}</span><span class="list-nm">${esc(l.name)}</span><button type="button" class="list-add-locked" data-action="add-to-locked-list" data-list="${esc(l.id)}">Add</button></div>`;
     }
     const on = inList(id, type, l.id);
-    return `<label class="list-row"><input type="checkbox" data-action="toggle-list-member" data-list="${esc(l.id)}" ${on ? 'checked' : ''}><span class="list-ico">${l.icon || '📁'}</span><span class="list-nm">${esc(l.name)}</span></label>`;
+    return `<label class="list-row"><input type="checkbox" data-action="toggle-list-member" data-list="${esc(l.id)}" ${on ? 'checked' : ''}><span class="list-ico">${listIcon(l.icon, l.id)}</span><span class="list-nm">${esc(l.name)}</span></label>`;
   }).join('');
 
   // Shared lists live in a different collection and are not per-title toggles —
@@ -335,14 +336,14 @@ function renderPickerRows() {
   if ((state.collabLists || []).length) {
     rows.insertAdjacentHTML('beforeend',
       `<div class="list-shared-head">Shared with others</div>` +
-      state.collabLists.map(list => `<div class="list-row shared"><span class="list-ico">${esc(list.icon)}</span><span class="list-nm">${esc(list.name)}</span><button type="button" class="list-add-locked" data-action="add-to-collab" data-list="${esc(list.id)}">Add</button></div>`).join(''));
+      state.collabLists.map(list => `<div class="list-row shared"><span class="list-ico">${listIcon(list.icon, 'collab')}</span><span class="list-nm">${esc(list.name)}</span><button type="button" class="list-add-locked" data-action="add-to-collab" data-list="${esc(list.id)}">Add</button></div>`).join(''));
   }
 
   const create = $('listCreate');
   if (create) {
     create.innerHTML = creating
       ? `<div class="list-create-row"><input id="listNewName" type="text" placeholder="List name…" maxlength="30" autocomplete="off"><button class="btn-primary" style="height:40px" data-action="create-list-confirm">Add</button></div>`
-      : `<button class="list-new-btn" data-action="create-list">＋ New list</button>`;
+      : `<button class="list-new-btn" data-action="create-list">${icon('plus')} New list</button>`;
     if (creating) { const inp = $('listNewName'); if (inp) inp.focus(); }
   }
 }

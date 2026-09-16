@@ -441,6 +441,73 @@ The title row is a flex row, so the poster card stretched to the height of the
 copy beside it. With a rewatch strip under the buttons, a blank band hung below
 the artwork. On desktop the card now keeps the height of its own poster.
 
+## Page transitions
+
+Opening a title morphs what you pressed into the title page (`js/transitions.js`,
+driven by `js/router.js`): a poster flies into the page's poster, a backdrop
+(the home hero, a Continue Watching still, a hover preview) into the banner, and a
+title logo (the hero's, a preview's, a "Because you liked …" rail heading's, which
+is now a link) into the page's logo. Back runs the same morph onto the card you
+came from when it is on screen, and returns you to where you were scrolled.
+
+- Only artwork visible on screen is named, and each source is trimmed with a
+  `clip-path` to the part its row or hero frame shows, so nothing flies in from
+  outside the screen.
+- Names come off the sources inside the transition callback, after the old page
+  was snapshotted, so a name is never held twice.
+- The title page paints the pressed artwork at once, and swaps in the full page
+  only after the morph finishes; the full-size poster and banner load over the
+  smaller copy already on screen, so nothing blinks.
+- The new page is scrolled into place inside the swap, with smooth scrolling
+  switched off for that moment. Scroll positions are kept in history state and
+  restored on Back and Forward.
+- Pages fade through (out in 200ms, in over 420ms); artwork glides for 580ms on a
+  long deceleration. Reduced motion skips all of it.
+
+Two bugs surfaced on the way. On phones every page transition from a title page
+was aborted, because the title glow widened the document; it is clipped now. And
+the hover preview closed itself on the click that opened a title, before the
+morph could read it.
+
+## Poster placeholders
+
+Loading posters are shaped like the artwork they are waiting for
+(`cardArt` in `js/cards.js`): the tile takes the poster's own colour when this
+device has sampled it, a 92px copy blurs in almost at once, and the full poster
+fades in over it once loaded.
+
+## Title colour
+
+A title page takes a colour from its poster (`js/ambient.js`): the glow behind
+the header, the primary button, the progress bars. The colour is chosen by hue
+weighted by vividness, so a flame's orange beats a large brown background; a
+colourless poster keeps the site's red. It is fitted in OKLCH so white text on the
+button clears 4.5:1. **Settings → Appearance → Title colour** turns it off.
+
+## Icons
+
+Every emoji and text symbol in the interface is a drawn SVG from `js/icons.js`:
+one 24px grid, 1.75 stroke, soft duotone fills, sized to the text around it.
+Lists saved with an emoji icon still show the matching drawn icon.
+
+## Haptics
+
+With **Haptics** on, ticking an episode, marking a season or "up to here",
+marking watched from a card, and pinning or hiding in Continue Watching give a
+light tap on phones. The buzz follows the outcome (a refused tick gives none).
+iPhones, which have no Vibration API, get the system's selection tap through a
+hidden native switch.
+
+## Season heatmap
+
+A TV title page has a **Season heatmap** under its seasons: a row per season, a
+square per episode, coloured by TMDB rating in fixed bands (under 6, 6, 7, 7.5, 8,
+8.5, 9+) with a tick on each episode you have seen. Unrated episodes are hatched,
+unaired ones outlined, the best-rated one ringed, and each row ends with its
+average. A square opens its episode in the list below. It loads only when opened,
+remembers whether you left it open, and can be hidden under **Settings → Detail
+pages**.
+
 ## Rail shadows
 
 A horizontal scroller clips in both directions, so a poster's hover lift and
@@ -546,6 +613,30 @@ not hidden with CSS: its body is a thunk that is never called, so the Director
 Network SVG and the provider charts cost nothing (and skip their network calls)
 while closed.
 
+### Completionist
+
+The Director Loyalty panel is now **Completionist**, for directors and actors:
+*"You've seen 8 of 12 Christopher Nolan films"*, a progress bar, and the films
+you have not seen, best rated first. Every person page shows the same line for
+that person. A film counts when it is released and has at least 50 TMDB votes, or
+when you have seen it. Actors are measured on acting roles, leaving out
+appearances as themselves and uncredited cameos. **Exclude shorts** and **Exclude
+documentaries** apply on both pages, which share one loader so their numbers
+always agree.
+
+### Cast milestones
+
+*"You've now watched 30 hours of Adam Scott"*, counted from TMDB episode credits
+(`js/cast-hours.js`). A season's billed cast count for every episode of that
+season you watched, and guest stars for their own episodes, using each episode's
+runtime. Stats lists the people you have spent the most time with and the next
+milestone for each. Person pages say how long you have watched that person, and a
+toast marks each milestone (5, 10, 20, 30… hours) as a tick crosses it. Season
+credits are kept on the device in IndexedDB. A milestone is announced only when
+every watched season is known and more episodes have been watched, so a refreshed
+runtime or an un-tick never triggers one. **Settings → Cast milestones** turns the
+toast off.
+
 ### Watch Diary
 
 Daily and monthly viewing, drawn from data the library already holds, so it
@@ -591,6 +682,15 @@ Pace, binge days and sittings use the Diary's viewing rule. A season marked in o
 press has none of them, and the card says "Marked as watched" instead. It shares
 through the same studio as the spoiler-free card: native share, download, or copy
 the show's link.
+
+### Series finale
+
+Finish a whole series by watching its last episode and CineVerse offers a finale
+card instead of a season recap; a **Finale card** button also sits on the title
+page of any completed series. It covers every season: dates, total episodes and
+time, overall pace, binge days, your **fastest season** (the highest pace among
+seasons you watched as viewing, so a season marked in one press never wins), a bar
+per season's pace, and the best-rated episode you watched.
 
 ### Viewing patterns
 
@@ -724,15 +824,18 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 790+ assertions, no dependencies and no Java
+npm run test:logic    # 850+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
-check and an import-resolution check over all 87 modules. There is no build step
-to catch a syntax error or a renamed export before Cloudflare would.
+check (`tests/parse.mjs`) and an import-resolution check over all 94 modules.
+There is no build step to catch a syntax error or a renamed export before
+Cloudflare would. The parse check reads each file as the ES module the browser
+loads: `node --check` passed a module with a template placeholder left in a plain
+string, which would have broken Discover.
 
 `tests/logic/` runs the real application modules against a small browser shim —
 list locking, the episode ledger, CSV import, every stats figure, rewatch
@@ -741,7 +844,9 @@ the binge forecast, Watch Diary, detail parts, preferences and logo tone
 (`batch-features.test.mjs`), and the viewing rule, forecast reasons, the Diary's TV
 month, episode moods and Up Next countdowns (`tv-intelligence.test.mjs`), and viewing
 patterns, season recaps, the season-complete signal, the returning rail and exact
-episode times (`season-intelligence.test.mjs`). It needs nothing installed.
+episode times (`season-intelligence.test.mjs`), and the icon set, poster colour,
+transition geometry, completionist, cast milestones, series finale and season
+heatmap (`premium-batch.test.mjs`). It needs nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.

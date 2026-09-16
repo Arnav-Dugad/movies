@@ -52,7 +52,7 @@ function normalizeList(id, data) {
   return {
     id,
     name: String(data?.name || 'Shared list').slice(0, 60),
-    icon: String(data?.icon || '\u{1F37F}').slice(0, 8),
+    icon: String(data?.icon || 'popcorn').slice(0, 8),
     createdBy: String(data?.createdBy || ''),
     members,
     memberNames: data?.memberNames && typeof data.memberNames === 'object' ? data.memberNames : {},
@@ -123,7 +123,7 @@ export function watchCollabItems(id, onChange) {
 
 // ---------- writing ----------
 
-export async function createCollabList(name, icon = '\u{1F37F}') {
+export async function createCollabList(name, icon = 'popcorn') {
   if (!state.user) { document.dispatchEvent(new Event('cv:open-auth')); return null; }
   const id = newListId();
   const uid = state.user.uid;

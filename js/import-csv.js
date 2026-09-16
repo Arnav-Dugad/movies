@@ -257,7 +257,7 @@ function paint() {
         <div><span>Rows</span><strong>${items.length.toLocaleString()}</strong></div>
         <div><span>With ratings</span><strong>${stats.rated.toLocaleString()}</strong></div>
         <div><span>Exact ids</span><strong>${stats.ids.toLocaleString()}</strong><small>tmdb / imdb</small></div>
-        <div><span>Rating scale</span><strong>${scale === 2 ? '5★ → 10' : '1–10'}</strong><small>detected</small></div>
+        <div><span>Rating scale</span><strong>${scale === 2 ? '5-star → 10' : '1–10'}</strong><small>detected</small></div>
       </div>
       ${truncated ? `<p class="import-warn">Only the first ${MAX_ROWS.toLocaleString()} rows will be imported.</p>` : ''}
       <ul class="import-sample">${sample}</ul>

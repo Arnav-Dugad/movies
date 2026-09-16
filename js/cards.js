@@ -2,6 +2,8 @@
 // Pure presentation. Emits data-action attributes only (no inline JS), so titles
 // with quotes/apostrophes can never break the markup.
 import { IMG, PH, genreMap } from './config.js';
+import { cachedTone } from './ambient.js';
+import { icon } from './icons.js';
 import { esc } from './ui.js';
 import { inWL, isWatched, state } from './state.js';
 
@@ -30,7 +32,7 @@ const STAR_OUTLINE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 // data-wl keeps refreshWLBtns able to flip +/✓ after a change made elsewhere.
 export function wlBtnHTML(id, type, payload) {
   const wl = inWL(id, type);
-  return `<button class="card-wl ${wl ? 'in' : ''}" data-wl="${type}|${id}" data-action="open-list-picker" data-item="${payload}" aria-label="${wl ? 'Edit lists' : 'Add to a list'}" data-tip="${wl ? 'Edit lists' : 'Add to a list'}">${wl ? '✓' : '+'}</button>`;
+  return `<button class="card-wl ${wl ? 'in' : ''}" data-wl="${type}|${id}" data-action="open-list-picker" data-item="${payload}" aria-label="${wl ? 'Edit lists' : 'Add to a list'}" data-tip="${wl ? 'Edit lists' : 'Add to a list'}">${icon(wl ? 'check' : 'plus')}</button>`;
 }
 
 // The watched tint + check. One definition, reused by buildCard and the live
@@ -64,6 +66,23 @@ export function myRatingHTML(id, type) {
   return `<div class="card-myrating" data-myr="${type}|${id}" data-tip="Your rating: ${score}/10" aria-label="Your rating: ${score} of 10"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${score}</div>`;
 }
 
+// ----- Poster artwork -----
+// Every poster paints in three layers, so a loading grid is shaped like the
+// artwork it is waiting for rather than grey boxes:
+//   1. the tile's background is the poster's own colour when this device has
+//      sampled it before (js/ambient.js keeps that cache);
+//   2. a 92px copy of the poster, blurred, loads almost at once on top;
+//   3. the real poster fades in over it once decoded (initImageFallback marks
+//      it loaded). The fade is enabled by script, so without it posters simply
+//      appear as before.
+// Returns the opening <div class="card-img"> with the images; the caller adds
+// its badges and closes the div.
+export function cardArt(src, alt, path = '') {
+  const tone = path ? cachedTone(path) : '';
+  const lqip = path ? `<img class="card-lqip" src="${IMG}w92${path}" alt="" aria-hidden="true" loading="lazy" decoding="async">` : '';
+  return `<div class="card-img"${tone ? ` style="--card-tone: rgb(${tone})"` : ''}>${lqip}<img class="card-poster" src="${src}" alt="${alt}" loading="lazy" data-ph="${PH}">`;
+}
+
 export function buildCard(item, type, opts = {}) {
   const t = type || item.media_type || 'movie';
   if (t === 'person') return personCard(item);
@@ -85,7 +104,7 @@ export function buildCard(item, type, opts = {}) {
   const recKey = opts.dismissible ? `${t}_${item.id}` : '';
   let h = `<a class="${cls}" href="/${t}/${item.id}" aria-label="${safeTitle}" data-action="open-detail" data-id="${item.id}" data-type="${t}" data-title="${safeTitle}" data-year="${esc(year)}" data-rating="${esc(rating)}" data-backdrop="${esc(item.backdrop_path || '')}"${recKey ? ` data-recommendation-key="${recKey}"` : ''}${yt}>`;
   if (opts.t10) h += `<div class="t10-num${String(opts.rank).length > 1 ? ' t10-num-wide' : ''}">${opts.rank}</div>`;
-  h += `<div class="card-img"><img src="${poster}" alt="${safeTitle}" loading="lazy" data-ph="${PH}">`;
+  h += cardArt(poster, safeTitle, item.poster_path || '');
   if (opts.dismissible) h += `<button class="card-dismiss" data-action="dismiss-recommendation" data-id="${item.id}" data-type="${t}" data-title="${safeTitle}" data-poster="${esc(item.poster_path || '')}" data-source="${esc((item.__sources || [item.__source]).filter(Boolean).join(','))}" data-genres="${esc(JSON.stringify(item.genre_ids || []))}" data-keywords="${esc(JSON.stringify(item.__keywordIds || []))}" data-score="${Number(item.__score || 0).toFixed(3)}" aria-label="Not interested in ${safeTitle}" data-tip="Not interested"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
   if (opts.badge) h += `<div class="card-badge">${esc(opts.badge)}</div>`;
   if (rating && !opts.t10) h += `<div class="card-rating"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rating}</div>`;
@@ -103,7 +122,7 @@ export function buildCard(item, type, opts = {}) {
 
 export function personCard(item) {
   const photo = item.profile_path ? `${IMG}w185${item.profile_path}` : PH;
-  return `<a class="card" href="/person/${item.id}" aria-label="${esc(item.name)}" data-action="open-person" data-id="${item.id}"><div class="card-img"><img src="${photo}" alt="${esc(item.name)}" loading="lazy" data-ph="${PH}"></div><div class="card-info"><div class="card-title">${esc(item.name) || ''}</div><div class="card-sub">${esc(item.known_for_department) || ''}</div></div></a>`;
+  return `<a class="card" href="/person/${item.id}" aria-label="${esc(item.name)}" data-action="open-person" data-id="${item.id}">${cardArt(photo, esc(item.name), item.profile_path || '')}</div><div class="card-info"><div class="card-title">${esc(item.name) || ''}</div><div class="card-sub">${esc(item.known_for_department) || ''}</div></div></a>`;
 }
 
 // Skeleton placeholder row content.
@@ -120,7 +139,7 @@ export function refreshWLBtns() {
     b.classList.toggle('in', yes);
     b.classList.toggle('active', yes);
     // wl-remove buttons use an SVG icon, not the +/✓ glyph — don't clobber it.
-    if (b.classList.contains('card-wl') && !b.classList.contains('wl-remove')) b.textContent = yes ? '✓' : '+';
+    if (b.classList.contains('card-wl') && !b.classList.contains('wl-remove')) b.innerHTML = icon(yes ? 'check' : 'plus');
   });
 }
 
@@ -187,12 +206,19 @@ export function initCardSync() {
 
 // Image error fallback via delegation (replaces inline onerror).
 export function initImageFallback() {
+  // Posters fade in over their blurred placeholder once they have loaded (or
+  // fallen back to the placeholder art). A load event fires for every newly
+  // inserted image, cached or not, so capture-phase listening sees them all.
+  document.documentElement.classList.add('poster-fade');
+  const settle = event => { const img = event.target; if (img?.classList?.contains('card-poster') && (event.type === 'load' || !img.dataset.ph)) img.classList.add('is-loaded'); };
+  document.addEventListener('load', settle, true);
   document.addEventListener('error', e => {
     const img = e.target;
     if (img.tagName === 'IMG' && img.dataset.ph && img.src !== img.dataset.ph) {
       img.src = img.dataset.ph;
       img.removeAttribute('data-ph');
     }
+    settle(e);
   }, true);
 }
 

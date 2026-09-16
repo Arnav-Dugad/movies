@@ -128,13 +128,10 @@
 #statsContent .network-initial { font-size: 1.3rem; }
 #statsContent .network-title .network-copy strong { font-size: 0.783rem; }
 #statsContent .network-empty { font-size: 0.813rem; }
-#statsContent .loyalty-live,
 #statsContent .smart-watch-rule { font-size: 0.758rem; }
 #statsContent .loyalty-person strong { font-size: 0.835rem; }
 #statsContent .loyalty-person small { font-size: 0.745rem; }
 #statsContent .loyalty-progress strong { font-size: 0.788rem; }
-#statsContent .loyalty-next small { font-size: 0.723rem; }
-#statsContent .loyalty-next strong { font-size: 0.775rem; }
 #statsContent .loyalty-complete { font-size: 0.753rem; }
 #statsContent .loyalty-note,
 #statsContent .smart-watch-note { font-size: 0.745rem; }
@@ -150,7 +147,6 @@
 }
 
 #statsContent .tag-taste-total { font-size: 0.749rem; }
-#statsContent .tag-taste-lead:after { font-size: 8rem; }
 #statsContent .tag-taste-lead>span { font-size: 0.702rem; }
 #statsContent .tag-taste-lead>strong { font-size: 1.45rem; }
 #statsContent .tag-taste-lead p { font-size: 0.741rem; }
@@ -236,6 +232,21 @@
 }
 
 #statsContent .tv-pacing { font-size: .95rem; }
+#statsContent .challenge-name .challenge-icon { font-size: 1.1em; }
+#statsContent .completion-roles button { font-size: 0.831rem; }
+#statsContent .completion-gaps-head span { font-size: 0.822rem; }
+#statsContent .completion-gaps-head small { font-size: 0.822rem; }
+#statsContent .completion-gap strong { font-size: 0.856rem; }
+#statsContent .completion-gap small { font-size: 0.822rem; }
+#statsContent .completion-gap b { font-size: 0.839rem; }
+#statsContent .completion-more summary { font-size: 0.831rem; }
+#statsContent .cast-headline strong { font-size: .95rem; }
+#statsContent .cast-rank { font-size: 0.839rem; }
+#statsContent .cast-person strong { font-size: .86rem; }
+#statsContent .cast-person small { font-size: 0.826rem; }
+#statsContent .cast-time b { font-size: 0.873rem; }
+#statsContent .cast-time small { font-size: 0.822rem; }
+#statsContent .cast-partial { font-size: 0.831rem; }
 #settingsContent .watched-select { font-size: 0.865rem; }
 #settingsContent .wl-empty h3 { font-size: 1.15rem; }
 #settingsContent .wl-empty p { font-size: .88rem; }

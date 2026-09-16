@@ -6,6 +6,7 @@
 // a date yet. Ended and cancelled shows never return; a show you dropped is
 // left out.
 import { tmdb, pool } from './api.js';
+import { icon } from './icons.js';
 import { state } from './state.js';
 import { $, esc, debounce } from './ui.js';
 import { buildCard } from './cards.js';
@@ -76,7 +77,7 @@ export function returningBadge(item, now = Date.now()) {
 
 // Its own badge, not the match badge: the premiere date must not disappear when
 // Settings hides match badges, and it sits bottom-left, clear of the watched mark.
-const returningCard = item => buildCard(item.show, 'tv').replace('<div class="card-img">', `<div class="card-img"><div class="returning-badge${item.out ? ' out' : ''}">${esc(returningBadge(item))}</div>`);
+const returningCard = item => buildCard(item.show, 'tv').replace(/<div class="card-img"[^>]*>/, match => `${match}<div class="returning-badge${item.out ? ' out' : ''}">${esc(returningBadge(item))}</div>`);
 
 let signature = '';
 let run = 0;
@@ -100,7 +101,7 @@ export async function renderReturningRail() {
   signature = next;
   if (!found.length) { host.innerHTML = ''; return; }
   host.innerHTML = `<div class="section reveal rec-section returning-section"><div class="section-head rec-head">
-      <span class="rail-glyph" aria-hidden="true">↻</span>
+      <span class="rail-glyph" aria-hidden="true">${icon('refresh')}</span>
       <div class="rec-head-copy"><h2 class="section-title">Returning this month</h2></div>
     </div><div class="row" id="rowReturning">${found.map(returningCard).join('')}</div></div>`;
   observeReveals(host);

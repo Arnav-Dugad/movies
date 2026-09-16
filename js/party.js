@@ -1,5 +1,6 @@
 // ===== SMART WATCH-PARTY MATCHER (/party) =====
 import { tmdb } from './api.js';
+import { icon } from './icons.js';
 import { genreMap, mGenreList, tGenreList, moods } from './config.js';
 import { state } from './state.js';
 import { esc, $ } from './ui.js';
@@ -48,7 +49,7 @@ export function renderParty() {
   const members = `
     <div class="party-members">
       <div class="party-chip you"><div class="friend-av sm">${esc((state.user.displayName || 'Y')[0].toUpperCase())}</div>You</div>
-      ${social.friends.map(f => `<div class="party-chip ${sel.has(f.uid) ? 'on' : ''}" role="button" tabindex="0" data-action="party-toggle" data-uid="${esc(f.uid)}"><div class="friend-av sm">${esc((f.name || '?')[0].toUpperCase())}</div>${esc(f.name)}<span class="party-check">${sel.has(f.uid) ? '✓' : '+'}</span></div>`).join('')}
+      ${social.friends.map(f => `<div class="party-chip ${sel.has(f.uid) ? 'on' : ''}" role="button" tabindex="0" data-action="party-toggle" data-uid="${esc(f.uid)}"><div class="friend-av sm">${esc((f.name || '?')[0].toUpperCase())}</div>${esc(f.name)}<span class="party-check">${icon(sel.has(f.uid) ? 'check' : 'plus')}</span></div>`).join('')}
     </div>`;
 
   // "Set tonight's vibe" — moods + genre pills. Optional for a group with history,
@@ -58,11 +59,11 @@ export function renderParty() {
   const vibe = `
     <div class="party-vibe">
       <div class="party-vibe-head">
-        <span class="party-vibe-title">🎯 Set tonight's vibe</span>
+        <span class="party-vibe-title">${icon('target')} Set tonight's vibe</span>
         <span class="party-vibe-sub">${picks.size ? `${picks.size} picked` : 'Optional — use this when someone has no history yet'}</span>
         ${picks.size ? `<button class="party-vibe-clear" data-action="party-clear-vibe">Clear</button>` : ''}
       </div>
-      <div class="party-moods">${moodList.map(m => `<button class="party-mood${moodOn(m) ? ' on' : ''}" data-action="party-mood" data-genres="${esc(String(m.genres || ''))}"><span class="party-mood-emoji">${m.emoji}</span>${esc(m.name)}</button>`).join('')}</div>
+      <div class="party-moods">${moodList.map(m => `<button class="party-mood${moodOn(m) ? ' on' : ''}" data-action="party-mood" data-genres="${esc(String(m.genres || ''))}"><span class="party-mood-emoji">${icon(m.icon)}</span>${esc(m.name)}</button>`).join('')}</div>
       <div class="party-genres">${gList.map(g => `<button class="g-pill${picks.has(g.id) ? ' active' : ''}" data-action="party-genre" data-id="${g.id}">${esc(g.n)}</button>`).join('')}</div>
     </div>`;
 
@@ -165,7 +166,7 @@ async function compute() {
     <div class="party-hero">
       <a class="party-hero-poster" href="/${top.__type}/${top.id}" data-action="open-detail" data-id="${top.id}" data-type="${top.__type}">${poster ? `<img src="${poster}" alt="${esc(top.title || top.name || '')}" loading="lazy">` : ''}</a>
       <div class="party-hero-body">
-        <div class="party-hero-tag">🍿 The one ${partyMode === 'tv' ? 'show' : 'film'} for tonight</div>
+        <div class="party-hero-tag">${icon('popcorn')} The one ${partyMode === 'tv' ? 'show' : 'film'} for tonight</div>
         <h2 class="party-hero-title">${esc(top.title || top.name || '')}</h2>
         <div class="party-hero-match">${matchBadge(top.__score, topScore)} for ${esc(memberLine)}</div>
         ${whyLine ? `<p class="party-hero-why">${whyLine}</p>` : ''}

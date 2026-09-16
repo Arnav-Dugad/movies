@@ -1,9 +1,11 @@
 // ===== WATCHLIST + WATCHED =====
 import { auth, db, firebase } from './firebase.js';
+import { haptic } from './haptics.js';
+import { icon, listIcon } from './icons.js';
 import { state } from './state.js';
 import { IMG, PH, genreMap } from './config.js';
 import { esc, toast, $, debounce } from './ui.js';
-import { refreshWLBtns, rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
+import { cardArt, refreshWLBtns, rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { registerActions, readItem } from './events.js';
 import { removeFromList, listsArr, listById, createList, renameList, deleteList, shareList } from './lists.js';
 import { isListLocked, listHasPin, openPinModal, relockList } from './list-lock.js';
@@ -141,7 +143,7 @@ function listShowcaseHTML(items) {
     : [];
   const cover = Array.from({ length: 4 }, (_, index) => {
     const item = coverItems[index];
-    return item ? `<div><img src="${IMG}w342${item.poster}" alt="" loading="lazy"></div>` : '<div class="empty"><span>✦</span></div>';
+    return item ? `<div><img src="${IMG}w342${item.poster}" alt="" loading="lazy"></div>` : `<div class="empty"><span>${icon('spark')}</span></div>`;
   }).join('');
 
   const ratings = items.map(item => +(item.rating || 0)).filter(Boolean);
@@ -310,7 +312,7 @@ function renderDuplicateFinder() {
   const duplicates = findListDuplicates(); host.hidden = !duplicateOpen;
   if (!duplicateOpen) { host.innerHTML = ''; return; }
   const listName = id => listById(id)?.name || id;
-  host.innerHTML = `<div class="duplicate-head"><div><span>Collection quality control</span><h2>Smart Duplicate Finder</h2><p>${duplicates.length ? `${duplicates.length} title${duplicates.length === 1 ? '' : 's'} appear in more than one custom list.` : 'Every title currently has a clean place in your custom lists.'}</p></div><button data-action="toggle-duplicates" aria-label="Close duplicate finder">×</button></div>${duplicates.length ? `<div class="duplicate-grid">${duplicates.map(({ item, memberships }) => `<article><img src="${item.poster ? `${IMG}w185${item.poster}` : PH}" alt="" loading="lazy"><div><span>${item.type === 'tv' ? 'TV show' : 'Movie'} · ${item.year || 'Year unknown'}</span><h3>${esc(item.title || 'Untitled')}</h3><div class="duplicate-lists">${memberships.map(id => `<b>${esc(listName(id))}</b>`).join('')}</div><button class="btn-glass" data-action="open-list-picker" data-item="${payloadFor(item)}">Review memberships</button></div></article>`).join('')}</div>` : `<div class="duplicate-clear"><i>✓</i><div><strong>No repeated titles</strong><span>Your custom lists are clean and intentional.</span></div></div>`}`;
+  host.innerHTML = `<div class="duplicate-head"><div><span>Collection quality control</span><h2>Smart Duplicate Finder</h2><p>${duplicates.length ? `${duplicates.length} title${duplicates.length === 1 ? '' : 's'} appear in more than one custom list.` : 'Every title currently has a clean place in your custom lists.'}</p></div><button data-action="toggle-duplicates" aria-label="Close duplicate finder">×</button></div>${duplicates.length ? `<div class="duplicate-grid">${duplicates.map(({ item, memberships }) => `<article><img src="${item.poster ? `${IMG}w185${item.poster}` : PH}" alt="" loading="lazy"><div><span>${item.type === 'tv' ? 'TV show' : 'Movie'} · ${item.year || 'Year unknown'}</span><h3>${esc(item.title || 'Untitled')}</h3><div class="duplicate-lists">${memberships.map(id => `<b>${esc(listName(id))}</b>`).join('')}</div><button class="btn-glass" data-action="open-list-picker" data-item="${payloadFor(item)}">Review memberships</button></div></article>`).join('')}</div>` : `<div class="duplicate-clear"><i>${icon('check')}</i><div><strong>No repeated titles</strong><span>Your custom lists are clean and intentional.</span></div></div>`}`;
 }
 
 export function renderWL() {
@@ -333,13 +335,13 @@ export function renderWL() {
 
   // ----- List chip rail -----
   if (rail) {
-    const chip = (id, label, icon) => {
+    const chip = (id, label, iconValue) => {
       const locked = isListLocked(id);
-      return `<button class="wl-chip${state.wlList === id ? ' active' : ''}${listHasPin(id) ? ' has-pin' : ''}${locked ? ' locked' : ''}" data-action="wl-list" data-list="${id}"${locked ? ' aria-label="' + esc(label) + ' (locked)"' : ''}>${icon ? `<span class="wl-chip-ico">${locked ? '🔒' : icon}</span>` : ''}${esc(label)}</button>`;
+      return `<button class="wl-chip${state.wlList === id ? ' active' : ''}${listHasPin(id) ? ' has-pin' : ''}${locked ? ' locked' : ''}" data-action="wl-list" data-list="${id}"${locked ? ' aria-label="' + esc(label) + ' (locked)"' : ''}>${iconValue ? `<span class="wl-chip-ico">${locked ? icon('lock') : listIcon(iconValue, id)}</span>` : ''}${esc(label)}</button>`;
     };
     let html = '';
     state.lists.forEach(l => { html += chip(l.id, l.name, l.icon); });
-    html += `<button class="wl-chip wl-chip-new" data-action="wl-new-list">＋ New</button>`;
+    html += `<button class="wl-chip wl-chip-new" data-action="wl-new-list">${icon('plus')} New</button>`;
     rail.innerHTML = html;
   }
 
@@ -433,7 +435,7 @@ export function renderWL() {
     const payload = payloadFor(w);
     // ✕ removes from the active list only, so removing from Favorites does not
     // silently remove the same title from Watchlist or another custom list.
-    return `<a class="card" href="/${w.type}/${w.tmdbId}" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.tmdbId}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(w.tmdbId, w.type)}${wd ? rateBtnHTML(w.tmdbId, w.type, w.title) : ''}<button class="card-wl in wl-remove" data-wl="${w.type}|${w.tmdbId}" data-action="wl-remove-here" data-item="${payload}" aria-label="Remove" data-tip="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></a>`;
+    return `<a class="card" href="/${w.type}/${w.tmdbId}" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.tmdbId}" data-type="${w.type}">${cardArt(poster, esc(w.title), w.poster || '')}${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(w.tmdbId, w.type)}${wd ? rateBtnHTML(w.tmdbId, w.type, w.title) : ''}<button class="card-wl in wl-remove" data-wl="${w.type}|${w.tmdbId}" data-action="wl-remove-here" data-item="${payload}" aria-label="Remove" data-tip="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></a>`;
   }).join('')}</div>`;
 }
 
@@ -444,11 +446,11 @@ function renderCollabSection() {
   const lists = state.collabLists || [];
   host.innerHTML = `<div class="wl-collab-head">
       <div><span>Together</span><h2>Shared lists</h2></div>
-      <button class="btn-glass" data-action="wl-new-collab">＋ New shared list</button>
+      <button class="btn-glass" data-action="wl-new-collab">${icon('plus')} New shared list</button>
     </div>
     ${lists.length
       ? `<div class="wl-collab-row">${lists.map(list => `<a class="wl-collab-card" href="/collab/${esc(list.id)}" data-action="open-collab" data-id="${esc(list.id)}">
-          <span class="wl-collab-ico">${esc(list.icon)}</span>
+          <span class="wl-collab-ico">${listIcon(list.icon, 'collab')}</span>
           <span class="wl-collab-copy"><strong>${esc(list.name)}</strong><small>${esc(membersLabel(list))} · ${list.count} title${list.count === 1 ? '' : 's'}</small></span>
         </a>`).join('')}</div>`
       : `<p class="wl-collab-empty">A shared list is one list, not two copies — whatever either of you adds, you both see. Make one and send the link.</p>`}`;
@@ -463,6 +465,9 @@ export function initWatchlist() {
       try { genres = el.dataset.genres ? JSON.parse(el.dataset.genres) : []; } catch (_) {}
       try { keywords = el.dataset.keywords ? JSON.parse(el.dataset.keywords) : []; } catch (_) {}
       const id = +el.dataset.id, type = el.dataset.type;
+      // Fired inside the press (iOS needs the gesture); a signed-out press opens
+      // sign-in instead, so it gets no tick.
+      if (state.user) haptic(state.watched[`${type}_${id}`] ? 'untick' : 'tick');
       await toggleWatched(id, type, el.dataset.title || '', {
         poster: el.dataset.poster || '', year: el.dataset.year || '', genres, keywords,
         runtime: +el.dataset.runtime || 0, language: el.dataset.language || '',

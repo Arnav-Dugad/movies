@@ -51,18 +51,18 @@ export const mGenreList=[{id:28,n:'Action'},{id:12,n:'Adventure'},{id:16,n:'Anim
 export const tGenreList=[{id:10759,n:'Action'},{id:16,n:'Animation'},{id:35,n:'Comedy'},{id:80,n:'Crime'},{id:99,n:'Documentary'},{id:18,n:'Drama'},{id:10751,n:'Family'},{id:10762,n:'Kids'},{id:9648,n:'Mystery'},{id:10765,n:'Sci-Fi'},{id:10768,n:'War & Politics'},{id:37,n:'Western'}];
 
 export const moods=[
-  {emoji:'😂',name:'Fun & Lighthearted',sub:'Comedies & feel-good',genres:'35,10751',type:'movie'},
-  {emoji:'💀',name:'Dark & Thrilling',sub:'Horror & suspense',genres:'27,53',type:'movie'},
-  {emoji:'❤️',name:'Romantic',sub:'Love stories',genres:'10749',type:'movie'},
-  {emoji:'🚀',name:'Epic Adventure',sub:'Action & sci-fi',genres:'28,878,12',type:'movie'},
-  {emoji:'🧠',name:'Mind-Bending',sub:'Thought-provoking',genres:'9648,878',type:'movie'},
-  {emoji:'📖',name:'True Stories',sub:'Documentaries & biopics',genres:'99,36',type:'movie'},
-  {emoji:'👨‍👩‍👧‍👦',name:'Family Night',sub:'For everyone',genres:'16,10751',type:'movie'},
-  {emoji:'😢',name:'Emotional',sub:'Drama & tearjerkers',genres:'18',type:'movie'},
-  {emoji:'🎭',name:'Classic Cinema',sub:'Timeless masterpieces',genres:'18,36',type:'movie'},
-  {emoji:'🌍',name:'World Cinema',sub:'International films',genres:'18',type:'movie',lang:'ko'},
-  {emoji:'📺',name:'Binge-worthy Shows',sub:'Addictive TV series',genres:'18',type:'tv'},
-  {emoji:'🔮',name:'Fantasy Worlds',sub:'Magic & wonder',genres:'14,10765',type:'multi'},
+  {icon:'laugh',name:'Fun & Lighthearted',sub:'Comedies & feel-good',genres:'35,10751',type:'movie'},
+  {icon:'skull',name:'Dark & Thrilling',sub:'Horror & suspense',genres:'27,53',type:'movie'},
+  {icon:'heart',name:'Romantic',sub:'Love stories',genres:'10749',type:'movie'},
+  {icon:'rocket',name:'Epic Adventure',sub:'Action & sci-fi',genres:'28,878,12',type:'movie'},
+  {icon:'brain',name:'Mind-Bending',sub:'Thought-provoking',genres:'9648,878',type:'movie'},
+  {icon:'book',name:'True Stories',sub:'Documentaries & biopics',genres:'99,36',type:'movie'},
+  {icon:'family',name:'Family Night',sub:'For everyone',genres:'16,10751',type:'movie'},
+  {icon:'tear',name:'Emotional',sub:'Drama & tearjerkers',genres:'18',type:'movie'},
+  {icon:'masks',name:'Classic Cinema',sub:'Timeless masterpieces',genres:'18,36',type:'movie'},
+  {icon:'globe',name:'World Cinema',sub:'International films',genres:'18',type:'movie',lang:'ko'},
+  {icon:'tv',name:'Binge-worthy Shows',sub:'Addictive TV series',genres:'18',type:'tv'},
+  {icon:'crystal',name:'Fantasy Worlds',sub:'Magic & wonder',genres:'14,10765',type:'multi'},
 ];
 
 // ===== STREAMING REGIONS =====

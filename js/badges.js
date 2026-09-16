@@ -5,6 +5,7 @@
 // Losing it costs one duplicate confetti, never data, which is why it doesn't
 // need (and deliberately avoids) a new Firestore subcollection.
 import { state } from './state.js';
+import { icon } from './icons.js';
 import { genreMap } from './config.js';
 import { esc, toast } from './ui.js';
 import { confettiBurst } from './effects.js';
@@ -72,31 +73,31 @@ const B = (id, name, desc, icon, tier, goal, value, opts = {}) =>
 
 export const BADGES = [
   // Volume — tiers climb steeply so the top ones stay a real long-haul goal.
-  B('first_watch', 'First Steps', 'Mark your first title as watched', '🎬', 'bronze', 1, c => c.watchedTotal),
-  B('watch_10', 'Getting Started', 'Watch 25 titles', '🍿', 'bronze', 25, c => c.watchedTotal),
-  B('watch_50', 'Cinephile', 'Watch 100 titles', '🎞️', 'silver', 100, c => c.watchedTotal),
-  B('watch_100', 'Veteran Viewer', 'Watch 300 titles', '💯', 'gold', 300, c => c.watchedTotal),
-  B('watch_250', 'Living Archive', 'Watch 750 titles', '🏛️', 'platinum', 750, c => c.watchedTotal),
+  B('first_watch', 'First Steps', 'Mark your first title as watched', 'clapper', 'bronze', 1, c => c.watchedTotal),
+  B('watch_10', 'Getting Started', 'Watch 25 titles', 'popcorn', 'bronze', 25, c => c.watchedTotal),
+  B('watch_50', 'Cinephile', 'Watch 100 titles', 'film', 'silver', 100, c => c.watchedTotal),
+  B('watch_100', 'Veteran Viewer', 'Watch 300 titles', 'medal', 'gold', 300, c => c.watchedTotal),
+  B('watch_250', 'Living Archive', 'Watch 750 titles', 'columns', 'platinum', 750, c => c.watchedTotal),
   // Hours (needs backfilled runtime)
-  B('hours_24', 'Weekend Binger', 'Watch 50 hours of content', '⏳', 'bronze', 50, c => c.hours, { unit: 'h', meta: true }),
-  B('hours_100', 'Time Traveller', 'Watch 250 hours of content', '🕰️', 'silver', 250, c => c.hours, { unit: 'h', meta: true }),
-  B('hours_500', 'Marathoner', 'Watch 1,000 hours of content', '🏃', 'gold', 1000, c => c.hours, { unit: 'h', meta: true }),
+  B('hours_24', 'Weekend Binger', 'Watch 50 hours of content', 'hourglass', 'bronze', 50, c => c.hours, { unit: 'h', meta: true }),
+  B('hours_100', 'Time Traveller', 'Watch 250 hours of content', 'stopwatch', 'silver', 250, c => c.hours, { unit: 'h', meta: true }),
+  B('hours_500', 'Marathoner', 'Watch 1,000 hours of content', 'runner', 'gold', 1000, c => c.hours, { unit: 'h', meta: true }),
   // Ratings
-  B('rate_1', 'Critic in Training', 'Rate your first title', '⭐', 'bronze', 1, c => c.ratedTotal),
-  B('rate_25', 'Sharp Eye', 'Rate 50 titles', '🧐', 'silver', 50, c => c.ratedTotal),
-  B('rate_100', 'Head Critic', 'Rate 250 titles', '🏆', 'gold', 250, c => c.ratedTotal),
-  B('rate_750', 'Master Critic', 'Rate 750 titles', '⚖️', 'platinum', 750, c => c.ratedTotal),
-  B('perfect_10', 'Masterpiece', 'Give a title a perfect 10', '🔟', 'silver', 1, c => c.perfect),
+  B('rate_1', 'Critic in Training', 'Rate your first title', 'star', 'bronze', 1, c => c.ratedTotal),
+  B('rate_25', 'Sharp Eye', 'Rate 50 titles', 'eye', 'silver', 50, c => c.ratedTotal),
+  B('rate_100', 'Head Critic', 'Rate 250 titles', 'trophy', 'gold', 250, c => c.ratedTotal),
+  B('rate_750', 'Master Critic', 'Rate 750 titles', 'scales', 'platinum', 750, c => c.ratedTotal),
+  B('perfect_10', 'Masterpiece', 'Give a title a perfect 10', 'perfect', 'silver', 1, c => c.perfect),
   // Breadth
-  B('genre_5', 'Explorer', 'Watch 8 different genres', '🧭', 'bronze', 8, c => c.distinctGenres),
-  B('genre_12', 'Omnivore', 'Watch 15 different genres', '🌐', 'gold', 15, c => c.distinctGenres),
-  B('decade_5', 'Time Capsule', 'Watch titles from 7 different decades', '📼', 'silver', 7, c => c.distinctDecades),
+  B('genre_5', 'Explorer', 'Watch 8 different genres', 'compass', 'bronze', 8, c => c.distinctGenres),
+  B('genre_12', 'Omnivore', 'Watch 15 different genres', 'globe', 'gold', 15, c => c.distinctGenres),
+  B('decade_5', 'Time Capsule', 'Watch titles from 7 different decades', 'cassette', 'silver', 7, c => c.distinctDecades),
   // Loyalty (needs backfilled director/cast)
-  B('director_5', 'Director Devotee', 'Watch 8 titles by one director', '🎥', 'silver', 8, c => (c.topDirector ? c.topDirector.n : 0), { meta: true }),
-  B('director_20', 'Auteur Loyalist', 'Watch 20 titles by one director', '🎬', 'platinum', 20, c => (c.topDirector ? c.topDirector.n : 0), { meta: true }),
-  B('actor_10', 'Fan Club', 'Watch 20 titles with one actor', '🌟', 'gold', 20, c => (c.topActor ? c.topActor.n : 0), { meta: true }),
+  B('director_5', 'Director Devotee', 'Watch 8 titles by one director', 'camera', 'silver', 8, c => (c.topDirector ? c.topDirector.n : 0), { meta: true }),
+  B('director_20', 'Auteur Loyalist', 'Watch 20 titles by one director', 'clapper', 'platinum', 20, c => (c.topDirector ? c.topDirector.n : 0), { meta: true }),
+  B('actor_10', 'Fan Club', 'Watch 20 titles with one actor', 'starBurst', 'gold', 20, c => (c.topActor ? c.topActor.n : 0), { meta: true }),
   // Lists
-  B('wl_25', 'Curator', 'Keep 50 titles in your watchlist', '📋', 'bronze', 50, c => c.wlTotal),
+  B('wl_25', 'Curator', 'Keep 50 titles in your watchlist', 'clipboard', 'bronze', 50, c => c.wlTotal),
 ];
 
 export const earnedIds = ctx => BADGES.filter(b => b.value(ctx) >= b.goal).map(b => b.id);
@@ -115,18 +116,18 @@ const DIFFICULTY = {
 
 const CH = (id, name, sub, icon, difficulty, goal, value, unit = '') => ({ id, name, sub, icon, difficulty, goal, value, unit });
 export const CHALLENGES = [
-  CH('c_start', 'Getting Comfortable', 'Watch 5 titles', '🎬', 'easy', 5, c => c.watchedTotal),
-  CH('c_opinions', 'First Opinions', 'Rate 3 titles', '⭐', 'easy', 3, c => c.ratedTotal),
-  CH('c_genres', 'Genre Hopper', 'Watch 12 different genres', '🧭', 'medium', 12, c => c.distinctGenres),
-  CH('c_hours100', 'Time Traveller', 'Watch 250 hours of content', '🕰️', 'medium', 250, c => c.hours, 'h'),
-  CH('c_decades', 'Across the Ages', 'Watch titles from 8 different decades', '📼', 'hard', 8, c => c.distinctDecades),
-  CH('c_cinephile', 'The Cinephile', 'Watch 250 titles', '🎞️', 'hard', 250, c => c.watchedTotal),
-  CH('c_director', "Auteur's Devotee", 'Watch 15 titles by a single director', '🎥', 'hard', 15, c => (c.topDirector ? c.topDirector.n : 0)),
-  CH('c_critic', 'Completionist Critic', 'Rate 500 titles', '🏆', 'insane', 500, c => c.ratedTotal),
-  CH('c_perfectionist', 'The Perfectionist', 'Award 25 perfect 10s', '🔟', 'insane', 25, c => c.perfect),
-  CH('c_archive', 'Living Archive', 'Watch 1,000 titles', '🏛️', 'insane', 1000, c => c.watchedTotal),
-  CH('c_master', 'Master Critic', 'Rate 1,000 titles', '⚖️', 'legendary', 1000, c => c.ratedTotal),
-  CH('c_hours1000', 'Endless Hours', 'Watch 2,500 hours of content', '⏳', 'legendary', 2500, c => c.hours, 'h'),
+  CH('c_start', 'Getting Comfortable', 'Watch 5 titles', 'clapper', 'easy', 5, c => c.watchedTotal),
+  CH('c_opinions', 'First Opinions', 'Rate 3 titles', 'star', 'easy', 3, c => c.ratedTotal),
+  CH('c_genres', 'Genre Hopper', 'Watch 12 different genres', 'compass', 'medium', 12, c => c.distinctGenres),
+  CH('c_hours100', 'Time Traveller', 'Watch 250 hours of content', 'stopwatch', 'medium', 250, c => c.hours, 'h'),
+  CH('c_decades', 'Across the Ages', 'Watch titles from 8 different decades', 'cassette', 'hard', 8, c => c.distinctDecades),
+  CH('c_cinephile', 'The Cinephile', 'Watch 250 titles', 'film', 'hard', 250, c => c.watchedTotal),
+  CH('c_director', "Auteur's Devotee", 'Watch 15 titles by a single director', 'camera', 'hard', 15, c => (c.topDirector ? c.topDirector.n : 0)),
+  CH('c_critic', 'Completionist Critic', 'Rate 500 titles', 'trophy', 'insane', 500, c => c.ratedTotal),
+  CH('c_perfectionist', 'The Perfectionist', 'Award 25 perfect 10s', 'perfect', 'insane', 25, c => c.perfect),
+  CH('c_archive', 'Living Archive', 'Watch 1,000 titles', 'columns', 'insane', 1000, c => c.watchedTotal),
+  CH('c_master', 'Master Critic', 'Rate 1,000 titles', 'scales', 'legendary', 1000, c => c.ratedTotal),
+  CH('c_hours1000', 'Endless Hours', 'Watch 2,500 hours of content', 'hourglass', 'legendary', 2500, c => c.hours, 'h'),
 ];
 
 // ===== LEDGER (localStorage) =====
@@ -202,7 +203,7 @@ function ringHTML(percent, accent, centerHTML) {
 // progress → abbreviated value/goal, capped so it always fits, with the percent
 // beneath. A long string (both numbers ≥1k) gets a smaller type class.
 function ringCenter(ch, v, done, p) {
-  if (done) return `<div class="ring-num ring-done" aria-label="Complete">✓</div>`;
+  if (done) return `<div class="ring-num ring-done" aria-label="Complete">${icon('check')}</div>`;
   const cur = `${abbrev(v)}${ch.unit}`;
   const goal = `/${abbrev(ch.goal)}${ch.unit}`;
   const sm = (cur.length + goal.length) > 7 ? ' ring-num-sm' : '';
@@ -224,9 +225,9 @@ export function challengesHTML(ctx) {
   const cards = rows.map(({ ch, v, done, p, diff }) => `<div class="challenge-card${done ? ' done' : ''}">
     ${ringHTML(p, diff.accent, ringCenter(ch, v, done, p))}
     <div class="challenge-info">
-      <div class="challenge-name">${ch.icon} ${esc(ch.name)} <span class="difficulty-pill diff-${ch.difficulty}">${diff.label}</span></div>
+      <div class="challenge-name"><span class="challenge-icon">${icon(ch.icon)}</span>${esc(ch.name)} <span class="difficulty-pill diff-${ch.difficulty}">${diff.label}</span></div>
       <div class="challenge-sub">${esc(ch.sub)}</div>
-      <div class="challenge-meta">${done ? '✅ Complete!' : `${(ch.goal - v).toLocaleString()}${ch.unit} to go`}</div>
+      <div class="challenge-meta">${done ? `${icon('checkCircle')} Complete` : `${(ch.goal - v).toLocaleString()}${ch.unit} to go`}</div>
     </div>
   </div>`).join('');
 
@@ -247,7 +248,7 @@ export function badgesHTML(ctx) {
       ? `<div class="badge-bar"><div class="badge-bar-fill" style="width:0" data-pct="${p}"></div></div><div class="badge-prog">${v}${b.unit} / ${b.goal}${b.unit}</div>`
       : pending ? `<div class="badge-prog badge-pending">Calculating…</div>` : '';
     return `<div class="badge badge-${b.tier}${earned ? ' earned' : ''}${isNew ? ' badge-new' : ''}" title="${esc(b.desc)}">
-      <div class="badge-icon">${b.icon}</div>
+      <div class="badge-icon">${icon(b.icon)}</div>
       <div class="badge-name">${esc(b.name)}</div>
       ${earned ? '<div class="badge-prog badge-done">Unlocked</div>' : progress || `<div class="badge-prog">${b.goal}${b.unit}</div>`}
     </div>`;

@@ -5,6 +5,10 @@
 // tab sorts and filters independently, and nothing is truncated beyond a
 // show-more page size.
 import { tmdb } from './api.js';
+import { loadCompletion, completionHeadline, roleForDepartment } from './completionist.js';
+import { personCastHours, hoursLabel } from './cast-hours.js';
+import { prefs } from './prefs.js';
+import { icon } from './icons.js';
 import { IMG, PH, genreMap } from './config.js';
 import { esc, $ } from './ui.js';
 import { buildCard } from './cards.js';
@@ -278,7 +282,7 @@ function externalLinks(ids, homepage) {
     homepage ? ['Website', homepage] : null,
   ].filter(Boolean);
   if (!links.length) return '';
-  return `<div class="person-links">${links.map(([label, href]) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}<i>↗</i></a>`).join('')}</div>`;
+  return `<div class="person-links">${links.map(([label, href]) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(label)}<i>${icon('external')}</i></a>`).join('')}</div>`;
 }
 
 function vitalStats(p, groups) {
@@ -390,6 +394,29 @@ function renderFilmography({ keepPlace = false } = {}) {
   if (!keepPlace) requestAnimationFrame(() => fresh?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
 }
 
+// ---------- completion ----------
+// "You've seen 8 of 12 Christopher Nolan films" and the best of the rest, for a
+// signed-in viewer who has seen at least one (js/completionist.js decides what
+// counts). Directors are measured on directing, everyone else on acting.
+async function completionSection(p, combined) {
+  if (!state.user) return '';
+  const watched = new Set(Object.keys(state.watched || {}).filter(key => key.startsWith('movie_')).map(key => +key.slice(6)).filter(Boolean));
+  const role = roleForDepartment(p.known_for_department);
+  const movies = list => (list || []).filter(credit => (credit.media_type || 'movie') === 'movie');
+  // The same switches as Stats, so the two pages always give the same count.
+  const item = await loadCompletion({ id: p.id, name: p.name, profile: p.profile_path || '' }, role, {
+    watched, credits: { cast: movies(combined.cast), crew: movies(combined.crew) },
+    excludeShorts: !!prefs.directorExcludeShorts, excludeDocumentaries: !!prefs.directorExcludeDocumentaries, gapLimit: 6,
+  });
+  if (!item.seen || item.total < 2) return '';
+  const gaps = item.gaps.map(gap => `<li><a class="completion-gap" href="/movie/${gap.id}" data-action="open-detail" data-id="${gap.id}" data-type="movie" data-title="${esc(gap.title)}">${gap.poster ? `<img src="${IMG}w92${gap.poster}" alt="" loading="lazy" data-ph="${PH}">` : '<i class="completion-gap-blank" aria-hidden="true"></i>'}<span><strong>${esc(gap.title)}</strong><small>${gap.year || 'Undated'}</small></span><b aria-label="Rated ${gap.rating.toFixed(1)}">${icon('starSolid', { cls: 'cv-star' })}${gap.rating.toFixed(1)}</b></a></li>`).join('');
+  return `<section class="person-completion">
+    <div class="person-section-head"><div><span>${role === 'director' ? 'As director' : 'On screen'}</span><h2>${esc(completionHeadline(item))}</h2></div><b>${item.percent}%</b></div>
+    <div class="loyalty-progress" role="img" aria-label="${item.seen} of ${item.total} seen"><i><em style="width:${item.percent}%"></em></i><strong>${item.seen}/${item.total}</strong></div>
+    ${gaps ? `<div class="completion-gaps-head"><span>Still to see</span><small>best rated first</small></div><ol class="completion-gaps person-completion-gaps">${gaps}</ol>` : ''}
+  </section>`;
+}
+
 export async function openPerson(id) {
   const gen = ++reqGen;
   const ct = $('personContent');
@@ -429,6 +456,8 @@ export async function openPerson(id) {
         </div>
       </div>
       ${vitalStats(p, groups)}
+      <div id="personCastHours"></div>
+      <div id="personCompletion"></div>
       ${knownFor.length ? `<section class="person-known"><div class="person-section-head"><div><span>Most seen</span><h2>Known for</h2></div></div><div class="similar-row">${knownFor.map(credit => buildCard(credit, credit.media_type || 'movie')).join('')}</div></section>` : ''}
       ${careerChart(groups)}
       ${careerArc(groups)}
@@ -436,6 +465,17 @@ export async function openPerson(id) {
       ${photoStrip(p.images)}`;
 
     observeReveals(ct);
+    // Time with this person in the episodes you have watched, from credits this
+    // device already holds (no requests are made for it).
+    completionSection(p, credits).then(html => {
+      const host = $('personCompletion');
+      if (host && gen === reqGen && html) { host.innerHTML = html; host.firstElementChild?.classList.add('cv-rise'); }
+    }).catch(error => console.warn('person completion', error));
+    personCastHours(p.id).then(row => {
+      const host = $('personCastHours');
+      if (!host || gen !== reqGen || !row || row.minutes < 60) return;
+      host.innerHTML = `<p class="person-cast-hours">${icon('clock')}<span>You've watched <b>${hoursLabel(row.minutes)}</b> of ${esc(p.name)} across ${row.episodes} episode${row.episodes === 1 ? '' : 's'} of ${row.shows.length} show${row.shows.length === 1 ? '' : 's'}</span></p>`;
+    }).catch(() => {});
     requestAnimationFrame(() => {
       ct.querySelectorAll('.career-bar').forEach(bar => { bar.style.height = bar.style.getPropertyValue('--career-h'); });
       syncBio();

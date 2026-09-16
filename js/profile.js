@@ -1,11 +1,12 @@
 // ===== PROFILE PAGE (/profile) =====
 import { state, isWatched } from './state.js';
+import { icon } from './icons.js';
 import { $, esc, toast } from './ui.js';
 import { registerActions } from './events.js';
 import { AVATARS, genreMap, IMG, PH } from './config.js';
 import { avatarBg, avatarMarkup, avatarPresetId } from './avatar.js';
 import { buildCtx, BADGES } from './badges.js';
-import { myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
+import { cardArt, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { social, displayCode } from './social.js';
 import { saveProfile } from './auth.js';
 import { friendQrSvg, tasteMatchQrSvg, tasteMatchUrl } from './qrcode.js';
@@ -129,7 +130,7 @@ export function renderProfile() {
           <h1 class="profile-nm">${esc(name)}</h1>
           <div class="profile-email">${esc(state.profile.headline || u.email || '')}</div>
           <div class="profile-identity-tags">${since ? `<span>Member since ${esc(since)}</span>` : ''}${state.profile.location ? `<span>${esc(state.profile.location)}</span>` : ''}<span>${esc(insight.topGenre)} taste</span><span>${social.friends.length} friend${social.friends.length === 1 ? '' : 's'}</span></div>
-          ${pinnedBadges.length ? `<div class="profile-pinned" aria-label="Pinned achievements">${pinnedBadges.map(badge => `<span class="profile-pin tier-${badge.tier}" title="${esc(badge.desc)}"><i>${badge.icon}</i><b>${esc(badge.name)}</b></span>`).join('')}</div>` : `<button class="profile-pin-empty" data-action="profile-edit">Pin achievements to your hero</button>`}
+          ${pinnedBadges.length ? `<div class="profile-pinned" aria-label="Pinned achievements">${pinnedBadges.map(badge => `<span class="profile-pin tier-${badge.tier}" title="${esc(badge.desc)}"><i>${icon(badge.icon)}</i><b>${esc(badge.name)}</b></span>`).join('')}</div>` : `<button class="profile-pin-empty" data-action="profile-edit">Pin achievements to your hero</button>`}
         </div>
         <div class="profile-hero-actions"><button class="btn-primary profile-edit-btn" data-action="profile-edit">Edit profile</button><button class="btn-glass" data-action="show-page" data-page="settings">${PROFILE_ICONS.settings}Settings</button></div>
       </div>
@@ -151,7 +152,7 @@ export function renderProfile() {
           ${AVATARS.map((a, i) => `<button class="avatar-opt has-avatar-image${avatarPresetId(av) === a.id ? ' sel' : ''}" data-action="pick-avatar" data-idx="${i}" aria-label="${esc(a.name)}" title="${esc(a.name)}"><img src="${a.src}" alt=""></button>`).join('')}
         </div>
       </div>
-      <div class="profile-showcase-editor"><div><span>Achievement Showcase</span><h3>Pin up to three earned badges</h3><p>Your selections appear beside your identity in the Profile hero.</p></div><b id="profilePinCount">${selectedPins.length}/3 pinned</b><div class="profile-earned-grid">${earnedBadges.length ? earnedBadges.map(badge => `<button class="tier-${badge.tier}${selectedPins.includes(badge.id) ? ' selected' : ''}" data-action="profile-pin-badge" data-badge="${badge.id}"><i>${badge.icon}</i><span><strong>${esc(badge.name)}</strong><small>${esc(badge.desc)}</small></span><em>✓</em></button>`).join('') : '<p>Earn your first badge to unlock the showcase.</p>'}</div></div>
+      <div class="profile-showcase-editor"><div><span>Achievement Showcase</span><h3>Pin up to three earned badges</h3><p>Your selections appear beside your identity in the Profile hero.</p></div><b id="profilePinCount">${selectedPins.length}/3 pinned</b><div class="profile-earned-grid">${earnedBadges.length ? earnedBadges.map(badge => `<button class="tier-${badge.tier}${selectedPins.includes(badge.id) ? ' selected' : ''}" data-action="profile-pin-badge" data-badge="${badge.id}"><i>${icon(badge.icon)}</i><span><strong>${esc(badge.name)}</strong><small>${esc(badge.desc)}</small></span><em>${icon('check')}</em></button>`).join('') : '<p>Earn your first badge to unlock the showcase.</p>'}</div></div>
       <div class="profile-editactions">
         <button class="btn-glass" data-action="profile-cancel">Cancel</button>
         <button class="btn-primary" data-action="profile-save">Save</button>
@@ -162,7 +163,7 @@ export function renderProfile() {
   const tastePass = code ? `<section class="profile-taste-pass"><div><span>Cineprint chemistry</span><h2>Taste Match QR</h2><p>A friend scans once to see your shared genres and instant compatibility score.</p><button data-action="copy-taste-link" data-code="${esc(code)}">Copy Taste Match link</button></div><div class="profile-qr taste">${tasteMatchQrSvg(code)}<span>Scan to compare</span></div></section>` : '';
 
   const snapshot = `
-    <section class="profile-panel profile-cineprint"><div class="profile-panel-head"><div><span>Live collection intelligence</span><h2>Your Cineprint</h2></div><button data-action="show-page" data-page="stats">Open full stats →</button></div>
+    <section class="profile-panel profile-cineprint"><div class="profile-panel-head"><div><span>Live collection intelligence</span><h2>Your Cineprint</h2></div><button data-action="show-page" data-page="stats">Open full stats ${icon('arrowRight', { cls: 'cv-arrow' })}</button></div>
       <div class="profile-stats">
         ${[[PROFILE_ICONS.watched, c.watchedTotal, 'Watched', 'watched'], [PROFILE_ICONS.clock, c.hours, 'Hours', 'stats'], [PROFILE_ICONS.star, c.ratedTotal, 'Rated', 'stats'], [PROFILE_ICONS.saved, state.watchlist.length, 'Saved', 'watchlist']]
           .map(([icon, value, label, page]) => `<button class="profile-stat" data-action="show-page" data-page="${page}"><div class="ps-ico">${icon}</div><div><div class="ps-num">${value}</div><div class="ps-lbl">${label}</div></div></button>`).join('')}
@@ -170,9 +171,9 @@ export function renderProfile() {
       <div class="profile-insight-grid"><article><span>Your average</span><strong>${insight.avgRating ? insight.avgRating.toFixed(1) : '—'}${insight.avgRating ? '<small>/10</small>' : ''}</strong><p>${insight.ratingCoverage}% of watched titles rated</p></article><article><span>Signature genre</span><strong>${esc(insight.topGenre)}</strong><p>Your most-watched genre</p></article><article><span>Favorite era</span><strong>${esc(insight.topDecade)}</strong><p>Your leading release decade</p></article><article><span>This year</span><strong>${insight.thisYear}</strong><p>${insight.streak ? `${insight.streak}-day current streak` : 'Build your viewing streak'}</p></article></div>
     </section>`;
 
-  const pulse = `<section class="profile-panel profile-pulse"><div class="profile-panel-head"><div><span>Account readiness</span><h2>Collection pulse</h2></div><b>${insight.health || strength}%</b></div><div class="profile-progress-row"><div><span>Collection health</span><strong>${insight.health ? `${insight.health}%` : 'Calculating'}</strong></div><i><em style="width:${insight.health || 0}%"></em></i></div><div class="profile-progress-row"><div><span>Rating coverage</span><strong>${insight.ratingCoverage}%</strong></div><i><em style="width:${insight.ratingCoverage}%"></em></i></div><div class="profile-progress-row"><div><span>Profile setup</span><strong>${strength}%</strong></div><i><em style="width:${strength}%"></em></i></div><button class="profile-repair-link" data-action="show-page" data-page="stats">Review Collection Health →</button></section>`;
+  const pulse = `<section class="profile-panel profile-pulse"><div class="profile-panel-head"><div><span>Account readiness</span><h2>Collection pulse</h2></div><b>${insight.health || strength}%</b></div><div class="profile-progress-row"><div><span>Collection health</span><strong>${insight.health ? `${insight.health}%` : 'Calculating'}</strong></div><i><em style="width:${insight.health || 0}%"></em></i></div><div class="profile-progress-row"><div><span>Rating coverage</span><strong>${insight.ratingCoverage}%</strong></div><i><em style="width:${insight.ratingCoverage}%"></em></i></div><div class="profile-progress-row"><div><span>Profile setup</span><strong>${strength}%</strong></div><i><em style="width:${strength}%"></em></i></div><button class="profile-repair-link" data-action="show-page" data-page="stats">Review Collection Health ${icon('arrowRight', { cls: 'cv-arrow' })}</button></section>`;
 
-  const quick = `<section class="profile-panel profile-quick"><div class="profile-panel-head"><div><span>One-tap navigation</span><h2>Quick launch</h2></div></div><div class="profile-quick-grid">${[[PROFILE_ICONS.calendar, 'Release calendar', 'reminders'], [PROFILE_ICONS.watched, 'Watch history', 'watched'], [PROFILE_ICONS.users, 'Friends & family', 'friends'], [PROFILE_ICONS.chart, 'Cineprint stats', 'stats']].map(([icon, label, page]) => `<button data-action="show-page" data-page="${page}">${icon}<span>${label}</span><b>→</b></button>`).join('')}<button class="profile-intelligence-key" data-action="profile-toggle-intelligence">${PROFILE_ICONS.star}<span>Why these picks?</span><b>${intelligenceOpen ? '×' : '→'}</b></button></div></section>`;
+  const quick = `<section class="profile-panel profile-quick"><div class="profile-panel-head"><div><span>One-tap navigation</span><h2>Quick launch</h2></div></div><div class="profile-quick-grid">${[[PROFILE_ICONS.calendar, 'Release calendar', 'reminders'], [PROFILE_ICONS.watched, 'Watch history', 'watched'], [PROFILE_ICONS.users, 'Friends & family', 'friends'], [PROFILE_ICONS.chart, 'Cineprint stats', 'stats']].map(([glyph, label, page]) => `<button data-action="show-page" data-page="${page}">${glyph}<span>${label}</span><b>${icon('arrowRight', { cls: 'cv-arrow' })}</b></button>`).join('')}<button class="profile-intelligence-key" data-action="profile-toggle-intelligence">${PROFILE_ICONS.star}<span>Why these picks?</span><b>${icon(intelligenceOpen ? 'close' : 'arrowRight', { cls: 'cv-arrow' })}</b></button></div></section>`;
 
   // The preview only stands in when a lookup has actually produced one FOR the
   // current title. Comparing the two empty strings matched before a favourite was
@@ -189,7 +190,7 @@ export function renderProfile() {
     <article class="local"><i>01</i><span>Only on this device</span><h3>Local</h3><p>${localMemory.length ? `This device remembers ${localMemory.join(' and ')} plus temporary artwork caches.` : 'Search and viewing memory are off. Only temporary artwork caches remain.'}</p><strong>Never shown to friends</strong></article>
     <article class="private"><i>02</i><span>Your signed-in vault</span><h3>Private</h3><p>Lists, watched history, ratings, settings, profile notes and recommendation decisions.</p><strong>Owner-only Firestore rules</strong></article>
     <article class="shared"><i>03</i><span>Social layer</span><h3>Friend-visible</h3><p>${prefs.discoverable ? 'Signed-in people can find your name.' : 'Name search is off.'} ${prefs.shareTaste ? 'Friends can compare a derived taste summary—never raw history.' : 'Friend taste sharing is off.'}</p><strong>You choose what is visible</strong></article>
-  </div><div class="profile-privacy-foot"><span>Raw watch history and ratings are never published to friends.</span><button data-action="show-page" data-page="settings">Open privacy settings →</button></div></section>`;
+  </div><div class="profile-privacy-foot"><span>Raw watch history and ratings are never published to friends.</span><button data-action="show-page" data-page="settings">Open privacy settings ${icon('arrowRight', { cls: 'cv-arrow' })}</button></div></section>`;
 
   const rv = (state.recentlyViewed || []).slice(0, 12);
   const recent = rv.length ? `
@@ -197,7 +198,7 @@ export function renderProfile() {
     <div class="profile-recent-row">${rv.map(r => {
       const poster = r.poster ? `${IMG}w342${r.poster}` : PH;
       const wd = isWatched(r.id, r.type);
-      return `<a class="card" href="/${r.type}/${r.id}" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}"><div class="card-img"><img src="${poster}" alt="${esc(r.title)}" loading="lazy" data-ph="${PH}">${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div><div class="card-sub">${r.type === 'tv' ? 'TV show' : 'Movie'}</div></div></a>`;
+      return `<a class="card" href="/${r.type}/${r.id}" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}">${cardArt(poster, esc(r.title), r.poster || '')}${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div><div class="card-sub">${r.type === 'tv' ? 'TV show' : 'Movie'}</div></div></a>`;
     }).join('')}</div></section>` : `<section class="profile-panel profile-recent-empty"><span>Recently viewed</span><h2>Your next discovery will appear here.</h2><button class="btn-glass" data-action="show-page" data-page="discover">Explore titles</button></section>`;
 
   ct.innerHTML = `<div class="profile-shell">${header}${editForm}<div class="profile-dashboard"><main>${about}${snapshot}${privacy}${recent}</main><aside>${codeCard}${tastePass}${pulse}${quick}</aside></div>${intelligence}</div>`;

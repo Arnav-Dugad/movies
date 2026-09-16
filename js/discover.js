@@ -1,5 +1,6 @@
 // ===== DISCOVER — EDITORIAL DISCOVERY HUB =====
 import { tmdb } from './api.js';
+import { icon } from './icons.js';
 import { moods, mGenreList, tGenreList, IMG, REGIONS, regionName as countryName } from './config.js';
 import { state } from './state.js';
 import { toast, $, esc } from './ui.js';
@@ -28,7 +29,7 @@ let activePreset = '';
 // region decides what is streaming, and mature content decides include_adult.
 let collectionKey = '';
 const collectionKeyNow = () => `${state.region}|${adultFlag()}`;
-const LAB_WELCOME = '<div class="discover-lab-welcome"><i>✦</i><div><strong>Your filters are ready</strong><span>Use one quick start or build a precise collection above.</span></div></div>';
+const LAB_WELCOME = `<div class="discover-lab-welcome"><i>${icon('sparkles')}</i><div><strong>Your filters are ready</strong><span>Use one quick start or build a precise collection above.</span></div></div>`;
 const SURPRISE_EMPTY = '<div class="discover-surprise-empty"><i>?</i><strong>Your pick will appear here</strong><span>Highly rated · Streamable · Fresh</span></div>';
 let labRequest = 0;
 let moodRequest = 0;
@@ -57,7 +58,7 @@ function populateProviders(preserve = true, wanted = null) {
 
 function renderMoodDeck() {
   const host = $('moodGrid'); if (!host) return;
-  host.innerHTML = moods.map((mood, index) => `<button class="mood-card" data-action="pick-mood" data-idx="${index}" aria-label="Discover ${esc(mood.name)}"><span class="mood-index">${String(index + 1).padStart(2, '0')}</span><span class="mood-emoji">${mood.emoji}</span><span class="mood-name">${esc(mood.name)}</span><span class="mood-sub">${esc(mood.sub)}</span><i>Explore →</i></button>`).join('');
+  host.innerHTML = moods.map((mood, index) => `<button class="mood-card" data-action="pick-mood" data-idx="${index}" aria-label="Discover ${esc(mood.name)}"><span class="mood-index">${String(index + 1).padStart(2, '0')}</span><span class="mood-emoji">${icon(mood.icon)}</span><span class="mood-name">${esc(mood.name)}</span><span class="mood-sub">${esc(mood.sub)}</span><i>Explore ${icon('arrowRight', { cls: 'cv-arrow' })}</i></button>`).join('');
 }
 
 async function loadSpotlight(refresh = false) {
@@ -69,7 +70,7 @@ async function loadSpotlight(refresh = false) {
     const offset = refresh ? Math.floor(Math.random() * Math.min(eligible.length, 12)) : 0;
     const item = eligible[offset] || eligible[0]; if (!item) throw new Error('No spotlight');
     const type = typeOf(item), title = item.title || item.name || '';
-    host.innerHTML = `<article class="discover-spotlight-card"><img src="${IMG}original${item.backdrop_path}" alt="" loading="eager"><div class="discover-spotlight-shade"></div><div class="discover-spotlight-copy"><span>Today’s spotlight · ${type === 'tv' ? 'Series' : 'Movie'}</span><h2>${esc(title)}</h2><p>${item.vote_average ? `★ ${item.vote_average.toFixed(1)} · ` : ''}${esc(yearOf(item))}</p><div><a href="/${type}/${item.id}" data-action="open-detail" data-id="${item.id}" data-type="${type}">Explore title</a><button data-action="discover-new-spotlight" aria-label="Show another spotlight">↻</button></div></div></article>`;
+    host.innerHTML = `<article class="discover-spotlight-card"><img src="${IMG}original${item.backdrop_path}" alt="" loading="eager"><div class="discover-spotlight-shade"></div><div class="discover-spotlight-copy"><span>Today’s spotlight · ${type === 'tv' ? 'Series' : 'Movie'}</span><h2>${esc(title)}</h2><p>${item.vote_average ? `${icon('starSolid', { cls: 'cv-star' })} ${item.vote_average.toFixed(1)} · ` : ''}${esc(yearOf(item))}</p><div><a href="/${type}/${item.id}" data-action="open-detail" data-id="${item.id}" data-type="${type}">Explore title</a><button data-action="discover-new-spotlight" aria-label="Show another spotlight">${icon('refresh')}</button></div></div></article>`;
   } catch (_) { host.innerHTML = '<div class="discover-spotlight-error"><span>Spotlight unavailable</span><button data-action="discover-new-spotlight">Try again</button></div>'; }
 }
 
@@ -238,7 +239,7 @@ async function pickMood(index) {
   const mood = moods[index], host = $('moodResults'); if (!mood || !host) return;
   const request = ++moodRequest;
   document.querySelectorAll('.mood-card').forEach((card, idx) => card.classList.toggle('active', idx === index));
-  host.innerHTML = `<div class="discover-mood-result-head"><div><span>${mood.emoji} Mood journey</span><h3>${esc(mood.name)}</h3><p>Finding excellent ${esc(mood.sub.toLowerCase())} picks…</p></div></div><div class="discover-result-grid">${skelCards(10)}</div>`;
+  host.innerHTML = `<div class="discover-mood-result-head"><div><span>${icon(mood.icon)} Mood journey</span><h3>${esc(mood.name)}</h3><p>Finding excellent ${esc(mood.sub.toLowerCase())} picks…</p></div></div><div class="discover-result-grid">${skelCards(10)}</div>`;
   host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   const type = mood.type === 'tv' ? 'tv' : 'movie';
   const params = { with_genres: mood.genres, sort_by: 'vote_average.desc', 'vote_count.gte': 150, page: Math.floor(Math.random() * 3) + 1, include_adult: adultFlag(), watch_region: state.region, with_watch_monetization_types: 'flatrate' };
@@ -247,7 +248,7 @@ async function pickMood(index) {
     const data = await tmdb(`/discover/${type}`, params);
     if (request !== moodRequest) return;
     const items = (data.results || []).filter(item => item.poster_path).slice(0, 20);
-    host.innerHTML = `<div class="discover-mood-result-head"><div><span>${mood.emoji} Mood journey</span><h3>${esc(mood.name)}</h3><p>${items.length} quality picks available for streaming in ${esc(regionName())}.</p></div><button data-action="pick-mood" data-idx="${index}">Refresh mood</button></div><div class="discover-result-grid">${items.map(item => buildCard(item, type)).join('')}</div>`;
+    host.innerHTML = `<div class="discover-mood-result-head"><div><span>${icon(mood.icon)} Mood journey</span><h3>${esc(mood.name)}</h3><p>${items.length} quality picks available for streaming in ${esc(regionName())}.</p></div><button data-action="pick-mood" data-idx="${index}">Refresh mood</button></div><div class="discover-result-grid">${items.map(item => buildCard(item, type)).join('')}</div>`;
     observeReveals(host);
   } catch (_) { host.innerHTML = '<div class="discover-no-results"><strong>Could not build this mood</strong><span>Try another mood or refresh shortly.</span></div>'; }
 }
@@ -267,7 +268,7 @@ export async function randomPick(type) {
     const pick = choices[Math.floor(Math.random() * choices.length)];
     if (!pick) throw new Error('No pick');
     const title = pick.title || pick.name || '';
-    host.innerHTML = `<div class="discover-surprise-card"><div>${buildCard(pick, type)}</div><section><span>Tonight’s pick</span><h3>${esc(title)}</h3><p>${pick.overview ? esc(pick.overview) : 'A strong match selected from highly rated streaming titles.'}</p><div><b>${pick.vote_average ? `★ ${pick.vote_average.toFixed(1)}` : 'Quality pick'}</b><b>${esc(yearOf(pick))}</b><b>${type === 'tv' ? 'TV show' : 'Movie'}</b></div><a class="btn-primary" href="/${type}/${pick.id}" data-action="open-detail" data-id="${pick.id}" data-type="${type}">Open tonight’s pick</a></section></div>`;
+    host.innerHTML = `<div class="discover-surprise-card"><div>${buildCard(pick, type)}</div><section><span>Tonight’s pick</span><h3>${esc(title)}</h3><p>${pick.overview ? esc(pick.overview) : 'A strong match selected from highly rated streaming titles.'}</p><div><b>${pick.vote_average ? `${icon('starSolid', { cls: 'cv-star' })} ${pick.vote_average.toFixed(1)}` : 'Quality pick'}</b><b>${esc(yearOf(pick))}</b><b>${type === 'tv' ? 'TV show' : 'Movie'}</b></div><a class="btn-primary" href="/${type}/${pick.id}" data-action="open-detail" data-id="${pick.id}" data-type="${type}">Open tonight’s pick</a></section></div>`;
     toast(`Tonight’s pick: ${title}`, 'success');
   } catch (_) { host.innerHTML = '<div class="discover-surprise-empty"><i>!</i><strong>No pick found this time</strong><span>Try once more for a fresh result.</span></div>'; toast('Could not choose a title', 'error'); }
   finally { if (request === surpriseRequest) { button.classList.remove('spinning'); buttons.forEach(item => { item.disabled = false; }); } }

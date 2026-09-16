@@ -71,6 +71,8 @@ export function renderSettings() {
           <label class="settings-select-row"><span><strong>Theme</strong><small>Cinema dark, paper light, or follow your device. Also in the profile menu.</small></span><select class="watched-select" data-action="settings-theme" data-pref="theme">${[['dark', 'Dark'], ['light', 'Light'], ['system', 'Match device']].map(([v, label]) => `<option value="${v}" ${v === prefs.theme ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
           ${select('textSize', 'Text size', 'Increase interface text without zooming the page.', [['standard', 'Standard'], ['large', 'Large']], prefs.textSize)}
           ${select('glass', 'Glass effects', 'Control glow and translucent surface intensity.', [['rich', 'Rich cinema glass'], ['quiet', 'Quiet and focused']], prefs.glass)}
+          ${toggle('castMilestones', 'Cast milestones', 'Celebrate when an episode takes you past 10, 20, 30 hours and more with an actor.', prefs.castMilestones)}
+          ${toggle('ambientColour', 'Title colour', 'Tint each title page’s glow, buttons and progress bars with a colour from its poster.', prefs.ambientColour)}
           ${toggle('highContrast', 'High-contrast type', 'Brighten supporting text and borders for easier reading.', prefs.highContrast)}
           ${toggle('compactNav', 'Compact navigation', 'Use a tighter desktop navigation bar with more breathing room below.', prefs.compactNav)}
         </section>

@@ -5,6 +5,7 @@
 // Departure warnings are diffs between two CineVerse scans of the same region —
 // no service publishes a leave date, so we never pretend to know one.
 import { tmdb, pool } from './api.js';
+import { icon } from './icons.js';
 import { state } from './state.js';
 import { IMG, PH, providerUrl, regionLabel } from './config.js';
 import { $, esc, debounce, toast } from './ui.js';
@@ -434,7 +435,7 @@ function visibleEvents() {
 function emptyState() {
   const filtered = events.filter(eventVisible).length;
   const hidden = snoozedCount();
-  return `<div class="notification-empty"><i>✓</i><h2>All quiet here</h2>
+  return `<div class="notification-empty"><i>${icon('checkCircle')}</i><h2>All quiet here</h2>
     <p>${filtered ? 'No notifications match this view.' : events.length ? 'Everything here is currently muted, snoozed, or dismissed.' : 'Watch a TV show or save a movie to start your personal feed.'}</p>
     <div class="notification-empty-actions">
       ${filtered ? '<button class="btn-glass" data-action="notification-reset-view">Clear filters</button>' : ''}
@@ -478,7 +479,7 @@ export function closeNotificationDropdown() {
 function paintDropdown() {
   const host = $('notificationDropdown'); if (!host) return;
   if (!state.user) {
-    host.innerHTML = `<div class="notification-drop-head"><span>Premiere desk</span><strong>Notifications</strong></div><div class="notification-drop-empty"><i>✦</i><p>Sign in for episode times, releases, streaming arrivals, and departure warnings.</p><button data-action="open-auth">Sign in</button></div>`;
+    host.innerHTML = `<div class="notification-drop-head"><span>Premiere desk</span><strong>Notifications</strong></div><div class="notification-drop-empty"><i>${icon('sparkles')}</i><p>Sign in for episode times, releases, streaming arrivals, and departure warnings.</p><button data-action="open-auth">Sign in</button></div>`;
     return;
   }
   const allowed = events.filter(eventVisible);
@@ -491,7 +492,7 @@ function paintDropdown() {
       <button data-action="close-notifications" aria-label="Close notifications">×</button>
     </div>
     ${urgent ? `<div class="notification-drop-alert"><i aria-hidden="true">!</i>${urgent} item${urgent === 1 ? '' : 's'} need${urgent === 1 ? 's' : ''} attention</div>` : ''}
-    <div class="notification-drop-feed" role="listbox" aria-label="Recent notifications">${list.length ? list.map(compactCard).join('') : '<div class="notification-drop-empty"><i>✓</i><p>No alerts yet. Watch a show or save a movie to begin.</p></div>'}</div>
+    <div class="notification-drop-feed" role="listbox" aria-label="Recent notifications">${list.length ? list.map(compactCard).join('') : `<div class="notification-drop-empty"><i>${icon('checkCircle')}</i><p>No alerts yet. Watch a show or save a movie to begin.</p></div>`}</div>
     <div class="notification-drop-foot">
       <button data-action="show-page" data-page="notifications">Open notification center</button>
       ${count ? '<button data-action="read-all-notifications" title="Mark everything read">Read all</button>' : ''}
@@ -596,7 +597,7 @@ function renderInbox() {
   const host = $('notificationsContent'); if (!host) return;
   if (!state.user) {
     stopNotificationCountdowns();
-    host.innerHTML = `<div class="notification-auth"><i>✦</i><h2>Your personal premiere desk</h2><p>Sign in to see episode drops, saved releases, subscription-streaming arrivals, and departure warnings.</p><button class="btn-primary" data-action="open-auth">Sign in</button></div>`;
+    host.innerHTML = `<div class="notification-auth"><i>${icon('sparkles')}</i><h2>Your personal premiere desk</h2><p>Sign in to see episode drops, saved releases, subscription-streaming arrivals, and departure warnings.</p><button class="btn-primary" data-action="open-auth">Sign in</button></div>`;
     return;
   }
   const allowed = events.filter(eventVisible), list = visibleEvents(), unreadCount = allowed.filter(unread).length;

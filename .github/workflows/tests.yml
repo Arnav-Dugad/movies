@@ -34,7 +34,7 @@ jobs:
       # bundler to catch it — and a renamed export breaks it just as completely
       # while parsing fine.
       - name: Parse every module
-        run: for f in js/*.js; do node --check "$f"; done
+        run: node tests/parse.mjs
 
       - name: Resolve every import
         run: node tests/imports.mjs

@@ -1,5 +1,7 @@
 // ===== HOME SECTIONS (+ personalization) =====
 import { tmdb, pool } from './api.js';
+import { haptic } from './haptics.js';
+import { icon } from './icons.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
 import { observeReveals } from './effects.js';
@@ -190,7 +192,7 @@ function continueCard(row, index = 0, total = 1) {
       <img src="${art}" alt="" loading="lazy" data-ph="${PH}">
       <span class="continue-scrim" aria-hidden="true"></span>
       <span class="continue-play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
-      ${isPinned(key) ? '<span class="continue-pin-mark" aria-label="Pinned">&#9733;</span>' : ''}
+      ${isPinned(key) ? `<span class="continue-pin-mark" aria-label="Pinned">${icon('pin')}</span>` : ''}
       <span class="continue-bar" role="img" aria-label="${progress.percent}% watched"><i style="width:0" data-w="${progress.percent}"></i></span>
     </a>
     ${continueEditing || isMovie ? '' : `<button class="continue-quick" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}" data-from="rail" aria-label="Mark ${esc(nextCompact)} of ${title} watched" data-tip="Mark watched">${EP_CHECK_HOME}</button>`}</div>
@@ -201,7 +203,7 @@ function continueCard(row, index = 0, total = 1) {
         <button class="ce-btn ce-grip continue-drag-handle" data-key="${key}" aria-label="Reorder ${title}. Drag, or use the arrow keys." title="Drag to reorder">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
         </button>
-        <button class="ce-btn${isPinned(key) ? ' on' : ''}" data-action="continue-pin" data-key="${key}" aria-pressed="${isPinned(key)}" aria-label="${isPinned(key) ? 'Unpin' : 'Pin'} ${title}">${isPinned(key) ? '&#9733; Pinned' : '&#9734; Pin'}</button>
+        <button class="ce-btn${isPinned(key) ? ' on' : ''}" data-action="continue-pin" data-key="${key}" aria-pressed="${isPinned(key)}" aria-label="${isPinned(key) ? 'Unpin' : 'Pin'} ${title}">${isPinned(key) ? `${icon('pin')} Pinned` : `${icon('pin')} Pin`}</button>
         <button class="ce-btn" data-action="continue-hide" data-key="${key}" aria-label="Hide ${title} from this rail">Hide</button>
         ${isMovie ? '' : `<button class="ce-btn ce-drop" data-action="continue-drop" data-tid="${id}" data-meta="${meta}" aria-label="Stop tracking ${title} everywhere">Dropped</button>`}
       </div>` : ''}
@@ -278,7 +280,7 @@ export async function renderFranchiseRail() {
   if (signature === franchiseRenderSignature && host.firstElementChild) return;
   franchiseRenderSignature = signature;
   if (!rows.length) {
-    host.innerHTML = `<section class="section reveal franchise-section franchise-section-empty"><div class="section-head"><div><h2 class="section-title"><span>&#9678;</span> Franchises</h2></div><button class="section-see-all" data-action="show-page" data-page="franchises">Open<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div></section>`;
+    host.innerHTML = `<section class="section reveal franchise-section franchise-section-empty"><div class="section-head"><div><h2 class="section-title"><span class="section-icon">${icon('layers')}</span> Franchises</h2></div><button class="section-see-all" data-action="show-page" data-page="franchises">Open<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div></section>`;
     return;
   }
 
@@ -289,7 +291,7 @@ export async function renderFranchiseRail() {
 
   host.innerHTML = `<section class="section reveal franchise-section">
     <div class="section-head"><div>
-      <h2 class="section-title"><span>&#9678;</span> Finish the Franchise</h2>
+      <h2 class="section-title"><span class="section-icon">${icon('layers')}</span> Finish the Franchise</h2>
       <p>${esc(lede)}</p>
     </div><button class="section-see-all" data-action="show-page" data-page="franchises">All franchises<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div>
     <div class="row franchise-row">${rows.map(franchiseCard).join('')}</div>
@@ -315,11 +317,11 @@ function franchiseCard(item) {
       <span class="fr-card-play" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
       <span class="fr-card-flag">${left === 1 ? 'Last one' : `${left} left`}</span>
     </a>
-    <button class="fr-card-dismiss" data-action="franchise-dismiss" data-cid="${item.id}" aria-label="Stop suggesting ${esc(item.name)}" data-tip="Not interested in this series">&#10005;</button>
+    <button class="fr-card-dismiss" data-action="franchise-dismiss" data-cid="${item.id}" aria-label="Stop suggesting ${esc(item.name)}" data-tip="Not interested in this series">${icon('close')}</button>
     <div class="fr-card-body">
       <a class="fr-card-series" href="/collection/${item.id}" data-action="go-collection" data-cid="${item.id}">${esc(item.name)}</a>
       <h3>${esc(next.title)}</h3>
-      <div class="fr-card-line"><span class="fr-card-stack">${stack.map(part => `<img src="${IMG}w92${part.poster}" alt="" loading="lazy">`).join('')}</span><span>Continue series <b>→</b></span></div>
+      <div class="fr-card-line"><span class="fr-card-stack">${stack.map(part => `<img src="${IMG}w92${part.poster}" alt="" loading="lazy">`).join('')}</span><span>Continue series <b>${icon('arrowRight', { cls: 'cv-arrow' })}</b></span></div>
       <div class="fr-card-bar"><i style="width:0" data-w="${Math.round(item.percent)}"></i></div>
       <div class="fr-card-meta"><span>${item.seen} of ${item.released} seen</span><b>${Math.round(item.percent)}%</b></div>
     </div>
@@ -366,8 +368,8 @@ export function initHomeActions() {
   });
   registerActions({
     'continue-edit': () => { continueEditing = !continueEditing; renderContinueWatching(); },
-    'continue-pin': (el) => { togglePinned(el.dataset.key); renderContinueWatching(); },
-    'continue-hide': (el) => { toggleHidden(el.dataset.key); renderContinueWatching(); },
+    'continue-pin': (el) => { togglePinned(el.dataset.key); haptic('pin'); renderContinueWatching(); },
+    'continue-hide': (el) => { toggleHidden(el.dataset.key); haptic('pin'); renderContinueWatching(); },
     // Hiding is local to this rail; dropping says the viewer is done with the
     // show, which Stats and the franchise suggestions read too.
     'continue-drop': (el) => {
@@ -405,23 +407,23 @@ const debouncedFranchiseRail = debounce(() => renderFranchiseRail(), 700);
 // Exported so the curated collection page (js/collection.js) can re-run the exact
 // same endpoint + params behind a row's "See all".
 export const SECTIONS = [
-  { id: 'pop_movies', t: 'Popular Movies', p: '/movie/popular', type: 'movie', icon: '🎬', page: 'movies' },
-  { id: 'top10', t: 'Top 10 Movies This Week', p: '/trending/movie/week', type: 'movie', t10: true, icon: '🔥', page: 'movies' },
-  { id: 'pop_tv', t: 'Popular TV Shows', p: '/tv/popular', type: 'tv', icon: '📺', page: 'tv' },
-  { id: 'top10_tv', t: 'Top 10 Shows This Week', p: '/trending/tv/week', type: 'tv', t10: true, icon: '🔥', page: 'tv' },
-  { id: 'acclaimed', t: 'Critically Acclaimed', p: '/discover/movie', params: { sort_by: 'vote_average.desc', 'vote_count.gte': 3000 }, type: 'movie', icon: '🏆', page: 'movies' },
-  { id: 'now_playing', t: 'Now Playing', p: '/movie/now_playing', type: 'movie', icon: '🎞️', page: 'movies' },
-  { id: 'trending_people', t: 'Trending People', p: '/trending/person/week', type: 'person', icon: '🎭' },
-  { id: 'gems', t: 'Hidden Gems', p: '/discover/movie', params: { sort_by: 'vote_average.desc', 'vote_average.gte': 7.2, 'vote_count.gte': 200, 'vote_count.lte': 1500 }, type: 'movie', icon: '💎', page: 'movies' },
-  { id: 'upcoming', t: 'Upcoming Movies', p: '/movie/upcoming', type: 'movie', icon: '🗓️', page: 'movies' },
-  { id: 'horror', t: 'Spine-Chilling Horror', p: '/discover/movie', params: { with_genres: '27', sort_by: 'popularity.desc', 'vote_count.gte': 150 }, type: 'movie', icon: '😱', page: 'movies' },
-  { id: 'comedy', t: 'Laugh Out Loud', p: '/discover/movie', params: { with_genres: '35', sort_by: 'popularity.desc', 'vote_count.gte': 150 }, type: 'movie', icon: '😂', page: 'movies' },
-  { id: 'top_rated', t: 'Top Rated Movies', p: '/movie/top_rated', type: 'movie', icon: '⭐', page: 'movies' },
-  { id: 'animation', t: 'Animated Favorites', p: '/discover/movie', params: { with_genres: '16', sort_by: 'popularity.desc', 'vote_count.gte': 200 }, type: 'movie', icon: '🎨', page: 'movies' },
-  { id: 'airing', t: 'Airing Today', p: '/tv/airing_today', type: 'tv', icon: '📡', page: 'tv' },
-  { id: 'world', t: 'World Cinema', p: '/discover/movie', params: { with_original_language: 'ko', sort_by: 'popularity.desc', 'vote_count.gte': 100 }, type: 'movie', icon: '🌏', page: 'movies' },
-  { id: 'top_tv', t: 'Top Rated TV', p: '/tv/top_rated', type: 'tv', icon: '🏆', page: 'tv' },
-  { id: 'trending_all', t: 'Trending This Week', p: '/trending/all/week', type: 'multi', wide: true, icon: '📈', page: 'movies' },
+  { id: 'pop_movies', t: 'Popular Movies', p: '/movie/popular', type: 'movie', icon: 'clapper', page: 'movies' },
+  { id: 'top10', t: 'Top 10 Movies This Week', p: '/trending/movie/week', type: 'movie', t10: true, icon: 'flame', page: 'movies' },
+  { id: 'pop_tv', t: 'Popular TV Shows', p: '/tv/popular', type: 'tv', icon: 'tv', page: 'tv' },
+  { id: 'top10_tv', t: 'Top 10 Shows This Week', p: '/trending/tv/week', type: 'tv', t10: true, icon: 'flame', page: 'tv' },
+  { id: 'acclaimed', t: 'Critically Acclaimed', p: '/discover/movie', params: { sort_by: 'vote_average.desc', 'vote_count.gte': 3000 }, type: 'movie', icon: 'trophy', page: 'movies' },
+  { id: 'now_playing', t: 'Now Playing', p: '/movie/now_playing', type: 'movie', icon: 'film', page: 'movies' },
+  { id: 'trending_people', t: 'Trending People', p: '/trending/person/week', type: 'person', icon: 'masks' },
+  { id: 'gems', t: 'Hidden Gems', p: '/discover/movie', params: { sort_by: 'vote_average.desc', 'vote_average.gte': 7.2, 'vote_count.gte': 200, 'vote_count.lte': 1500 }, type: 'movie', icon: 'gem', page: 'movies' },
+  { id: 'upcoming', t: 'Upcoming Movies', p: '/movie/upcoming', type: 'movie', icon: 'calendar', page: 'movies' },
+  { id: 'horror', t: 'Spine-Chilling Horror', p: '/discover/movie', params: { with_genres: '27', sort_by: 'popularity.desc', 'vote_count.gte': 150 }, type: 'movie', icon: 'ghost', page: 'movies' },
+  { id: 'comedy', t: 'Laugh Out Loud', p: '/discover/movie', params: { with_genres: '35', sort_by: 'popularity.desc', 'vote_count.gte': 150 }, type: 'movie', icon: 'laugh', page: 'movies' },
+  { id: 'top_rated', t: 'Top Rated Movies', p: '/movie/top_rated', type: 'movie', icon: 'star', page: 'movies' },
+  { id: 'animation', t: 'Animated Favorites', p: '/discover/movie', params: { with_genres: '16', sort_by: 'popularity.desc', 'vote_count.gte': 200 }, type: 'movie', icon: 'palette', page: 'movies' },
+  { id: 'airing', t: 'Airing Today', p: '/tv/airing_today', type: 'tv', icon: 'broadcast', page: 'tv' },
+  { id: 'world', t: 'World Cinema', p: '/discover/movie', params: { with_original_language: 'ko', sort_by: 'popularity.desc', 'vote_count.gte': 100 }, type: 'movie', icon: 'globe', page: 'movies' },
+  { id: 'top_tv', t: 'Top Rated TV', p: '/tv/top_rated', type: 'tv', icon: 'trophy', page: 'tv' },
+  { id: 'trending_all', t: 'Trending This Week', p: '/trending/all/week', type: 'multi', wide: true, icon: 'trendUp', page: 'movies' },
 ];
 
 function rowError(path, target, s, params) {
@@ -432,7 +434,7 @@ function sectionShell(s, w = 155) {
   // See All now opens the EXACT curated set (same endpoint + params), not a coarse
   // /movies page — so every row, including person rows, gets one.
   const seeAll = `<a class="section-see-all" href="/collection/${s.id}" data-action="see-all" data-id="${s.id}">See All<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></a>`;
-  return `<div class="section reveal"><div class="section-head"><h2 class="section-title"><span>${s.icon}</span> ${s.t}</h2>${seeAll}</div><div class="row" id="row_${s.id}">${skelCards(8, w)}</div></div>`;
+  return `<div class="section reveal"><div class="section-head"><h2 class="section-title"><span class="section-icon">${icon(s.icon)}</span> ${s.t}</h2>${seeAll}</div><div class="row" id="row_${s.id}">${skelCards(8, w)}</div></div>`;
 }
 
 export async function initHome() {

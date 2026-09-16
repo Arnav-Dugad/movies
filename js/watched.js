@@ -8,7 +8,7 @@ import { state } from './state.js';
 import { IMG, PH, genreMap } from './config.js';
 import { esc, debounce, $, toast } from './ui.js';
 import { registerActions } from './events.js';
-import { rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
+import { cardArt, rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { ensureWatchedMeta } from './watched-meta.js';
 import { playCount, lastPlayMs } from './rewatch.js';
 import { matureStatus, pendingMature, checkingMature, resolveMature, adultFromGenre, realGenre, adultGenreOptionsHTML, onMatureToggle } from './mature-filter.js';
@@ -199,13 +199,13 @@ function renderGrid() {
     const scope = state.watchedFilter === 'movie' ? 'movies' : state.watchedFilter === 'tv' ? 'TV shows' : 'titles';
     ct.innerHTML = anyWatched
       ? `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><h3>No matches</h3><p>Try a different search, genre, or filter</p></div>`
-      : `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6L9 17l-5-5"/></svg><h3>No watched ${scope} yet</h3><p>Open a title and tap the ✓ to mark it watched</p></div>`;
+      : `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6L9 17l-5-5"/></svg><h3>No watched ${scope} yet</h3><p>Open a title and tap the check mark to mark it watched</p></div>`;
     return;
   }
 
   ct.innerHTML = `<div class="wl-grid">${items.map(w => {
     const poster = w.poster ? `${IMG}w342${w.poster}` : PH;
-    return `<a class="card" href="/${w.type}/${w.id}" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.id}" data-type="${w.type}"><div class="card-img"><img src="${poster}" alt="${esc(w.title)}" loading="lazy" data-ph="${PH}">${WATCHED_BADGE_HTML}${w.plays > 1 ? `<span class="card-plays" title="Seen ${w.plays} times">${w.plays}×</span>` : ''}${myRatingHTML(w.id, w.type)}${rateBtnHTML(w.id, w.type, w.title)}</div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div>${w.ts ? `<div class="watched-card-date">Watched ${esc(watchedDateLabel(w.ts))}</div>` : ''}</div></a>`;
+    return `<a class="card" href="/${w.type}/${w.id}" aria-label="${esc(w.title)}" data-action="open-detail" data-id="${w.id}" data-type="${w.type}">${cardArt(poster, esc(w.title), w.poster || '')}${WATCHED_BADGE_HTML}${w.plays > 1 ? `<span class="card-plays" title="Seen ${w.plays} times">${w.plays}×</span>` : ''}${myRatingHTML(w.id, w.type)}${rateBtnHTML(w.id, w.type, w.title)}</div><div class="card-info"><div class="card-title">${esc(w.title) || ''}</div><div class="card-sub"><span>${w.year || ''}</span><span class="dot"></span><span>${w.type === 'tv' ? 'TV' : 'Movie'}</span></div>${w.ts ? `<div class="watched-card-date">Watched ${esc(watchedDateLabel(w.ts))}</div>` : ''}</div></a>`;
   }).join('')}</div>`;
 }
 

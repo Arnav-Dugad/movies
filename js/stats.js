@@ -3,6 +3,7 @@
 // watched history. A compact snapshot is mirrored onto users/{uid} only when its
 // content hash changes, keeping it durable without burning free-tier writes.
 import { genreMap, mGenreList, tGenreList, IMG, PH, regionLabel } from './config.js';
+import { icon } from './icons.js';
 import { state } from './state.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { registerActions } from './events.js';
@@ -20,13 +21,15 @@ import { prefs, updatePref } from './prefs.js';
 import { rewatchSummary, rewatchesSince, playCount } from './rewatch.js';
 import { franchiseSummary, tvFamilySummary } from './franchise.js';
 import { diaryPanel, diarySummary, initDiary } from './diary.js';
+import { loadCompletion, completionHeadline, MIN_VOTES } from './completionist.js';
+import { computeCastHours, milestoneBand, hoursLabel } from './cast-hours.js';
 
 let statsScope = 'all';
 let latestSnapshot = null;
 let syncState = 'idle';
 let syncMessage = 'Private';
 let checkedUid = '', remoteHash = '', lastQueuedHash = '';
-let repairActive = false, insightGeneration = 0, latestDirectorLoyalty = null;
+let repairActive = false, insightGeneration = 0;
 const MOVIE_GENRES = new Set(mGenreList.map(genre => genre.id));
 const TV_GENRES = new Set(tGenreList.map(genre => genre.id));
 
@@ -374,7 +377,7 @@ function snapshotFor(stats) {
     collection: {
       completion: stats.completion, averageRuntime: stats.avgRuntime, averageMovieRuntime: stats.avgMovieRuntime, averageEpisodeRuntime: stats.avgEpisodeRuntime, releaseSpan: stats.releaseSpan,
       health: { score: stats.health.score, missing: stats.health.missing, checks: stats.health.checks.map(check => ({ key: check.key, coverage: check.coverage, missing: check.missing })) },
-      directorLoyalty: latestDirectorLoyalty || state.statsSnapshot?.collection?.directorLoyalty || null,
+      directorLoyalty: latestCompletion.director || state.statsSnapshot?.collection?.directorLoyalty || null,
       topDirector: stats.topDirector ? { name: stats.topDirector.name, id: stats.topDirector.id, profile: stats.topDirector.profile, count: stats.topDirector.count } : null,
       topActor: stats.topActor ? { name: stats.topActor.name, id: stats.topActor.id, profile: stats.topActor.profile, count: stats.topActor.count } : null,
       oldest: stats.oldestTitle ? { id: stats.oldestTitle.id, type: stats.oldestTitle.type, title: stats.oldestTitle.title, year: stats.oldestTitle.year } : null,
@@ -449,7 +452,8 @@ const SECTION_META = [
   ['health', 'Collection Health', 'Missing ratings, artwork, dates, and credits'],
   ['franchises', 'Franchises', 'How far through each film series you are'],
   ['providers', 'Streaming Intelligence', 'Provider freshness and 90-day catalog movement'],
-  ['directors', 'Director Loyalty', 'How deep you have gone into a filmography'],
+  ['directors', 'Completionist', 'How much of your favourite directors and actors you have seen'],
+  ['cast', 'Cast Milestones', 'Hours with the actors you watch most, from episode credits'],
   ['network', 'Director Network', 'Directors, titles, and actors you keep returning to'],
   ['smartwatch', 'Smart Watch List', 'What to watch next, ranked from your own signals'],
   ['achievements', 'Challenges & Trophies', 'Milestones derived from your whole account'],
@@ -594,7 +598,7 @@ function tvTrackerPanel() {
   const tv = episodeStats({ months: 12 });
   if (!tv.shows) {
     return `<section class="stats-panel tv-tracker"><div class="stats-section-head"><div><span>Episode intelligence</span><h2>TV Tracker</h2><p>Tick episodes on any show and this panel fills in — completion, pace, and your longest sitting.</p></div></div>
-      <div class="tv-empty"><i>▦</i><div><strong>No episode history yet</strong><p>Open a show and use <b>Mark season watched</b>, <b>Up to here</b>, or <b>I have seen it all</b>. Shows you marked watched before episode tracking existed are filled in automatically.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
+      <div class="tv-empty"><i>${icon('grid')}</i><div><strong>No episode history yet</strong><p>Open a show and use <b>Mark season watched</b>, <b>Up to here</b>, or <b>I have seen it all</b>. Shows you marked watched before episode tracking existed are filled in automatically.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
   }
 
   const hours = Math.round(tv.minutes / 60);
@@ -655,7 +659,7 @@ function tvTrackerPanel() {
       </figure>
       <figure class="tv-card">
         <figcaption><strong>Shows in progress</strong><span>${active.length ? `${active.length} open · ${tv.caughtUp} caught up · ${completedShows.length} series completed` : 'Every tracked show is caught up'}</span></figcaption>
-        ${rows || `<div class="tv-allclear"><i>✓</i><p>Nothing waiting. ${tv.caughtUp} show${tv.caughtUp === 1 ? '' : 's'} caught up; ${completedShows.length} ended series completed.</p></div>`}
+        ${rows || `<div class="tv-allclear"><i>${icon('check')}</i><p>Nothing waiting. ${tv.caughtUp} show${tv.caughtUp === 1 ? '' : 's'} caught up; ${completedShows.length} ended series completed.</p></div>`}
       </figure>
     </div>
 
@@ -738,13 +742,13 @@ function providerSparkline(series, width = 220, height = 54) {
 
 function providerIntelligencePanels() {
   const providers = getProviderStats({ days: 90 }), catalog = getCatalogSeries({ days: 90 });
-  if (!providers.length) return `<section class="stats-panel provider-reliability"><div class="stats-section-head"><div><span>Streaming confidence</span><h2>Provider Reliability Score</h2><p>Freshness scores appear after CineVerse checks subscription availability for titles in your collection.</p></div></div><div class="provider-stats-empty"><i>✦</i><div><strong>No provider scans yet</strong><p>Open Notifications and refresh once to build your private provider baseline.</p></div><button data-action="show-page" data-page="notifications">Open notifications</button></div></section><section class="stats-panel provider-history-charts"><div class="stats-section-head"><div><span>90-day subscription movement</span><h2>Provider History Charts</h2><p>Real additions and removals will appear after CineVerse has two subscription scans to compare.</p></div></div><div class="provider-flow-list"><div class="provider-history-baseline"><i>◎</i><div><strong>No history to compare yet</strong><p>Your first scan creates the baseline; later scans reveal which services gained or lost titles.</p></div></div></div></section>`;
+  if (!providers.length) return `<section class="stats-panel provider-reliability"><div class="stats-section-head"><div><span>Streaming confidence</span><h2>Provider Reliability Score</h2><p>Freshness scores appear after CineVerse checks subscription availability for titles in your collection.</p></div></div><div class="provider-stats-empty"><i>${icon('sparkles')}</i><div><strong>No provider scans yet</strong><p>Open Notifications and refresh once to build your private provider baseline.</p></div><button data-action="show-page" data-page="notifications">Open notifications</button></div></section><section class="stats-panel provider-history-charts"><div class="stats-section-head"><div><span>90-day subscription movement</span><h2>Provider History Charts</h2><p>Real additions and removals will appear after CineVerse has two subscription scans to compare.</p></div></div><div class="provider-flow-list"><div class="provider-history-baseline"><i>${icon('target')}</i><div><strong>No history to compare yet</strong><p>Your first scan creates the baseline; later scans reveal which services gained or lost titles.</p></div></div></div></section>`;
   const reliable = [...providers].sort((a, b) => b.reliability - a.reliability || b.current - a.current || a.name.localeCompare(b.name));
   const changed = providers.filter(provider => provider.gained || provider.lost).sort((a, b) => (b.gained + b.lost) - (a.gained + a.lost) || b.current - a.current).slice(0, 9);
   const maxChange = Math.max(1, ...changed.flatMap(provider => [provider.gained, provider.lost]));
   const currentTracked = catalog.at(-1)?.total ?? Object.keys(state.providerHistory?.snapshots || {}).length;
   const reliability = `<section class="stats-panel provider-reliability"><div class="stats-section-head"><div><span>Streaming confidence</span><h2>Provider Reliability Score</h2><p>How recently each subscription service was checked across your tracked collection.</p></div><div class="provider-region-chip">${esc(regionLabel(state.region))} · subscription only</div></div><div class="provider-reliability-summary"><div><span>Services detected</span><strong>${providers.length}</strong></div><div><span>Tracked titles</span><strong>${currentTracked}</strong></div><div><span>Freshest check</span><strong>${esc(providerAge(Math.max(...providers.map(provider => provider.checkedAt))).replace('Checked ', ''))}</strong></div></div><div class="provider-reliability-grid">${reliable.map(provider => `<article><div class="provider-reliability-brand"><img src="${provider.logo ? `${IMG}w92${provider.logo}` : PH}" alt=""><span><strong>${esc(provider.name)}</strong><small>${provider.checkedTitles} current title${provider.checkedTitles === 1 ? '' : 's'}</small></span></div><div class="provider-score-ring" style="--provider-score:${provider.reliability * 3.6}deg"><strong>${provider.reliability}</strong><span>/100</span></div><div class="provider-check-time"><i class="${provider.reliability >= 85 ? 'fresh' : provider.reliability >= 60 ? 'aging' : 'stale'}"></i><span>${esc(providerAge(provider.checkedAt))}</span></div>${providerSparkline(provider.series)}</article>`).join('')}</div><p class="provider-method-note">The score measures check freshness—not provider accuracy. It falls gradually when the catalog has not been scanned.</p></section>`;
-  const historyRows = changed.length ? changed.map(provider => `<article><div class="provider-history-brand"><img src="${provider.logo ? `${IMG}w92${provider.logo}` : PH}" alt=""><span><strong>${esc(provider.name)}</strong><small>${provider.current} available now · net ${provider.net > 0 ? '+' : ''}${provider.net}</small></span></div><div class="provider-flow"><span class="gain"><b style="--flow:${Math.max(provider.gained ? 8 : 0, Math.round(provider.gained / maxChange * 100))}%"></b><em>+${provider.gained}</em></span><span class="loss"><b style="--flow:${Math.max(provider.lost ? 8 : 0, Math.round(provider.lost / maxChange * 100))}%"></b><em>−${provider.lost}</em></span></div></article>`).join('') : `<div class="provider-history-baseline"><i>◎</i><div><strong>Your baseline is ready</strong><p>Gains and losses will appear after a later scan detects a real subscription change.</p></div></div>`;
+  const historyRows = changed.length ? changed.map(provider => `<article><div class="provider-history-brand"><img src="${provider.logo ? `${IMG}w92${provider.logo}` : PH}" alt=""><span><strong>${esc(provider.name)}</strong><small>${provider.current} available now · net ${provider.net > 0 ? '+' : ''}${provider.net}</small></span></div><div class="provider-flow"><span class="gain"><b style="--flow:${Math.max(provider.gained ? 8 : 0, Math.round(provider.gained / maxChange * 100))}%"></b><em>+${provider.gained}</em></span><span class="loss"><b style="--flow:${Math.max(provider.lost ? 8 : 0, Math.round(provider.lost / maxChange * 100))}%"></b><em>−${provider.lost}</em></span></div></article>`).join('') : `<div class="provider-history-baseline"><i>${icon('target')}</i><div><strong>Your baseline is ready</strong><p>Gains and losses will appear after a later scan detects a real subscription change.</p></div></div>`;
   const catalogSeries = catalog.map(item => ({ day: item.day, value: item.total }));
   const history = `<section class="stats-panel provider-history-charts"><div class="stats-section-head"><div><span>90-day subscription movement</span><h2>Provider History Charts</h2><p>Real additions and removals detected between CineVerse scans. Initial baseline titles never count as gains.</p></div><div class="provider-chart-legend"><span><i></i>Gained</span><span><i></i>Lost</span></div></div><div class="provider-catalog-trend"><div><span>Tracked catalog</span><strong>${currentTracked}<small> titles now</small></strong></div>${providerSparkline(catalogSeries, 680, 92)}<div class="provider-trend-dates"><span>${esc(catalog[0]?.day || 'First scan')}</span><span>${esc(catalog.at(-1)?.day || 'Today')}</span></div></div><div class="provider-flow-list">${historyRows}</div></section>`;
   return reliability + history;
@@ -787,43 +791,66 @@ export function directorNetworkPanel(stats) {
   return `<section class="stats-panel director-network"><div class="stats-section-head"><div><span>Creative connections</span><h2>Director Network</h2><p>Your most-watched filmmakers connected to their titles and recurring cast.</p></div><div class="network-legend"><span><i></i>Director link</span><span><i></i>Cast link</span></div></div><div class="network-overview"><div><span>Core filmmakers</span><strong>${directors.length}</strong></div><div><span>Visible connections</span><strong>${edges.length}</strong></div><div><span>Recurring collaborator</span><strong>${esc(recurring?.name || 'Discovering')}</strong></div></div><div class="network-scroll"><div class="network-canvas" style="width:${width}px;height:${height}px"><div class="network-column-label director">Directors</div><div class="network-column-label title">Your movies &amp; shows</div><div class="network-column-label actor">Actors</div><svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">${edges.join('')}</svg>${directorNodes}${titleNodes}${actorNodes}</div></div></section>`;
 }
 
-function cachedLoyalty(stats) {
-  const value = latestDirectorLoyalty || state.statsSnapshot?.collection?.directorLoyalty;
-  if (!value?.items?.length) return null;
+// ===== COMPLETIONIST =====
+// Your most-watched directors and actors, each as "You've seen 8 of 12 … films"
+// with the unseen films listed best-rated first (js/completionist.js decides
+// what counts). Directors are the default view; the choice is remembered.
+const COMPLETION_ROLES = [['director', 'Directors'], ['actor', 'Actors']];
+const COMPLETION_VERSION = 2;
+const roleKey = 'cv_completion_role';
+let completionRole = (() => { try { return localStorage.getItem(roleKey) === 'actor' ? 'actor' : 'director'; } catch (_) { return 'director'; } })();
+const latestCompletion = { director: null, actor: null };
+
+const completionPeople = (stats, role) => (role === 'actor' ? stats.topActors : stats.topMovieDirectors).filter(person => person.id).slice(0, 4);
+const watchedMovieIds = stats => stats.watched.filter(row => row.type === 'movie').map(row => +row.id).filter(Boolean);
+
+function cachedCompletion(stats, role) {
+  const value = latestCompletion[role] || (role === 'director' ? state.statsSnapshot?.collection?.directorLoyalty : null);
+  if (!value?.items?.length || value.v !== COMPLETION_VERSION || value.role !== role) return null;
   if (value.filterSignature !== directorFilterSignature()) return null;
-  const watchedSignature = stats.watched.filter(row => row.type === 'movie').map(row => +row.id).filter(Boolean).sort((a, b) => a - b).join(',');
-  if (value.watchedSignature !== watchedSignature) return null;
-  const wanted = stats.topMovieDirectors.map(person => +person.id).filter(Boolean).slice(0, 4);
+  if (value.watchedSignature !== watchedMovieIds(stats).sort((a, b) => a - b).join(',')) return null;
+  const wanted = completionPeople(stats, role).map(person => +person.id);
   const available = new Set(value.items.map(item => +item.id));
   return wanted.length && wanted.every(id => available.has(id)) ? value : null;
 }
 
-function directorLoyaltyBody(payload) {
-  if (!payload?.items?.length) return '<div class="insight-loading"><i></i><span>Mapping complete filmographies…</span></div>';
-  return `<div class="loyalty-grid">${payload.items.map(item => `<article class="loyalty-card"><a class="loyalty-person" href="/person/${item.id}" data-action="open-person" data-id="${item.id}"><div>${personPicture(item)}</div><span><strong>${esc(item.name)}</strong><small>${item.completed} of ${item.total} eligible directing credits</small></span></a><div class="loyalty-progress"><i><em style="width:${item.percent}%"></em></i><strong>${item.percent}%</strong></div>${item.next ? `<a class="loyalty-next" href="/movie/${item.next.id}" data-action="open-detail" data-id="${item.next.id}" data-type="movie"><img src="${IMG}w92${item.next.poster}" alt="" loading="lazy"><span><small>Highly rated unseen</small><strong>${esc(item.next.title)}</strong></span></a>` : '<div class="loyalty-complete">No highly rated unseen film found.</div>'}</article>`).join('')}</div><p class="loyalty-note">${esc(payload.filterSummary || 'Completion uses unique movie credits where the person is listed as Director on TMDB.')}</p>`;
+const VISIBLE_GAPS = 4;
+function completionGap(gap) {
+  return `<li><a class="completion-gap" href="/movie/${gap.id}" data-action="open-detail" data-id="${gap.id}" data-type="movie" data-title="${esc(gap.title)}">${gap.poster ? `<img src="${IMG}w92${gap.poster}" alt="" loading="lazy" data-ph="${PH}">` : '<i class="completion-gap-blank" aria-hidden="true"></i>'}<span><strong>${esc(gap.title)}</strong><small>${gap.year || 'Undated'}</small></span><b aria-label="Rated ${gap.rating.toFixed(1)}">${icon('starSolid', { cls: 'cv-star' })}${gap.rating.toFixed(1)}</b></a></li>`;
+}
+
+function completionCard(item) {
+  const left = item.gapCount ?? item.gaps.length;
+  const listed = item.gaps.slice(0, VISIBLE_GAPS), rest = item.gaps.slice(VISIBLE_GAPS);
+  const gaps = item.gaps.length
+    ? `<div class="completion-gaps-head"><span>Still to see</span><small>best rated first</small></div><ol class="completion-gaps">${listed.map(completionGap).join('')}</ol>${rest.length ? `<details class="completion-more"><summary>${left > item.gaps.length ? `${rest.length} more of the best` : `${rest.length} more`}</summary><ol class="completion-gaps">${rest.map(completionGap).join('')}</ol></details>` : ''}`
+    : `<div class="loyalty-complete">${item.total ? 'Every established film seen.' : 'No established films to count yet.'}</div>`;
+  return `<article class="loyalty-card completion-card"><a class="loyalty-person" href="/person/${item.id}" data-action="open-person" data-id="${item.id}"><div>${personPicture(item)}</div><span><strong>${esc(completionHeadline(item))}</strong><small>${item.total ? `${item.percent}% complete${left ? ` · ${left} to go` : ''}` : 'Nothing counted yet'}</small></span></a><div class="loyalty-progress" role="img" aria-label="${item.seen} of ${item.total} seen"><i><em style="width:${item.percent}%"></em></i><strong>${item.seen}/${item.total}</strong></div>${gaps}</article>`;
+}
+
+function completionBody(payload, role = completionRole) {
+  if (!payload?.items?.length) return `<div class="insight-loading"><i></i><span>Checking every ${role === 'actor' ? 'role' : 'directing credit'}…</span></div>`;
+  return `<div class="loyalty-grid">${payload.items.map(completionCard).join('')}</div><p class="loyalty-note">${esc(payload.filterSummary || '')}</p>`;
 }
 
 const DIRECTOR_FILTERS = [
   ['directorExcludeShorts', 'Exclude shorts'],
   ['directorExcludeDocumentaries', 'Exclude documentaries'],
-  ['directorExcludeUnreleased', 'Exclude unreleased'],
 ];
 const directorFilterOptions = () => ({
   excludeShorts: !!prefs.directorExcludeShorts,
   excludeDocumentaries: !!prefs.directorExcludeDocumentaries,
-  excludeUnreleased: !!prefs.directorExcludeUnreleased,
 });
 const directorFilterSignature = () => DIRECTOR_FILTERS.map(([key]) => prefs[key] ? '1' : '0').join('');
-const directorFilterSummary = options => {
-  const included = [];
-  if (options.excludeShorts) included.push('feature-length work'); else included.push('short and feature-length work');
-  included.push(options.excludeDocumentaries ? 'non-documentaries' : 'documentaries included');
-  included.push(options.excludeUnreleased ? 'released projects only' : 'announced projects included');
-  return `Completion uses unique TMDB Director credits: ${included.join(', ')}.`;
+const directorFilterSummary = (options, role) => {
+  const kinds = [options.excludeShorts ? 'feature films' : 'features and shorts', options.excludeDocumentaries ? 'no documentaries' : 'documentaries included'];
+  const credit = role === 'actor' ? 'acting roles (not appearances as themselves or uncredited cameos)' : 'Director credits';
+  return `Counts released ${kinds.join(', ')} from TMDB ${credit} with at least ${MIN_VOTES} votes, plus anything you have seen. Gaps are sorted by TMDB rating.`;
 };
 
 function directorLoyaltyPanel(stats) {
-  return `<section class="stats-panel director-loyalty"><div class="stats-section-head"><div><span>Filmmaker completion</span><h2>Director Loyalty</h2><p>Choose exactly which projects count toward each filmmaker’s completion score.</p></div><div class="loyalty-live">Live filmography check</div></div><div class="loyalty-filters" aria-label="Director work filters">${DIRECTOR_FILTERS.map(([key, label]) => `<button class="${prefs[key] ? 'active' : ''}" data-action="director-work-filter" data-pref="${key}" aria-pressed="${prefs[key]}"><i></i><span>${label}</span></button>`).join('')}</div><div id="directorLoyaltyBody">${directorLoyaltyBody(cachedLoyalty(stats))}</div></section>`;
+  const roles = COMPLETION_ROLES.map(([role, label]) => `<button class="${completionRole === role ? 'active' : ''}" data-action="completion-role" data-role="${role}" aria-pressed="${completionRole === role}">${label}</button>`).join('');
+  return `<section class="stats-panel director-loyalty completionist"><div class="stats-section-head"><div><span>Filmography completion</span><h2>Completionist</h2><p>How much of your most-watched directors and actors you have seen, and the best of what is left.</p></div><div class="completion-roles" role="group" aria-label="Show directors or actors">${roles}</div></div><div class="loyalty-filters" aria-label="What counts as a film">${DIRECTOR_FILTERS.map(([key, label]) => `<button class="${prefs[key] ? 'active' : ''}" data-action="director-work-filter" data-pref="${key}" aria-pressed="${prefs[key]}"><i></i><span>${label}</span></button>`).join('')}</div><div id="directorLoyaltyBody">${completionBody(cachedCompletion(stats, completionRole))}</div></section>`;
 }
 
 function smartWatchPanel() {
@@ -836,34 +863,6 @@ const released = (item, now = new Date()) => {
   const date = new Date(`${raw}T00:00:00`);
   return !Number.isNaN(date.getTime()) && date <= now;
 };
-
-export function calculateDirectorLoyalty(person, crew = [], watchedMovieIds = [], now = new Date(), options = {}) {
-  const watched = watchedMovieIds instanceof Set ? watchedMovieIds : new Set(watchedMovieIds);
-  const featureLengthIds = options.featureLengthIds instanceof Set ? options.featureLengthIds : null;
-  const credits = [...new Map(crew
-    .filter(credit => credit.job === 'Director' && credit.id)
-    .filter(credit => !options.excludeUnreleased || released(credit, now))
-    .filter(credit => !options.excludeDocumentaries || !(credit.genre_ids || []).map(Number).includes(99))
-    .filter(credit => !options.excludeShorts || !featureLengthIds || featureLengthIds.has(+credit.id))
-    .map(credit => [+credit.id, credit])).values()];
-  const completed = credits.filter(credit => watched.has(+credit.id)).length;
-  const unseen = credits
-    .filter(credit => !watched.has(+credit.id) && credit.poster_path && (credit.vote_count || 0) >= 300)
-    .sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0) || (b.vote_count || 0) - (a.vote_count || 0))[0];
-  return {
-    id: +person.id, name: person.name, profile: person.profile || '', completed, total: credits.length,
-    percent: credits.length ? Math.round(completed / credits.length * 100) : 0,
-    next: unseen ? { id: unseen.id, title: unseen.title || unseen.original_title || 'Untitled', poster: unseen.poster_path, rating: unseen.vote_average || 0 } : null,
-  };
-}
-
-async function featureLengthFilmIds(personId) {
-  const params = { with_crew: String(personId), 'with_runtime.gte': 41, sort_by: 'popularity.desc' };
-  const first = await tmdb('/discover/movie', params);
-  const pages = Math.min(20, Math.max(1, +(first.total_pages || 1)));
-  const rest = pages > 1 ? await Promise.all(Array.from({ length: pages - 1 }, (_, index) => tmdb('/discover/movie', { ...params, page: index + 2 }))) : [];
-  return new Set([...(first.results || []), ...rest.flatMap(page => page.results || [])].map(item => +item.id).filter(Boolean));
-}
 
 export function rankSmartWatchCandidates(candidates = [], options = {}) {
   const genreIds = (options.genreIds || []).map(Number);
@@ -885,28 +884,57 @@ export function rankSmartWatchCandidates(candidates = [], options = {}) {
     .slice(0, options.limit || 10);
 }
 
-async function loadDirectorLoyalty(stats, generation) {
+// ===== CAST MILESTONES =====
+function castPanel() {
+  return `<section class="stats-panel cast-milestones"><div class="stats-section-head"><div><span>Time with the cast</span><h2>Cast Milestones</h2><p>Hours with the people in the episodes you have watched.</p></div></div><div id="castHoursBody"><div class="insight-loading"><i></i><span>Reading episode credits…</span></div></div><p class="loyalty-note">Counted from TMDB episode credits: a season's billed cast for every episode of that season you watched, guest stars for their own episodes. TMDB does not list which regulars sit out an episode, so theirs can run slightly high.</p></section>`;
+}
+
+const countOf = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+function castRow(row, index) {
+  const band = milestoneBand(row.minutes);
+  return `<article class="cast-row${index === 0 ? ' lead' : ''}"><span class="cast-rank">${index + 1}</span><a class="cast-person" href="/person/${row.id}" data-action="open-person" data-id="${row.id}"><div>${personPicture(row)}</div><span><strong>${esc(row.name)}</strong><small>${countOf(row.episodes, 'episode')} · ${countOf(row.shows.length, 'show')}</small></span></a><div class="cast-time"><b>${hoursLabel(row.minutes)}</b><div class="cast-band" role="img" aria-label="${band.next ? `${Math.round(band.progress * 100)}% of the way to ${band.next} hours` : 'Every milestone reached'}"><i style="width:${Math.round(band.progress * 100)}%"></i></div><small>${band.next ? `next: ${band.next}h` : 'every milestone'}</small></div></article>`;
+}
+
+async function loadCastPanel(generation) {
+  const body = $('castHoursBody'); if (!body) return;
+  if (!state.user) { body.innerHTML = '<div class="network-empty">Sign in and track episodes to count time with the cast.</div>'; return; }
+  const result = await computeCastHours({
+    fetch: true,
+    onProgress: done => { const live = $('castHoursBody')?.querySelector('.insight-loading span'); if (live) live.textContent = `Reading episode credits… ${done} season${done === 1 ? '' : 's'}`; },
+  }).catch(() => null);
+  if (generation !== insightGeneration) return;
+  const current = $('castHoursBody'); if (!current) return;
+  const people = (result?.people || []).filter(row => row.name && row.minutes > 0).slice(0, 8);
+  if (!people.length) { current.innerHTML = '<div class="network-empty">Tick episodes of a show to start counting time with its cast.</div>'; return; }
+  const lead = people[0], band = milestoneBand(lead.minutes);
+  const headline = band.reached ? `You've now watched ${band.reached} hours of ${lead.name}` : `You've watched ${hoursLabel(lead.minutes)} of ${lead.name}`;
+  const partial = result.known < result.needed ? `<p class="cast-partial">${result.needed - result.known} of ${result.needed} seasons could not be read yet; totals will grow when they load.</p>` : '';
+  current.innerHTML = `<div class="cast-headline">${icon('trophy')}<strong>${esc(headline)}</strong></div><div class="cast-list">${people.map(castRow).join('')}</div>${partial}`;
+}
+
+let lastCompletionStats = null;
+async function loadDirectorLoyalty(stats, generation, role = completionRole) {
+  lastCompletionStats = stats;
   const body = $('directorLoyaltyBody');
-  const directors = stats.topMovieDirectors.filter(person => person.id).slice(0, 4);
-  if (!body || !directors.length) { if (body) body.innerHTML = '<div class="network-empty">Watch more director-tagged films to unlock loyalty tracking.</div>'; return; }
-  const cached = cachedLoyalty(stats);
-  if (cached && Date.now() - +(cached.calculatedAt || 0) < 30 * 86400000) { latestDirectorLoyalty = cached; return; }
-  const watchedMovies = new Set(stats.watched.filter(row => row.type === 'movie').map(row => +row.id));
-  const watchedSignature = [...watchedMovies].filter(Boolean).sort((a, b) => a - b).join(',');
+  const people = completionPeople(stats, role);
+  if (!body) return;
+  if (!people.length) { body.innerHTML = `<div class="network-empty">Watch more ${role === 'actor' ? 'titles with cast credits' : 'director-tagged films'} to see how far through their work you are.</div>`; return; }
+  const cached = cachedCompletion(stats, role);
+  if (cached && Date.now() - +(cached.calculatedAt || 0) < 30 * 86400000) {
+    latestCompletion[role] = cached;
+    body.innerHTML = completionBody(cached, role);
+    return;
+  }
+  body.innerHTML = completionBody(null, role);
+  const watched = new Set(watchedMovieIds(stats));
   const options = directorFilterOptions();
-  const items = (await Promise.all(directors.map(async person => {
-    try {
-      const [data, featureLengthIds] = await Promise.all([
-        tmdb(`/person/${person.id}/movie_credits`),
-        options.excludeShorts ? featureLengthFilmIds(person.id) : Promise.resolve(null),
-      ]);
-      return calculateDirectorLoyalty(person, data.crew || [], watchedMovies, new Date(), { ...options, featureLengthIds });
-    } catch (error) { console.warn('director loyalty', person.id, error); return null; }
-  }))).filter(Boolean);
+  const items = (await Promise.all(people.map(person => loadCompletion(person, role, { watched, ...options, gapLimit: 12 })
+    .catch(error => { console.warn('completionist', person.id, error); return null; })))).filter(Boolean);
   if (generation !== insightGeneration || !state.user) return;
-  latestDirectorLoyalty = { calculatedAt: Date.now(), watchedSignature, filterSignature: directorFilterSignature(), filterSummary: directorFilterSummary(options), items };
-  const current = $('directorLoyaltyBody'); if (current) current.innerHTML = directorLoyaltyBody(latestDirectorLoyalty);
-  queueSnapshot(snapshotFor(computeStats('all')));
+  latestCompletion[role] = { v: COMPLETION_VERSION, role, calculatedAt: Date.now(), watchedSignature: [...watched].sort((a, b) => a - b).join(','), filterSignature: directorFilterSignature(), filterSummary: directorFilterSummary(options, role), items };
+  if (role !== completionRole) return;
+  const current = $('directorLoyaltyBody'); if (current) current.innerHTML = completionBody(latestCompletion[role], role);
+  if (role === 'director') queueSnapshot(snapshotFor(computeStats('all')));
 }
 
 async function loadSmartWatchList(stats, generation) {
@@ -977,7 +1005,8 @@ export function renderStats() {
     evolution: `${plural(stats.tasteTimeline.genreChanges, 'genre shift')} · ${plural(stats.tasteTimeline.languageChanges, 'language shift')}`,
     health: `${stats.health.score}/100 health · ${plural(stats.health.missing, 'gap')} across ${plural(stats.rows.length, 'title')}`,
     providers: providers.length ? `${plural(providers.length, 'service')} tracked · ${providerMovement ? `${providerMovement} catalog changes in 90 days` : 'baseline recorded'}` : 'No subscription scans yet',
-    directors: 'Filmography depth for the directors you return to',
+    directors: 'Directors and actors: what you have seen, and the best of what is left',
+    cast: 'Hours with the people in the episodes you watch',
     network: `${stats.network.directors.length ? `${plural(stats.network.directors.length, 'director')} linked to ${plural(stats.network.titles.length, 'title')}` : 'Credits are still being enriched'}`,
     rewatch: rewatchTally.extraPlays
       ? `${rewatchTally.extraPlays} rewatch${rewatchTally.extraPlays === 1 ? '' : 'es'} across ${plural(rewatchTally.rewatchedTitles, 'title')}`
@@ -1009,9 +1038,10 @@ export function renderStats() {
     ${block('franchises', 10, summaries.franchises, () => franchisePanel())}
     ${block('providers', 11, summaries.providers, () => providerIntelligencePanels())}
     ${block('directors', 12, summaries.directors, () => directorLoyaltyPanel(fullStats))}
-    ${block('network', 13, summaries.network, () => directorNetworkPanel(stats))}
-    ${block('smartwatch', 14, summaries.smartwatch, () => smartWatchPanel())}
-    ${block('achievements', 15, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
+    ${block('cast', 13, summaries.cast, () => castPanel())}
+    ${block('network', 14, summaries.network, () => directorNetworkPanel(stats))}
+    ${block('smartwatch', 15, summaries.smartwatch, () => smartWatchPanel())}
+    ${block('achievements', 16, summaries.achievements, () => `<section class="stats-achievements"><div class="stats-section-head"><div><span>Account-wide progression</span><h2>Challenges &amp; Trophy Room</h2><p>Every milestone is derived from your Firestore-backed collection.</p></div></div>${challengesHTML(context)}${badgesHTML(context)}</section>`)}
     <p class="stats-footnote">${esc(scopeLabel)} stats · TV watch time comes from the episode ledger where it exists (episodes watched × episode length), falling back to stored runtime otherwise. Titles with no reported runtime are excluded rather than guessed.</p>`;
 
   const snapshot = snapshotFor(fullStats);
@@ -1022,6 +1052,7 @@ export function renderStats() {
   // so the request would be pure waste.
   if (!isCollapsed('directors')) loadDirectorLoyalty(fullStats, generation);
   if (!isCollapsed('smartwatch')) loadSmartWatchList(stats, generation);
+  if (!isCollapsed('cast')) loadCastPanel(generation);
   if (!isCollapsed('franchises')) loadFranchises(generation).then(() => loadTvFamilies(generation));
   ensureWatchedMeta();
 }
@@ -1036,7 +1067,7 @@ function rewatchPanel() {
 
   if (!summary.extraPlays) {
     return `<section class="stats-panel rewatch-panel">${head}
-      <div class="tv-empty"><i>&#8635;</i><div><strong>Nothing logged twice yet</strong><p>Open something you have seen before and use <b>Log a rewatch</b> under the watched tick. The count, the dates, and the time it added all land here.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
+      <div class="tv-empty"><i>${icon('rotate')}</i><div><strong>Nothing logged twice yet</strong><p>Open something you have seen before and use <b>Log a rewatch</b> under the watched tick. The count, the dates, and the time it added all land here.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
   }
 
   const hours = Math.round(summary.extraMinutes / 60);
@@ -1205,11 +1236,22 @@ export function initStats() {
     },
     'export-stats': () => exportStats(),
     'repair-collection': element => repairCollection(element),
+    'completion-role': element => {
+      const role = element.dataset.role === 'actor' ? 'actor' : 'director';
+      if (role === completionRole) return;
+      completionRole = role;
+      try { localStorage.setItem(roleKey, role); } catch (_) {}
+      document.querySelectorAll('[data-action="completion-role"]').forEach(button => {
+        const on = button.dataset.role === role;
+        button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on));
+      });
+      if (lastCompletionStats) loadDirectorLoyalty(lastCompletionStats, insightGeneration, role);
+    },
     'director-work-filter': element => {
       const key = element.dataset.pref;
       if (!DIRECTOR_FILTERS.some(([pref]) => pref === key)) return;
       updatePref(key, !prefs[key]);
-      latestDirectorLoyalty = null; insightGeneration++;
+      latestCompletion.director = latestCompletion.actor = null; insightGeneration++;
       renderStats();
     },
   });
@@ -1219,14 +1261,14 @@ export function initStats() {
     checkedUid = state.user?.uid || '';
     remoteHash = state.user ? state.statsSnapshot?.hash || '' : '';
     lastQueuedHash = ''; latestSnapshot = null;
-    latestDirectorLoyalty = null; insightGeneration++;
+    latestCompletion.director = latestCompletion.actor = null; insightGeneration++;
     syncState = 'idle'; syncMessage = 'Private';
     if (state.user) queueCurrentSnapshot();
   });
   document.addEventListener('cv:wl-changed', queueCurrentSnapshot);
   document.addEventListener('cv:meta-backfilled', queueCurrentSnapshot);
   const refreshLiveStats = debounce(() => {
-    latestDirectorLoyalty = null; insightGeneration++;
+    latestCompletion.director = latestCompletion.actor = null; insightGeneration++;
     queueCurrentSnapshot();
     if (location.pathname === '/stats') renderStats();
   }, 240);

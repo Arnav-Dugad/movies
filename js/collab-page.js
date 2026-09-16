@@ -3,6 +3,8 @@
 // rather than a copy of it, so two people looking at the same link see the same
 // thing without either of them refreshing.
 import { state } from './state.js';
+import { cardArt } from './cards.js';
+import { listIcon } from './icons.js';
 import { esc, toast, $ } from './ui.js';
 import { IMG, PH } from './config.js';
 import { registerActions } from './events.js';
@@ -29,7 +31,7 @@ function itemHTML(item, canEdit) {
   const who = item.addedByName ? `Added by ${item.addedByName}` : '';
   return `<article class="collab-item">
     <a class="card" href="/${item.type}/${item.tmdbId}" data-action="open-detail" data-id="${item.tmdbId}" data-type="${item.type}" aria-label="${esc(item.title)}">
-      <div class="card-img"><img src="${poster}" alt="" loading="lazy" data-ph="${PH}"></div>
+      ${cardArt(poster, '', item.poster || '')}</div>
       <div class="card-info">
         <div class="card-title">${esc(item.title || 'Untitled')}</div>
         <div class="card-sub"><span>${esc(item.year || '')}</span><span class="dot"></span><span>${item.type === 'tv' ? 'TV' : 'Movie'}</span></div>
@@ -64,7 +66,7 @@ function paint() {
   shell(`<div class="collab-head">
       <div class="collab-head-main">
         <span class="collab-eyebrow">Shared list</span>
-        <h1 class="studio-name">${esc(list.icon)} ${esc(list.name)}</h1>
+        <h1 class="studio-name"><span class="studio-name-icon">${listIcon(list.icon, 'collab')}</span>${esc(list.name)}</h1>
         <div class="collab-people">
           ${list.members.map(uid => `<span class="collab-person" title="${esc(list.memberNames?.[uid] || 'Someone')}">${avatarInner(null, list.memberNames?.[uid] || 'S')}</span>`).join('')}
           <span class="collab-people-label">${esc(membersLabel(list))}${member && latestItems ? ` · ${latestItems.length} title${latestItems.length === 1 ? '' : 's'}` : ''}</span>

@@ -5,6 +5,7 @@
 // rating, with real counts and a decade profile so a studio's era is visible at
 // a glance.
 import { tmdb } from './api.js';
+import { icon } from './icons.js';
 import { IMG, regionName, mGenreList, tGenreList } from './config.js';
 import { esc, $ } from './ui.js';
 import { buildCard, skelCards } from './cards.js';
@@ -184,7 +185,7 @@ export async function openStudio(id, mode = 'company') {
           <h1 class="studio-name">${esc(info.name)}</h1>
           <div class="studio-meta">${mode === 'network' ? 'Television network' : 'Production company'}</div>
           ${info.description ? `<p class="person-bio">${esc(info.description)}</p>` : ''}
-          ${info.homepage ? `<div class="person-links"><a href="${esc(info.homepage)}" target="_blank" rel="noopener">Official site<i>↗</i></a></div>` : ''}
+          ${info.homepage ? `<div class="person-links"><a href="${esc(info.homepage)}" target="_blank" rel="noopener">Official site<i>${icon('external')}</i></a></div>` : ''}
         </div>
       </div>
       ${facts.length ? `<div class="studio-facts">${facts.map(([label, value]) => `<div><span>${esc(label)}</span><strong>${esc(String(value))}</strong></div>`).join('')}</div>` : ''}

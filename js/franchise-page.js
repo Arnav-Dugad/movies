@@ -8,6 +8,7 @@
 // running order with what you have seen marked, what a finish would cost in
 // hours, and which entries you skipped rather than simply not reached yet.
 import { state } from './state.js';
+import { icon } from './icons.js';
 import { $, esc, toast, debounce } from './ui.js';
 import { registerActions } from './events.js';
 import { IMG, PH } from './config.js';
@@ -211,7 +212,7 @@ function filmRow(row) {
         </span>
       </span>
       <span class="fp-row-pct">${percent}%</span>
-      <span class="fp-chev" aria-hidden="true">${open ? '&#9662;' : '&#9656;'}</span>
+      <span class="fp-chev" aria-hidden="true">${icon(open ? 'chevronDown' : 'chevronRight')}</span>
     </button>
     <div class="fp-row-detail" id="fpBody_${row.id}"${open ? '' : ' hidden'}>
       ${open ? partsHTML(row, ordered, gaps) : ''}
@@ -233,7 +234,7 @@ function partsHTML(row, ordered, gaps) {
         <span class="fp-part-no">${index + 1}</span>
         <img src="${part.poster ? `${IMG}w185${part.poster}` : PH}" alt="" loading="lazy">
         <span class="fp-part-body"><b>${esc(part.title)}</b><small>${year || 'Undated'} &middot; ${label}</small></span>
-        <span class="fp-part-mark" aria-hidden="true">${seen ? '&#10003;' : future ? '&#8987;' : ''}</span>
+        <span class="fp-part-mark" aria-hidden="true">${seen ? icon('check') : future ? icon('hourglass') : ''}</span>
       </a>
       ${story ? `<span class="fp-story-controls"><button data-action="fp-story-move" data-cid="${row.id}" data-mid="${part.id}" data-dir="-1" aria-label="Move ${esc(part.title)} earlier"${index === 0 ? ' disabled' : ''}>‹</button><button data-action="fp-story-move" data-cid="${row.id}" data-mid="${part.id}" data-dir="1" aria-label="Move ${esc(part.title)} later"${index === ordered.length - 1 ? ' disabled' : ''}>›</button></span>` : ''}
     </article>`;

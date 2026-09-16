@@ -1,5 +1,10 @@
 // ===== DETAIL PAGE =====
 import { tmdb, pool } from './api.js';
+import { heatmapShell, mountHeatmap, refreshHeatmapTicks } from './season-heatmap.js';
+import { NAMES, captureArt, hintFrom, armSources, transitionSettled } from './transitions.js';
+import { applyAmbient, clearAmbient } from './ambient.js';
+import { haptic } from './haptics.js';
+import { icon } from './icons.js';
 import { IMG, PH, REGIONS, pickLogo, providerUrl, regionLabel, certificationFor } from './config.js';
 import { state, pushRecentlyViewed } from './state.js';
 import { esc, fmt, debounce, $, prefersReducedMotion, toast } from './ui.js';
@@ -22,7 +27,6 @@ import { movieProgressEntry, startMovieProgress, setMovieProgressPosition, remov
 let curDet = null, curType = null;
 let ambientTeardown = null;   // tears down the detail ambient video
 let navHint = null;           // instant-paint hint captured from the clicked card
-let lastVTSource = null;      // element currently holding the shared view-transition-name
 let clampResize = null;       // window resize handler that re-measures the read-more toggles
 let reqGen = 0;                // bumped on every openDetail/openCollection call; guards against a slower, stale fetch overwriting a newer one
 // Which account the page on screen was built for. Firebase resolves auth
@@ -48,6 +52,10 @@ function detailAccordion(prefKey, eyebrow, title, summary, body, tone = '') {
   return `<section class="detail-accordion ${tone}${expanded ? ' expanded' : ''}"><button class="detail-accordion-toggle" data-action="toggle-detail-section" data-pref="${prefKey}" aria-expanded="${expanded}" aria-controls="${bodyId}"><span class="detail-accordion-icon">${DETAIL_SECTION_ICONS[prefKey] || ''}</span><span class="detail-accordion-copy"><small>${esc(eyebrow)}</small><strong>${esc(title)}</strong><em>${esc(summary)}</em></span><span class="detail-accordion-state"><b>${expanded ? 'Open' : 'Collapsed'}</b><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></i></span></button><div class="detail-accordion-body" id="${bodyId}"${expanded ? '' : ' hidden'}>${body}</div></section>`;
 }
 
+// A lower-resolution copy already on screen, painted under an image that is
+// still loading so the frame never flashes empty.
+const underlay = url => (url ? ` style="background:center / cover no-repeat url('${esc(url)}')"` : '');
+
 function countdownGrid(id) {
   return `<div class="countdown-grid" aria-label="Time remaining"><div class="cd-unit"><div class="cd-num" id="cd_d_${id}">--</div><div class="cd-txt">days</div></div><span class="cd-separator">:</span><div class="cd-unit"><div class="cd-num" id="cd_h_${id}">--</div><div class="cd-txt">hours</div></div><span class="cd-separator">:</span><div class="cd-unit"><div class="cd-num" id="cd_m_${id}">--</div><div class="cd-txt">minutes</div></div><span class="cd-separator">:</span><div class="cd-unit"><div class="cd-num" id="cd_s_${id}">--</div><div class="cd-txt">seconds</div></div></div>`;
 }
@@ -59,31 +67,41 @@ function countdownPanel(id, { eyebrow, title, localHTML = '' }) {
 export async function openDetail(id, type) {
   const gen = ++reqGen;
   const ct = $('detailContent');
+  clearAmbient(ct);
   if (ambientTeardown) { ambientTeardown(); ambientTeardown = null; }
 
-  // Zero-layout-shift instant paint: if we arrived from a card click, render the
-  // real poster + title synchronously (no spinner) before the fetch resolves.
+  // Instant first paint: arriving from a card, the hero, a preview or a rail,
+  // the artwork already on screen is painted at once (no spinner) while the
+  // title loads. Pieces pressed on screen carry the shared names the page
+  // transition morphs between (js/transitions.js).
   const hint = (navHint && navHint.id === id && navHint.type === type) ? navHint : null;
   navHint = null;
-  // Clear the shared-element name from the source poster BEFORE this new render is
-  // snapshotted, so at most one element ever holds `cv-hero` at snapshot time.
-  if (lastVTSource) { try { lastVTSource.style.viewTransitionName = ''; } catch (e) {} lastVTSource = null; }
+  ct.classList.remove('detail-arrive');
   if (hint) {
-    ct.innerHTML = `<div class="detail-back detail-back-pending"><div class="detail-back-grad"></div></div>
+    const shared = kind => (hint.morph?.[kind] ? ` style="view-transition-name:${NAMES[kind]}"` : '');
+    const heading = hint.logo
+      ? `<h1 class="detail-title has-logo"><img class="title-logo" src="${esc(hint.logo)}" alt="${esc(hint.title)}"${hint.logoTone ? ` data-tone="${esc(hint.logoTone)}"` : ''}${shared('logo')}></h1>`
+      : `<h1 class="detail-title">${esc(hint.title)}</h1>`;
+    ct.innerHTML = `<div class="detail-back detail-back-pending"${hint.backdrop ? shared('backdrop') : ''}>${hint.backdrop ? `<img src="${esc(hint.backdrop)}" alt="">` : ''}<div class="detail-back-grad"></div></div>
       <div class="detail-inner"><div class="detail-top">
-        <div class="detail-poster" style="view-transition-name:cv-hero"><img src="${esc(hint.poster)}" alt=""></div>
-        <div class="detail-head"><h1 class="detail-title">${esc(hint.title)}</h1><div class="detail-skel"><span></span><span></span><span></span></div></div>
+        ${hint.poster ? `<div class="detail-poster"${shared('poster')}><img src="${esc(hint.poster)}" alt=""></div>` : ''}
+        <div class="detail-head">${heading}<div class="detail-skel"><span></span><span></span><span></span></div></div>
       </div></div>`;
+    ct.classList.toggle('no-detail-poster', !hint.poster);
   } else {
     ct.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh"><div class="loader-text">Loading...</div></div>';
   }
   document.title = 'Loading… — CineVerse';
   state.cdIntervals.forEach(clearInterval); state.cdIntervals = []; countdownTimers.clear();
+  // The full page replaces the first paint only once the morph into it has
+  // finished; swapping the element being animated to mid-flight would blank it.
+  const settled = transitionSettled();
   try {
     const [det, cred, vids, sim, revs] = await Promise.all([
       tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,content_ratings,release_dates,watch/providers,keywords,recommendations,images,alternative_titles', include_image_language: 'en,null' }),
       tmdb(`/${type}/${id}/credits`), tmdb(`/${type}/${id}/videos`), tmdb(`/${type}/${id}/similar`), tmdb(`/${type}/${id}/reviews`)
     ]);
+    await settled;
     // Bail if a newer openDetail()/openCollection() call has started since — a
     // slower response for a title the user already navigated away from must not
     // overwrite the page (or leak this call's ambient-video listener) once a
@@ -95,8 +113,11 @@ export async function openDetail(id, type) {
     const title = det.title || det.name || ''; const safeTitle = esc(title);
     const logoPath = pickLogo(det.images?.logos);
     // Official title-logo art when available, else the plain title text.
+    // The logo already on screen from the first paint is kept (no reload blink)
+    // and sharpened to the larger file once that has loaded.
+    const hintLogo = hint?.logo && logoPath && hint.logo.split('?')[0].endsWith(logoPath) ? hint.logo : '';
     const titleHTML = logoPath
-      ? `<h1 class="detail-title has-logo"><img class="title-logo" src="${IMG}w500${logoPath}" alt="${safeTitle}"></h1>`
+      ? `<h1 class="detail-title has-logo"><img class="title-logo" src="${hintLogo || `${IMG}w500${logoPath}`}" alt="${safeTitle}"${hintLogo && hint.logoTone ? ` data-tone="${esc(hint.logoTone)}"` : ''}></h1>`
       : `<h1 class="detail-title">${safeTitle}</h1>`;
     const year = (det.release_date || det.first_air_date || '').slice(0, 4);
     document.title = `${title}${year ? ' (' + year + ')' : ''} — CineVerse`;
@@ -106,7 +127,7 @@ export async function openDetail(id, type) {
     const backdropMode = backdropPath ? '' : posterPath ? ' detail-back-portrait' : ' detail-back-empty';
     const titleMark = title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase() || 'CV';
     const posterHTML = posterPath
-      ? `<div class="detail-poster"><img src="${IMG}w500${posterPath}" alt="${safeTitle}" data-ph="${PH}"></div>`
+      ? `<div class="detail-poster"${underlay(hint?.poster)}><img src="${IMG}w500${posterPath}" alt="${safeTitle}" data-ph="${PH}"></div>`
       : `<div class="detail-poster detail-poster-empty" role="img" aria-label="No poster available for ${safeTitle}"><b>${esc(titleMark)}</b><small>${safeTitle}</small></div>`;
     const rat = det.vote_average ? det.vote_average.toFixed(1) : 'N/A';
     const rt = det.runtime ? `${Math.floor(det.runtime / 60)}h ${det.runtime % 60}m` : (det.episode_run_time?.length ? `${det.episode_run_time[0]}m/ep` : '');
@@ -176,6 +197,7 @@ export async function openDetail(id, type) {
 
       seasHTML = `<div class="episode-browser">${showProgressPanel(id, det, progress, next)}
         <div class="d-sec-title">Seasons</div><div class="season-scroll">${seasonCards}</div>
+        ${heatmapShell(id, !!prefs.detailHeatmapExpanded)}
         <div class="episode-browser-head"><div class="d-sec-title">Episodes</div><label class="episode-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="episodeSearch_${id}" placeholder="Search episodes" aria-label="Search episodes by title, number, or description"></label></div>
         <div class="season-tabs">${vs.map(s => `<div class="s-tab ${s.season_number === openSeason ? 'active' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}">${esc(s.name)}</div>`).join('')}</div>
         <div class="ep-list" id="epList_${id}" role="region" aria-label="Episodes" tabindex="0"><div class="skel" style="height:80px;width:100%"></div></div></div>`;
@@ -203,10 +225,10 @@ export async function openDetail(id, type) {
       // and only when the title actually belongs to a collection).
       // The meter is empty until the parts list lands (loadCollectionStrip already
       // fetches it, so completion costs no extra request).
-      collHTML = `<a class="coll-banner" href="/collection/${c.id}" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection →</p></div><div class="coll-progress" id="collProg_${id}"></div></div></a><div id="collStrip_${id}"></div>`; }
+      collHTML = `<a class="coll-banner" href="/collection/${c.id}" data-action="go-collection" data-cid="${c.id}" style="margin:36px 0 28px">${c.backdrop_path ? `<img src="${IMG}w780${c.backdrop_path}" alt="">` : ''}<div class="coll-banner-content"><div><h3>Part of ${esc(c.name)}</h3><p>View the full collection ${icon('arrowRight', { cls: 'cv-arrow' })}</p></div><div class="coll-progress" id="collProg_${id}"></div></div></a><div id="collStrip_${id}"></div>`; }
 
     ct.innerHTML = `
-      <div class="detail-back${backdropMode}">${back ? `<img src="${back}" alt="">` : `<div class="detail-back-placeholder" aria-hidden="true"><b>${esc(titleMark)}</b><span>${safeTitle}</span></div>`}<div class="detail-back-grad"></div></div>
+      <div class="detail-back${backdropMode}"${backdropMode ? '' : underlay(hint?.backdrop)}>${back ? `<img src="${back}" alt="">` : `<div class="detail-back-placeholder" aria-hidden="true"><b>${esc(titleMark)}</b><span>${safeTitle}</span></div>`}<div class="detail-back-grad"></div></div>
       <div class="detail-inner">
         <div class="detail-top">
           ${posterHTML}
@@ -257,7 +279,7 @@ export async function openDetail(id, type) {
           ${listCardHTML('Countries', (det.production_countries || []).map(c => c.name), 'countries')}
           ${listCardHTML('Languages', (det.spoken_languages || []).map(l => l.english_name || l.name), 'spokenLanguages')}
           ${altTitlesHTML(det)}
-          ${det.homepage ? `<div class="stat-card" data-dp="website"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit →</a></div></div>` : ''}
+          ${det.homepage ? `<div class="stat-card" data-dp="website"><div class="stat-label">Website</div><div class="stat-val"><a href="${esc(det.homepage)}" target="_blank" rel="noopener" style="color:var(--cyan);font-size:.82rem;word-break:break-all">Visit ${icon('arrowRight', { cls: 'cv-arrow' })}</a></div></div>` : ''}
           ${linksHTML(det)}
         </div>
         <section class="awards-section" data-dp="awards" id="awardsSection_${id}" hidden></section>
@@ -265,11 +287,25 @@ export async function openDetail(id, type) {
       </div>`;
 
     ct.classList.toggle('no-detail-poster', !posterPath);
+    if (hint) {
+      // The rest of the header rises in under the artwork that just landed.
+      ct.classList.add('detail-arrive');
+      setTimeout(() => { if (gen === reqGen) ct.classList.remove('detail-arrive'); }, 1200);
+      if (hintLogo && !hintLogo.includes('/w500/')) {
+        const sharp = new Image();
+        sharp.decoding = 'async';
+        sharp.onload = () => { const logo = ct.querySelector('.title-logo'); if (gen === reqGen && logo) logo.src = sharp.src; };
+        sharp.src = `${IMG}w500${logoPath}`;
+      }
+    }
     if (cdDate) startCD(id, cdDate, cdDoneMsg);
     if (type === 'tv' && det.next_episode_to_air) hydrateNextEpisodeTime(det, id, gen);
     if (type === 'tv' && det.seasons?.length) bindEpisodeSearch(id, det.seasons.filter(season => season.season_number > 0));
     if (type === 'tv' && initialSeason) loadEps(id, initialSeason);
+    if (type === 'tv' && prefs.detailHeatmapExpanded && det.seasons?.length) openHeatmap(id, det, gen);
     observeReveals(ct); observeCountUps(ct);
+    // Title colour from the poster (js/ambient.js); fades in when sampled.
+    applyAmbient(ct, posterPath);
     // Animate the Box Office bar widths after paint (horizontal %-widths resolve
     // against the definite-width card).
     requestAnimationFrame(() => {
@@ -692,7 +728,7 @@ function providerHTML(det, region) {
 // rest reveal behind "Show all".
 function starMeter(score10) {
   const pct = Math.max(0, Math.min(100, score10 * 10));
-  const stars = '★★★★★';
+  const stars = icon('starSolid').repeat(5);
   return `<span class="rev-stars" aria-label="${score10} out of 10"><span class="rev-stars-bg">${stars}</span><span class="rev-stars-fill" style="width:${pct}%">${stars}</span></span><span class="rev-score-num">${score10}/10</span>`;
 }
 
@@ -1078,7 +1114,7 @@ function startCD(id, ds, doneMsg = 'Available now') {
     if (df <= 0) {
       if (timer) { clearInterval(timer); countdownTimers.delete(id); state.cdIntervals = state.cdIntervals.filter(value => value !== timer); }
       const e = $(`cd_d_${id}`), grid = e?.closest('.countdown-grid');
-      if (grid) grid.innerHTML = `<div class="countdown-arrived"><i>✓</i><strong>${esc(doneMsg)}</strong></div>`;
+      if (grid) grid.innerHTML = `<div class="countdown-arrived"><i>${icon('check')}</i><strong>${esc(doneMsg)}</strong></div>`;
       if (shell) shell.classList.add('arrived');
       return;
     }
@@ -1148,7 +1184,7 @@ function showProgressPanel(id, det, progress, next) {
   // a viewer arrives here wanting to change.
   const dropControl = dropped
     ? `<button class="btn-glass show-undrop" data-action="ep-undrop" data-tid="${id}" data-meta="${meta}">Start watching again</button>`
-    : `<button class="btn-glass icon-only" data-action="ep-drop" data-tid="${id}" data-meta="${meta}" aria-label="Stop tracking this show" data-tip="Stop tracking">✕</button>`;
+    : `<button class="btn-glass icon-only" data-action="ep-drop" data-tid="${id}" data-meta="${meta}" aria-label="Stop tracking this show" data-tip="Stop tracking">${icon('close')}</button>`;
   return `<section class="show-progress${progress.caughtUp ? ' complete' : ''}${dropped ? ' dropped' : ''}">
     <div class="show-progress-copy">
       <span>${stateLabel}</span>
@@ -1172,8 +1208,9 @@ function showProgressPanel(id, det, progress, next) {
       <b>${progress.percent}%</b>
       ${dropped || !next ? '' : `<button class="btn-primary" data-action="ep-toggle" data-tid="${id}" data-sn="${next.season}" data-en="${next.episode}" data-meta="${meta}">Mark next</button>`}
       ${dropped || progress.caughtUp ? '' : `<button class="btn-glass" data-action="ep-mark-show" data-tid="${id}" data-meta="${meta}">Mark all</button>`}
+      ${progress.seriesCompleted && !dropped ? `<button class="btn-glass finale-btn" data-action="series-finale" data-tid="${id}" data-tip="Your whole run as a shareable card">${icon('trophy')}Finale card</button>` : ''}
       ${dropControl}
-      <button class="btn-glass icon-only" data-action="ep-reset" data-tid="${id}" aria-label="Reset episode progress" data-tip="Reset">↻</button>
+      <button class="btn-glass icon-only" data-action="ep-reset" data-tid="${id}" aria-label="Reset episode progress" data-tip="Reset">${icon('rotate')}</button>
     </div>
     ${positionControl}
   </section>`;
@@ -1257,7 +1294,7 @@ function episodeCardHTML(tid, ep, meta, { search = false } = {}) {
     <div class="ep-still">${ep.still_path ? `<img src="${IMG}w300${ep.still_path}" alt="" loading="lazy">` : ''}<div class="ep-num">${number}</div>${watched ? `<div class="ep-seen" aria-hidden="true">${EP_CHECK}</div>` : ''}</div>
     <div class="ep-body">
       <div class="ep-title">${esc(ep.name) || `Episode ${ep.episode_number}`}</div>
-      <div class="ep-meta">${ep.air_date ? `<span>${new Date(`${ep.air_date}T00:00:00`).toLocaleDateString()}</span>` : ''}${ep.runtime ? `<span>${ep.runtime}m</span>` : ''}${ep.vote_average ? `<span>★ ${ep.vote_average.toFixed(1)}</span>` : ''}${future ? '<span class="ep-soon">Upcoming</span>' : ''}</div>
+      <div class="ep-meta">${ep.air_date ? `<span>${new Date(`${ep.air_date}T00:00:00`).toLocaleDateString()}</span>` : ''}${ep.runtime ? `<span>${ep.runtime}m</span>` : ''}${ep.vote_average ? `<span class="ep-score">${icon('starSolid', { cls: 'cv-star' })}${ep.vote_average.toFixed(1)}</span>` : ''}${future ? '<span class="ep-soon">Upcoming</span>' : ''}</div>
       ${ep.overview ? `<div class="ep-desc">${esc(ep.overview)}</div>` : ''}
       ${future ? '' : episodeControls(tid, ep, meta, watched)}
     </div>
@@ -1370,8 +1407,16 @@ async function loadEps(tid, sn) {
 // Repaint the tracking chrome in place. A full detail re-render would scroll the
 // reader back to the top of a long show, which is exactly the wrong reaction to
 // ticking one episode.
+function openHeatmap(tid, det, gen = reqGen) {
+  mountHeatmap(tid, (det?.seasons || []).map(season => season.season_number), {
+    isWatched: (season, episode) => isEpisodeWatched(tid, season, episode),
+    isCurrent: () => gen === reqGen && curDet?.id === tid,
+  });
+}
+
 function refreshEpisodeUI(tid) {
   const progress = showProgress(tid), next = nextUp(tid);
+  refreshHeatmapTicks(tid, (season, episode) => isEpisodeWatched(tid, season, episode));
   const panel = document.querySelector('.show-progress');
   if (panel && curDet?.id === tid) {
     // Rebuild the controls as one unit. Updating only the heading left the old
@@ -1397,6 +1442,7 @@ function refreshEpisodeUI(tid) {
 export async function openCollection(cid) {
   const gen = ++reqGen; // shares the counter with openDetail — navigating between either invalidates the other's in-flight fetch
   const ct = $('detailContent');
+  clearAmbient(ct);
   document.title = 'Collection — CineVerse';
   try {
     const d = await tmdb(`/collection/${cid}`);
@@ -1419,18 +1465,23 @@ export async function openCollection(cid) {
 }
 
 export function initDetail() {
+  // Turning Title colour on or off applies to the page already open.
+  document.addEventListener('cv:prefs', () => {
+    const ct = $('detailContent');
+    if (!ct || renderedFor?.kind !== 'detail' || !curDet) return;
+    if (prefs.ambientColour) { if (!ct.dataset.ambient) applyAmbient(ct, curDet.poster_path || ''); }
+    else clearAmbient(ct);
+  });
   registerActions({
     'open-detail': (el, e) => {
       if (e) e.stopPropagation();
       const id = +el.dataset.id, type = el.dataset.type;
-      // Capture the clicked card's poster + title for the instant-paint scaffold,
-      // and tag the poster as the shared-element morph source.
-      const img = el.querySelector && el.querySelector('.card-img img');
-      if (img && img.src) {
-        navHint = { id, type, poster: img.src, title: (el.querySelector('.card-title')?.textContent) || el.getAttribute('aria-label') || '' };
-        if (lastVTSource) { try { lastVTSource.style.viewTransitionName = ''; } catch (er) {} }
-        try { img.style.viewTransitionName = 'cv-hero'; lastVTSource = img; } catch (er) {}
-      } else { navHint = null; }
+      // Read the artwork on screen for the title page's first paint, and name it
+      // as the source of the page transition's morph.
+      const art = captureArt(el);
+      navHint = hintFrom(art, { id, type });
+      if (navHint.poster || navHint.backdrop) armSources(art);
+      else navHint = null;
       document.dispatchEvent(new CustomEvent('cv:go', { detail: `/${type}/${id}` }));
     },
     'log-rewatch': async (el) => {
@@ -1554,6 +1605,25 @@ export function initDetail() {
       if (removeMovieProgress(id)) { paintMovieProgress(id); toast('Removed from Continue Watching', 'info'); }
     },
     'load-season': (el) => loadSeason(+el.dataset.tid, +el.dataset.sn, el),
+    'heatmap-toggle': el => {
+      const tid = +el.dataset.tid;
+      const body = $(el.getAttribute('aria-controls')); if (!body) return;
+      const expanded = el.getAttribute('aria-expanded') !== 'true';
+      el.setAttribute('aria-expanded', String(expanded));
+      body.hidden = !expanded;
+      el.closest('.ep-heatmap')?.classList.toggle('expanded', expanded);
+      updatePref('detailHeatmapExpanded', expanded);
+      if (expanded && curDet?.id === tid) openHeatmap(tid, curDet);
+    },
+    // A square opens its season in the list below and brings the episode into view.
+    'heatmap-episode': async el => {
+      const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
+      await loadSeason(tid, sn);
+      const card = document.querySelector(`#epList_${tid} [data-ep="${sn}-${en}"]`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
+      card.classList.remove('ep-flash'); void card.offsetWidth; card.classList.add('ep-flash');
+    },
     // ----- Episode tracking -----
     'ep-toggle': el => {
       const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
@@ -1562,6 +1632,7 @@ export function initDetail() {
       // episode that was never saved is worse than doing nothing.
       if (watched === null) return;
       if (watched === 'unavailable') { toast('This episode has not dropped yet', 'info'); return; }
+      haptic(watched ? 'tick' : 'untick');
       const card = document.querySelector(`.ep-card[data-ep="${sn}-${en}"]`);
       if (card) {
         card.classList.toggle('watched', watched);
@@ -1580,6 +1651,7 @@ export function initDetail() {
       const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
       const added = markUpTo(tid, sn, en, readEpisodeMeta(el));
       if (added === null) return;
+      if (added) haptic('tick');
       toast(added ? `Marked ${added} episode${added === 1 ? '' : 's'} watched` : 'Already up to date', added ? 'success' : 'info');
       const search = $(`episodeSearch_${tid}`);
       if (search?.value.trim()) { search.dispatchEvent(new Event('input', { bubbles: true })); refreshEpisodeUI(tid); }
@@ -1606,6 +1678,7 @@ export function initDetail() {
     'ep-season': el => {
       const tid = +el.dataset.tid, sn = +el.dataset.sn, on = el.dataset.on === '1';
       if (setSeasonWatched(tid, sn, on, readEpisodeMeta(el)) === null) return;
+      haptic(on ? 'tick' : 'untick');
       toast(on ? `Season ${sn} marked watched` : `Season ${sn} cleared`, on ? 'success' : 'info');
       loadEps(tid, sn).then(() => refreshEpisodeUI(tid));
     },

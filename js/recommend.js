@@ -10,6 +10,7 @@
 // affinity enters through `with_cast`/`with_people` QUERY params plus a per-source
 // bonus — never a per-candidate /credits fetch (that would be 20+ extra requests).
 import { tmdb } from './api.js';
+import { icon } from './icons.js';
 import { genreMap, mGenreList, tGenreList, IMG, PH, pickLogo } from './config.js';
 import { state } from './state.js';
 import { esc, $, toast } from './ui.js';
@@ -667,15 +668,17 @@ function railLogo(type, id) {
 
 function mountRailLogos(root) {
   root.querySelectorAll('.rail-title-name[data-logo-id]').forEach(name => {
+    if (name.querySelector('.rail-logo')) return;
     railLogo(name.dataset.logoType, name.dataset.logoId).then(path => {
-      if (!path || !name.isConnected) return;
+      if (!path || !name.isConnected || name.querySelector('.rail-logo')) return;
       const image = document.createElement('img');
       image.className = 'rail-logo';
       image.src = `${IMG}w300${path}`;
       image.alt = name.textContent;
       image.decoding = 'async';
       // Only swap once the logo has loaded, so the heading never goes blank.
-      image.onload = () => { if (name.isConnected) name.replaceWith(image); };
+      // The name is a link to the title, so the logo goes inside it.
+      image.onload = () => { if (name.isConnected) name.replaceChildren(image); };
     });
   });
 }
@@ -685,12 +688,12 @@ function shell(d) {
     ? (d.art.kind === 'face'
       ? `<a class="rail-face" href="/person/${d.art.personId}" data-action="open-person" data-id="${d.art.personId}" aria-label="${esc(d.art.alt)}"><img src="${d.art.src}" alt="" loading="lazy"></a>`
       : `<a class="rail-poster" href="/${d.art.type}/${d.art.id}" data-action="open-detail" data-id="${d.art.id}" data-type="${d.art.type}" aria-label="${esc(d.art.alt)}"><img src="${d.art.src}" alt="" loading="lazy"></a>`)
-    : `<span class="rail-glyph" aria-hidden="true">${d.icon}</span>`;
+    : `<span class="rail-glyph" aria-hidden="true">${icon(d.icon)}</span>`;
   return `<div class="section reveal rec-section"><div class="section-head rec-head">
       ${art}
       <div class="rec-head-copy">
         ${d.about
-          ? `<h2 class="section-title rail-title-about">${esc(d.title)} <span class="rail-title-name" data-logo-type="${d.about.type}" data-logo-id="${d.about.id}">${esc(d.about.name)}</span></h2>`
+          ? `<h2 class="section-title rail-title-about">${esc(d.title)} <a class="rail-title-name" href="/${d.about.type}/${d.about.id}" data-action="open-detail" data-id="${d.about.id}" data-type="${d.about.type}" data-title="${esc(d.about.name)}" data-logo-type="${d.about.type}" data-logo-id="${d.about.id}">${esc(d.about.name)}</a></h2>`
           : `<h2 class="section-title">${esc(d.title)}</h2>`}
       </div>
     </div><div class="row" id="${d.id}">${skelCards(8)}</div></div>`;
@@ -922,30 +925,30 @@ export async function renderRecommendations() {
   const watchingNow = (profile.nowWatching || [])[0] || null;
 
   // Headings only: the rails carry no sub-heading lines.
-  const descriptors = [{ id: 'rowTopPicks', icon: '✨', title: 'Top Picks for You' }];
+  const descriptors = [{ id: 'rowTopPicks', icon: 'sparkles', title: 'Top Picks for You' }];
   if (watchingNow) descriptors.push({
-    id: 'rowWatching', icon: watchingNow.type === 'tv' ? '📺' : '🍿',
+    id: 'rowWatching', icon: watchingNow.type === 'tv' ? 'tv' : 'popcorn',
     title: `Because you're ${watchingNow.reason === 'watching' ? 'watching' : 'just watched'}`,
     about: { type: watchingNow.type, id: watchingNow.id, name: watchingNow.title },
     art: watchingNow.poster ? { kind: 'poster', src: `${IMG}w154${watchingNow.poster}`, alt: watchingNow.title, id: watchingNow.id, type: watchingNow.type } : null,
   });
-  descriptors.push({ id: 'rowSeries', icon: '📺', title: 'Series for You' });
+  descriptors.push({ id: 'rowSeries', icon: 'tv', title: 'Series for You' });
   if (seed) descriptors.push({
-    id: 'rowSeed', icon: seed.reason === 'liked' ? '⭐' : '🍿',
+    id: 'rowSeed', icon: seed.reason === 'liked' ? 'star' : 'popcorn',
     title: `Because you ${seed.reason}`,
     about: { type: seed.type, id: seed.id, name: seed.title },
     art: seed.poster ? { kind: 'poster', src: `${IMG}w154${seed.poster}`, alt: seed.title, id: seed.id, type: seed.type } : null,
   });
   if (topActor) descriptors.push({
-    id: 'rowActor', icon: '🌟', title: `Starring ${topActor.name}`,
+    id: 'rowActor', icon: 'starBurst', title: `Starring ${topActor.name}`,
     art: topActor.image ? { kind: 'face', src: `${IMG}w185${topActor.image}`, alt: topActor.name, personId: topActor.id } : null,
   });
   if (topDirector) descriptors.push({
-    id: 'rowDirector', icon: '🎥', title: `From ${topDirector.name}`,
+    id: 'rowDirector', icon: 'camera', title: `From ${topDirector.name}`,
     art: topDirector.image ? { kind: 'face', src: `${IMG}w185${topDirector.image}`, alt: topDirector.name, personId: topDirector.id } : null,
   });
-  if (topKeyword) descriptors.push({ id: 'rowTheme', icon: '✦', title: `Because you enjoy ${topKeyword.name}` });
-  if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: '🎬', title: `More ${genreMap[genreId]}` });
+  if (topKeyword) descriptors.push({ id: 'rowTheme', icon: 'spark', title: `Because you enjoy ${topKeyword.name}` });
+  if (genreId && genreMap[genreId]) descriptors.push({ id: 'rowGenre', icon: 'clapper', title: `More ${genreMap[genreId]}` });
 
   const shellHTML = descriptors.map(shell).join('');
   // Keep populated rows in place while an updated recommendation pool resolves.

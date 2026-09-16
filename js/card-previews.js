@@ -13,6 +13,7 @@
 // edges. Nothing here touches layout: the panel is positioned once and animated
 // with transform and opacity only.
 import { tmdb } from './api.js';
+import { afterSnapshot } from './transitions.js';
 import { IMG, certificationFor } from './config.js';
 import { esc, prefersReducedMotion } from './ui.js';
 import { state, inWL, isWatched } from './state.js';
@@ -202,7 +203,7 @@ function buildPanel(meta) {
   // page, and a hover-only surface a screen reader cannot reach is noise.
   el.setAttribute('aria-hidden', 'true');
   el.innerHTML = `
-    <a class="cvp-media" href="${href}" data-action="open-detail" data-id="${meta.id}" data-type="${meta.type}" tabindex="-1">
+    <a class="cvp-media" href="${href}" data-action="open-detail" data-id="${meta.id}" data-type="${meta.type}" data-title="${esc(meta.title)}" data-poster="${esc(meta.poster || '')}" tabindex="-1">
       ${still ? `<img class="cvp-still" src="${still}" alt="">` : ''}
       <span class="cvp-shade"></span>
       <span class="cvp-load" aria-hidden="true"><i></i></span>
@@ -214,11 +215,11 @@ function buildPanel(meta) {
     <button class="cvp-sound" type="button" tabindex="-1" aria-label="Unmute preview">${ICON.sound}</button>
     <div class="cvp-body">
       <div class="cvp-actions">
-        <a class="cvp-play" href="${href}" data-action="open-detail" data-id="${meta.id}" data-type="${meta.type}" tabindex="-1">${ICON.play}<span>${resume ? 'Resume' : 'Play'}</span></a>
+        <a class="cvp-play" href="${href}" data-action="open-detail" data-id="${meta.id}" data-type="${meta.type}" data-title="${esc(meta.title)}" data-poster="${esc(meta.poster || '')}" tabindex="-1">${ICON.play}<span>${resume ? 'Resume' : 'Play'}</span></a>
         <button class="cvp-round${saved ? ' on' : ''}" type="button" tabindex="-1" data-action="open-list-picker" data-item="${listPayload(meta)}" data-tip="${saved ? 'Edit lists' : 'Add to a list'}">${saved ? ICON.check : ICON.plus}</button>
         <button class="cvp-round${watched ? ' on green' : ''}" type="button" tabindex="-1" data-action="toggle-watched" data-id="${meta.id}" data-type="${meta.type}" data-title="${esc(meta.title)}" data-poster="${esc(meta.poster)}" data-year="${esc(meta.year)}" data-tmdb-rating="${meta.rating}" data-tip="${watched ? 'Watched' : 'Mark as watched'}">${ICON.check}</button>
         <button class="cvp-round${score ? ' on gold' : ''}" type="button" tabindex="-1" data-action="open-rating" data-id="${meta.id}" data-type="${meta.type}" data-title="${esc(meta.title)}" data-tip="${score ? `Your rating: ${score}/10` : 'Rate this'}">${score ? `<b>${score}</b>` : ICON.star}</button>
-        <a class="cvp-round cvp-more" href="${href}" data-action="open-detail" data-id="${meta.id}" data-type="${meta.type}" tabindex="-1" data-tip="More info">${ICON.chevron}</a>
+        <a class="cvp-round cvp-more" href="${href}" data-action="open-detail" data-id="${meta.id}" data-type="${meta.type}" data-title="${esc(meta.title)}" data-poster="${esc(meta.poster || '')}" tabindex="-1" data-tip="More info">${ICON.chevron}</a>
       </div>
       <div class="cvp-meta">${metaRow(meta)}</div>
       ${meta.genres.length ? `<div class="cvp-genres">${meta.genres.map(genre => `<span>${esc(genre)}</span>`).join('')}</div>` : ''}
@@ -371,13 +372,21 @@ export function initCardPreviews() {
   // so a blanket "anything inside .cvp" tore the panel down before its own
   // controls could handle their click, which is exactly what stopped the sound
   // toggle from ever firing.
+  // Opening the title is the exception: its navigation closes the panel (below),
+  // after the page transition has taken the artwork it morphs from.
   document.addEventListener('click', event => {
-    if (event.target.closest?.('.cvp [data-action]')) close(true);
+    const control = event.target.closest?.('.cvp [data-action]');
+    if (control && control.dataset.action !== 'open-detail') close(true);
   }, true);
 
   document.addEventListener('keydown', event => { if (event.key === 'Escape') close(true); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) close(true); });
-  document.addEventListener('cv:go', () => close(true));
+  // A preview whose artwork is flying into the title page stays until the page
+  // transition has snapshotted it.
+  document.addEventListener('cv:go', () => {
+    if (panel?.querySelector('[style*="view-transition-name"]')) { const held = panel; afterSnapshot(() => { if (panel === held) close(true); else held.remove(); }); }
+    else close(true);
+  });
   document.addEventListener('cv:prefs', () => { if (!previewsOK()) close(true); });
   window.addEventListener('blur', () => close(true));
   // The panel is positioned once, in viewport coordinates — scrolling or

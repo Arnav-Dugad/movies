@@ -684,3 +684,328 @@ button.profile-dd-item.theme-switch { width: 100%; text-align: left; font: inher
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 .returning-badge.out { background: linear-gradient(135deg, var(--red), #ff5a3c); border-color: transparent; }
+
+/* ------------------------------------------------------------------ icons --
+   One drawn icon family (js/icons.js) replaces every emoji. An icon is 1em, so
+   it keeps the size its container set for the emoji, and takes the container's
+   colour; the rules below give each context its accent. */
+.cv-icon { width: 1em; height: 1em; display: inline-block; flex-shrink: 0; vertical-align: -.14em; overflow: visible; }
+.cv-star { color: var(--gold); width: .92em; height: .92em; margin-right: .18em; vertical-align: -.1em; }
+.ep-score { display: inline-flex; align-items: center; }
+
+/* Section and rail headings: an accent glyph in a soft tile. */
+.section-title .section-icon { display: inline-grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: .5em; background: linear-gradient(145deg, rgba(229, 9, 20, .16), rgba(229, 9, 20, .04)); color: var(--red2); font-size: .82em; }
+.section-title .section-icon .cv-icon { width: .95em; height: .95em; vertical-align: 0; }
+.rail-glyph { color: var(--red2); }
+.rail-glyph .cv-icon { width: 1.15em; height: 1.15em; vertical-align: 0; }
+
+/* Achievements: the icon takes its tier's metal. */
+.badge-icon .cv-icon { width: 1.05em; height: 1.05em; vertical-align: 0; stroke-width: 1.5; color: var(--text2); transition: transform .35s var(--spring), color .3s var(--ease); }
+.badge-bronze.earned .badge-icon .cv-icon { color: #d08a4e; }
+.badge-silver.earned .badge-icon .cv-icon { color: #c9d1dc; }
+.badge-gold.earned .badge-icon .cv-icon { color: var(--gold); }
+.badge-platinum.earned .badge-icon .cv-icon { color: #a5f3fc; }
+.badge.earned:hover .badge-icon .cv-icon { transform: translateY(-2px) scale(1.08); }
+.challenge-name .challenge-icon { display: inline-grid; place-items: center; color: var(--red2); font-size: 1.1em; }
+.challenge-meta .cv-icon { color: var(--green2); margin-right: .25em; }
+.ring-done .cv-icon { stroke-width: 2.2; }
+.profile-pin i .cv-icon, .profile-earned-grid i .cv-icon { color: var(--gold); width: 1.1em; height: 1.1em; }
+
+/* Moods: a glowing tile instead of a system emoji. */
+.mood-card .mood-emoji { display: grid; place-items: center; width: 1.9em; height: 1.9em; border-radius: .55em; background: linear-gradient(145deg, rgba(139, 92, 246, .22), rgba(229, 9, 20, .12)); color: #e9d5ff; }
+.mood-card .mood-emoji .cv-icon { width: .62em; height: .62em; stroke-width: 1.6; vertical-align: 0; }
+.mood-card:hover .mood-emoji { transform: scale(1.08) rotate(-4deg); }
+.vibe-emoji .cv-icon, .party-mood-emoji .cv-icon { color: var(--purple2); }
+.party-vibe-title .cv-icon, .party-hero-tag .cv-icon { color: var(--red2); margin-right: .2em; }
+
+/* Lists. */
+.list-ico, .wl-chip-ico, .wl-collab-ico { display: inline-grid; place-items: center; color: var(--red2); }
+.studio-name .studio-name-icon { display: inline-grid; place-items: center; margin-right: .3em; color: var(--red2); font-size: .8em; vertical-align: -.05em; }
+
+/* Controls that used a text glyph. */
+.card-wl .cv-icon { width: 16px; height: 16px; stroke-width: 2.2; vertical-align: 0; }
+.party-check .cv-icon { width: .95em; height: .95em; stroke-width: 2.4; }
+.release-hero-orb span .cv-icon { filter: drop-shadow(0 0 12px rgba(255, 255, 255, .8)); }
+.command-examples button span .cv-icon { width: 14px; height: 14px; }
+.person-links i .cv-icon { width: .9em; height: .9em; margin-left: .25em; }
+.search-history-item .remove .cv-icon { width: 14px; height: 14px; }
+.rev-stars .cv-icon { width: .95em; height: .95em; margin-right: 1px; vertical-align: -.08em; }
+:is(.auth-close, .import-close, .voice-close, .trailer-x) .cv-icon { width: 18px; height: 18px; vertical-align: 0; }
+
+/* -------------------------------------------------------- ambient colour --
+   A title page takes its glow, primary buttons and progress bars from its own
+   poster (js/ambient.js sets the colours and data-ambient="on"). Off, or for a
+   colourless poster, the page keeps the site's red. */
+/* The glow spills past the header, never past the page: on a phone it would
+   otherwise widen the document (sideways scrolling, and page transitions the
+   browser refuses to run). */
+#detailContent { overflow-x: clip; }
+#detailContent .detail-top { position: relative; }
+#detailContent .detail-top::before {
+  content: ''; position: absolute; z-index: -1; pointer-events: none;
+  inset: -160px -14% -140px -22%;
+  background: radial-gradient(ellipse 52% 58% at 24% 48%, rgba(var(--amb-glow, 229, 9, 20), .34), rgba(var(--amb-glow, 229, 9, 20), .08) 48%, transparent 72%);
+  opacity: 0; transition: opacity .9s var(--ease-out);
+}
+#detailContent[data-ambient="on"] .detail-top::before { opacity: 1; }
+#detailContent[data-ambient="on"] .detail-poster { box-shadow: 0 30px 80px rgba(var(--amb-glow), .3), var(--shadow-lg); transition: box-shadow .9s var(--ease-out); }
+#detailContent[data-ambient="on"] .btn-primary { background: rgb(var(--amb-solid)); }
+#detailContent[data-ambient="on"] .btn-primary:hover { box-shadow: 0 8px 30px rgba(var(--amb-glow), .42); }
+#detailContent[data-ambient="on"] .dbtn-icon.active { border-color: rgb(var(--amb-ink-dark)); color: rgb(var(--amb-ink-dark)); background: rgba(var(--amb-glow), .12); }
+#detailContent[data-ambient="on"] .show-progress-bar i { background: linear-gradient(90deg, rgb(var(--amb-solid)), rgb(var(--amb-ink-dark))); }
+#detailContent[data-ambient="on"] .season-card:not(.complete) .season-ring { background: conic-gradient(rgb(var(--amb-ink-dark)) var(--season-progress, 0deg), rgba(10, 10, 16, .75) 0); }
+#detailContent[data-ambient="on"] .mp-scrub input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, rgb(var(--amb-solid)) 0, rgb(var(--amb-ink-dark)) 100%) 0 / var(--mp-fill, 0%) 100% no-repeat, rgba(255, 255, 255, .12); }
+#detailContent[data-ambient="on"] .mp-scrub input[type=range]::-moz-range-progress { background: rgb(var(--amb-ink-dark)); }
+/* On paper the type accent is the darker fit of the same hue. */
+@media (prefers-reduced-motion: reduce) { #detailContent .detail-top::before { transition: none; } }
+
+/* ===== Poster placeholders in artwork shape (js/cards.js cardArt) =====
+   The tile takes the poster's own colour when this device has sampled it,
+   a blurred 92px copy sits over that, and the full poster fades in on top. */
+.card-img { background-color: var(--card-tone, var(--bg3)); }
+.card .card-img > img.card-lqip {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  filter: blur(10px) saturate(1.2); transform: scale(1.18);
+  transition: opacity .3s var(--ease-out) .45s;
+}
+.card-w .card-img > img.card-lqip { object-position: center 20%; }
+.card .card-img > img.card-poster { position: relative; }
+html.poster-fade .card .card-img > img.card-poster { opacity: 0; transition: opacity .45s var(--ease-out), transform .6s var(--ease-out), filter .28s var(--ease-out); }
+html.poster-fade .card .card-img > img.card-poster.is-loaded { opacity: 1; }
+/* Once the poster is in, the placeholder is dropped from painting entirely. */
+.card-img:has(> .card-poster.is-loaded) > .card-lqip { opacity: 0; visibility: hidden; transition: opacity .01s linear .45s, visibility 0s linear .46s; }
+@media (prefers-reduced-motion: reduce) {
+  html.poster-fade .card .card-img > img.card-poster { transition: none; }
+}
+
+/* ===== Page transitions and shared-element morphs =====
+   js/router.js runs every page swap as a view transition; js/transitions.js
+   names the artwork that morphs between pages (cv-poster, cv-backdrop,
+   cv-logo). Pages fade through: the old page leaves quickly, the new one
+   settles in just behind it. Artwork glides on a long, soft deceleration, the
+   same curve in both directions. The theme switch has its own rules above. */
+::view-transition-old(root) { animation: cv-page-out .2s cubic-bezier(.4, 0, 1, 1) both; }
+::view-transition-new(root) { animation: cv-page-in .42s cubic-bezier(.22, 1, .36, 1) .05s both; }
+@keyframes cv-page-out { to { opacity: 0; } }
+@keyframes cv-page-in { from { opacity: 0; } }
+
+::view-transition-group(cv-poster),
+::view-transition-group(cv-backdrop),
+::view-transition-group(cv-logo) {
+  animation-duration: .58s;
+  animation-timing-function: cubic-bezier(.32, .72, 0, 1);
+}
+::view-transition-old(cv-poster), ::view-transition-new(cv-poster),
+::view-transition-old(cv-logo), ::view-transition-new(cv-logo) {
+  animation-duration: .3s;
+  animation-timing-function: cubic-bezier(.4, 0, .2, 1);
+}
+/* A hero backdrop and a title page's banner differ in shape: both ends fill the
+   moving frame and are cropped to it rather than stretched. */
+::view-transition-group(cv-backdrop) { overflow: clip; }
+::view-transition-old(cv-backdrop), ::view-transition-new(cv-backdrop) {
+  width: 100%; height: 100%; object-fit: cover; object-position: center top;
+  animation-duration: .46s;
+}
+/* Artwork with no partner on the other page (a backdrop leaving for a page
+   that shows only the poster) simply fades with the page. */
+::view-transition-old(cv-poster):only-child, ::view-transition-old(cv-backdrop):only-child, ::view-transition-old(cv-logo):only-child { animation: cv-page-out .2s cubic-bezier(.4, 0, 1, 1) both; }
+::view-transition-new(cv-poster):only-child, ::view-transition-new(cv-backdrop):only-child, ::view-transition-new(cv-logo):only-child { animation: cv-page-in .42s cubic-bezier(.22, 1, .36, 1) .05s both; }
+/* The navigation bar stays put above the flying artwork. */
+html.vt-morph #navbar { view-transition-name: cv-nav; }
+::view-transition-group(cv-nav) { animation: none; z-index: 2; }
+::view-transition-old(cv-nav), ::view-transition-new(cv-nav) { animation-duration: .24s; }
+/* While artwork morphs, the landing page does not also slide in beneath it, and
+   the pressed card's hover zoom and tilt are frozen so it leaves from rest. */
+html.vt-morph .page-transition { animation: none; }
+.vt-source, .vt-source .card-img, .vt-source img { transform: none !important; transition: none !important; }
+
+/* After the morph, the title page's header rises in under the artwork that
+   just landed. */
+#detailContent.detail-arrive .detail-head > :not(.detail-title) { animation: cv-detail-rise .55s cubic-bezier(.22, 1, .36, 1) both; }
+#detailContent.detail-arrive .detail-head > :nth-child(3) { animation-delay: .04s; }
+#detailContent.detail-arrive .detail-head > :nth-child(4) { animation-delay: .08s; }
+#detailContent.detail-arrive .detail-head > :nth-child(n+5) { animation-delay: .12s; }
+@keyframes cv-detail-rise { from { opacity: 0; transform: translateY(10px); } }
+html[data-backdrop-art="hide"] .detail-back { background: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  #detailContent.detail-arrive .detail-head > * { animation: none; }
+}
+
+/* ===== Drawn icons replacing the last text symbols =====
+   Arrows at the end of a link label nudge forward on hover; stars, pins,
+   crosses, chevrons and the keypad's backspace are sized to the glyphs they
+   replace. */
+.cv-arrow { width: 1.05em; height: 1.05em; vertical-align: -.16em; transition: transform .25s var(--ease-out); }
+:is(a, button):hover > .cv-arrow, :is(a, button):hover > * > .cv-arrow, .coll-banner:hover .cv-arrow, .mood-card:hover .cv-arrow, .fr-card:hover .cv-arrow { transform: translateX(3px); }
+.continue-pin-mark .cv-icon { width: 12px; height: 12px; }
+.ce-btn .cv-icon { width: 13px; height: 13px; vertical-align: -2px; margin-right: 2px; }
+.fr-card-dismiss .cv-icon { width: 14px; height: 14px; }
+.fp-chev .cv-icon { width: 16px; height: 16px; vertical-align: middle; }
+.fp-part-mark .cv-icon { width: 13px; height: 13px; stroke-width: 2.2; }
+.t10-move .cv-icon { width: 10px; height: 10px; fill: currentColor; stroke-width: 1.2; }
+.t10-score-sm .cv-star { width: .95em; height: .95em; vertical-align: -.12em; }
+.pin-key.ghost .cv-icon { width: 22px; height: 22px; }
+.tv-empty > i .cv-icon { width: 20px; height: 20px; }
+@media (prefers-reduced-motion: reduce) { .cv-arrow { transition: none; } }
+
+/* ===== Completionist (Stats) =====
+   Directors | Actors switch, a sentence headline per person, and the unseen
+   films as a ranked list: poster, title, year, and the TMDB score that
+   ordered it. */
+.completion-roles { display: inline-flex; padding: 4px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(6, 6, 11, .45); }
+.completion-roles button { padding: 7px 14px; border-radius: 999px; color: var(--text3); font-size: .74rem; font-weight: 750; transition: color .2s, background .25s var(--ease-out), box-shadow .25s; }
+.completion-roles button:hover { color: var(--text); }
+.completion-roles button.active { color: #111; background: linear-gradient(135deg, var(--gold), #f59e0b); box-shadow: 0 6px 20px rgba(251, 191, 36, .22); }
+#statsContent .completion-card .loyalty-person strong { font-size: .86rem; line-height: 1.3; }
+.completion-gaps-head { display: flex; align-items: baseline; justify-content: space-between; margin: 2px 2px 7px; }
+.completion-gaps-head span { color: var(--text2); font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.completion-gaps-head small { color: var(--text3); font-size: .72rem; }
+.completion-gaps { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; counter-reset: gap; }
+.completion-gap { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 10px 6px 6px; border: 1px solid transparent; border-radius: 12px; background: rgba(6, 6, 11, .28); transition: border-color .2s, background .2s, transform .25s var(--ease-out); }
+.completion-gap:hover, .completion-gap:focus-visible { border-color: rgba(251, 191, 36, .28); background: rgba(251, 191, 36, .06); transform: translateX(2px); }
+.completion-gap img, .completion-gap-blank { width: 32px; height: 48px; border-radius: 6px; object-fit: cover; background: var(--bg3); display: block; }
+.completion-gap span { min-width: 0; }
+.completion-gap strong { display: block; overflow: hidden; font-size: .8rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.completion-gap small { display: block; margin-top: 2px; color: var(--text3); font-size: .72rem; }
+.completion-gap b { display: inline-flex; align-items: center; gap: 4px; color: var(--gold); font-family: var(--font-mono); font-size: .76rem; font-variant-numeric: tabular-nums; }
+.completion-gap .cv-star { width: .9em; height: .9em; }
+.completion-more { margin-top: 5px; }
+.completion-more summary { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; color: var(--text2); font-size: .74rem; font-weight: 700; cursor: pointer; list-style: none; }
+.completion-more summary::-webkit-details-marker { display: none; }
+.completion-more summary::after { content: ''; width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .25s var(--ease-out); }
+.completion-more[open] summary::after { transform: translateY(2px) rotate(-135deg); }
+.completion-more summary:hover { color: var(--text); background: rgba(255, 255, 255, .05); }
+.completion-more[open] .completion-gaps { margin-top: 5px; animation: cv-detail-rise .35s var(--ease-out) both; }
+@media (max-width: 520px) { .completionist .stats-section-head { flex-wrap: wrap; } }
+/* The same measure on a person page, under their vital stats. */
+.person-completion { margin-top: 30px; padding: 18px; border: 1px solid var(--glass-border); border-radius: 20px; background: radial-gradient(circle at 92% 0%, rgba(251, 191, 36, .08), transparent 40%), rgba(255, 255, 255, .02); }
+.person-completion .person-section-head { margin-top: 0; }
+.person-completion .person-section-head h2 { text-wrap: balance; }
+.person-completion .person-section-head b { color: var(--gold); font-family: var(--font-mono); }
+.person-completion-gaps { grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); }
+
+/* ===== Cast Milestones (Stats, person pages, the milestone toast) ===== */
+.cast-milestones { background: radial-gradient(circle at 8% 0%, rgba(34, 211, 238, .08), transparent 32%), linear-gradient(145deg, #13161d, #0d0e13); }
+.cast-headline { display: flex; align-items: center; gap: 10px; margin: -4px 0 14px; padding: 12px 14px; border: 1px solid rgba(34, 211, 238, .2); border-radius: 14px; background: rgba(34, 211, 238, .06); }
+.cast-headline .cv-icon { width: 22px; height: 22px; flex-shrink: 0; color: #67e8f9; }
+.cast-headline strong { font-size: .95rem; line-height: 1.35; text-wrap: balance; }
+.cast-list { display: grid; gap: 6px; }
+.cast-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) minmax(120px, 34%); align-items: center; gap: 12px; padding: 8px 12px 8px 8px; border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(255, 255, 255, .02); }
+.cast-row.lead { border-color: rgba(34, 211, 238, .22); background: rgba(34, 211, 238, .035); }
+.cast-rank { color: var(--text3); font-family: var(--font-mono); font-size: .76rem; text-align: center; }
+.cast-person { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.cast-person > div { width: 42px; height: 42px; display: grid; place-items: center; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: linear-gradient(135deg, #0e7490, #1e293b); }
+.cast-person img { width: 100%; height: 100%; object-fit: cover; }
+.cast-person > span { min-width: 0; }
+.cast-person strong { display: block; overflow: hidden; font-size: .86rem; text-overflow: ellipsis; white-space: nowrap; }
+.cast-person small { display: block; margin-top: 2px; color: var(--text3); font-size: .73rem; }
+.cast-time { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; row-gap: 5px; }
+.cast-time b { font-family: var(--font-mono); font-size: .84rem; font-variant-numeric: tabular-nums; }
+.cast-time small { color: var(--text3); font-size: .72rem; text-align: right; }
+.cast-band { grid-column: 1 / -1; height: 5px; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .07); }
+.cast-band i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #0891b2, #67e8f9); }
+.cast-partial { margin-top: 10px; color: var(--text3); font-size: .74rem; }
+@media (max-width: 560px) { .cast-row { grid-template-columns: minmax(0, 1fr) 104px; } .cast-rank { display: none; } }
+.person-cast-hours { display: flex; align-items: center; gap: 10px; margin-top: 22px; padding: 12px 16px; border: 1px solid rgba(34, 211, 238, .2); border-radius: 14px; background: rgba(34, 211, 238, .05); color: var(--text2); font-size: .9rem; }
+.person-cast-hours .cv-icon { width: 20px; height: 20px; flex-shrink: 0; color: #67e8f9; }
+.person-cast-hours b { color: var(--text); }
+.toast.cast-milestone { gap: 12px; padding: 8px 8px 8px 8px; }
+.cast-milestone-photo { position: relative; width: 44px; height: 44px; flex-shrink: 0; }
+.cast-milestone-photo img, .cast-milestone-photo > i { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; object-fit: cover; background: #0e7490; }
+.cast-milestone-photo b { position: absolute; right: -6px; bottom: -4px; padding: 1px 5px; border-radius: 99px; background: #22d3ee; color: #062026; font-size: .62rem; font-weight: 900; animation: cv-milestone-pop .6s cubic-bezier(.34, 1.56, .64, 1) .2s both; }
+.cast-milestone-copy { display: grid; min-width: 0; }
+.cast-milestone-copy small { color: #67e8f9; font-size: .7rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.cast-milestone-copy strong { overflow: hidden; max-width: 46vw; font-size: .86rem; text-overflow: ellipsis; white-space: nowrap; }
+.cast-milestone > button[data-action] { padding: 8px 14px; border-radius: 50px; background: #0e7490; color: #fff; font-size: .8rem; font-weight: 800; }
+.cast-milestone > button[data-action]:hover { background: #0891b2; }
+.recap-prompt-close .cv-icon { width: 16px; height: 16px; }
+@keyframes cv-milestone-pop { from { opacity: 0; transform: scale(.4); } }
+@media (prefers-reduced-motion: reduce) { .cast-milestone-photo b { animation: none; } }
+
+/* ===== Series finale ===== */
+.finale-btn { display: inline-flex; align-items: center; gap: 7px; border-color: rgba(251, 191, 36, .35) !important; color: var(--gold) !important; }
+.finale-btn .cv-icon { width: 16px; height: 16px; }
+.finale-btn:hover { background: rgba(251, 191, 36, .1) !important; }
+.finale-prompt-mark { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: rgba(251, 191, 36, .16); color: var(--gold); font-style: normal; }
+.finale-prompt-mark .cv-icon { width: 18px; height: 18px; }
+.toast.finale-prompt { padding-left: 8px; }
+.finale-prompt > button[data-action] { background: linear-gradient(135deg, #f59e0b, #d97706); color: #1a1204; }
+.finale-prompt > button[data-action]:hover { background: #fbbf24; }
+
+/* ===== Season heatmap (js/season-heatmap.js) =====
+   One hue in fixed rating bands (dim to bright gold on dark, pale to deep amber
+   on light), hatched for "no rating", outlined for "not aired". The tick sits
+   on each seen episode in ink or white, whichever the band's colour needs. */
+.ep-heatmap { --hm-0: #443524; --hm-1: #644a29; --hm-2: #86612b; --hm-3: #a9792b; --hm-4: #ca932e; --hm-5: #eab02f; --hm-6: #ffd043; --hm-edge: rgba(255, 255, 255, .09); --hm-none: rgba(255, 255, 255, .16);
+  margin: 4px 0 26px; border: 1px solid var(--glass-border); border-radius: 18px; background: rgba(255, 255, 255, .02); }
+.ep-heatmap-toggle { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 18px; text-align: left; }
+.ep-heatmap-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ep-heatmap-icon { width: 34px; height: 34px; display: grid; place-items: center; flex-shrink: 0; border-radius: 10px; background: rgba(251, 191, 36, .12); color: var(--gold); }
+.ep-heatmap-icon .cv-icon { width: 18px; height: 18px; }
+.ep-heatmap-copy { display: grid; min-width: 0; flex: 1; }
+.ep-heatmap-copy strong { font-size: .92rem; }
+.ep-heatmap-copy small { color: var(--text3); font-size: .76rem; }
+.ep-heatmap-chev { color: var(--text3); transition: transform .3s var(--ease-out); }
+.ep-heatmap-chev .cv-icon { width: 18px; height: 18px; }
+.ep-heatmap.expanded .ep-heatmap-chev { transform: rotate(180deg); }
+.ep-heatmap-body { padding: 2px 14px 14px; }
+.hm-loading { display: grid; gap: 7px; }
+.hm-loading i { display: block; height: 22px; border-radius: 6px; }
+.hm-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 12px; color: var(--text3); font-size: .74rem; }
+.hm-legend-scale { display: inline-flex; gap: 2px; }
+.hm-legend-ends { display: inline-flex; gap: 6px; margin-left: -10px; }
+.hm-legend-ends b:first-child::after { content: ' to'; font-weight: 500; }
+.hm-legend-key { display: inline-flex; align-items: center; gap: 6px; }
+.hm-swatch { position: relative; width: 14px; height: 14px; display: inline-block; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--hm-edge); }
+.hm-grid { display: grid; gap: 6px; max-height: 420px; overflow: auto; padding-right: 4px; overscroll-behavior: contain; scrollbar-width: thin; }
+.hm-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) 30px; align-items: start; gap: 8px; }
+.hm-label, .hm-mean { padding-top: 4px; color: var(--text3); font-family: var(--font-mono); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.hm-mean { text-align: right; color: var(--text2); }
+.hm-cells { display: flex; flex-wrap: wrap; gap: 3px; }
+.hm-cell { position: relative; width: 22px; height: 22px; padding: 0; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--hm-edge); transition: transform .18s var(--ease-out), box-shadow .18s; animation: cv-hm-in .4s var(--ease-out) both; animation-delay: calc(min(var(--i), 40) * 8ms); }
+.hm-cell:hover, .hm-cell:focus-visible { z-index: 1; transform: scale(1.22); box-shadow: 0 0 0 2px var(--text), 0 6px 14px rgba(0, 0, 0, .35); outline: none; }
+:is(.hm-cell, .hm-swatch).b0 { background: var(--hm-0); } :is(.hm-cell, .hm-swatch).b1 { background: var(--hm-1); } :is(.hm-cell, .hm-swatch).b2 { background: var(--hm-2); }
+:is(.hm-cell, .hm-swatch).b3 { background: var(--hm-3); } :is(.hm-cell, .hm-swatch).b4 { background: var(--hm-4); } :is(.hm-cell, .hm-swatch).b5 { background: var(--hm-5); } :is(.hm-cell, .hm-swatch).b6 { background: var(--hm-6); }
+.hm-cell.none, .hm-swatch.none { background: repeating-linear-gradient(135deg, var(--hm-none) 0 2px, transparent 2px 5px); }
+.hm-cell.unaired, .hm-swatch.unaired { background: transparent; box-shadow: inset 0 0 0 1.5px var(--hm-none); }
+.hm-cell.best { box-shadow: inset 0 0 0 1px var(--hm-edge), 0 0 0 2px var(--gold); }
+/* The tick: white on dim bands, ink on bright ones (contrast at least 4.9:1).
+   A real element, not ::after: touch screens hide ::after on anything with a
+   tooltip (data-tip), and every square has one. */
+.hm-tick { display: none; }
+.hm-cell.watched .hm-tick, .hm-swatch.watched .hm-tick {
+  display: block; position: absolute; inset: 0; background: #fff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 12.5l4 4 9-9'/%3E%3C/svg%3E") center / 72% no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 12.5l4 4 9-9'/%3E%3C/svg%3E") center / 72% no-repeat;
+}
+:is(.hm-cell, .hm-swatch):is(.b3, .b4, .b5, .b6).watched .hm-tick { background: #111114; }
+.hm-note { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; color: var(--text3); font-size: .76rem; }
+.hm-note b { color: var(--text); font-weight: 700; }
+.hm-note .cv-star { width: .95em; height: .95em; margin-right: 4px; vertical-align: -.12em; color: var(--gold); }
+.hm-source { flex-basis: 100%; opacity: .8; }
+.hm-empty { color: var(--text3); font-size: .82rem; padding: 6px 0; }
+.ep-card.ep-flash { animation: cv-ep-flash 1.6s var(--ease-out); }
+@keyframes cv-hm-in { from { opacity: 0; transform: scale(.6); } }
+@keyframes cv-ep-flash { 0%, 30% { box-shadow: 0 0 0 2px var(--gold), 0 0 30px rgba(251, 191, 36, .3); } 100% { box-shadow: 0 0 0 2px transparent; } }
+@media (max-width: 600px) { .hm-cell { width: 19px; height: 19px; } .hm-row { grid-template-columns: 26px minmax(0, 1fr) 26px; gap: 6px; } }
+@media (prefers-reduced-motion: reduce) { .hm-cell, .ep-card.ep-flash { animation: none; } .hm-cell:hover { transform: none; } }
+.cast-time b { grid-row: 1; grid-column: 1; }
+.cast-time small { grid-row: 1; grid-column: 2; }
+.cast-time .cast-band { grid-row: 2; }
+.cv-rise { animation: cv-detail-rise .5s var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .cv-rise { animation: none; } }
+.cast-time b { white-space: nowrap; }
+.toast.cast-milestone { max-width: calc(100vw - 24px); }
+.cast-milestone-copy { flex: 1 1 auto; }
+@media (max-width: 560px) {
+  .cast-milestone-copy strong { max-width: none; white-space: normal; font-size: .8rem; line-height: 1.3; }
+  .cast-milestone > button[data-action] { padding: 7px 11px; }
+}
+/* Centred with left:50%, the zone only had half the screen to shrink into, so a
+   wide prompt toast (cast milestone, recap, finale) ran off the left edge on a phone. */
+.toast-zone { width: max-content; max-width: calc(100vw - 24px); }
+.toast-zone > .toast { max-width: 100%; }
+/* Phones pin the zone between 10px gutters (css/ultra.css); the desktop centring
+   transform then pushed every toast half off the left edge. */
+@media (max-width: 700px) { .toast-zone { width: auto; max-width: none; transform: none; } }

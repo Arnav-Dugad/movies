@@ -1,5 +1,6 @@
 // ===== ROUTER (History API, clean URLs) =====
 import { $, forceUnlockScroll } from './ui.js';
+import { canMorph, hasArmedSources, armReturn, landReturn, releaseSources, setActiveTransition, finishTransition, flushAfterSnapshot } from './transitions.js';
 import { registerActions } from './events.js';
 import { loadMovies, loadTV } from './browse.js';
 import { renderWL } from './watchlist.js';
@@ -181,7 +182,41 @@ function closeAllModals() {
   forceUnlockScroll();
 }
 
-function renderRoute(path, { isPopState = false, scroll = true } = {}) {
+// Scroll without the page's smooth-scroll style: a page swap lands at once.
+function jumpScroll(top) {
+  const root = document.documentElement, previous = root.style.scrollBehavior;
+  root.style.scrollBehavior = 'auto';
+  window.scrollTo(0, top);
+  root.style.scrollBehavior = previous;
+}
+
+// Back and Forward return to where you were on that page. Pages that grow after
+// arriving (rows filling in) are followed for a moment until the position
+// exists; any scroll, key or touch of your own ends that.
+let restoreRun = 0;
+function restoreScroll(top) {
+  const run = ++restoreRun;
+  jumpScroll(top);
+  if (!top || Math.abs(window.scrollY - top) < 2) return;
+  const until = performance.now() + 1500;
+  const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'];
+  const stop = () => { restoreRun++; events.forEach(type => window.removeEventListener(type, stop)); };
+  events.forEach(type => window.addEventListener(type, stop, { passive: true }));
+  const step = () => {
+    if (run !== restoreRun) return;
+    if (performance.now() > until) { stop(); return; }
+    if (document.documentElement.scrollHeight - window.innerHeight >= top - 1) { jumpScroll(top); stop(); return; }
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// The current entry's scroll position, kept in its history state.
+function saveScroll() {
+  try { history.replaceState({ ...(history.state || {}), scrollY: Math.round(window.scrollY) }, ''); } catch (_) {}
+}
+
+function renderRoute(path, { isPopState = false, scroll = true, instant = false } = {}) {
   const query = new URL(location.href).searchParams;
   const matched = matchRoute(path);
   // An unmatched path used to render home while the address bar kept the broken
@@ -217,16 +252,31 @@ function renderRoute(path, { isPopState = false, scroll = true } = {}) {
   // and "Home, page loaded" on top of that is noise.
   if (firstRenderDone) announceRoute(route.page); else firstRenderDone = true;
 
-  if (scroll) window.scrollTo({ top: 0, behavior: isPopState ? 'auto' : 'smooth' });
+  if (scroll) {
+    if (isPopState) restoreScroll(+history.state?.scrollY || 0);
+    else if (instant) jumpScroll(0);
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 }
 
-// Progressive enhancement: on browsers with the View Transitions API, wrap the
-// page swap so shared elements (a card poster tagged view-transition-name:cv-hero
-// → the detail scaffold poster) morph with zero layout shift. Elsewhere it's a
-// plain synchronous render (falls back to the CSS .page-transition fade).
-function runRender(path, opts) {
-  if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const t = document.startViewTransition(() => renderRoute(path, opts));
+// Progressive enhancement: on browsers with the View Transitions API the page
+// swap is a transition, and artwork shared between the two pages morphs from
+// one to the other (js/transitions.js). The swap happens inside the callback,
+// after the old page was snapshotted, so the new page lands already scrolled
+// into place. Elsewhere it's a plain synchronous render with the CSS
+// .page-transition fade.
+function runRender(path, opts = {}) {
+  if (canMorph()) {
+    // Leaving a title page for anywhere else: its artwork flies back to the card
+    // it came from, when that card is on screen.
+    const back = hasArmedSources() ? null : armReturn(currentPath);
+    const t = document.startViewTransition(() => {
+      flushAfterSnapshot();
+      releaseSources();
+      renderRoute(path, { ...opts, instant: true });
+      if (back) landReturn(back);
+    });
+    setActiveTransition(t, finishTransition);
     // A navigation that starts before the previous morph finishes skips it, and
     // the skip rejects `ready` and `updateCallbackDone` as well as `finished`.
     // Only `finished` was handled, so browsing quickly logged an uncaught
@@ -234,9 +284,9 @@ function runRender(path, opts) {
     // Being interrupted is normal here, so all three are acknowledged.
     t.ready?.catch(() => {});
     t.updateCallbackDone?.catch(() => {});
-    // After the morph, drop any lingering shared name so the next transition is clean.
-    t.finished.finally(() => { document.querySelectorAll('[style*="view-transition-name"]').forEach(el => { el.style.viewTransitionName = ''; }); }).catch(() => {});
   } else {
+    flushAfterSnapshot();
+    releaseSources();
     renderRoute(path, opts);
   }
 }
@@ -248,7 +298,7 @@ export function navigate(path, { replace = false } = {}) {
   const url = new URL(path, location.origin);
   const href = url.pathname + url.search;
   if (replace) history.replaceState({ path: url.pathname }, '', href);
-  else history.pushState({ path: url.pathname }, '', href);
+  else { saveScroll(); history.pushState({ path: url.pathname }, '', href); }
   runRender(url.pathname);
 }
 
@@ -274,6 +324,12 @@ function handleEscape() {
 }
 
 export function initRouter() {
+  // Scroll positions are restored by the router once the page has rendered; the
+  // browser's own restoration would jump before the page exists.
+  try { history.scrollRestoration = 'manual'; } catch (_) {}
+  let scrollSave = 0;
+  window.addEventListener('scroll', () => { clearTimeout(scrollSave); scrollSave = setTimeout(saveScroll, 400); }, { passive: true });
+  window.addEventListener('pagehide', saveScroll);
   registerActions({
     'show-page': (el) => { $('profileDD')?.classList.remove('active'); navigate(pageToPath(el.dataset.page)); },
     'go-home': () => navigate('/'),

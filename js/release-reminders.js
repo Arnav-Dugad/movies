@@ -2,6 +2,7 @@
 // Free, local-first release calendar. TMDB supplies upcoming film/show data;
 // preferences and saved reminders stay on this device and export to any calendar.
 import { tmdb } from './api.js';
+import { icon } from './icons.js';
 import { IMG, PH } from './config.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { registerActions } from './events.js';
@@ -144,7 +145,7 @@ function releaseCard(event, saved) {
   return `<article class="release-card${saved ? ' saved' : ''}">
     <a class="release-poster${event.posterKind === 'still' ? ' landscape' : ''}" href="/${event.mediaType}/${event.id}" data-action="open-detail" data-id="${event.id}" data-type="${event.mediaType}"><img src="${posterURL(event)}" alt="${esc(event.title)}" loading="lazy" data-ph="${PH}"><span class="release-type">${typeLabel}</span></a>
     <div class="release-card-body"><div class="release-meta-line"><span class="release-kind">${esc(event.kind)}</span><span class="release-language">${languageLabel(event)}</span></div><a class="release-title" href="/${event.mediaType}/${event.id}" data-action="open-detail" data-id="${event.id}" data-type="${event.mediaType}">${esc(event.title)}</a>${event.note ? `<div class="release-note">${esc(event.note)}</div>` : ''}${episodeTime}${countdown}
-      <div class="release-card-actions"><button class="reminder-btn${saved ? ' active' : ''}" data-action="toggle-release-reminder" data-key="${esc(eventKey(event))}" data-event="${payload}">${saved ? '✓ Saved' : '＋ Remind me'}</button><button class="calendar-btn" data-action="download-release-calendar" data-event="${payload}" data-tip="Add to calendar" aria-label="Add ${esc(event.title)} to calendar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/><path d="M12 14v4M10 16h4"/></svg></button></div>
+      <div class="release-card-actions"><button class="reminder-btn${saved ? ' active' : ''}" data-action="toggle-release-reminder" data-key="${esc(eventKey(event))}" data-event="${payload}">${saved ? `${icon('check')} Saved` : `${icon('plus')} Remind me`}</button><button class="calendar-btn" data-action="download-release-calendar" data-event="${payload}" data-tip="Add to calendar" aria-label="Add ${esc(event.title)} to calendar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/><path d="M12 14v4M10 16h4"/></svg></button></div>
     </div>
   </article>`;
 }
@@ -207,7 +208,7 @@ function paintReleaseTimeline() {
   const events = visibleEvents();
   if (summary) summary.innerHTML = `<strong>${events.length}</strong> upcoming event${events.length === 1 ? '' : 's'}<span>English + Hindi · Times shown in ${esc(localTimeZone())} · ${savedKeys.size} saved</span>`;
   if (!events.length) {
-    content.innerHTML = `<div class="release-empty"><div>✦</div><h3>Nothing matches yet</h3><p>Try another filter, a wider date range, or adjust your preferences.</p><button class="btn-glass" data-action="toggle-release-preferences">Open preferences</button></div>`;
+    content.innerHTML = `<div class="release-empty"><div>${icon('sparkles')}</div><h3>Nothing matches yet</h3><p>Try another filter, a wider date range, or adjust your preferences.</p><button class="btn-glass" data-action="toggle-release-preferences">Open preferences</button></div>`;
     startReleaseCountdowns();
     return;
   }

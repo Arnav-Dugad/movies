@@ -3,6 +3,8 @@
 // (users/{uid}/shared/list_{listId} — the same friend-readable subcollection as
 // the taste doc), plus "Save a copy" to clone it into the viewer's own lists.
 import { db } from './firebase.js';
+import { cardArt } from './cards.js';
+import { listIcon } from './icons.js';
 import { state } from './state.js';
 import { IMG, PH } from './config.js';
 import { esc, toast, $ } from './ui.js';
@@ -15,7 +17,7 @@ let reqGen = 0, curDoc = null;
 
 function cardHTML(it) {
   const poster = it.poster ? `${IMG}w342${it.poster}` : PH;
-  return `<a class="card" href="/${it.type}/${it.id}" aria-label="${esc(it.title)}" data-action="open-detail" data-id="${it.id}" data-type="${it.type}"><div class="card-img"><img src="${poster}" alt="${esc(it.title)}" loading="lazy" data-ph="${PH}"></div><div class="card-info"><div class="card-title">${esc(it.title) || ''}</div><div class="card-sub"><span>${esc(it.year || '')}</span><span class="dot"></span><span>${it.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></a>`;
+  return `<a class="card" href="/${it.type}/${it.id}" aria-label="${esc(it.title)}" data-action="open-detail" data-id="${it.id}" data-type="${it.type}">${cardArt(poster, esc(it.title), it.poster || '')}</div><div class="card-info"><div class="card-title">${esc(it.title) || ''}</div><div class="card-sub"><span>${esc(it.year || '')}</span><span class="dot"></span><span>${it.type === 'tv' ? 'TV' : 'Movie'}</span></div></div></a>`;
 }
 
 export async function openSharedList(uid, listId) {
@@ -42,7 +44,7 @@ export async function openSharedList(uid, listId) {
       <div class="shared-head">
         <div class="shared-head-main">
           <div class="shared-owner">${avatarInner(null, d.ownerName || 'A friend')}<span>${esc(d.ownerName || 'A friend')}’s list</span></div>
-          <h1 class="studio-name">${d.icon || '📁'} ${esc(d.name || 'List')}</h1>
+          <h1 class="studio-name"><span class="studio-name-icon">${listIcon(d.icon)}</span>${esc(d.name || 'List')}</h1>
           <div class="studio-meta">${items.length} title${items.length !== 1 ? 's' : ''}</div>
         </div>
         ${mine ? '' : `<button class="btn-primary shared-clone" data-action="clone-shared-list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>Save a copy</button>`}
@@ -59,7 +61,7 @@ async function cloneList() {
   if (!state.user) return document.dispatchEvent(new Event('cv:open-auth'));
   if (!curDoc || !curDoc.items) return;
   const name = `${curDoc.name} (from ${curDoc.ownerName || 'a friend'})`;
-  const list = await createList(name, { icon: curDoc.icon || '📁' });
+  const list = await createList(name, { icon: curDoc.icon || 'folder' });
   if (!list) { toast('Could not create the list', 'error'); return; }
   let n = 0;
   for (const it of curDoc.items) {

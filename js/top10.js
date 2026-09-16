@@ -10,6 +10,7 @@
 // snapshot from a genuinely earlier week to compare against — never on a first
 // visit, and never invented.
 import { tmdb } from './api.js';
+import { icon } from './icons.js';
 import { IMG, PH, genreMap } from './config.js';
 import { esc, $ } from './ui.js';
 import { state } from './state.js';
@@ -84,7 +85,7 @@ function movementChip(move) {
   if (move.kind === 'new') return '<span class="t10-move new">NEW</span>';
   if (move.kind === 'hold') return '<span class="t10-move hold" title="No change since last week">&#8212;</span>';
   const up = move.kind === 'up';
-  return `<span class="t10-move ${up ? 'up' : 'down'}" title="${up ? 'Up' : 'Down'} ${move.by} since last week">${up ? '&#9650;' : '&#9660;'}${move.by}</span>`;
+  return `<span class="t10-move ${up ? 'up' : 'down'}" title="${up ? 'Up' : 'Down'} ${move.by} since last week">${icon(up ? 'trendUpSolid' : 'trendDown')}${move.by}</span>`;
 }
 
 const yearOf = item => (item.release_date || item.first_air_date || '').slice(0, 4);
@@ -149,7 +150,7 @@ function rowHTML(item, rank, type, move) {
       <span class="t10-row-copy">
         <b>${esc(title)}</b>
         <span class="t10-row-meta">
-          ${item.vote_average ? `<i class="t10-score-sm">&#9733; ${item.vote_average.toFixed(1)}</i>` : ''}
+          ${item.vote_average ? `<i class="t10-score-sm">${icon('starSolid', { cls: 'cv-star' })} ${item.vote_average.toFixed(1)}</i>` : ''}
           ${yearOf(item) ? `<i>${yearOf(item)}</i>` : ''}
           ${genresOf(item).slice(0, 2).map(g => `<i>${esc(g)}</i>`).join('')}
         </span>

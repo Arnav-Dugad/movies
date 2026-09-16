@@ -8,6 +8,7 @@
 // indistinguishable to deuteranopes. Direction, sign, and direct labels carry the
 // meaning as well, so the charts never depend on hue alone.
 import { IMG, regionLabel } from './config.js';
+import { icon } from './icons.js';
 import { esc } from './ui.js';
 import { state } from './state.js';
 import { getProviderStats, getCatalogSeries, getProviderLedger } from './provider-history.js';
@@ -50,7 +51,7 @@ function statTiles(stats, series) {
 // legend is always present and every bar carries its own value label.
 function netChart(stats) {
   const rows = stats.filter(row => row.gained || row.lost).slice(0, 8);
-  if (!rows.length) return `<div class="pi-empty"><i aria-hidden="true">◷</i><p>No catalog movement recorded yet. CineVerse compares each scan with the previous one, so the first change appears after a service adds or drops one of your saved titles.</p></div>`;
+  if (!rows.length) return `<div class="pi-empty"><i aria-hidden="true">${icon('clock')}</i><p>No catalog movement recorded yet. CineVerse compares each scan with the previous one, so the first change appears after a service adds or drops one of your saved titles.</p></div>`;
   const max = Math.max(1, ...rows.map(row => Math.max(row.gained, row.lost)));
   const pct = value => `${(value / max) * 100}%`;
   const body = rows.map(row => `<div class="pi-bar-row" data-tip="${esc(`${row.name}: ${row.gained} added · ${row.lost} removed · net ${signed(row.net)}`)}">
@@ -68,7 +69,7 @@ function netChart(stats) {
 
 // ---------- catalog trend (single series area + line) ----------
 function trendChart(series, width) {
-  if (series.length < 2) return `<div class="pi-empty"><i aria-hidden="true">◷</i><p>The trend line needs at least two scans on different days. Open Notifications again tomorrow and this chart starts drawing itself.</p></div>`;
+  if (series.length < 2) return `<div class="pi-empty"><i aria-hidden="true">${icon('clock')}</i><p>The trend line needs at least two scans on different days. Open Notifications again tomorrow and this chart starts drawing itself.</p></div>`;
   const W = Math.max(320, Math.round(width || 720)), H = 210;
   const padL = 34, padR = 16, padT = 16, padB = 26;
   const innerW = W - padL - padR, innerH = H - padT - padB;
@@ -136,7 +137,7 @@ export function providerIntelHTML({ width = 720 } = {}) {
   const ranges = [30, 90, 180].map(value => `<button class="${value === currentRange ? 'active' : ''}" data-action="provider-chart-range" data-range="${value}" aria-pressed="${value === currentRange}">${value}d</button>`).join('');
   if (!stats.length) {
     return `<section class="provider-intel" id="providerIntel"><div class="pi-head"><div><span>Provider intelligence</span><h2>Provider History Charts</h2><p>Which subscription services are gaining or losing the titles you care about.</p></div></div>
-      <div class="pi-empty"><i aria-hidden="true">◷</i><p>Save a few movies or shows and refresh Notifications. CineVerse records each region scan and starts charting the moment a service adds or drops one of them.</p></div></section>`;
+      <div class="pi-empty"><i aria-hidden="true">${icon('clock')}</i><p>Save a few movies or shows and refresh Notifications. CineVerse records each region scan and starts charting the moment a service adds or drops one of them.</p></div></section>`;
   }
   return `<section class="provider-intel" id="providerIntel">
     <div class="pi-head">

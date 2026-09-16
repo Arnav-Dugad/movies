@@ -52,7 +52,9 @@ export function countUp(el, target, { dur = 900, decimals = 0, prefix = '', suff
   if (!motionOK() || document.hidden) { settle(); return; }
   const start = performance.now();
   function tick(now) {
-    const p = Math.min(1, (now - start) / dur);
+    // A frame timestamp can predate `start` (it marks the frame, not this call),
+    // which made the first eased value negative: a 7.4 rating flashed "-24.9".
+    const p = Math.max(0, Math.min(1, (now - start) / dur));
     const eased = 1 - Math.pow(1 - p, 3);
     if (p >= 1) { settle(); return; }
     el.textContent = prefix + fmt(target * eased, decimals) + suffix;
