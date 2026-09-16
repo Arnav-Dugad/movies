@@ -9,6 +9,7 @@ import { debounce, toast } from './ui.js';
 import { buildTasteProfile, keyIsMature, classifyLibraryInBackground } from './recommend.js';
 import { clean, fromKey } from './lists.js';
 import { prefs } from './prefs.js';
+import { computeCastHours, clubBadges } from './cast-hours.js';
 
 export const social = { code: '', friends: [], reqIn: [], reqOut: [], ready: false };
 
@@ -211,6 +212,45 @@ export async function searchByName(q) {
     return res.docs.map(d => d.data()).filter(p => p.uid !== state.user?.uid && p.discoverable !== false);
   } catch (e) { console.error('searchByName', e); return []; }
 }
+// ----- Hours clubs (friend-readable: users/{uid}/shared/milestones) -----
+// Only the badge itself is shared: the person, the club, and whole hours rounded
+// down to ten. Shows classified as adult never count toward a published badge,
+// and nothing is written when the badges have not changed.
+const clubsKey = () => `cv_clubs_published_${state.user?.uid || 'guest'}`;
+export async function publishClubs() {
+  if (!state.user) return;
+  const ref = db.collection('users').doc(state.user.uid).collection('shared').doc('milestones');
+  if (prefs.shareMilestones === false) {
+    try { await ref.delete(); localStorage.removeItem(clubsKey()); } catch (e) { console.error('remove shared milestones', e); }
+    return;
+  }
+  const result = await computeCastHours({ fetch: false, keepShow: id => !keyIsMature(`tv_${id}`) });
+  // Published only from a complete count. A device that has not read every
+  // season's credits yet (or whose episode progress has not loaded) would
+  // otherwise overwrite the real badges with fewer, or none.
+  if (!state.user || !result.needed || result.known !== result.needed) return;
+  const badges = clubBadges(result.people, 12).map(badge => ({ id: badge.id, name: badge.name, profile: badge.profile, club: badge.club, hours: Math.floor(badge.hours / 10) * 10 }));
+  const signature = JSON.stringify(badges);
+  try { if (localStorage.getItem(clubsKey()) === signature) return; } catch (_) {}
+  try {
+    await ref.set({ name: state.user.displayName || (state.user.email || '').split('@')[0] || 'User', badges, updatedAt: ts() });
+    try { localStorage.setItem(clubsKey(), signature); } catch (_) {}
+  } catch (e) { console.error('publishClubs', e); }
+}
+
+// A friend's clubs, read at most once every ten minutes per friend.
+const friendClubCache = new Map();
+export async function getFriendClubs(uid) {
+  const held = friendClubCache.get(uid);
+  if (held && Date.now() - held.at < 600000) return held.value;
+  try {
+    const doc = await db.collection('users').doc(uid).collection('shared').doc('milestones').get();
+    const value = doc.exists && Array.isArray(doc.data().badges) ? doc.data().badges : [];
+    friendClubCache.set(uid, { at: Date.now(), value });
+    return value;
+  } catch (e) { console.error('getFriendClubs', e); return []; }
+}
+
 export async function getFriendTaste(uid) {
   try { const d = await db.collection('users').doc(uid).collection('shared').doc('taste').get(); return d.exists ? d.data() : null; }
   catch (e) { console.error('getFriendTaste', e); return null; }
@@ -230,8 +270,19 @@ export function initSocial() {
     // Not awaited: publishing classifies unclassified titles first, which on a
     // large library's first run takes a while, and the friends UI must not wait.
     publishTaste();
+    publishClubs();
   });
   document.addEventListener('cv:wl-changed', () => { if (state.user) republish(); });
+  const republishClubs = debounce(() => publishClubs(), 4000);
+  document.addEventListener('cv:cast-hours', () => { if (state.user) republishClubs(); });
+  document.addEventListener('cv:mature-verdicts', () => { if (state.user) republishClubs(); });
+  let sharingClubs = prefs.shareMilestones !== false;
+  document.addEventListener('cv:prefs', () => {
+    const now = prefs.shareMilestones !== false;
+    if (now === sharingClubs) return;
+    sharingClubs = now;
+    if (state.user) publishClubs();
+  });
   // Republished the moment anything changes what friends may see: a title is
   // newly known to be adult, or a list gains or loses its PIN.
   document.addEventListener('cv:mature-verdicts', () => { if (state.user) republish(); });

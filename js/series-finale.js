@@ -88,87 +88,139 @@ export function fastestLine(fastest) {
 }
 
 // ---------- the card ----------
-async function buildFinaleCard(show, recap) {
-  const W = 1200, H = 1500;
-  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  const logoPath = pickLogo(show.images?.logos);
-  const [poster, backdrop, logo] = await Promise.all([bitmap(show.poster_path), bitmap(show.backdrop_path), bitmap(logoPath)]);
+// The card is drawn by one function that can render any moment of its
+// build-up: the frame first, then the poster and title, the six figures tile by
+// tile, the pace strip with each season's bar rising in turn, and the best
+// episode last. The shared PNG is that function at its final moment; the share
+// studio plays the build-up on a canvas first (skipped with reduced motion).
+const W = 1200, H = 1500;
+const clamp01 = value => Math.max(0, Math.min(1, value));
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+const easeBack = t => { const c = 1.35; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
 
-  ctx.fillStyle = '#07070c'; ctx.fillRect(0, 0, W, H);
-  if (backdrop) { ctx.save(); ctx.globalAlpha = .4; ctx.filter = 'blur(18px)'; cover(ctx, backdrop, -40, -40, W + 80, H + 80); ctx.restore(); }
-  const wash = ctx.createLinearGradient(0, 0, W, H);
+/** Pure: when each part of the card starts and how long it takes, in ms. */
+export function finaleTimeline(recap) {
+  const tiles = finaleFigures(recap).length;
+  const bars = Math.min(20, recap.seasons.length);
+  const strip = 520 + tiles * 110 + 260;
+  const barsStart = strip + 220;
+  const top = barsStart + bars * 90 + 380;
+  return { poster: [60, 560], title: [220, 560], tiles: { start: 520, step: 110, dur: 480 }, strip: [strip, 440], bars: { start: barsStart, step: 90, dur: 620 }, top: [top, 480], end: top + 480 };
+}
+
+async function finaleAssets(show) {
+  const [poster, backdrop, logo] = await Promise.all([bitmap(show.poster_path), bitmap(show.backdrop_path), bitmap(pickLogo(show.images?.logos))]);
+  // The blurred backdrop, wash and frame never move: drawn once, reused per frame.
+  const ground = document.createElement('canvas'); ground.width = W; ground.height = H;
+  const g = ground.getContext('2d');
+  g.fillStyle = '#07070c'; g.fillRect(0, 0, W, H);
+  if (backdrop) { g.save(); g.globalAlpha = .4; g.filter = 'blur(18px)'; cover(g, backdrop, -40, -40, W + 80, H + 80); g.restore(); }
+  const wash = g.createLinearGradient(0, 0, W, H);
   wash.addColorStop(0, 'rgba(251,191,36,.22)'); wash.addColorStop(.42, 'rgba(8,8,14,.82)'); wash.addColorStop(1, '#07070c');
-  ctx.fillStyle = wash; ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 2; roundedRect(ctx, 45, 45, W - 90, H - 90, 42); ctx.stroke();
-  ctx.fillStyle = '#ff3342'; ctx.font = '800 29px Arial'; ctx.fillText('CINEVERSE', 88, 118);
-  ctx.fillStyle = '#fbbf24'; ctx.font = '800 22px Arial'; ctx.textAlign = 'right'; ctx.fillText('SERIES FINALE', W - 88, 116); ctx.textAlign = 'left';
+  g.fillStyle = wash; g.fillRect(0, 0, W, H);
+  g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 2; roundedRect(g, 45, 45, W - 90, H - 90, 42); g.stroke();
+  g.fillStyle = '#ff3342'; g.font = '800 29px Arial'; g.fillText('CINEVERSE', 88, 118);
+  g.fillStyle = '#fbbf24'; g.font = '800 22px Arial'; g.textAlign = 'right'; g.fillText('SERIES FINALE', W - 88, 116); g.textAlign = 'left';
+  g.fillStyle = 'rgba(255,255,255,.4)'; g.font = '500 20px Arial'; g.fillText('Tracked on CineVerse', 88, 1415);
+  return { poster, backdrop, logo, ground, close: () => [poster, backdrop, logo].forEach(image => image?.close?.()) };
+}
 
-  // Poster
-  roundedRect(ctx, 88, 170, 300, 450, 24); ctx.save(); ctx.clip();
-  if (poster) cover(ctx, poster, 88, 170, 300, 450); else { ctx.fillStyle = '#181823'; ctx.fillRect(88, 170, 300, 450); }
-  ctx.restore(); ctx.strokeStyle = 'rgba(255,255,255,.16)'; roundedRect(ctx, 88, 170, 300, 450, 24); ctx.stroke();
-
-  // Title block
-  const title = show.name || 'TV show';
-  ctx.save(); roundedRect(ctx, 430, 170, 682, 170, 12); ctx.clip();
-  if (logo) contain(ctx, logo, 430, 170, 682, 160);
-  else { ctx.fillStyle = '#fff'; fittedTitle(ctx, title, 430, 230, 682, 2); }
+// Draw `paint` faded in and lifted into place by progress `t` (0–1).
+function arrive(ctx, t, paint, { lift = 28, scale = 1, cx = 0, cy = 0 } = {}) {
+  if (t <= 0) return;
+  const e = easeOut(t);
+  ctx.save();
+  ctx.globalAlpha = e;
+  ctx.translate(0, (1 - e) * lift);
+  if (scale !== 1) { const k = scale + (1 - scale) * e; ctx.translate(cx, cy); ctx.scale(k, k); ctx.translate(-cx, -cy); }
+  paint();
   ctx.restore();
-  ctx.fillStyle = '#fff'; ctx.font = '800 60px Arial'; ctx.fillText('The complete series', 430, 408, 682);
-  ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = '600 29px Arial'; ctx.fillText(recapDates(recap), 430, 462, 682);
-  ctx.fillStyle = '#fbbf24'; ctx.font = '700 27px Arial';
-  const line = recap.marked ? 'Marked as watched' : recap.pattern ? `Watched ${recap.pattern.phrase}` : `Finished in ${recap.spanDays} day${recap.spanDays === 1 ? '' : 's'}`;
-  ctx.fillText(line, 430, 518, 682);
-  ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '600 22px Arial';
-  ctx.fillText(`${recap.seasonCount} season${recap.seasonCount === 1 ? '' : 's'} · ${recap.episodes} episode${recap.episodes === 1 ? '' : 's'}`, 430, 568, 682);
+}
 
-  // Figures
-  finaleFigures(recap).forEach(([label, value], index) => {
-    const x = 88 + (index % 3) * 350, y = 660 + Math.floor(index / 3) * 160;
-    ctx.fillStyle = 'rgba(255,255,255,.07)'; roundedRect(ctx, x, y, 324, 138, 24); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '700 19px Arial'; ctx.fillText(label.toUpperCase(), x + 28, y + 48);
-    ctx.fillStyle = '#fff'; ctx.font = '800 46px Arial'; ctx.fillText(value, x + 28, y + 106, 270);
+/** Draw the card as it stands `time` ms into its build-up (Infinity: finished). */
+function drawFinale(ctx, assets, show, recap, time = Infinity) {
+  const plan = finaleTimeline(recap);
+  const at = ([start, dur]) => clamp01((time - start) / dur);
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(assets.ground, 0, 0);
+
+  arrive(ctx, at(plan.poster), () => {
+    ctx.save(); roundedRect(ctx, 88, 170, 300, 450, 24); ctx.clip();
+    if (assets.poster) cover(ctx, assets.poster, 88, 170, 300, 450); else { ctx.fillStyle = '#181823'; ctx.fillRect(88, 170, 300, 450); }
+    ctx.restore(); ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 2; roundedRect(ctx, 88, 170, 300, 450, 24); ctx.stroke();
+  }, { lift: 40 });
+
+  arrive(ctx, at(plan.title), () => {
+    const title = show.name || 'TV show';
+    ctx.save(); roundedRect(ctx, 430, 170, 682, 170, 12); ctx.clip();
+    if (assets.logo) contain(ctx, assets.logo, 430, 170, 682, 160);
+    else { ctx.fillStyle = '#fff'; fittedTitle(ctx, title, 430, 230, 682, 2); }
+    ctx.restore();
+    ctx.fillStyle = '#fff'; ctx.font = '800 60px Arial'; ctx.fillText('The complete series', 430, 408, 682);
+    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = '600 29px Arial'; ctx.fillText(recapDates(recap), 430, 462, 682);
+    ctx.fillStyle = '#fbbf24'; ctx.font = '700 27px Arial';
+    const line = recap.marked ? 'Marked as watched' : recap.pattern ? `Watched ${recap.pattern.phrase}` : `Finished in ${recap.spanDays} day${recap.spanDays === 1 ? '' : 's'}`;
+    ctx.fillText(line, 430, 518, 682);
+    ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.font = '600 22px Arial';
+    ctx.fillText(`${recap.seasonCount} season${recap.seasonCount === 1 ? '' : 's'} · ${recap.episodes} episode${recap.episodes === 1 ? '' : 's'}`, 430, 568, 682);
   });
 
-  // Season pace strip: one bar per season, the fastest in gold, marked seasons hollow.
+  // Figures, tile by tile
+  finaleFigures(recap).forEach(([label, value], index) => {
+    const x = 88 + (index % 3) * 350, y = 660 + Math.floor(index / 3) * 160;
+    const t = clamp01((time - (plan.tiles.start + index * plan.tiles.step)) / plan.tiles.dur);
+    arrive(ctx, t, () => {
+      ctx.fillStyle = 'rgba(255,255,255,.07)'; roundedRect(ctx, x, y, 324, 138, 24); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '700 19px Arial'; ctx.fillText(label.toUpperCase(), x + 28, y + 48);
+      ctx.fillStyle = '#fff'; ctx.font = '800 46px Arial'; ctx.fillText(value, x + 28, y + 106, 270);
+    }, { lift: 22, scale: .9, cx: x + 162, cy: y + 69 });
+  });
+
+  // Season pace strip, each season's bar rising in turn
   const stripY = 990, stripH = 270;
-  ctx.fillStyle = 'rgba(255,255,255,.06)'; roundedRect(ctx, 88, stripY, 1024, stripH, 28); ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '700 19px Arial';
-  ctx.fillText(recap.fastest ? 'FASTEST SEASON' : 'EPISODES A DAY, BY SEASON', 120, stripY + 50);
-  if (recap.fastest) {
-    ctx.fillStyle = '#fff'; ctx.font = '800 40px Arial'; ctx.fillText(`Season ${recap.fastest.season}`, 120, stripY + 100, 330);
-    ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = '600 22px Arial';
-    ctx.fillText(paceLabel(recap.fastest.pace), 120, stripY + 138, 330);
-    ctx.fillText(`over ${recap.fastest.spanDays} day${recap.fastest.spanDays === 1 ? '' : 's'}`, 120, stripY + 170, 330);
-  }
+  const stripT = at(plan.strip);
+  arrive(ctx, stripT, () => {
+    ctx.fillStyle = 'rgba(255,255,255,.06)'; roundedRect(ctx, 88, stripY, 1024, stripH, 28); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '700 19px Arial';
+    ctx.fillText(recap.fastest ? 'FASTEST SEASON' : 'EPISODES A DAY, BY SEASON', 120, stripY + 50);
+    if (recap.fastest) {
+      ctx.fillStyle = '#fff'; ctx.font = '800 40px Arial'; ctx.fillText(`Season ${recap.fastest.season}`, 120, stripY + 100, 330);
+      ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = '600 22px Arial';
+      ctx.fillText(paceLabel(recap.fastest.pace), 120, stripY + 138, 330);
+      ctx.fillText(`over ${recap.fastest.spanDays} day${recap.fastest.spanDays === 1 ? '' : 's'}`, 120, stripY + 170, 330);
+    }
+  }, { lift: 18 });
   const shown = recap.seasons.slice(-20);
   const chartX = recap.fastest ? 470 : 120, chartW = 1080 - chartX, baseY = stripY + stripH - 52, maxBar = 150;
   const maxPace = Math.max(...shown.map(season => season.pace), 0.0001);
   const slot = chartW / Math.max(1, shown.length), barW = Math.min(46, slot * .62);
   shown.forEach((season, index) => {
+    const t = clamp01((time - (plan.bars.start + index * plan.bars.step)) / plan.bars.dur);
+    if (t <= 0) return;
     const cx = chartX + slot * index + slot / 2;
-    const height = season.pace ? Math.max(8, (season.pace / maxPace) * maxBar) : 8;
+    const full = season.pace ? Math.max(8, (season.pace / maxPace) * maxBar) : 8;
+    const height = Math.max(2, full * easeBack(t));
     const isFastest = recap.fastest?.season === season.season;
-    roundedRect(ctx, cx - barW / 2, baseY - height, barW, height, Math.min(10, barW / 2));
+    ctx.save();
+    ctx.globalAlpha = easeOut(Math.min(1, t * 2));
+    roundedRect(ctx, cx - barW / 2, baseY - height, barW, height, Math.min(10, barW / 2, height / 2));
     if (season.pace) { ctx.fillStyle = isFastest ? '#fbbf24' : 'rgba(255,255,255,.34)'; ctx.fill(); }
     else { ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 2; ctx.stroke(); }
     ctx.fillStyle = isFastest ? '#fbbf24' : 'rgba(255,255,255,.55)'; ctx.font = `700 ${shown.length > 12 ? 15 : 18}px Arial`; ctx.textAlign = 'center';
-    ctx.fillText(`S${season.season}`, cx, baseY + 32); ctx.textAlign = 'left';
+    ctx.fillText(`S${season.season}`, cx, baseY + 32);
+    ctx.restore();
   });
 
   // Best-rated episode
   if (recap.topEpisode) {
-    const y = 1290;
-    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '700 19px Arial'; ctx.fillText('BEST-RATED EPISODE YOU WATCHED · TMDB', 88, y + 26);
-    ctx.fillStyle = '#fff'; ctx.font = '800 34px Arial';
-    ctx.fillText(`S${recap.topEpisode.season} E${recap.topEpisode.number}${recap.topEpisode.name ? ` · ${recap.topEpisode.name}` : ''}`, 88, y + 74, 880);
-    ctx.fillStyle = '#fbbf24'; drawStar(ctx, 1012, y + 62, 15); ctx.font = '800 34px Arial'; ctx.fillText(recap.topEpisode.rating.toFixed(1), 1036, y + 74);
+    arrive(ctx, at(plan.top), () => {
+      const y = 1290;
+      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.font = '700 19px Arial'; ctx.fillText('BEST-RATED EPISODE YOU WATCHED · TMDB', 88, y + 26);
+      ctx.fillStyle = '#fff'; ctx.font = '800 34px Arial';
+      ctx.fillText(`S${recap.topEpisode.season} E${recap.topEpisode.number}${recap.topEpisode.name ? ` · ${recap.topEpisode.name}` : ''}`, 88, y + 74, 880);
+      ctx.fillStyle = '#fbbf24'; drawStar(ctx, 1012, y + 62, 15); ctx.font = '800 34px Arial'; ctx.fillText(recap.topEpisode.rating.toFixed(1), 1036, y + 74);
+    }, { lift: 16 });
   }
-  ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.font = '500 20px Arial'; ctx.fillText('Tracked on CineVerse', 88, 1415);
-
-  [poster, backdrop, logo].forEach(image => image?.close?.());
-  return await new Promise(resolve => canvas.toBlob(resolve, 'image/png', .94));
 }
 
 /** Open the share studio with the series finale card. */
@@ -193,8 +245,30 @@ export function openSeriesFinale(id) {
         tmdb(`/tv/${id}`, { append_to_response: 'images', include_image_language: 'en,null' }),
         ...numbers.map(season => tmdb(`/tv/${id}/season/${season}`).catch(() => null)),
       ]);
-      const bySeason = Object.fromEntries(numbers.map((season, index) => [season, payloads[index] || {}]));
-      return { title, blob: await buildFinaleCard(show, seriesRecap(live, bySeason)) };
+      const recap = seriesRecap(live, Object.fromEntries(numbers.map((season, index) => [season, payloads[index] || {}])));
+      const assets = await finaleAssets(show);
+      const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+      drawFinale(canvas.getContext('2d'), assets, show, recap);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', .94));
+      const plan = finaleTimeline(recap);
+      return {
+        title, blob,
+        // Plays the build-up onto the studio's canvas; resolves when it has
+        // finished or the studio moved on (`alive` false).
+        animate: (target, alive) => new Promise(resolve => {
+          const ctx = target.getContext('2d');
+          let started = 0;
+          const frame = now => {
+            if (!started) started = now;
+            const time = now - started;
+            if (!alive() || time >= plan.end) { drawFinale(ctx, assets, show, recap); assets.close(); resolve(); return; }
+            drawFinale(ctx, assets, show, recap, time);
+            requestAnimationFrame(frame);
+          };
+          requestAnimationFrame(frame);
+        }),
+        dispose: () => assets.close(),
+      };
     },
   });
 }

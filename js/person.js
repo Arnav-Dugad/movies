@@ -6,6 +6,7 @@
 // show-more page size.
 import { tmdb } from './api.js';
 import { loadCompletion, completionHeadline, roleForDepartment } from './completionist.js';
+import { collaborationLinks, linkSentence, watchedFilmsWithCredits } from './collaborations.js';
 import { personCastHours, hoursLabel } from './cast-hours.js';
 import { prefs } from './prefs.js';
 import { icon } from './icons.js';
@@ -398,6 +399,28 @@ function renderFilmography({ keepPlace = false } = {}) {
 // "You've seen 8 of 12 Christopher Nolan films" and the best of the rest, for a
 // signed-in viewer who has seen at least one (js/completionist.js decides what
 // counts). Directors are measured on directing, everyone else on acting.
+// ---------- the people they keep working with ----------
+async function linksSection(p, combined) {
+  if (!state.user) return '';
+  const watched = new Set(Object.keys(state.watched || {}).filter(key => key.startsWith('movie_')).map(key => +key.slice(6)).filter(Boolean));
+  const movies = [...(combined.cast || []), ...(combined.crew || [])].filter(credit => (credit.media_type || 'movie') === 'movie');
+  if (!movies.some(credit => watched.has(+credit.id))) return '';
+  const films = await watchedFilmsWithCredits(movies, watched);
+  const links = collaborationLinks(p.id, films);
+  if (!links.length) return '';
+  const name = p.name || '';
+  const cards = links.map((link, index) => {
+    const marked = linkSentence(link, name, person => `<b>${esc(person)}</b>`);
+    const face = link.other.profile ? `<img src="${IMG}w185${link.other.profile}" alt="" loading="lazy" data-ph="${PH}">` : `<i>${icon('person')}</i>`;
+    const posters = link.films.slice(0, 6).map(film => `<a href="/movie/${film.id}" data-action="open-detail" data-id="${film.id}" data-type="movie" data-title="${esc(film.title)}" data-tip="${esc(`${film.title}${film.year ? ` (${film.year})` : ''}`)}" aria-label="${esc(film.title)}">${film.poster ? `<img src="${IMG}w92${film.poster}" alt="" loading="lazy" data-ph="${PH}">` : `<i>${icon('film')}</i>`}</a>`).join('');
+    return `<article class="person-link" style="--i:${index}">
+      <a class="person-link-face" href="/person/${link.other.id}" data-action="open-person" data-id="${link.other.id}" aria-label="${esc(link.other.name)}">${face}<span class="person-link-count">${link.count}</span></a>
+      <div class="person-link-copy"><p>${marked}</p><div class="person-link-films">${posters}${link.films.length > 6 ? `<span>+${link.films.length - 6}</span>` : ''}</div></div>
+    </article>`;
+  }).join('');
+  return `<section class="person-links-section cv-rise"><div class="person-section-head"><div><span>In what you've watched</span><h2>People they keep working with</h2></div></div><div class="person-link-list">${cards}</div></section>`;
+}
+
 async function completionSection(p, combined) {
   if (!state.user) return '';
   const watched = new Set(Object.keys(state.watched || {}).filter(key => key.startsWith('movie_')).map(key => +key.slice(6)).filter(Boolean));
@@ -458,6 +481,7 @@ export async function openPerson(id) {
       ${vitalStats(p, groups)}
       <div id="personCastHours"></div>
       <div id="personCompletion"></div>
+      <div id="personLinks"></div>
       ${knownFor.length ? `<section class="person-known"><div class="person-section-head"><div><span>Most seen</span><h2>Known for</h2></div></div><div class="similar-row">${knownFor.map(credit => buildCard(credit, credit.media_type || 'movie')).join('')}</div></section>` : ''}
       ${careerChart(groups)}
       ${careerArc(groups)}
@@ -467,6 +491,10 @@ export async function openPerson(id) {
     observeReveals(ct);
     // Time with this person in the episodes you have watched, from credits this
     // device already holds (no requests are made for it).
+    linksSection(p, credits).then(html => {
+      const host = $('personLinks');
+      if (host && gen === reqGen && html) host.innerHTML = html;
+    }).catch(error => console.warn('person links', error));
     completionSection(p, credits).then(html => {
       const host = $('personCompletion');
       if (host && gen === reqGen && html) { host.innerHTML = html; host.firstElementChild?.classList.add('cv-rise'); }

@@ -500,13 +500,37 @@ hidden native switch.
 
 ## Season heatmap
 
-A TV title page has a **Season heatmap** under its seasons: a row per season, a
-square per episode, coloured by TMDB rating in fixed bands (under 6, 6, 7, 7.5, 8,
-8.5, 9+) with a tick on each episode you have seen. Unrated episodes are hatched,
-unaired ones outlined, the best-rated one ringed, and each row ends with its
-average. A square opens its episode in the list below. It loads only when opened,
-remembers whether you left it open, and can be hidden under **Settings → Detail
-pages**.
+A TV title page has a **Season heatmap** under its seasons (`js/season-heatmap.js`):
+a row per season, a square per episode, and a tick on each episode you have seen.
+
+- **Two colourings.** *Rating* uses TMDB's rating in fixed bands (under 6, 6, 7,
+  7.5, 8, 8.5, 9+), one hue. *Standouts* compares each episode with its own
+  season's average: blue below, grey within 0.2, amber above, in symmetric steps
+  of 0.2, 0.5 and 1 point. So a strong episode in a weak season still stands out.
+  The choice is remembered.
+- **Readout.** Hovering, focusing or tapping a square shows its still, air date,
+  runtime, rating and votes, how it compares with its season, and when you
+  watched it, with an Open button.
+- **Rows** end with a sparkline of the season's ratings and its average; the
+  strongest season (three or more rated episodes) is marked.
+- **Insights:** the peak episode, how many of the show's best episodes you have
+  seen, and up to three of the best aired episodes you have not.
+- **First open:** the squares light up in the order you watched them, each tick
+  drawing itself as its square arrives. Episodes marked before the log began come
+  first.
+- **Keyboard:** the grid is one tab stop; arrows move, Home and End jump along a
+  season, Enter opens. On touch the first tap shows the readout, the second opens.
+- **Fit:** short seasons get larger squares, and on a phone squares shrink so a
+  season stays on one line.
+
+Unrated episodes are hatched, unaired ones outlined, and "best" needs five votes.
+Every square's label carries its numbers, so colour is never the only signal.
+It loads only when opened and can be hidden under **Settings → Detail pages**.
+
+## Ticks that draw themselves
+
+A tick you have just made strokes in, short arm first, on the episode button,
+the watched overlay on its still, and the heatmap.
 
 ## Rail shadows
 
@@ -624,6 +648,18 @@ appearances as themselves and uncredited cameos. **Exclude shorts** and **Exclud
 documentaries** apply on both pages, which share one loader so their numbers
 always agree.
 
+Person pages also list the **people they keep working with**, counted only over
+films you have seen (`js/collaborations.js`):
+
+- *"You've seen 6 films where Christopher Nolan directed Cillian Murphy"*: an
+  actor's directors, or a director's actors (within the first twelve billed).
+- *"… with Cillian Murphy and Tom Hardy together"*: co-stars, when both are within
+  the first eight billed.
+
+Roles come from each film's own credits. A link needs two films, someone who both
+directed and co-starred appears once as director, and each link shows the films
+it counts.
+
 ### Cast milestones
 
 *"You've now watched 30 hours of Adam Scott"*, counted from TMDB episode credits
@@ -636,6 +672,22 @@ credits are kept on the device in IndexedDB. A milestone is announced only when
 every watched season is known and more episodes have been watched, so a refreshed
 runtime or an un-tick never triggers one. **Settings → Cast milestones** turns the
 toast off.
+
+**Hours clubs** are the badges: 10, 25, 50, 100, 250, 500 and 1,000 hours with one
+person. Your profile shows them as rings that fill like a gauge before the club's
+number pops in (the milestone toast uses the same gauge), with progress to the
+next club. Friends see them under your name on their Friends page. They are
+published to `users/{uid}/shared/milestones`, the same friend-readable surface as
+the taste profile, so no new security rule was needed.
+
+- Only the person, the club and whole hours rounded down to ten are shared,
+  never which shows or episodes.
+- Shows classified as adult never count toward a published badge.
+- Badges are published only from a complete count: a device that has not read
+  every season's credits yet cannot overwrite them with fewer.
+- Nothing is written when the badges have not changed.
+- A friend's badges are read at most once every ten minutes.
+- **Settings → Share hours clubs** stops sharing and deletes the document.
 
 ### Watch Diary
 
@@ -691,6 +743,15 @@ page of any completed series. It covers every season: dates, total episodes and
 time, overall pace, binge days, your **fastest season** (the highest pace among
 seasons you watched as viewing, so a season marked in one press never wins), a bar
 per season's pace, and the best-rated episode you watched.
+
+In the share studio the card assembles itself: frame, poster and title, then the
+figures tile by tile, then the pace strip with each season's bar rising in turn,
+and the best episode last. One drawing function renders any moment of that, so
+the shared PNG is exactly its final frame, and it is ready to share from the
+start. Reduced motion shows the finished card.
+
+Your **profile** has a **Completed series** shelf: every series you have
+finished (dropped shows excluded), newest first, each with its finale card.
 
 ### Viewing patterns
 
@@ -824,14 +885,14 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 850+ assertions, no dependencies and no Java
+npm run test:logic    # 900+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
-check (`tests/parse.mjs`) and an import-resolution check over all 94 modules.
+check (`tests/parse.mjs`) and an import-resolution check over all 95 modules.
 There is no build step to catch a syntax error or a renamed export before
 Cloudflare would. The parse check reads each file as the ES module the browser
 loads: `node --check` passed a module with a template placeholder left in a plain
@@ -846,7 +907,9 @@ month, episode moods and Up Next countdowns (`tv-intelligence.test.mjs`), and vi
 patterns, season recaps, the season-complete signal, the returning rail and exact
 episode times (`season-intelligence.test.mjs`), and the icon set, poster colour,
 transition geometry, completionist, cast milestones, series finale and season
-heatmap (`premium-batch.test.mjs`). It needs nothing installed.
+heatmap (`premium-batch.test.mjs`), and hours clubs, person-to-person links, heatmap
+standouts, insights and watch order, the finale build-up and the Completed series
+shelf (`social-heatmap.test.mjs`). It needs nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.

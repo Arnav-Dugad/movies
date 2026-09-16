@@ -123,6 +123,7 @@ export function renderSettings() {
           ${toggle('rememberSearch', 'Remember searches', 'Keep recent searches only on this device.', prefs.rememberSearch)}
           ${toggle('rememberViewed', 'Remember recently viewed', 'Save recently opened titles only on this device.', prefs.rememberViewed)}
           ${toggle('discoverable', 'Find me by name', 'Allow signed-in people to find your public profile by name.', prefs.discoverable)}
+          ${toggle('shareMilestones', 'Share hours clubs', 'Let friends see your hours-club badges, like 100 hours with an actor. Never which episodes.', prefs.shareMilestones)}
           ${toggle('shareTaste', 'Friend taste matching', 'Let friends compare a derived taste summary, never raw history.', prefs.shareTaste)}
           <div class="settings-privacy-note">Raw ratings, watched history and private lists are never published to friends.</div>
         </section>

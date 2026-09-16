@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { esc, toast, $ } from './ui.js';
 import { registerActions } from './events.js';
-import { social, displayCode, sendRequest, acceptRequest, declineRequest, removeFriend, resolveCode, resolveEmail, searchByName, getFriendTaste } from './social.js';
+import { social, displayCode, sendRequest, acceptRequest, declineRequest, removeFriend, resolveCode, resolveEmail, searchByName, getFriendTaste, getFriendClubs } from './social.js';
 import { avatarInner } from './avatar.js';
 import { friendQrSvg } from './qrcode.js';
 import { openScanner, scannerSupported, initScan } from './scan.js';
@@ -111,7 +111,7 @@ export function renderFriends() {
         const remBtn = armed
           ? `<button class="btn-glass danger" style="padding:8px 14px;font-size:.78rem" data-action="remove-friend" data-pair="${esc(f.pairId)}">Remove?</button>`
           : `<button class="dbtn-icon" data-action="remove-friend" data-pair="${esc(f.pairId)}" data-tip="Remove friend" aria-label="Remove friend" style="width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2"/><circle cx="11" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="8"/></svg></button>`;
-        return `<div class="friend-row">${avatarInner(null, f.name)}<div class="friend-meta"><div class="friend-name">${esc(f.name)}</div><div class="friend-sub">Friend</div></div><div class="friend-actions">${remBtn}</div></div>`;
+        return `<div class="friend-row">${avatarInner(null, f.name)}<div class="friend-meta"><div class="friend-name">${esc(f.name)}</div><div class="friend-sub">Friend</div><div class="friend-clubs" data-friend-clubs="${esc(f.uid)}"></div></div><div class="friend-actions">${remBtn}</div></div>`;
       }).join('')
     : `<p style="color:var(--text3);font-size:.88rem">No friends yet — share your code or add one above.</p>`;
 
@@ -143,6 +143,7 @@ export function renderFriends() {
     ${social.friends.length ? `<div style="margin-top:20px"><button class="btn-primary" data-action="show-page" data-page="party"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Start a Watch Party</button></div>` : ''}
     ${out}
   `;
+  paintFriendClubs(ct);
 }
 
 async function doAdd() {
@@ -169,6 +170,17 @@ async function doAdd() {
   const matches = await searchByName(val);
   if (!matches.length) { results.innerHTML = '<p style="color:var(--text3);font-size:.85rem;padding:8px 0">No one found. Try their exact friend code.</p>'; return; }
   results.innerHTML = matches.map(m => `<div class="friend-row">${avatarInner(m.avatar || null, m.name)}<div class="friend-meta"><div class="friend-name">${esc(m.name)}</div><div class="friend-sub">CINE-${esc(m.code || '')}</div></div><div class="friend-actions"><button class="btn-glass" style="padding:8px 16px;font-size:.8rem" data-action="friend-request" data-uid="${esc(m.uid)}" data-name="${esc(m.name)}">Add</button></div></div>`).join('');
+}
+
+// A friend's hours-club badges (what they chose to share), under their name.
+function paintFriendClubs(root) {
+  root.querySelectorAll('[data-friend-clubs]').forEach(host => {
+    getFriendClubs(host.dataset.friendClubs).then(badges => {
+      if (!host.isConnected || !badges.length) return;
+      const shown = badges.slice(0, 3);
+      host.innerHTML = shown.map(badge => `<a class="friend-club club-${+badge.club}" href="/person/${+badge.id}" data-action="open-person" data-id="${+badge.id}" title="${esc(`${badge.name} · ${+badge.club} hours club`)}"><b>${+badge.club}h</b><span>${esc(badge.name)}</span></a>`).join('') + (badges.length > shown.length ? `<span class="friend-club-more">+${badges.length - shown.length}</span>` : '');
+    }).catch(() => {});
+  });
 }
 
 export function initFriends() {

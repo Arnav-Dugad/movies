@@ -13,6 +13,8 @@ import { friendQrSvg, tasteMatchQrSvg, tasteMatchUrl } from './qrcode.js';
 import { renderRecommendationInsights } from './recommend.js';
 import { tmdb } from './api.js';
 import { prefs } from './prefs.js';
+import { showProgress } from './episodes.js';
+import { computeCastHours, clubBadges, clubGaugeHTML } from './cast-hours.js';
 
 let editing = false;
 let draftAvatar = undefined;   // undefined = untouched; null = cleared to initial
@@ -94,6 +96,56 @@ function profileInsights(ctx) {
     health: +(snapshot.collection?.health?.score || 0), streak: +(snapshot.activity?.currentStreak || 0),
     level: snapshot.identity?.level || (ctx.watchedTotal >= 100 ? 'Cinephile' : ctx.watchedTotal >= 50 ? 'Curator' : ctx.watchedTotal >= 10 ? 'Explorer' : 'New Voyager'),
   };
+}
+
+// ---------- Completed series ----------
+// Every show whose whole run you have finished, newest finish first, each with
+// its finale card one tap away (js/series-finale.js).
+export function completedSeries(progress = state.episodeProgress, isComplete = id => showProgress(id).seriesCompleted) {
+  return Object.values(progress || {})
+    .filter(entry => entry && +entry.tmdbId && !entry.dropped && isComplete(+entry.tmdbId))
+    .map(entry => ({
+      id: +entry.tmdbId, title: entry.title || 'TV show', poster: entry.poster || '',
+      finishedAt: +entry.completedAt || +entry.caughtUpAt || +entry.lastWatched?.at || 0,
+      seasons: Object.keys(entry.seasons || {}).filter(season => +season > 0 && (entry.seasons[season] || []).length).length,
+      episodes: Object.entries(entry.seasons || {}).filter(([season]) => +season > 0).reduce((sum, [, list]) => sum + (list || []).length, 0),
+    }))
+    .sort((a, b) => b.finishedAt - a.finishedAt || a.title.localeCompare(b.title));
+}
+
+function completedShelf() {
+  const shows = completedSeries();
+  const cards = shows.map((show, index) => `<article class="finale-shelf-card" style="--i:${Math.min(index, 12)}">
+      <a class="finale-shelf-art" href="/tv/${show.id}" data-action="open-detail" data-id="${show.id}" data-type="tv" data-title="${esc(show.title)}" aria-label="${esc(show.title)}">${show.poster ? `<img src="${IMG}w342${show.poster}" alt="" loading="lazy" data-ph="${PH}">` : `<i>${icon('tv')}</i>`}<span class="finale-shelf-ribbon">${icon('trophy')}Complete</span></a>
+      <strong>${esc(show.title)}</strong>
+      <small>${show.finishedAt ? `Finished ${new Date(show.finishedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}` : 'Finished'} · ${show.seasons} season${show.seasons === 1 ? '' : 's'}</small>
+      <button type="button" class="finale-shelf-btn" data-action="series-finale" data-tid="${show.id}">${icon('sparkles')}Finale card</button>
+    </article>`).join('');
+  return `<section class="profile-panel profile-finales"><div class="profile-panel-head"><div><span>Every episode watched</span><h2>Completed series</h2></div><b>${shows.length}</b></div>
+    ${shows.length ? `<div class="finale-shelf">${cards}</div>` : '<p class="finale-shelf-empty">Finish a series and it lands here, with a finale card of your whole run.</p>'}
+  </section>`;
+}
+
+// ---------- Hours clubs ----------
+function clubsPanel() {
+  return `<section class="profile-panel profile-clubs"><div class="profile-panel-head"><div><span>${prefs.shareMilestones === false ? 'Private' : 'Visible to friends'}</span><h2>Hours clubs</h2></div><b id="profileClubCount">…</b></div>
+    <div id="profileClubs" class="club-grid"><div class="insight-loading"><i></i><span>Counting time with the cast…</span></div></div>
+    <p class="club-note">From the episodes you have ticked and TMDB episode credits. Badges start at 10 hours.</p>
+  </section>`;
+}
+
+async function paintClubs() {
+  const result = await computeCastHours({ fetch: true }).catch(() => null);
+  const host = $('profileClubs'); if (!host) return;
+  const badges = clubBadges(result?.people || [], 12);
+  const count = $('profileClubCount'); if (count) count.textContent = String(badges.length);
+  if (!badges.length) { host.innerHTML = '<p class="finale-shelf-empty">Watch ten hours of episodes with someone in the cast and your first badge appears here.</p>'; return; }
+  host.innerHTML = badges.map((badge, index) => `<a class="club-badge" href="/person/${badge.id}" data-action="open-person" data-id="${badge.id}" aria-label="${esc(`${badge.name}: ${badge.club} hours club, ${badge.hours} hours watched`)}">
+      ${clubGaugeHTML(badge, { delay: 120 + index * 90 })}
+      <strong>${esc(badge.name)}</strong>
+      <small>${badge.club}h club · ${badge.hours}h</small>
+      ${badge.next ? `<span class="club-next" aria-hidden="true"><i style="width:${Math.round(badge.progress * 100)}%"></i></span><em>${Math.round(badge.progress * 100)}% to ${badge.next}h</em>` : '<em>Top club</em>'}
+    </a>`).join('');
 }
 
 export function renderProfile() {
@@ -201,8 +253,9 @@ export function renderProfile() {
       return `<a class="card" href="/${r.type}/${r.id}" aria-label="${esc(r.title)}" data-action="open-detail" data-id="${r.id}" data-type="${r.type}">${cardArt(poster, esc(r.title), r.poster || '')}${wd ? WATCHED_BADGE_HTML : ''}${myRatingHTML(r.id, r.type)}</div><div class="card-info"><div class="card-title">${esc(r.title)}</div><div class="card-sub">${r.type === 'tv' ? 'TV show' : 'Movie'}</div></div></a>`;
     }).join('')}</div></section>` : `<section class="profile-panel profile-recent-empty"><span>Recently viewed</span><h2>Your next discovery will appear here.</h2><button class="btn-glass" data-action="show-page" data-page="discover">Explore titles</button></section>`;
 
-  ct.innerHTML = `<div class="profile-shell">${header}${editForm}<div class="profile-dashboard"><main>${about}${snapshot}${privacy}${recent}</main><aside>${codeCard}${tastePass}${pulse}${quick}</aside></div>${intelligence}</div>`;
+  ct.innerHTML = `<div class="profile-shell">${header}${editForm}<div class="profile-dashboard"><main>${about}${snapshot}${completedShelf()}${clubsPanel()}${privacy}${recent}</main><aside>${codeCard}${tastePass}${pulse}${quick}</aside></div>${intelligence}</div>`;
   if (intelligenceOpen) queueMicrotask(() => renderRecommendationInsights());
+  paintClubs().catch(error => console.warn('profile clubs', error));
 }
 
 export function initProfile() {

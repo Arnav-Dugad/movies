@@ -130,6 +130,33 @@
 :root[data-theme="light"] .cast-band { background: rgba(20, 20, 30, .08); }
 :root[data-theme="light"] .person-cast-hours .cv-icon { color: #0e7490; }
 :root[data-theme="light"] .finale-btn { color: #a16207 !important; border-color: rgba(161, 98, 7, .35) !important; }
-:root[data-theme="light"] .ep-heatmap { --hm-0: #f8eed5; --hm-1: #efd8a6; --hm-2: #e5be77; --hm-3: #d6a04b; --hm-4: #c27e24; --hm-5: #a85b05; --hm-6: #883c00; --hm-edge: rgba(20, 20, 30, .1); --hm-none: rgba(20, 20, 30, .18); background: rgba(20, 20, 30, .02); }
-:root[data-theme="light"] :is(.hm-cell, .hm-swatch):is(.b0, .b1, .b2, .b3, .b4, .none, .unaired).watched .hm-tick { background: #111114; }
-:root[data-theme="light"] :is(.hm-cell, .hm-swatch):is(.b5, .b6).watched .hm-tick { background: #fff; }
+:root[data-theme="light"] .ep-heatmap {
+  --hm-0: #f8eed5; --hm-1: #efd8a6; --hm-2: #e5be77; --hm-3: #d6a04b; --hm-4: #c27e24; --hm-5: #a85b05; --hm-6: #883c00;
+  --hmd-0: #2a61b1; --hmd-1: #618fc8; --hmd-2: #a9c0de; --hmd-3: #d5d8db; --hmd-4: #e9ce94; --hmd-5: #dd9c42; --hmd-6: #b75f0b;
+  --hm-edge: rgba(20, 20, 30, .1); --hm-none: rgba(20, 20, 30, .2); --hm-ink: #111114; --hm-paper: #fff;
+  background: rgba(20, 20, 30, .02);
+}
+/* Ticks on the light scales: ink on pale bands, white on deep ones (at least 3:1). */
+:root[data-theme="light"] .ep-heatmap .hm-cell { color: var(--hm-ink); }
+:root[data-theme="light"] .ep-heatmap .hm-mode-rating .hm-cell:is([data-b="5"], [data-b="6"]),
+:root[data-theme="light"] .ep-heatmap .hm-mode-standouts .hm-cell:is([data-d="0"], [data-d="6"]) { color: #fff; }
+:root[data-theme="light"] .ep-heatmap .hm-cell.col-hot { box-shadow: inset 0 0 0 1px var(--hm-edge), 0 0 0 1.5px rgba(20, 20, 30, .35); }
+:root[data-theme="light"] .ep-heatmap .hm-modes { background: rgba(20, 20, 30, .04); }
+:root[data-theme="light"] .ep-heatmap .hm-versus.up { color: #a16207; background: rgba(217, 119, 6, .12); }
+:root[data-theme="light"] .ep-heatmap .hm-versus.down { color: #1d4ed8; background: rgba(37, 99, 235, .1); }
+:root[data-theme="light"] .ep-heatmap .hm-readout-card, :root[data-theme="light"] .ep-heatmap .hm-insights article, :root[data-theme="light"] .ep-heatmap .hm-gem { background: rgba(20, 20, 30, .025); }
+:root[data-theme="light"] .ep-heatmap .hm-spark circle, :root[data-theme="light"] .ep-heatmap .hm-crown, :root[data-theme="light"] .ep-heatmap .hm-row.strongest .hm-label, :root[data-theme="light"] .ep-heatmap .hm-gem i, :root[data-theme="light"] .ep-heatmap .hm-readout-score { color: #a16207; fill: #a16207; }
+
+/* Hours clubs and the Completed series shelf on paper: deeper ring colours so
+   each club still reads against the light ground. */
+:root[data-theme="light"] .club-10 { --club: #a15c24; } :root[data-theme="light"] .club-25 { --club: #64748b; }
+:root[data-theme="light"] .club-50 { --club: #b7791f; } :root[data-theme="light"] .club-100 { --club: #0e7490; }
+:root[data-theme="light"] .club-250 { --club: #7c3aed; } :root[data-theme="light"] .club-500 { --club: #e11d48; }
+:root[data-theme="light"] .club-1000 { --club: #c026d3; }
+:root[data-theme="light"] .club-track { stroke: rgba(20, 20, 30, .1); }
+:root[data-theme="light"] .club-num, :root[data-theme="light"] .friend-club b { color: #fff; }
+:root[data-theme="light"] .club-badge { background: rgba(20, 20, 30, .02); }
+:root[data-theme="light"] .club-next { background: rgba(20, 20, 30, .08); }
+:root[data-theme="light"] .finale-shelf-btn, :root[data-theme="light"] .finale-shelf-ribbon { color: #a16207; }
+:root[data-theme="light"] .finale-shelf-ribbon { background: rgba(255, 255, 255, .88); }
+:root[data-theme="light"] .person-link { background: rgba(20, 20, 30, .02); }

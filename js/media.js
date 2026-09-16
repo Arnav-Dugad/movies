@@ -1,5 +1,5 @@
 // ===== TRAILER + SHARE + IMAGE LIGHTBOX =====
-import { toast, $, trapFocus, lockScroll, unlockScroll, esc } from './ui.js';
+import { toast, $, trapFocus, lockScroll, unlockScroll, esc, prefersReducedMotion } from './ui.js';
 import { registerActions } from './events.js';
 import { IMG, pickLogo } from './config.js';
 import { tmdb } from './api.js';
@@ -181,9 +181,22 @@ export async function openShareStudio({ title, url, build, copy = {} }) {
     shareData.title = result.title || title;
     shareBlob = result.blob;
     shareObjectURL = URL.createObjectURL(shareBlob);
-    preview.innerHTML = `<img src="${shareObjectURL}" alt="${esc(`${words.alt} ${shareData.title}`)}">`;
     if (status) status.textContent = words.ready;
     if (nativeButton) nativeButton.disabled = false;
+    // A card that can build itself up (the series finale) plays that on a
+    // canvas; the canvas then already shows the finished card, so it stays.
+    // The finished PNG is ready to share from the first frame.
+    if (typeof result.animate === 'function' && !prefersReducedMotion()) {
+      const live = document.createElement('canvas');
+      live.width = 1200; live.height = 1500;
+      live.setAttribute('role', 'img');
+      live.setAttribute('aria-label', `${words.alt} ${shareData.title}`);
+      preview.replaceChildren(live);
+      await result.animate(live, () => request === shareGen && overlay.classList.contains('active'));
+    } else {
+      result.dispose?.();
+      preview.innerHTML = `<img src="${shareObjectURL}" alt="${esc(`${words.alt} ${shareData.title}`)}">`;
+    }
   } catch (_) { if (request === shareGen && status) status.textContent = words.failed; }
 }
 

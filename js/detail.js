@@ -16,7 +16,7 @@ import { loadAwardsSection } from './awards.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone, isEpisodeAvailable } from './episode-times.js';
 import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeWatched, toggleEpisode, markUpTo, setEpisodePosition, episodeLabel, setSeasonWatched, clearShowProgress, markShowWatched, tvShowMeta as showMeta,
   seasonAiredCount, isSeasonComplete, seasonPlayCount, seasonPlayLabel, logSeasonRewatch, removeSeasonRewatch,
-  isDropped, setDropped, forecastStatus, forecastSentence, forecastNote } from './episodes.js';
+  isDropped, setDropped, forecastStatus, forecastSentence, forecastNote, showEntry } from './episodes.js';
 import { showPacing, pacingSentence } from './pacing.js';
 import { prefs, updatePref } from './prefs.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
@@ -1152,7 +1152,9 @@ async function loadSeason(tid, sn, el) {
 }
 // ===== EPISODE TRACKING (detail page) =====
 
-const EP_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>';
+// Drawn from the short stroke to the long one (pathLength 1), so a fresh tick can
+// draw itself: see .tick-draw in css/refinements.css.
+const EP_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="M4 12l5 5L20 6"/></svg>';
 
 // The show-level bar above the seasons: where you are, what is next, and the two
 // actions that matter most when you are mid-show.
@@ -1407,16 +1409,36 @@ async function loadEps(tid, sn) {
 // Repaint the tracking chrome in place. A full detail re-render would scroll the
 // reader back to the top of a long show, which is exactly the wrong reaction to
 // ticking one episode.
+// When each episode was marked, from the show's log (earliest row per episode).
+function markedAt(tid) {
+  const stamps = new Map();
+  for (const row of showEntry(tid)?.log || []) {
+    const key = `${+row[0]}-${+row[1]}`;
+    if (!stamps.has(key) || +row[2] < stamps.get(key)) stamps.set(key, +row[2]);
+  }
+  return (season, episode) => stamps.get(`${season}-${episode}`) || 0;
+}
+
+async function openHeatmapEpisode(tid, sn, en) {
+  await loadSeason(tid, sn);
+  const card = document.querySelector(`#epList_${tid} [data-ep="${sn}-${en}"]`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
+  card.classList.remove('ep-flash'); void card.offsetWidth; card.classList.add('ep-flash');
+}
+
 function openHeatmap(tid, det, gen = reqGen) {
   mountHeatmap(tid, (det?.seasons || []).map(season => season.season_number), {
     isWatched: (season, episode) => isEpisodeWatched(tid, season, episode),
+    watchedAt: markedAt(tid),
+    onOpen: (season, episode) => openHeatmapEpisode(tid, season, episode),
     isCurrent: () => gen === reqGen && curDet?.id === tid,
   });
 }
 
 function refreshEpisodeUI(tid) {
   const progress = showProgress(tid), next = nextUp(tid);
-  refreshHeatmapTicks(tid, (season, episode) => isEpisodeWatched(tid, season, episode));
+  refreshHeatmapTicks(tid, (season, episode) => isEpisodeWatched(tid, season, episode), markedAt(tid));
   const panel = document.querySelector('.show-progress');
   if (panel && curDet?.id === tid) {
     // Rebuild the controls as one unit. Updating only the heading left the old
@@ -1616,14 +1638,7 @@ export function initDetail() {
       if (expanded && curDet?.id === tid) openHeatmap(tid, curDet);
     },
     // A square opens its season in the list below and brings the episode into view.
-    'heatmap-episode': async el => {
-      const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
-      await loadSeason(tid, sn);
-      const card = document.querySelector(`#epList_${tid} [data-ep="${sn}-${en}"]`);
-      if (!card) return;
-      card.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
-      card.classList.remove('ep-flash'); void card.offsetWidth; card.classList.add('ep-flash');
-    },
+    'heatmap-episode': el => openHeatmapEpisode(+el.dataset.tid, +el.dataset.sn, +el.dataset.en),
     // ----- Episode tracking -----
     'ep-toggle': el => {
       const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;
@@ -1637,11 +1652,11 @@ export function initDetail() {
       if (card) {
         card.classList.toggle('watched', watched);
         const check = card.querySelector('.ep-check');
-        if (check) { check.classList.toggle('on', watched); check.setAttribute('aria-pressed', String(watched)); const label = check.querySelector('span'); if (label) label.textContent = watched ? 'Watched' : 'Mark watched'; }
+        if (check) { check.classList.toggle('on', watched); check.classList.toggle('tick-draw', !!watched); check.setAttribute('aria-pressed', String(watched)); const label = check.querySelector('span'); if (label) label.textContent = watched ? 'Watched' : 'Mark watched'; }
         const still = card.querySelector('.ep-still');
         if (still) {
           still.querySelector('.ep-seen')?.remove();
-          if (watched) still.insertAdjacentHTML('beforeend', `<div class="ep-seen" aria-hidden="true">${EP_CHECK}</div>`);
+          if (watched) still.insertAdjacentHTML('beforeend', `<div class="ep-seen tick-draw" aria-hidden="true">${EP_CHECK}</div>`);
         }
       }
       refreshEpisodeUI(tid);

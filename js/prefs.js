@@ -25,6 +25,8 @@ export const DEFAULT_PREFS = Object.freeze({
   ambientColour: true,
   // A toast when an episode tick crosses an hours milestone with an actor.
   castMilestones: true,
+  // Hours-club badges readable by friends (users/{uid}/shared/milestones).
+  shareMilestones: true,
   detailBoxOfficeExpanded: false, detailGalleryExpanded: false, detailReviewsExpanded: false, detailHeatmapExpanded: false,
   directorExcludeShorts: true, directorExcludeDocumentaries: true, directorExcludeUnreleased: true,
   // Mature content is OFF by default and leaves no trace in the UI until it is
@@ -56,7 +58,7 @@ const allowed = {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'hidePosterCaptions', 'ambientColour', 'castMilestones', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'detailHeatmapExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur', 'matureInRecs'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'hidePosterCaptions', 'ambientColour', 'castMilestones', 'shareMilestones', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'detailHeatmapExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur', 'matureInRecs'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   next.detailHidden = cleanDetailHidden(raw.detailHidden);

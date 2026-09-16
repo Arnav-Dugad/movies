@@ -105,6 +105,41 @@ export function milestoneBand(minutes) {
   return { reached, next, progress: next ? Math.min(1, (hours - reached) / (next - reached)) : 1 };
 }
 
+// ---------- hours clubs ----------
+// Badges for the people you have spent real time with: 10, 25, 50, 100, 250,
+// 500 and 1,000 hours. They are shown on your profile and, unless you turn it
+// off, published for friends (js/social.js).
+export const CLUBS = [10, 25, 50, 100, 250, 500, 1000];
+
+/** Pure: the highest club (hours) these minutes have reached, or 0. */
+export const clubFor = minutes => [...CLUBS].reverse().find(hours => minutes >= hours * 60) || 0;
+
+/**
+ * Pure: badge rows for everyone in at least the first club, most time first.
+ * `progress` is the share of the way from this club to the next (1 at the top).
+ */
+export function clubBadges(people, limit = 12) {
+  return (people || [])
+    .filter(row => row && row.name && clubFor(row.minutes))
+    .sort((a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map(row => {
+      const club = clubFor(row.minutes);
+      const next = CLUBS.find(hours => hours > club) || 0;
+      const hours = row.minutes / 60;
+      return { id: +row.id, name: row.name, profile: row.profile || '', club, next, hours: Math.floor(hours), progress: next ? Math.min(1, (hours - club) / (next - club)) : 1 };
+    });
+}
+
+/**
+ * The club badge: a ring that fills like a gauge, then the club's number pops
+ * in. `delay` staggers a row of badges; `size` is the ring's CSS size.
+ */
+export function clubGaugeHTML({ club, profile = '', name = '' }, { delay = 0, cls = '' } = {}) {
+  const face = profile ? `<img src="${IMG}w185${profile}" alt="" loading="lazy" data-ph="${PH}">` : `<i>${icon('person')}</i>`;
+  return `<span class="club-gauge club-${club}${cls ? ` ${cls}` : ''}" style="--delay:${delay}ms" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><circle class="club-track" cx="32" cy="32" r="29"/><circle class="club-fill" cx="32" cy="32" r="29" pathLength="1"/></svg><span class="club-face">${face}</span><b class="club-num">${club}h</b></span>`;
+}
+
 export const hoursLabel = minutes => {
   const total = Math.round(minutes);
   const h = Math.floor(total / 60), m = total % 60;
@@ -154,9 +189,9 @@ async function store(key, value) {
 const seasonKey = (showId, season) => `${+showId}_${+season}`;
 const fresh = record => record && (record.settled ? Date.now() - record.at < 180 * DAY : Date.now() - record.at < 3 * DAY);
 
-function trackedShows() {
+function trackedShows(keep = () => true) {
   return Object.values(state.episodeProgress || {})
-    .filter(entry => entry && +entry.tmdbId && entry.seasons && Object.keys(entry.seasons).length)
+    .filter(entry => entry && +entry.tmdbId && entry.seasons && Object.keys(entry.seasons).length && keep(+entry.tmdbId))
     .map(entry => ({ id: +entry.tmdbId, title: entry.title || '', runtime: +entry.episodeRuntime || 0, seasons: entry.seasons }));
 }
 
@@ -193,10 +228,14 @@ async function fillSeasons(shows, { onProgress } = {}) {
 }
 
 /** Totals from what this device knows, fetching unknown seasons first when `fetch`. */
-export async function computeCastHours({ fetch = true, onProgress } = {}) {
-  const shows = trackedShows();
+export async function computeCastHours({ fetch = true, onProgress, keepShow } = {}) {
+  const shows = trackedShows(keepShow);
   if (fetch) await fillSeasons(shows, { onProgress }); else await hydrate();
-  return castHours(shows, (showId, season) => memory.get(seasonKey(showId, season)) || null);
+  const result = castHours(shows, (showId, season) => memory.get(seasonKey(showId, season)) || null);
+  // New credits may have arrived: anything derived from them (the published
+  // hours clubs) can refresh. Counting from the cache alone never announces.
+  if (fetch) document.dispatchEvent(new CustomEvent('cv:cast-hours'));
+  return result;
 }
 
 /** One person's totals from cached credits only (no network), or null. */
@@ -225,8 +264,7 @@ function announce(row, hours) {
   const card = document.createElement('div');
   card.className = 'toast success cast-milestone';
   card.setAttribute('role', 'status');
-  const photo = row.profile ? `<img src="${IMG}w185${row.profile}" alt="" data-ph="${PH}">` : `<i>${icon('person')}</i>`;
-  card.innerHTML = `<span class="cast-milestone-photo">${photo}<b>${hours}h</b></span><span class="cast-milestone-copy"><small>Cast milestone</small><strong>${esc(`You've now watched ${hours} hours of ${row.name}`)}</strong></span><button type="button" data-action="open-person" data-id="${row.id}">View</button><button type="button" class="recap-prompt-close" aria-label="Dismiss">${icon('close')}</button>`;
+  card.innerHTML = `${clubGaugeHTML({ club: hours, profile: row.profile, name: row.name }, { delay: 160, cls: 'cast-milestone-photo' })}<span class="cast-milestone-copy"><small>Cast milestone</small><strong>${esc(`You've now watched ${hours} hours of ${row.name}`)}</strong></span><button type="button" data-action="open-person" data-id="${row.id}">View</button><button type="button" class="recap-prompt-close" aria-label="Dismiss">${icon('close')}</button>`;
   const dismiss = () => { card.style.animation = 'toast-out .3s forwards'; setTimeout(() => card.remove(), 300); };
   card.querySelector('.recap-prompt-close').addEventListener('click', () => card.remove());
   card.querySelector('[data-action="open-person"]').addEventListener('click', () => card.remove());
