@@ -5,6 +5,7 @@
 // button says so and the user types the code instead.
 import { $, toast, trapFocus, lockScroll, unlockScroll } from './ui.js';
 import { registerActions } from './events.js';
+import { illustration } from './illustrations.js';
 
 let stream = null, rafId = 0, releaseFocus = null, onResult = null, detector = null;
 
@@ -23,6 +24,10 @@ export async function openScanner(cb) {
   ov.classList.add('active'); lockScroll();
   releaseFocus = trapFocus(ov, document.activeElement);
   const video = $('scanVideo'), statusEl = $('scanStatus');
+  // A phone reading a code stands behind the camera until the picture arrives,
+  // and stays if the camera cannot start.
+  const camera = video?.parentElement;
+  if (camera && !camera.querySelector('.scan-art')) camera.insertAdjacentHTML('afterbegin', illustration('qrscan', { cls: 'scan-art' }));
   statusEl.textContent = 'Starting camera…';
   try {
     detector = detector || new window.BarcodeDetector({ formats: ['qr_code'] });

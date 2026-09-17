@@ -5,7 +5,8 @@ import { $, toast, esc } from './ui.js';
 import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { REGIONS, regionLabel } from './config.js';
-import { prefs, updatePref, resetPrefs, preferencePayload } from './prefs.js';
+import { prefs, updatePref, resetPrefs, preferencePayload, DEFAULT_PREFS } from './prefs.js';
+import { setTheme } from './theme-toggle.js';
 import { DETAIL_PART_GROUPS } from './detail-parts.js';
 import { db } from './firebase.js';
 import { clearLibraryCache, flushLibraryVersion, libraryCacheDisabled } from './library-cache.js';
@@ -16,6 +17,7 @@ import { loadEpisodeProgress, repairEpisodeProgress } from './episodes.js';
 import { loadMovieProgress } from './movie-progress.js';
 
 let cloudSyncTimer = null;
+let lastSearch = '';
 
 function queueCloudSettings() {
   if (!state.user) return;
@@ -28,14 +30,6 @@ function queueCloudSettings() {
     } catch (error) { console.warn('settings sync', error); }
   }, 1200);
 }
-
-const ICONS = {
-  palette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4Z"/><circle cx="7.5" cy="10" r="1"/><circle cx="10" cy="6.5" r="1"/><circle cx="15" cy="7" r="1"/></svg>',
-  motion: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 3 14 9-14 9V3Z"/><path d="M9 8v8"/></svg>',
-  discover: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg>',
-  data: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg>',
-  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 20 7v5c0 5-3 8-8 10-5-2-8-5-8-10V7l8-4Z"/><path d="m9 12 2 2 4-4"/></svg>',
-};
 
 // ---------- live previews ----------
 // A switch that changes how something looks carries a small drawing of that
@@ -116,6 +110,155 @@ function syncPosterPreview() {
   POSTER_KEYS.forEach(key => preview.classList.toggle(`pv-${key}`, !!prefs[key]));
 }
 
+// ---------- sections ----------
+// Every panel has an animated picture, a one-line explanation, a place in the
+// jump bar, and (where it holds preferences) a Reset that returns just that
+// section to its defaults, with a count of what differs.
+const SECTIONS = [
+  { id: 'appearance', kicker: 'Appearance', title: 'Cinematic interface', chip: 'Look', icon: 'palette', scene: 'palette', blurb: 'Theme, density, text size, glass and the small celebrations.', keys: ['theme', 'density', 'textSize', 'glass', 'lightDrift', 'castMilestones', 'streakMilestones', 'ambientColour', 'highContrast', 'compactNav'] },
+  { id: 'posters', kicker: 'Every poster', title: 'Poster controls', chip: 'Posters', icon: 'film', scene: 'posterstack', blurb: 'What sits on and under every poster across CineVerse.', keys: ['hidePosterCaptions', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview'] },
+  { id: 'atmosphere', kicker: 'Motion & playback', title: 'Atmosphere', chip: 'Motion', icon: 'clapper', scene: 'projector', blurb: 'How much moves, plays and answers your touch.', keys: ['motion', 'autoplay', 'backdropArt', 'posterTilt', 'haptics'] },
+  { id: 'discovery', kicker: 'Discovery', title: 'Signals and spoilers', chip: 'Discovery', icon: 'compass', scene: 'compass', blurb: 'Scores, watched marks and protection from spoilers.', keys: ['showRatings', 'showWatched', 'spoilerShield'] },
+  { id: 'maturity', kicker: 'Content', title: 'Maturity', chip: 'Maturity', icon: 'eye', scene: 'shield', blurb: 'Adult titles stay out of everything unless you let them in.', keys: ['mature', 'matureInRecs', 'matureBlur'] },
+  { id: 'details', kicker: 'Detail pages', title: 'Section defaults', chip: 'Title pages', icon: 'layers', scene: 'layers', blurb: 'Which panels on a title page open by themselves.', keys: ['detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded'] },
+  { id: 'parts', kicker: 'Detail pages', title: 'What appears', chip: 'Page parts', icon: 'grid', scene: 'layers', blurb: 'Switch off any part of a title page, down to a single fact.' },
+  { id: 'privacy', kicker: 'Privacy', title: 'Your visibility, your choice', chip: 'Privacy', icon: 'lock', scene: 'lock', blurb: 'What stays on this device and what friends can see.', keys: ['rememberSearch', 'rememberViewed', 'discoverable', 'shareMilestones', 'shareTaste'] },
+  { id: 'region', kicker: 'Region', title: 'Streaming home', chip: 'Region', icon: 'globe', scene: 'globe', blurb: 'The country whose streaming services CineVerse checks.' },
+  { id: 'vault', kicker: 'Collection vault', title: 'Backup & restore', chip: 'Backup', icon: 'folder', scene: 'vault', blurb: 'Your whole collection in one file, and back again.' },
+  { id: 'maintenance', kicker: 'Device data', title: 'Maintenance', chip: 'Maintenance', icon: 'refresh', scene: 'gears', blurb: 'Repairs, refreshes and clearing what this device remembers.' },
+];
+const sectionById = id => SECTIONS.find(section => section.id === id);
+// The country's name alone: the code sits beside it in its own badge.
+const regionName = code => REGIONS.find(([value]) => value === code)?.[1] || code;
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** Pure: the keys of a section that differ from their defaults. */
+export const changedKeys = (keys, current, defaults) => (keys || []).filter(key => !sameValue(current[key], defaults[key]));
+
+function panelHead(id) {
+  const section = sectionById(id);
+  const changed = changedKeys(section.keys, prefs, DEFAULT_PREFS).length;
+  const reset = section.keys ? `<button type="button" class="settings-reset" data-action="settings-reset-section" data-section="${id}"${changed ? '' : ' disabled'} aria-label="${esc(changed ? `Reset ${section.title} to defaults, ${changed} changed` : `${section.title} is at its defaults`)}">${icon('rotate')}<em>${changed ? 'Reset' : 'Defaults'}</em><b class="settings-reset-count"${changed ? '' : ' hidden'}>${changed}</b></button>` : '';
+  return `<div class="settings-panel-head has-art"><i class="settings-head-art" aria-hidden="true">${illustration(section.scene)}</i><div><span>${esc(section.kicker)}</span><h2>${esc(section.title)}</h2><p class="settings-head-blurb">${esc(section.blurb)}</p></div>${reset}</div>`;
+}
+
+function toolbarHTML() {
+  return `<div class="settings-toolbar">
+    <label class="settings-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7.5"/><path d="m20.5 20.5-4.2-4.2"/></svg>
+      <input type="search" id="settingsSearch" placeholder="Search settings, like “poster” or “motion”" autocomplete="off" spellcheck="false" aria-label="Search settings" aria-describedby="settingsSearchCount">
+      <b id="settingsSearchCount" aria-live="polite"></b>
+    </label>
+    <nav class="settings-jump" aria-label="Settings sections">${SECTIONS.map(section => `<button type="button" data-action="settings-jump" data-section="${section.id}">${icon(section.icon)}<span>${esc(section.chip)}</span><i class="settings-jump-dot" hidden></i></button>`).join('')}</nav>
+    <p class="settings-legend"><i></i>Changed from the default</p>
+  </div>
+  <div class="settings-search-empty" id="settingsSearchEmpty" hidden>${illustration('search', { cls: 'empty-art' })}<h3>No settings match</h3><p>Try another word, like “poster”, “motion”, “privacy” or “backup”.</p></div>`;
+}
+
+// Privacy, at a glance: what friends can see follows the switches below it.
+function privacyMapHTML() {
+  const item = (key, text) => `<li data-if="${key}">${icon('check', { cls: 'yes' })}${icon('lock', { cls: 'no' })}<span>${text}</span></li>`;
+  return `<div class="privacy-map">
+    <div><strong>Friends can see</strong><ul>${item('discoverable', 'Your name when they search')}${item('shareMilestones', 'Your hours-club badges')}${item('shareTaste', 'A summary of your taste')}</ul></div>
+    <div class="never"><strong>Never shared</strong><ul><li>${icon('lock', { cls: 'no' })}<span>Your ratings</span></li><li>${icon('lock', { cls: 'no' })}<span>Your watched history</span></li><li>${icon('lock', { cls: 'no' })}<span>Private and locked lists</span></li></ul></div>
+  </div>`;
+}
+
+const VAULT_STEPS = `<ol class="vault-steps" aria-label="How backups work">
+    <li>${icon('folder')}<b>Download</b><small>One readable JSON file</small></li>
+    <li>${icon('lock')}<b>Keep it safe</b><small>On your device or drive</small></li>
+    <li>${icon('refresh')}<b>Restore</b><small>Merges, never deletes newer</small></li>
+  </ol>`;
+
+// Scroll spy for the jump bar: the section in view is marked current.
+let spy = null, spyPausedUntil = 0;
+function markCurrent(id) {
+  document.querySelectorAll('.settings-jump button').forEach(button => {
+    const on = button.dataset.section === id;
+    if (on) button.setAttribute('aria-current', 'true'); else button.removeAttribute('aria-current');
+    if (on && button.parentElement.scrollWidth > button.parentElement.clientWidth) {
+      const bar = button.parentElement;
+      const target = button.offsetLeft - (bar.clientWidth - button.offsetWidth) / 2;
+      if (Math.abs(bar.scrollLeft - target) > 40) bar.scrollTo({ left: target, behavior: 'smooth' });
+    }
+  });
+}
+function watchSections() {
+  spy?.disconnect();
+  const panels = [...document.querySelectorAll('#settingsContent [data-section-panel]')];
+  if (!panels.length || !('IntersectionObserver' in window)) return;
+  const visible = new Map();
+  spy = new IntersectionObserver(entries => {
+    entries.forEach(entry => visible.set(entry.target.dataset.sectionPanel, entry.isIntersecting ? entry.boundingClientRect.top : null));
+    const current = [...visible.entries()].filter(([, top]) => top !== null).sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]))[0]?.[0];
+    // A jump sets the current section itself; the scroll it causes does not overrule it.
+    if (!current || Date.now() < spyPausedUntil) return;
+    markCurrent(current);
+  }, { rootMargin: '-35% 0px -55% 0px' });
+  panels.forEach(panel => spy.observe(panel));
+}
+
+// ---------- search ----------
+const SEARCH_ROWS = '.settings-switch-row, .settings-select-row, .settings-glass-row, .settings-part, .settings-maintenance > button, .settings-vault-actions > button';
+function unmark(root) {
+  root.querySelectorAll('[data-plain]').forEach(el => { el.textContent = el.dataset.plain; delete el.dataset.plain; });
+}
+function mark(el, terms) {
+  if (!el || el.children.length || !terms.length) return;
+  const text = el.textContent;
+  const lower = text.toLowerCase();
+  const ranges = [];
+  terms.forEach(term => { let at = lower.indexOf(term); while (at >= 0) { ranges.push([at, at + term.length]); at = lower.indexOf(term, at + term.length); } });
+  if (!ranges.length) return;
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  ranges.forEach(range => { const last = merged.at(-1); if (last && range[0] <= last[1]) last[1] = Math.max(last[1], range[1]); else merged.push([...range]); });
+  let html = '', cursor = 0;
+  merged.forEach(([from, to]) => { html += esc(text.slice(cursor, from)) + `<mark>${esc(text.slice(from, to))}</mark>`; cursor = to; });
+  el.dataset.plain = text;
+  el.innerHTML = html + esc(text.slice(cursor));
+}
+
+/** Filter Settings to rows matching every word; returns how many matched. */
+function searchSettings(raw) {
+  const root = $('settingsContent');
+  if (!root) return 0;
+  unmark(root);
+  root.querySelectorAll('.search-hide').forEach(el => el.classList.remove('search-hide'));
+  // A disclosure opened by an earlier search closes again; one you opened stays open.
+  root.querySelectorAll('details[data-search-opened]').forEach(details => { details.open = false; delete details.dataset.searchOpened; });
+  root.classList.toggle('is-searching', !!raw.trim());
+  const terms = raw.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const empty = $('settingsSearchEmpty'), count = $('settingsSearchCount');
+  if (!terms.length) { if (empty) empty.hidden = true; if (count) count.textContent = ''; return 0; }
+  const has = text => terms.every(term => text.includes(term));
+  // A match is a row whose own words contain every term, or a section whose
+  // heading does (which then shows all of its rows).
+  let matches = 0;
+  root.querySelectorAll('.settings-panel').forEach(panel => {
+    const headEl = panel.querySelector('.settings-panel-head') || panel;
+    const headText = (panel.classList.contains('settings-danger') ? panel.textContent : headEl.textContent).toLowerCase();
+    const rows = [...panel.querySelectorAll(SEARCH_ROWS)];
+    const headMatch = has(headText);
+    let shown = 0;
+    rows.forEach(row => {
+      const hit = has(row.textContent.toLowerCase());
+      if (headMatch || hit) { shown++; if (hit) { matches++; row.querySelectorAll('strong, small, .settings-part span, button > span').forEach(el => mark(el, terms)); } }
+      else row.classList.add('search-hide');
+    });
+    if (headMatch) { if (!rows.some(row => has(row.textContent.toLowerCase()))) matches++; mark(panel.querySelector('.settings-panel-head h2'), terms); }
+    if (!headMatch && !shown) panel.classList.add('search-hide');
+    const details = panel.querySelector('details');
+    if (details && !details.open && rows.some(row => !row.classList.contains('search-hide') && details.contains(row))) { details.open = true; details.dataset.searchOpened = '1'; }
+    // The group headings of the detail-parts list follow their parts.
+    panel.querySelectorAll('.settings-parts-group').forEach(group => {
+      if (!headMatch && !group.querySelector('.settings-part:not(.search-hide)')) group.classList.add('search-hide');
+    });
+  });
+  const visiblePanels = root.querySelectorAll('.settings-panel:not(.search-hide)').length;
+  if (count) count.textContent = matches ? `${matches} match${matches === 1 ? '' : 'es'}` : 'No matches';
+  if (empty) empty.hidden = !!visiblePanels;
+  return matches;
+}
+
 /** Keep every preview group and switch drawing in step with the saved preferences. */
 function syncPreviews() {
   document.querySelectorAll('.pp-group[data-pref]').forEach(group => {
@@ -126,10 +269,28 @@ function syncPreviews() {
     });
   });
   document.querySelectorAll('.settings-switch-row input[data-pref]').forEach(input => {
-    const on = !!prefs[input.dataset.pref];
+    const key = input.dataset.pref, on = !!prefs[key];
     if (input.checked !== on) input.checked = on;
-    input.closest('.settings-switch-row')?.classList.toggle('is-on', on);
+    const row = input.closest('.settings-switch-row');
+    row?.classList.toggle('is-on', on);
+    if (key in DEFAULT_PREFS) row?.classList.toggle('is-changed', !sameValue(prefs[key], DEFAULT_PREFS[key]));
   });
+  document.querySelectorAll('.pp-group[data-pref]').forEach(group => {
+    group.closest('.settings-glass-row')?.classList.toggle('is-changed', !sameValue(prefs[group.dataset.pref], DEFAULT_PREFS[group.dataset.pref]));
+  });
+  document.querySelector('.glass-previews[data-group="glass"]')?.closest('.settings-glass-row')?.classList.toggle('is-changed', prefs.glass !== DEFAULT_PREFS.glass);
+  document.querySelectorAll('.settings-reset[data-section]').forEach(button => {
+    const section = sectionById(button.dataset.section);
+    const changed = changedKeys(section?.keys, prefs, DEFAULT_PREFS).length;
+    button.disabled = !changed;
+    button.querySelector('em').textContent = changed ? 'Reset' : 'Defaults';
+    const badge = button.querySelector('.settings-reset-count');
+    badge.hidden = !changed; badge.textContent = String(changed);
+    button.setAttribute('aria-label', changed ? `Reset ${section.title} to defaults, ${changed} changed` : `${section.title} is at its defaults`);
+    const dot = document.querySelector(`.settings-jump [data-section="${button.dataset.section}"] .settings-jump-dot`);
+    if (dot) dot.hidden = !changed;
+  });
+  document.querySelectorAll('.privacy-map li[data-if]').forEach(item => item.classList.toggle('off', !prefs[item.dataset.if]));
   syncPosterPreview();
 }
 
@@ -162,7 +323,7 @@ function detailPartsPanel() {
     const parts = group.parts.map(([key, label]) => `<label class="settings-part"><input type="checkbox" data-action="settings-detail-part" data-part="${key}"${hidden.has(key) ? '' : ' checked'}><i aria-hidden="true"></i><span>${esc(label)}</span></label>`).join('');
     return `<div class="settings-parts-group"><div class="settings-parts-head"><b>${esc(group.title)}</b><button data-action="settings-detail-group" data-group="${group.id}" data-show="${allShown ? '0' : '1'}">${allShown ? 'Hide all' : 'Show all'}</button></div><div class="settings-parts-grid">${parts}</div></div>`;
   }).join('');
-  return `<section class="settings-panel settings-detail-parts"><div class="settings-panel-head">${ICONS.data}<div><span>Detail pages</span><h2>What appears</h2></div></div>
+  return `<section class="settings-panel settings-detail-parts" id="settings-parts" data-section-panel="parts">${panelHead('parts')}
     <div class="settings-parts-summary"><p>Switch off anything you never look at, down to a single fact. Hiding changes only what is shown — nothing about a title is lost.</p><span id="detailPartsCount">${shownCount} of ${total} shown</span>${hidden.size ? '<button data-action="settings-detail-reset">Show everything</button>' : ''}</div>
     ${groups}
   </section>`;
@@ -178,9 +339,10 @@ export function renderSettings() {
     .map(([code]) => `<option value="${code}" ${code === state.region ? 'selected' : ''}>${esc(regionLabel(code))}</option>`).join('');
   ct.innerHTML = `<div class="settings-shell">
     <section class="settings-premium-hero"><div><span>Experience control</span><h2>Make the universe yours.</h2><p>Fine-tune the look, motion, discovery signals and privacy of CineVerse. Changes apply instantly and sync efficiently to your account.</p></div><b class="settings-hero-art">${illustration('gears')}</b></section>
+    ${toolbarHTML()}
     <div class="settings-layout">
       <main>
-        <section class="settings-panel"><div class="settings-panel-head">${ICONS.palette}<div><span>Appearance</span><h2>Cinematic interface</h2></div></div>
+        <section class="settings-panel" id="settings-appearance" data-section-panel="appearance">${panelHead('appearance')}
           ${previewPicker('theme', 'Theme', 'Cinema dark, paper light, or follow your device. Also in the profile menu.', THEME_CHOICES, prefs.theme, 'settings-theme')}
           ${previewPicker('density', 'Content density', 'Choose roomy cards or fit more on screen.', DENSITY_CHOICES, prefs.density)}
           ${previewPicker('textSize', 'Text size', 'Increase interface text without zooming the page.', TEXT_CHOICES, prefs.textSize)}
@@ -192,7 +354,7 @@ export function renderSettings() {
           ${toggle('highContrast', 'High-contrast type', 'Brighten supporting text and borders for easier reading.', prefs.highContrast)}
           ${toggle('compactNav', 'Compact navigation', 'Use a tighter desktop navigation bar with more breathing room below.', prefs.compactNav)}
         </section>
-        <section class="settings-panel poster-controls"><div class="settings-panel-head">${ICONS.palette}<div><span>Every poster</span><h2>Poster controls</h2></div></div>
+        <section class="settings-panel poster-controls" id="settings-posters" data-section-panel="posters">${panelHead('posters')}
           ${posterPreview()}
           ${toggle('hidePosterCaptions', 'Hide titles under posters', 'Remove the name, year, and movie or TV label beneath every poster across CineVerse, for a pure artwork wall.', prefs.hidePosterCaptions)}
           ${toggle('cleanHomePosters', 'Clean posters', 'Hide every badge and action from poster artwork, everywhere in CineVerse.', prefs.cleanHomePosters)}
@@ -206,19 +368,19 @@ export function renderSettings() {
           ${toggle('posterDismissButton', 'Not interested', 'Show the recommendation dismissal button.', prefs.posterDismissButton)}
           ${toggle('posterPreview', 'Hover previews', 'Expand a poster into a muted landscape trailer when the pointer rests on it. Desktop only.', prefs.posterPreview)}
         </section>
-        <section class="settings-panel"><div class="settings-panel-head">${ICONS.motion}<div><span>Motion & playback</span><h2>Atmosphere</h2></div></div>
+        <section class="settings-panel" id="settings-atmosphere" data-section-panel="atmosphere">${panelHead('atmosphere')}
           ${previewPicker('motion', 'Interface motion', 'Respect your system, force full motion, or reduce it.', MOTION_CHOICES, prefs.motion)}
           ${toggle('autoplay', 'Ambient hero previews', 'Play muted trailer backgrounds where available.', prefs.autoplay)}
           ${toggle('backdropArt', 'Decorative backdrop art', 'Show cinematic artwork behind heroes and profile identity.', prefs.backdropArt)}
           ${toggle('posterTilt', 'Poster depth effect', 'Let posters respond with a subtle premium hover tilt.', prefs.posterTilt)}
           ${toggle('haptics', 'Mobile haptics', 'Use subtle touch feedback for navigation, choices, and completed actions.', prefs.haptics)}
         </section>
-        <section class="settings-panel"><div class="settings-panel-head">${ICONS.discover}<div><span>Discovery</span><h2>Signals and spoilers</h2></div></div>
+        <section class="settings-panel" id="settings-discovery" data-section-panel="discovery">${panelHead('discovery')}
           ${toggle('showRatings', 'Community ratings', 'Show TMDB scores on posters and hero slides.', prefs.showRatings)}
           ${toggle('showWatched', 'Watched artwork marks', 'Show the green watched treatment on posters.', prefs.showWatched)}
           ${toggle('spoilerShield', 'Spoiler shield', 'Blur long summaries until you hover or focus them.', prefs.spoilerShield)}
         </section>
-        <section class="settings-panel settings-mature"><div class="settings-panel-head">${ICONS.shield}<div><span>Content</span><h2>Maturity</h2></div></div>
+        <section class="settings-panel settings-mature" id="settings-maturity" data-section-panel="maturity">${panelHead('maturity')}
           <details class="settings-mature-disclosure"${prefs.mature ? ' open' : ''}>
             <summary>Mature content${prefs.mature ? ' <b>On</b>' : ''}</summary>
             <div class="settings-mature-body">
@@ -230,13 +392,14 @@ export function renderSettings() {
             </div>
           </details>
         </section>
-        <section class="settings-panel"><div class="settings-panel-head">${ICONS.data}<div><span>Detail pages</span><h2>Section defaults</h2></div></div>
+        <section class="settings-panel" id="settings-details" data-section-panel="details">${panelHead('details')}
           ${toggle('detailBoxOfficeExpanded', 'Open Box Office', 'Show the financial intelligence panel expanded by default.', prefs.detailBoxOfficeExpanded)}
           ${toggle('detailGalleryExpanded', 'Open Gallery', 'Show backdrop and poster artwork expanded by default.', prefs.detailGalleryExpanded)}
           ${toggle('detailReviewsExpanded', 'Open Reviews', 'Show community reviews expanded by default.', prefs.detailReviewsExpanded)}
         </section>
         ${detailPartsPanel()}
-        <section class="settings-panel settings-privacy"><div class="settings-panel-head">${ICONS.shield}<div><span>Privacy</span><h2>Your visibility, your choice</h2></div></div>
+        <section class="settings-panel settings-privacy" id="settings-privacy" data-section-panel="privacy">${panelHead('privacy')}
+          ${privacyMapHTML()}
           ${toggle('rememberSearch', 'Remember searches', 'Keep recent searches only on this device.', prefs.rememberSearch)}
           ${toggle('rememberViewed', 'Remember recently viewed', 'Save recently opened titles only on this device.', prefs.rememberViewed)}
           ${toggle('discoverable', 'Find me by name', 'Allow signed-in people to find your public profile by name.', prefs.discoverable)}
@@ -246,14 +409,17 @@ export function renderSettings() {
         </section>
       </main>
       <aside>
-        <section class="settings-panel"><div class="settings-panel-head">${ICONS.shield}<div><span>Region</span><h2>Streaming home</h2></div></div><label class="settings-select-row stacked"><span><strong>Where to Watch region</strong><small>Controls provider availability across details, notifications, and provider intelligence. ${REGIONS.length} countries, from JustWatch via TMDB.</small></span><select id="settingsRegion" class="watched-select" data-action="settings-region">${regionOpts}</select></label></section>
-        <section class="settings-panel settings-vault"><div class="settings-panel-head">${ICONS.data}<div><span>Collection vault</span><h2>Backup & restore</h2></div></div><p>Download lists, memberships, watched history, ratings and profile showcase data in one readable JSON file.</p><div class="settings-vault-actions"><button class="btn-primary" data-action="download-backup">Download backup</button><button class="btn-glass" data-action="choose-backup">Restore backup</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="download-watched">Export watched only</button><button class="btn-glass" data-action="choose-watched-import">Import watched only</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="open-import">Import from Letterboxd, Trakt or IMDb</button></div><small>Every restore safely merges data and never deletes newer cloud records.</small></section>
-        <section class="settings-panel settings-maintenance"><div class="settings-panel-head">${ICONS.data}<div><span>Device data</span><h2>Maintenance</h2></div></div><button class="episode-repair-action" data-action="repair-episode-progress"><span><strong>Episode Progress Repair</strong><small data-repair-status>Rebuild old history and refresh tracked shows.</small></span><b>Repair</b></button><button data-action="clear-search-history"><span>Clear search history</span><b>Clear</b></button><button data-action="clear-recent-history"><span>Clear recently viewed</span><b>Clear</b></button><button data-action="refresh-library"><span>Refresh library from cloud</span><b>Refresh</b></button><button data-action="reset-experience"><span>Reset experience settings</span><b>Reset</b></button><button data-action="sign-out"><span>Sign out on this device</span><b>Sign out</b></button></section>
+        <section class="settings-panel settings-region" id="settings-region" data-section-panel="region">${panelHead('region')}<div class="region-now" id="regionNow"><b>${esc(state.region)}</b><span>${esc(regionName(state.region))}</span></div><label class="settings-select-row stacked"><span><strong>Where to Watch region</strong><small>Controls provider availability across details, notifications, and provider intelligence. ${REGIONS.length} countries, from JustWatch via TMDB.</small></span><select id="settingsRegion" class="watched-select" data-action="settings-region">${regionOpts}</select></label></section>
+        <section class="settings-panel settings-vault" id="settings-vault" data-section-panel="vault">${panelHead('vault')}${VAULT_STEPS}<p>Download lists, memberships, watched history, ratings and profile showcase data in one readable JSON file.</p><div class="settings-vault-actions"><button class="btn-primary" data-action="download-backup">Download backup</button><button class="btn-glass" data-action="choose-backup">Restore backup</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="download-watched">Export watched only</button><button class="btn-glass" data-action="choose-watched-import">Import watched only</button></div><div class="settings-vault-actions"><button class="btn-glass" data-action="open-import">Import from Letterboxd, Trakt or IMDb</button></div><small>Every restore safely merges data and never deletes newer cloud records.</small></section>
+        <section class="settings-panel settings-maintenance" id="settings-maintenance" data-section-panel="maintenance">${panelHead('maintenance')}<button class="episode-repair-action" data-action="repair-episode-progress"><span><strong>Episode Progress Repair</strong><small data-repair-status>Rebuild old history and refresh tracked shows.</small></span><b>Repair</b></button><button data-action="clear-search-history"><span>Clear search history</span><b>Clear</b></button><button data-action="clear-recent-history"><span>Clear recently viewed</span><b>Clear</b></button><button data-action="refresh-library"><span>Refresh library from cloud</span><b>Refresh</b></button><button data-action="reset-experience"><span>Reset experience settings</span><b>Reset</b></button><button data-action="sign-out"><span>Sign out on this device</span><b>Sign out</b></button></section>
         <section class="settings-panel settings-danger"><span>Danger zone</span><h2>Delete account</h2><p>Permanently remove the account and its private collection.</p><button class="del-confirm" data-action="open-delete">Delete account</button></section>
       </aside>
     </div>
   </div>`;
-  syncPosterPreview();
+  syncPreviews();
+  watchSections();
+  // A redraw (a section reset, the mature switch) keeps an active search applied.
+  if (lastSearch) { const input = $('settingsSearch'); if (input) { input.value = lastSearch; searchSettings(lastSearch); } }
 }
 
 function clearSearchHistory() {
@@ -262,6 +428,22 @@ function clearSearchHistory() {
 }
 
 export function initSettings() {
+  // Search: filters as you type; Enter jumps to the first match, Escape clears.
+  document.addEventListener('input', event => {
+    if (event.target.id !== 'settingsSearch') return;
+    lastSearch = event.target.value;
+    searchSettings(lastSearch);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.target.id !== 'settingsSearch') return;
+    if (event.key === 'Escape' && event.target.value) { event.preventDefault(); event.stopPropagation(); event.target.value = ''; lastSearch = ''; searchSettings(''); return; }
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const first = $('settingsContent')?.querySelector(`.settings-panel:not(.search-hide) :is(${SEARCH_ROWS}):not(.search-hide)`) || $('settingsContent')?.querySelector('.settings-panel:not(.search-hide)');
+    if (!first) return;
+    first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    first.classList.remove('search-hit'); void first.offsetWidth; first.classList.add('search-hit');
+  });
   // The glass previews are a radio group: arrow keys move the choice.
   document.addEventListener('keydown', event => {
     const current = event.target.closest?.('.glass-preview');
@@ -273,7 +455,7 @@ export function initSettings() {
     options[next].click();
   });
   registerActions({
-    'settings-region': el => { state.region = el.value; try { localStorage.setItem('cv_region', state.region); } catch (_) {} queueCloudSettings(); document.dispatchEvent(new Event('cv:region')); toast('Streaming region updated', 'success'); },
+    'settings-region': el => { const now = $('regionNow'); if (now) now.innerHTML = `<b>${esc(el.value)}</b><span>${esc(regionName(el.value))}</span>`; state.region = el.value; try { localStorage.setItem('cv_region', state.region); } catch (_) {} queueCloudSettings(); document.dispatchEvent(new Event('cv:region')); toast('Streaming region updated', 'success'); },
     'settings-toggle': el => {
       const key = el.dataset.pref;
       el.closest('.settings-switch-row')?.classList.toggle('is-on', !!el.checked);
@@ -322,6 +504,29 @@ export function initSettings() {
       });
     },
     'settings-pref': el => { updatePref(el.dataset.pref, el.value); toast('Preference saved', 'success'); },
+    'settings-jump': el => {
+      const panel = document.getElementById(`settings-${el.dataset.section}`);
+      if (!panel) return;
+      if (panel.classList.contains('search-hide')) { const input = $('settingsSearch'); if (input) input.value = ''; lastSearch = ''; searchSettings(''); }
+      spyPausedUntil = Date.now() + 1500;
+      markCurrent(el.dataset.section);
+      panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      const art = panel.querySelector('.settings-panel-head');
+      art?.classList.remove('search-hit'); void art?.offsetWidth; art?.classList.add('search-hit');
+    },
+    'settings-reset-section': el => {
+      const section = sectionById(el.dataset.section);
+      const keys = changedKeys(section?.keys, prefs, DEFAULT_PREFS);
+      if (!keys.length) return;
+      const privacy = keys.some(key => key === 'discoverable' || key === 'shareTaste');
+      const reshape = keys.includes('mature');
+      keys.filter(key => key !== 'theme').forEach(key => updatePref(key, DEFAULT_PREFS[key]));
+      if (keys.includes('theme')) setTheme(DEFAULT_PREFS.theme, (() => { const box = el.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })());
+      if (privacy) document.dispatchEvent(new Event('cv:privacy'));
+      if (reshape) renderSettings(); else syncPreviews();
+      document.querySelector(`.settings-reset[data-section="${section.id}"]`)?.closest('.settings-panel')?.querySelector('.settings-panel-head')?.focus?.();
+      toast(`${section.title}: ${keys.length} setting${keys.length === 1 ? '' : 's'} back to default`, 'success');
+    },
     'settings-choice': el => {
       el.focus();
       const key = el.dataset.pref, value = el.dataset.value;

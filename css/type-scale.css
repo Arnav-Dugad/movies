@@ -273,6 +273,7 @@
 #statsContent .cast-time b { font-size: 0.873rem; }
 #statsContent .cast-time small { font-size: 0.822rem; }
 #statsContent .cast-partial { font-size: 0.831rem; }
+#statsContent .loading-slow { font-size: 0.848rem; }
 #settingsContent .watched-select { font-size: 0.865rem; }
 #settingsContent .wl-empty h3 { font-size: 1.15rem; }
 #settingsContent .wl-empty p { font-size: .88rem; }
@@ -324,3 +325,17 @@
 #settingsContent .pv-list { font-size: .9rem; }
 #settingsContent .pv-caption b { font-size: 0.856rem; }
 #settingsContent .pv-caption small { font-size: 0.813rem; }
+#settingsContent .settings-search input { font-size: .88rem; }
+#settingsContent .settings-search b { font-size: 0.831rem; }
+#settingsContent .settings-jump button { font-size: 0.856rem; }
+#settingsContent .settings-legend { font-size: 0.831rem; }
+#settingsContent .settings-head-blurb { font-size: 0.856rem; }
+#settingsContent .settings-reset { font-size: 0.848rem; }
+#settingsContent .settings-reset-count { font-size: 0.805rem; }
+#settingsContent .settings-search-empty p { font-size: .86rem; }
+#settingsContent .privacy-map strong { font-size: 0.822rem; }
+#settingsContent .privacy-map li { font-size: 0.865rem; }
+#settingsContent .vault-steps li b { font-size: 0.856rem; }
+#settingsContent .vault-steps li small { font-size: 0.813rem; }
+#settingsContent .region-now b { font-size: .9rem; }
+#settingsContent .region-now span { font-size: .95rem; }

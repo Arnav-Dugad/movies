@@ -830,7 +830,7 @@ function completionCard(item) {
 }
 
 function completionBody(payload, role = completionRole) {
-  if (!payload?.items?.length) return `<div class="insight-loading">${illustration('hourglass', { cls: 'loading-art' })}<span>Checking every ${role === 'actor' ? 'role' : 'directing credit'}…</span></div>`;
+  if (!payload?.items?.length) return `<div class="insight-loading">${illustration('hourglass', { cls: 'loading-art' })}<span>Checking every ${role === 'actor' ? 'role' : 'directing credit'}…</span><small class="loading-slow">Still working. Long careers take a little longer.</small></div>`;
   return `<div class="loyalty-grid">${payload.items.map(completionCard).join('')}</div><p class="loyalty-note">${esc(payload.filterSummary || '')}</p>`;
 }
 
@@ -887,7 +887,7 @@ export function rankSmartWatchCandidates(candidates = [], options = {}) {
 
 // ===== CAST MILESTONES =====
 function castPanel() {
-  return `<section class="stats-panel cast-milestones"><div class="stats-section-head"><div><span>Time with the cast</span><h2>Cast Milestones</h2><p>Hours with the people in the episodes you have watched.</p></div></div><div id="castHoursBody"><div class="insight-loading">${illustration('hourglass', { cls: 'loading-art' })}<span>Reading episode credits…</span></div></div><p class="loyalty-note">Counted from TMDB episode credits: a season's billed cast for every episode of that season you watched, guest stars for their own episodes. TMDB does not list which regulars sit out an episode, so theirs can run slightly high.</p></section>`;
+  return `<section class="stats-panel cast-milestones"><div class="stats-section-head"><div><span>Time with the cast</span><h2>Cast Milestones</h2><p>Hours with the people in the episodes you have watched.</p></div></div><div id="castHoursBody"><div class="insight-loading">${illustration('hourglass', { cls: 'loading-art' })}<span>Reading episode credits…</span><small class="loading-slow">Still working. Every watched season's credits are read once.</small></div></div><p class="loyalty-note">Counted from TMDB episode credits: a season's billed cast for every episode of that season you watched, guest stars for their own episodes. TMDB does not list which regulars sit out an episode, so theirs can run slightly high.</p></section>`;
 }
 
 const countOf = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -1102,7 +1102,7 @@ function rewatchPanel() {
 function franchisePanel() {
   return `<section class="stats-panel franchise-panel">
     <div class="stats-section-head"><div><span>Collection completion</span><h2>Franchises</h2><p>How far through each film series you are. Measured against released entries only &mdash; an announced sequel cannot count against you.</p></div><button class="btn-glass" data-action="show-page" data-page="franchises">Open Franchises</button></div>
-    <div id="franchiseBody"><div class="network-empty">${illustration('hourglass', { cls: 'loading-art' })}Working out where you stand&hellip;</div></div>
+    <div id="franchiseBody"><div class="network-empty">${illustration('hourglass', { cls: 'loading-art' })}Working out where you stand&hellip;<small class="loading-slow">Still working. Collections are read from TMDB the first time.</small></div></div>
     <div id="tvFamilyBody"></div>
   </section>`;
 }

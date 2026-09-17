@@ -245,3 +245,15 @@
 :root[data-theme="light"] .pp-motion.still::after { border-color: rgba(30, 26, 20, .6); }
 :root[data-theme="light"] .pp-type i { background: rgba(30, 26, 20, .25); }
 :root[data-theme="light"] .settings-switch-row.is-on .sp-thumb { border-color: rgba(30, 26, 20, .2); }
+:root[data-theme="light"] .settings-toolbar { background: rgba(242, 238, 231, .8); box-shadow: 0 10px 26px rgba(45, 36, 22, .1); }
+:root[data-theme="light"] .settings-search { background: rgba(255, 255, 255, .6); }
+:root[data-theme="light"] .settings-jump button[aria-current="true"] { border-color: rgba(200, 16, 46, .35); background: rgba(200, 16, 46, .08); }
+:root[data-theme="light"] .settings-head-art { background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, .8), transparent 70%), rgba(20, 20, 30, .03); }
+:root[data-theme="light"] .settings-reset-count, :root[data-theme="light"] .settings-legend i, :root[data-theme="light"] .settings-jump-dot { background: #d97706; }
+:root[data-theme="light"] .settings-switch-row.is-changed strong::after, :root[data-theme="light"] .settings-glass-row.is-changed > span strong::after { background: #d97706; }
+:root[data-theme="light"] #settingsContent mark { background: rgba(217, 119, 6, .22); }
+:root[data-theme="light"] .privacy-map > div { background: rgba(5, 150, 105, .05); }
+:root[data-theme="light"] .privacy-map > div.never, :root[data-theme="light"] .vault-steps li { background: rgba(20, 20, 30, .02); }
+:root[data-theme="light"] .privacy-map .cv-icon.yes { color: #047857; }
+:root[data-theme="light"] .vault-steps li .cv-icon { color: #b45309; }
+:root[data-theme="light"] .region-now { background: rgba(14, 165, 233, .06); }

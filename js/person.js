@@ -5,6 +5,7 @@
 // tab sorts and filters independently, and nothing is truncated beyond a
 // show-more page size.
 import { tmdb } from './api.js';
+import { illustration } from './illustrations.js';
 import { loadCompletion, completionHeadline, roleForDepartment } from './completionist.js';
 import { collaborationLinks, linkSentence, watchedFilmsWithCredits } from './collaborations.js';
 import { personCastHours, hoursLabel } from './cast-hours.js';
@@ -335,7 +336,7 @@ function filmographyHTML(groups) {
     .map(id => option(id, esc(genreMap[id]), view.genre)).join('') + adultGenreOptionsHTML('both', view.genre);
   const emptyState = checking.length
     ? `<p class="person-empty">Checking ${checking.length} title${checking.length === 1 ? '' : 's'} for adult content…</p>`
-    : '<p class="person-empty">No credits match this filter.</p>';
+    : `<div class="person-empty">${illustration('masks', { cls: 'person-empty-art' })}<p>No credits match this filter.</p></div>`;
 
   return `<section class="person-filmography" id="personFilmography">
     <div class="person-section-head"><div><span>Complete filmography</span><h2>Every credit</h2><p>Grouped by department, straight from TMDB — nothing is trimmed.</p></div></div>

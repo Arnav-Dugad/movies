@@ -22,6 +22,7 @@ import { REGIONS, mGenreList, regionLabel } from './config.js';
 const MIN_GENRES = 2;
 const MAX_GENRES = 6;
 const STEPS = 3;
+let launching = false;   // a Continue is playing its scene out
 const GUEST_KEY = 'cv_onboarding_guest_v1';
 
 let flow = null;         // { step, genres:Set, region } while open
@@ -140,6 +141,7 @@ function genreStep() {
   const chips = mGenreList.map(g =>
     `<button type="button" class="ob-chip${flow.genres.has(g.id) ? ' on' : ''}" data-action="ob-genre" data-id="${g.id}" aria-pressed="${flow.genres.has(g.id)}">${esc(g.n)}</button>`).join('');
   return `
+    ${illustration('rocket', { cls: 'ob-art' })}
     <h2>What do you actually like?</h2>
     <p class="ob-lede">Pick ${MIN_GENRES}–${MAX_GENRES} to start with. This is a seed, not a setting: once you have watched and rated a few things, what you do outweighs what you picked here.</p>
     <div class="ob-chips">${chips}</div>
@@ -171,7 +173,7 @@ function finishStep() {
         <small>Browse and search freely. Your picks are remembered on this device until you sign up.</small>
       </button>`;
   return `
-    ${illustration('rocket', { cls: 'ob-art' })}
+    ${illustration('spotlight', { cls: 'ob-art' })}
     <h2>${state.user ? "You're set up" : "Ready when you are"}</h2>
     <p class="ob-lede">${lede}</p>
     <div class="ob-paths">${paths}</div>`;
@@ -248,13 +250,26 @@ export function initOnboarding() {
       overlay()?.querySelector(`.ob-chip[data-id="${id}"]`)?.focus();
     },
     'ob-back': () => { if (flow && flow.step > 1) { flow.step--; paint(); overlay()?.querySelector('.ob-primary')?.focus(); } },
+    // Continue plays the step's scene out first: the rocket launches off-screen,
+    // the compass needle spins. Reduced motion moves on at once.
     'ob-next': () => {
-      if (!flow) return;
-      if (flow.step === 1) applyRegion(flow.region);
+      if (!flow || launching) return;
       if (flow.step === 2 && flow.genres.size < MIN_GENRES) return;
-      flow.step = Math.min(STEPS, flow.step + 1);
-      paint();
-      overlay()?.querySelector('.ob-modal')?.focus?.();
+      const advance = () => {
+        launching = false;
+        if (!flow) return;
+        if (flow.step === 1) applyRegion(flow.region);
+        flow.step = Math.min(STEPS, flow.step + 1);
+        paint();
+        overlay()?.querySelector('.ob-modal')?.focus?.();
+      };
+      const art = overlay()?.querySelector('.ob-art');
+      const root = document.documentElement;
+      const still = root.dataset.motion === 'reduced' || (root.dataset.motion !== 'full' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+      if (!art || still) { advance(); return; }
+      launching = true;
+      art.classList.add('launch');
+      setTimeout(advance, 600);
     },
     'ob-finish': (el) => {
       const go = el.dataset.go;

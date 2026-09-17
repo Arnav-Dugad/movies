@@ -11,7 +11,7 @@
 
 // Any element whose content can scroll sideways qualifies; these are the
 // families that do, checked by class so hidden rows cost nothing.
-export const SCROLLERS = '.row, .cast-scroll, .season-scroll, .season-tabs, .gal-scroll, .vid-scroll, .similar-row, .genre-scroll, .search-chips, .search-filters, .discover-presets, .discover-jumpbar, .fp-parts, .fp-tabs, .franchise-row, .network-scroll, .notification-tabs, .notification-provider-prefs, .person-tabs, .person-photo-row, .profile-recent-row, .release-tabs, .stats-index-jump, .taste-change-track, .voice-hints, .wl-lists, .finale-shelf, .diary-year, .diary-otd-years, .year-chips, .award-timeline, .bo-director-eras, .continue-row';
+export const SCROLLERS = '.row, .cast-scroll, .season-scroll, .season-tabs, .gal-scroll, .vid-scroll, .similar-row, .genre-scroll, .search-chips, .search-filters, .discover-presets, .discover-jumpbar, .settings-jump, .fp-parts, .fp-tabs, .franchise-row, .network-scroll, .notification-tabs, .notification-provider-prefs, .person-tabs, .person-photo-row, .profile-recent-row, .release-tabs, .stats-index-jump, .taste-change-track, .voice-hints, .wl-lists, .finale-shelf, .diary-year, .diary-otd-years, .year-chips, .award-timeline, .bo-director-eras, .continue-row';
 
 /** Pure: which edges of a scroller have more content. */
 export function fadeState(scrollLeft, clientWidth, scrollWidth) {

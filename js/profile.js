@@ -159,7 +159,7 @@ let removedOpen = false;
 
 function clubsPanel() {
   return `<section class="profile-panel profile-clubs"><div class="profile-panel-head"><div><span>${prefs.shareMilestones === false ? 'Private' : 'Visible to friends'}</span><h2>Hours clubs</h2></div><b id="profileClubCount">…</b></div>
-    <div id="profileClubs" class="club-grid"><div class="insight-loading">${illustration('hourglass', { cls: 'loading-art' })}<span>Counting time with the cast…</span></div></div>
+    <div id="profileClubs" class="club-grid"><div class="insight-loading">${illustration('hourglass', { cls: 'loading-art' })}<span>Counting time with the cast…</span><small class="loading-slow">Still working. The first count reads every season's credits.</small></div></div>
     <div class="club-removed" id="profileClubsRemoved" hidden></div>
     <p class="club-note">From the episodes you have ticked and TMDB episode credits. Badges start at 10 hours. Remove anyone and the next person takes their place.</p>
   </section>`;

@@ -135,6 +135,34 @@ function recapEvents() {
   return event ? [event] : [];
 }
 
+// ===== ARRIVALS =====
+// Unread notifications this visit has not seen before are "arrivals". The radar in
+// the hero flares one blip per arrival (up to four) and ripples a ring, in time
+// with them landing: on opening the inbox with new items, after a refresh that
+// brings more, or when the month's recap appears.
+let knownKeys = null, pendingArrivals = 0;
+function noteArrivals() {
+  const unreadKeys = events.filter(eventVisible).filter(unread).map(event => event.key);
+  knownKeys ||= new Set();
+  const fresh = unreadKeys.filter(key => !knownKeys.has(key));
+  unreadKeys.forEach(key => knownKeys.add(key));
+  if (fresh.length) { pendingArrivals += fresh.length; pulseRadar(); }
+}
+function pulseRadar() {
+  const box = document.querySelector('.notification-radar'), radar = box?.querySelector('.cv-art-radar');
+  if (!radar || !pendingArrivals) return;
+  radar.dataset.arrivals = String(Math.min(4, pendingArrivals));
+  pendingArrivals = 0;
+  radar.classList.remove('arrive'); box.classList.remove('arrived');
+  void radar.getBoundingClientRect();
+  radar.classList.add('arrive'); box.classList.add('arrived');
+  clearTimeout(pulseRadar.timer);
+  pulseRadar.timer = setTimeout(() => {
+    radar.classList.remove('arrive');
+    document.querySelector('.notification-radar.arrived')?.classList.remove('arrived');
+  }, 3600);
+}
+
 function dedupeSort(items) {
   const live = [...items.filter(item => item && item.category !== 'recap'), ...recapEvents()];
   return [...new Map(live.map(item => [item.key, item])).values()]
@@ -278,7 +306,7 @@ async function buildNotifications(force = false) {
   if (loading) { rebuildRequested = true; return; }
   const cached = readCache();
   if (!force && cached && cached.signature === sourceSignature() && Date.now() - cached.at < CACHE_TTL) {
-    events = dedupeSort(cached.events); paintBell(); return;
+    events = dedupeSort(cached.events); paintBell(); noteArrivals(); return;
   }
   loading = true;
   const request = ++generation, owner = state.user.uid, region = state.region, signature = sourceSignature();
@@ -292,11 +320,11 @@ async function buildNotifications(force = false) {
     // Record BEFORE deriving change/departure events so both read the fresh diff.
     recordProviderBatch(providerRecords, region);
     const derived = () => [...output.filter(event => !event.expired), ...providerChangeEvents(), ...departureEvents()];
-    events = dedupeSort(derived()); saveCache(signature, owner, region); paintBell(); paintDropdown();
+    events = dedupeSort(derived()); saveCache(signature, owner, region); paintBell(); paintDropdown(); noteArrivals();
     deliverDesktopAlerts(events.filter(eventVisible).filter(unread));
     Promise.allSettled(exactJobs).then(() => {
       if (request !== generation || state.user?.uid !== owner || state.region !== region) return;
-      events = dedupeSort(derived()); saveCache(signature, owner, region); paintBell(); paintDropdown();
+      events = dedupeSort(derived()); saveCache(signature, owner, region); paintBell(); paintDropdown(); noteArrivals();
       if (onNotificationsPage()) {
         if (document.activeElement?.id === 'notificationSearch') renderNotificationResults();
         else renderInbox();
@@ -530,7 +558,7 @@ function paintDropdown() {
       <button data-action="close-notifications" aria-label="Close notifications">×</button>
     </div>
     ${urgent ? `<div class="notification-drop-alert"><i aria-hidden="true">!</i>${urgent} item${urgent === 1 ? '' : 's'} need${urgent === 1 ? 's' : ''} attention</div>` : ''}
-    <div class="notification-drop-feed" role="listbox" aria-label="Recent notifications">${list.length ? list.map(compactCard).join('') : `<div class="notification-drop-empty"><i>${icon('checkCircle')}</i><p>No alerts yet. Watch a show or save a movie to begin.</p></div>`}</div>
+    <div class="notification-drop-feed" role="listbox" aria-label="Recent notifications">${list.length ? list.map(compactCard).join('') : `<div class="notification-drop-empty"><span class="drop-empty-art">${illustration('mailbox')}</span><p>No alerts yet. Watch a show or save a movie to begin.</p></div>`}</div>
     <div class="notification-drop-foot">
       <button data-action="show-page" data-page="notifications">Open notification center</button>
       ${count ? '<button data-action="read-all-notifications" title="Mark everything read">Read all</button>' : ''}
@@ -644,6 +672,10 @@ function renderInbox() {
   const tabs = [['all', 'All', allowed.length], ['episodes', 'Episodes', count('episodes')], ['releases', 'Releases', count('releases')],
     ['streaming', 'Streaming', count('streaming')], ['departures', 'Departures', count('departures')], ['recap', 'Recaps', count('recap')], ['provider', 'History', count('provider')]];
 
+  // The radar is carried across a redraw, so its sweep and any arrival pulse in
+  // progress continue instead of starting over.
+  const radar = host.querySelector('.notification-radar .cv-art-radar');
+  const arrived = host.querySelector('.notification-radar.arrived');
   host.innerHTML = `${heroHTML(allowed)}
     <section class="notification-toolbar">
       <div class="notification-tabs" role="tablist" aria-label="Notification categories">${tabs.map(([value, label, total]) => `<button class="${filter === value ? 'active' : ''}" role="tab" aria-selected="${filter === value}" data-action="notification-filter" data-filter="${value}">${label}<b>${total}</b></button>`).join('')}</div>
@@ -670,12 +702,15 @@ function renderInbox() {
   if (input) input.addEventListener('input', debounce(function () { query = this.value.trim(); renderNotificationResults(); }, 180));
   mountProviderIntel();
   startCountdowns();
+  if (radar) host.querySelector('.notification-radar .cv-art-radar')?.replaceWith(radar);
+  if (arrived) host.querySelector('.notification-radar')?.classList.add('arrived');
+  pulseRadar();
 }
 
 export async function renderNotifications(force = false) {
   const host = $('notificationsContent'); if (!host) return;
   const cached = readCache();
-  if (cached?.events) { events = dedupeSort(cached.events); paintBell(); }
+  if (cached?.events) { events = dedupeSort(cached.events); paintBell(); noteArrivals(); }
   if (!state.user) return renderInbox();
   if (!events.length || force || !cached || cached.signature !== sourceSignature() || Date.now() - cached.at >= CACHE_TTL) {
     host.innerHTML = `<div class="notification-loading"><span class="notification-loading-art">${illustration('radar')}</span><span>Scanning your universe</span><div></div><div></div><div></div></div>`;

@@ -161,5 +161,14 @@ check('a gear has four points per tooth, between its two radii', points.length =
 const ticket = art.illustration('ticket');
 check('the ticket is drawn in two halves that share one torn edge', (ticket.match(/class="art-tear-main"/g) || []).length === 1 && (ticket.match(/class="art-tear-stub"/g) || []).length === 1 && (ticket.match(/L150 40 L147 48/g) || []).length === 2);
 check('the third set of scenes is there', ['gears', 'radar', 'upload', 'lock', 'rocket', 'hourglass', 'coins', 'spotlight'].every(name => art.ILLUSTRATIONS.includes(name)));
+check('the fourth set of scenes is there', ['palette', 'posterstack', 'shield', 'layers', 'globe', 'vault', 'mailbox', 'qrscan', 'masks'].every(name => art.ILLUSTRATIONS.includes(name)));
+check('the radar carries a ring and four blips for arrivals', (art.illustration('radar').match(/class="art-blip b[1-4]"/g) || []).length === 4 && art.illustration('radar').includes('art-radar-ring'));
+
+// ---------- settings: section reset ----------
+const settings = await import(SRC + 'settings.js');
+const { DEFAULT_PREFS } = await import(SRC + 'prefs.js');
+check('a section counts only its own keys that differ from the defaults', settings.changedKeys(['density', 'glass', 'theme'], { ...DEFAULT_PREFS, density: 'compact', posterTilt: false }, DEFAULT_PREFS).join() === 'density');
+check('lists compare by value, not identity', settings.changedKeys(['detailHidden'], { ...DEFAULT_PREFS, detailHidden: [] }, DEFAULT_PREFS).length === 0 && settings.changedKeys(['detailHidden'], { ...DEFAULT_PREFS, detailHidden: ['cast'] }, DEFAULT_PREFS).join() === 'detailHidden');
+check('a section with no keys has nothing to reset', settings.changedKeys(undefined, DEFAULT_PREFS, DEFAULT_PREFS).length === 0);
 
 summary();

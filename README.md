@@ -478,6 +478,36 @@ The glass picker is no longer the only preview in Settings (`js/settings.js`):
 - The theme previews keep their own palettes in either theme: they are redeclared
   in `css/light.css`, so the light compiler never turns the dark preview light.
 
+### Finding your way around Settings
+
+- **Search.** A search field at the top filters Settings as you type: a row stays
+  when its name and description contain every word, a section whose heading matches
+  keeps all its rows, and the matched words are highlighted. A match inside the
+  closed Maturity disclosure opens it (and closes it again when the search moves on).
+  Enter scrolls to the first match with a gold pulse; Escape clears. With nothing
+  found, a searching magnifier suggests other words.
+- **Jump bar.** Beside the search, a chip for every section scrolls to it and
+  follows along as you scroll. A gold dot on a chip means something in that section
+  differs from its default. The bar stays in view while you scroll.
+- **Section heads.** Every section opens with its own animated picture (a palette
+  for Appearance, a poster whose badges pop for Poster controls, a projector, a
+  compass, a shield for Maturity, stacked cards for the title-page sections, a
+  padlock for Privacy, a globe for Region, a vault for Backup, gears for
+  Maintenance) and one line on what it covers.
+- **Reset this section.** Sections that hold preferences have a Reset button
+  beside the heading, with a count of what differs from the defaults. It returns
+  only that section; a theme change plays the usual circular switch. At the
+  defaults it reads "Defaults" and is disabled.
+- **Changed from default.** A gold dot beside a setting's name marks one you have
+  changed, explained by a small legend in the toolbar.
+- **Privacy at a glance.** Above the privacy switches, "Friends can see" lists your
+  name in search, your hours-club badges and your taste summary, each ticked or
+  crossed out and locked as its switch changes, beside what is never shared.
+- **Backup in three steps.** Download, keep it safe, restore (which merges and never
+  deletes newer records), drawn as three linked cards.
+- **Region.** The chosen country is shown as a code badge and its name, and follows
+  the picker.
+
 How it works (`js/glass.js`): the panels are styled in hundreds of rules, and
 the light theme is compiled from those same rules, so glass edits the matching
 rules **in place** through the CSSOM instead of adding a stylesheet:
@@ -638,7 +668,7 @@ Lists saved with an emoji icon still show the matching drawn icon.
 
 ## Illustrations
 
-Twenty-three animated scenes drawn as inline SVG (`js/illustrations.js`) stand in
+Thirty-two animated scenes drawn as inline SVG (`js/illustrations.js`) stand in
 wherever a page has nothing else to show, and in a few places that deserve one:
 
 | Scene | Where |
@@ -656,13 +686,38 @@ wherever a page has nothing else to show, and in a few places that deserve one:
 | Desk calendar, reel-and-TV orbit | The monthly recap, the Your Year hero |
 | Meshing gears | The Settings hero |
 | Radar sweep with blips that flare as the beam passes | The notification centre's hero and its loading screen |
-| Coins dropping onto a stack beside a rising line | The Box Office hero |
+| Coins stacked beside a rising line | The Box Office hero |
 | A CSV rising into a cloud with a filling progress bar | The import dialog's drop zone |
 | Padlock whose shackle lifts as its PIN dots light | The PIN dialog for private lists |
-| Compass, rocket launching through streaking stars | Onboarding: the region step and the last step |
+| Compass, rocket climbing through streaking stars, stage with spotlights | Onboarding: the region step, the genre step and the last step |
 | Hourglass that drains and turns over | Loading: Hours clubs, Cast milestones, director and actor completion, franchises |
+| Palette, badge-popping poster, shield, stacked cards, padlock, globe, vault, gears | The heads of the Settings sections |
+| Mailbox raising its flag as a letter drops in | The notification popover with nothing in it |
+| Phone reading a QR code | The friend QR scanner, behind the camera until it starts (and if it cannot) |
+| Comedy and tragedy masks | A person's credits when a filter leaves none |
 | Stage with swaying curtains and crossing spotlights | A shared list with nothing on it yet |
 | Retro TV, projector | Stats' empty TV Tracker and Rewatches panels |
+
+**Scenes that answer what happens:**
+
+- **Radar arrivals.** Unread notifications this visit has not seen before are
+  arrivals. When they land (opening the inbox with new items, a refresh that brings
+  more, a monthly recap appearing) the radar flares one blip per arrival, up to four,
+  in turn, ripples a ring out from the centre and bumps the count. The radar is
+  carried across the inbox's redraws, so its sweep and a pulse in progress continue
+  rather than restarting.
+- **Coins rise.** The Box Office coins rest as a stack and drop in one by one, with
+  their line redrawing, when you switch between Movies, Franchises and Directors or
+  change the sort. The page repaints its shell on every search keystroke and page of
+  results, and the coins are carried across, so typing never replays them.
+- **The hourglass turns over at three seconds.** Its sand runs out in three seconds
+  and the glass turns, so a load that passes three seconds is marked by the turn, and
+  a line such as "Still working. Collections are read from TMDB the first time."
+  fades in under the loader at the same moment. Its turn once shared an animation
+  name with the desk calendar's page flip and overrode it; each has its own now.
+- **Launch on Continue.** In onboarding, Continue on the genre step sends the rocket
+  off-screen (flame flaring, smoke bursting) before the last step, and on the region
+  step spins the compass needle. Reduced motion moves on at once.
 
 **The ticket tears.** On a sign-in prompt, tapping **Sign in** tears the ticket's stub
 away along its perforation (with a few paper flecks) before the sign-in dialog
@@ -1230,7 +1285,8 @@ the year-in-films card, the shared year-card pieces, scroll hints and removing
 people from Hours clubs (`glass-years.test.mjs`), and Your Year, the monthly
 recap, moving lights, the illustrations, year comparisons and highlights, and the
 diary's streaks, weekdays, month totals and On this day, streak milestones, gear
-geometry and the tearing ticket (`year-page.test.mjs`). It needs
+geometry, the tearing ticket, the radar's arrival parts and Settings section resets
+(`year-page.test.mjs`). It needs
 nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails

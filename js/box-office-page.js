@@ -18,7 +18,7 @@ export async function renderBoxOfficePage({ reset = false } = {}) {
   const host = $('boxOfficeContent'); if (!host) return;
   if (reset || !items.length) {
     items = []; nextPage = 1; totalPages = 1; chartRequested = 0; chartUpdatedAt = 0; franchiseRows = null; directorRows = null;
-    host.innerHTML = shell('<div class="bo-page-loading"><i></i><i></i><i></i></div>');
+    renderShell(host, '<div class="bo-page-loading"><i></i><i></i><i></i></div>');
     await loadNext(); return;
   }
   paint();
@@ -105,8 +105,24 @@ function freshness(timestamp) {
 const freshnessChip = timestamp => timestamp ? `<time class="bo-freshness" title="Updated ${esc(new Date(timestamp).toLocaleString())}">${esc(freshness(timestamp))}</time>` : '';
 
 function shell(body) {
-  return `<section class="bo-page-hero"><div><span>Worldwide revenue</span><h1>Box Office</h1></div><div class="bo-page-orbit has-art" aria-hidden="true">${illustration('coins', { cls: 'bo-orbit-art' })}<i></i></div></section>
+  return `<section class="bo-page-hero"><div><span>Worldwide revenue</span><h1>Box Office</h1></div><div class="bo-page-orbit has-art" aria-hidden="true">${illustration('coins', { cls: 'bo-orbit-art rise' })}<i></i></div></section>
     <nav class="bo-view-tabs" aria-label="Box-office rankings">${tab('movies', 'Movies')}${tab('franchises', 'Franchises')}${tab('directors', 'Directors')}</nav>${tools()}${body}`;
+}
+
+// The page repaints its whole shell on every sort, search and page of results. The
+// hero's coins are carried across a repaint so they do not restart, and rise again
+// only when the chart's ranking actually changes (riseCoins).
+function renderShell(host, body) {
+  const coins = host.querySelector('.bo-orbit-art');
+  host.innerHTML = shell(body);
+  if (coins) host.querySelector('.bo-orbit-art')?.replaceWith(coins);
+}
+function riseCoins() {
+  const coins = document.querySelector('#boxOfficeContent .bo-orbit-art');
+  if (!coins) return;
+  coins.classList.remove('rise');
+  void coins.getBoundingClientRect();
+  coins.classList.add('rise');
 }
 
 function tools() {
@@ -135,7 +151,7 @@ function paint() {
   const body = `<div class="bo-page-summary"><span><b>${items.length}</b> films</span><span><b>${formatGross(total, { compact: true })}</b> combined</span><span><b>${coverage}%</b> revenue coverage</span><span><b>${items.length ? Math.round(budgets / items.length * 100) : 0}%</b> budget coverage</span>${freshnessChip(chartUpdatedAt)}</div>
     <div class="bo-chart">${rows.length ? rows.map(chartRow).join('') : '<div class="wl-empty"><h3>No films match</h3></div>'}</div>
     ${nextPage <= totalPages ? '<div class="load-more-wrap"><button class="load-more" data-action="box-office-more">Load 20 more</button></div>' : ''}`;
-  host.innerHTML = shell(body); bindSearch(); observeReveals(host);
+  renderShell(host, body); bindSearch(); observeReveals(host);
 }
 
 async function showRanking(nextView) {
@@ -151,7 +167,7 @@ async function showRanking(nextView) {
   };
   // Say what is happening and how far along it is. A silent spinner over a
   // multi-second build reads as a page that has stopped working.
-  host.innerHTML = shell(`<div class="bo-building" role="status">
+  renderShell(host, `<div class="bo-building" role="status">
     <strong>Building the ${esc(label)} league</strong>
     <p id="boBuildNote">Reading the chart · 0%</p>
     <span class="bo-build-track"><i id="boBuildBar" style="width:0%"></i></span>
@@ -180,7 +196,7 @@ function paintRanking() {
     : Math.round(source.reduce((sum, row) => sum + row.knownBudgets, 0) / Math.max(1, source.reduce((sum, row) => sum + row.films, 0)) * 100);
   const body = `<div class="bo-page-summary"><span><b>${source.length}</b> ranked</span><span><b>${formatGross(source.reduce((sum, row) => sum + row.revenue, 0), { compact: true })}</b> reported</span><span><b>${covered}%</b> ${view === 'directors' ? 'hit-rate coverage' : 'revenue coverage'}</span>${freshnessChip(latest)}</div>
     <div class="bo-league">${rows.length ? rows.map((row, index) => view === 'franchises' ? franchiseRow(row, index) : directorRow(row, index)).join('') : '<div class="wl-empty"><h3>No results</h3></div>'}</div>`;
-  host.innerHTML = shell(body); bindSearch(); observeReveals(host);
+  renderShell(host, body); bindSearch(); observeReveals(host);
 }
 
 function chartRow({ movie, rank, money }) {
@@ -221,8 +237,8 @@ export function initBoxOfficePage() {
   registerActions({
     'box-office-more': () => loadNext(),
     'box-office-retry': () => renderBoxOfficePage({ reset: true }),
-    'box-office-sort': el => { sort = el.value; paint(); },
+    'box-office-sort': el => { sort = el.value; paint(); riseCoins(); },
     'box-office-decade': el => { decade = el.value; paint(); },
-    'box-office-view': el => { const next = el.dataset.view; if (next === view) return; next === 'movies' ? (view = next, rankRun++, query = '', paint()) : showRanking(next); },
+    'box-office-view': el => { const next = el.dataset.view; if (next === view) return; next === 'movies' ? (view = next, rankRun++, query = '', paint()) : showRanking(next); riseCoins(); },
   });
 }
