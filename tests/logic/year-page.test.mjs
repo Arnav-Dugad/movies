@@ -88,5 +88,40 @@ check('gradient ids never repeat, even for two copies of a scene', new Set(ids).
 check('every url() points at an id in the same scene', scenes.every(svg => (svg.match(/url\(#([^)]+)\)/g) || []).every(ref => svg.includes(` id="${ref.slice(5, -1)}"`))));
 check('scenes are decorative unless labelled, and labels are escaped', scenes.every(svg => svg.includes('aria-hidden="true"')) && art.illustration('year', { label: 'A "year" <b>' }).includes('role="img" aria-label="A &quot;year&quot; &lt;b&gt;"'));
 check('an unknown scene falls back to the projector', art.illustration('nope').includes('cv-art-projector'));
+check('the second set of scenes is there', ['ticket', 'search', 'friends', 'party', 'stats', 'bell', 'trophy', 'compass', 'unplugged'].every(name => art.ILLUSTRATIONS.includes(name)));
+check('every scene keeps its drawing inside the 240×180 frame it declares', scenes.every(svg => svg.includes('viewBox="0 0 240 180"')));
+
+// ---------- your year: comparisons, moments, genres ----------
+const lastYear = { year: 2025, titles: 4, films: 2, series: 2, minutes: 600 };
+const delta = year.yearDelta({ films: 5, series: 2, minutes: 480 }, lastYear);
+check('each figure says how it compares with the year before', delta.films.label === '+3 vs 2025' && delta.films.dir === 'up' && delta.series.label === 'same as 2025' && delta.series.dir === 'same' && delta.minutes.label === '−2h vs 2025' && delta.minutes.dir === 'down', JSON.stringify(delta));
+check('no comparison when the year before is empty', year.yearDelta({ films: 1, series: 0, minutes: 90 }, { year: 2025, titles: 0 }) === null && year.yearDelta({ films: 1 }, null) === null);
+const moments = year.yearHighlights(watched, filmSummary, seriesSummary);
+const byLabel = Object.fromEntries(moments.map(moment => [moment.label, moment]));
+check('the first and latest watch of the year are found across films and series', byLabel['First of the year']?.title === 'Twice in August' && byLabel['Most recent']?.title === 'September', moments.map(m => `${m.label}:${m.title}`).join(' | '));
+check('top rated and biggest run are moments too, linking to their titles', byLabel['Top rated']?.id === 2 && byLabel['Top rated'].kind === 'movie' && byLabel['Biggest run']?.kind === 'tv' && byLabel['Most rewatched']?.title === 'Twice in August');
+check('an empty year has no moments', year.yearHighlights({}, films.filmsYear({}, 2019), series.seriesYear([], 2019)).length === 0);
+const genres = year.topGenres(filmSummary);
+check('genres are counted once per film, most first, with a share of the leader', genres[0].name === 'Drama' && genres[0].count === 2 && genres[0].share === 1 && genres[1].name === 'Comedy' && genres[1].share === 0.5, JSON.stringify(genres));
+
+// ---------- watch diary: streaks, weekdays, month totals ----------
+const diary = await import(SRC + 'diary.js');
+const day = (m, d) => `2026-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+const diaryDays = new Map([
+  [day(8, 30), { key: day(8, 30), items: 1, minutes: 50 }],
+  [day(8, 31), { key: day(8, 31), items: 2, minutes: 100, tvMinutes: 100 }],
+  [day(9, 1), { key: day(9, 1), items: 1, minutes: 120, filmMinutes: 120 }],
+  [day(9, 3), { key: day(9, 3), items: 0, minutes: 0, marked: 5 }],
+  [day(9, 4), { key: day(9, 4), items: 1, minutes: 40, tvMinutes: 40 }],
+  [day(9, 5), { key: day(9, 5), items: 3, minutes: 150, tvMinutes: 150 }],
+]);
+check('the longest run crosses month ends', diary.longestRun([day(8, 30), day(8, 31), day(9, 1), day(9, 4)]) === 3 && diary.longestRun([]) === 0);
+const streaks = diary.diaryStreaks(diaryDays, new Date(2026, 8, 6, 9).getTime(), '2026-09');
+check('a streak still counts on a day with nothing yet, bulk marks never count', streaks.current === 2 && streaks.longest === 3 && streaks.month === 2, JSON.stringify(streaks));
+check('a streak ends after a missed day', diary.diaryStreaks(diaryDays, new Date(2026, 8, 7, 9).getTime()).current === 0);
+const week = diary.diaryWeekdays(diaryDays, '2026-09');
+check('minutes fall on their weekday, Monday first', week[1].minutes === 120 && week[4].minutes === 40 && week[5].minutes === 150 && week[3].minutes === 0 && week.length === 7, JSON.stringify(week.map(slot => slot.minutes)));
+const totals = diary.monthTotals(diaryDays, '2026-09');
+check('a month totals its viewing and finds its biggest day', totals.minutes === 310 && totals.items === 5 && totals.active === 3 && totals.film === 120 && totals.tv === 190 && totals.busiest.key === day(9, 5));
 
 summary();

@@ -10,6 +10,7 @@
 import { state } from './state.js';
 import { icon } from './icons.js';
 import { $, esc, toast, debounce } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { IMG, PH } from './config.js';
 import { observeReveals } from './effects.js';
@@ -41,7 +42,7 @@ export async function renderFranchisePage() {
   const host = $('franchisesContent');
   if (!host) return;
   if (!state.user) {
-    host.innerHTML = `<div class="wl-empty"><h3>Sign in to track franchises</h3><p>Completion is worked out from the films you have marked watched.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
+    host.innerHTML = `<div class="wl-empty">${illustration('ticket', { cls: 'empty-art' })}<h3>Sign in to track franchises</h3><p>Completion is worked out from the films you have marked watched.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
   ensureWatchedMeta();
@@ -56,7 +57,7 @@ export async function renderFranchisePage() {
       cached = { films, tv };
     } catch (error) {
       console.warn('franchise page', error);
-      host.innerHTML = `<div class="wl-empty"><h3>Could not reach TMDB</h3><p>Collection data is fetched from TMDB and cached for a month. Try again shortly.</p></div>`;
+      host.innerHTML = `<div class="wl-empty">${illustration('unplugged', { cls: 'empty-art' })}<h3>Could not reach TMDB</h3><p>Collection data is fetched from TMDB and cached for a month. Try again shortly.</p></div>`;
       return;
     } finally { loading = false; }
   }
@@ -183,7 +184,7 @@ function filmSection(rows) {
       : filter === 'skipped' ? 'No gaps. Everything you have started, you have watched in order.'
       : filter === 'near' ? 'Nothing is within two films of completion yet.'
       : 'No film series in your history yet.';
-    return `<div class="wl-empty"><h3>Nothing to show</h3><p>${esc(message)}</p></div>`;
+    return `<div class="wl-empty">${illustration('trophy', { cls: 'empty-art' })}<h3>Nothing to show</h3><p>${esc(message)}</p></div>`;
   }
   return `<div class="fp-list">${rows.map(filmRow).join('')}</div>`;
 }

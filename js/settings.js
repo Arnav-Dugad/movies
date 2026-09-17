@@ -2,6 +2,7 @@
 import { state } from './state.js';
 import { icon } from './icons.js';
 import { $, toast, esc } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { REGIONS, regionLabel } from './config.js';
 import { prefs, updatePref, resetPrefs, preferencePayload } from './prefs.js';
@@ -77,7 +78,7 @@ function detailPartsPanel() {
 export function renderSettings() {
   const ct = $('settingsContent'); if (!ct) return;
   if (!state.user) {
-    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px"><h3>Sign in to change settings</h3><p>Your experience controls and collection vault live here.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
+    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px">${illustration('ticket', { cls: 'empty-art' })}<h3>Sign in to change settings</h3><p>Your experience controls and collection vault live here.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
   const regionOpts = [...REGIONS].sort((a, b) => a[1].localeCompare(b[1]))

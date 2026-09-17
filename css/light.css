@@ -191,6 +191,7 @@
 :root[data-theme="light"] .gp-chips u + u { background: rgba(20, 20, 30, .14); }
 :root[data-theme="light"] .gp-sheen { background: linear-gradient(112deg, transparent 35%, rgba(255, 255, 255, .7) 50%, transparent 65%); }
 :root[data-theme="light"] .club-removed, :root[data-theme="light"] .glass-preview { background: rgba(20, 20, 30, .02); }
+:root[data-theme="light"] .club-removed-faces i { border-color: #efebe4; }
 :root[data-theme="light"] .cv-art { --art-edge: rgba(20, 20, 30, .16); }
 :root[data-theme="light"] .cv-art .art-shadow { fill: rgba(20, 20, 30, .12); }
 :root[data-theme="light"] .year-page { --year-films: #0891b2; --year-series: #d97706; }
@@ -208,3 +209,22 @@
 :root[data-theme="light"] .finale-year-btn.year { color: #b91c1c; border-color: rgba(185, 28, 28, .3); }
 :root[data-theme="light"] .notification-meta > .category-recap { color: #a16207; background: rgba(161, 98, 7, .1); }
 :root[data-theme="light"] .notification-art.recap-fan img { box-shadow: 0 10px 22px rgba(20, 20, 30, .18); }
+:root[data-theme="light"] .year-delta.up { background: rgba(5, 150, 105, .12); color: #047857; }
+:root[data-theme="light"] .year-delta.down { background: rgba(225, 29, 72, .1); color: #be123c; }
+:root[data-theme="light"] .year-delta.same { background: rgba(20, 20, 30, .06); color: #4b5563; }
+:root[data-theme="light"] .year-moment-list em { color: #a16207; }
+:root[data-theme="light"] .year-moment-list img { box-shadow: 0 12px 26px rgba(20, 20, 30, .16); }
+:root[data-theme="light"] .year-genre-list i { background: rgba(20, 20, 30, .07); }
+:root[data-theme="light"] .year-figure strong.counted { animation: none; }
+:root[data-theme="light"] .diary-change.up { background: rgba(5, 150, 105, .12); color: #047857; }
+:root[data-theme="light"] .diary-change.down { background: rgba(225, 29, 72, .1); color: #be123c; }
+:root[data-theme="light"] .diary-change.same { background: rgba(20, 20, 30, .06); color: #4b5563; }
+:root[data-theme="light"] .diary-best, :root[data-theme="light"] .diary-week-bars li.peak small, :root[data-theme="light"] .diary-streaks .live strong { color: #b45309; }
+:root[data-theme="light"] .diary-week-bar, :root[data-theme="light"] .diary-streaks > div { background: rgba(20, 20, 30, .05); }
+:root[data-theme="light"] .diary-tile-link:hover, :root[data-theme="light"] .diary-tile-link:focus-visible { border-color: rgba(180, 83, 9, .35); background: rgba(180, 83, 9, .06); }
+:root[data-theme="light"]:not([data-glass="quiet"]) { --glass-spot-a: .6; }
+:root[data-theme="light"]:not([data-glass="quiet"]) .navbar.scrolled { background: linear-gradient(180deg, rgba(240, 236, 229, .78), rgba(234, 230, 223, .62)); border-bottom-color: rgba(30, 26, 20, .08); box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .6), 0 10px 30px rgba(45, 36, 22, .08); }
+:root[data-theme="light"]:not([data-glass="quiet"]) .mobile-nav { background: linear-gradient(180deg, rgba(242, 238, 231, .72), rgba(234, 230, 223, .86)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8), 0 -10px 30px rgba(45, 36, 22, .08); }
+:root[data-theme="light"]:not([data-glass="quiet"]) .btn-glass { background: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, .45)); border-color: rgba(30, 26, 20, .1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 6px 18px rgba(45, 36, 22, .08); }
+:root[data-theme="light"]:not([data-glass="quiet"]) .btn-glass:hover { background: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(255, 255, 255, .6)); border-color: rgba(30, 26, 20, .16); }
+:root[data-theme="light"]:not([data-glass="quiet"]) .btn-primary { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 8px 22px rgba(200, 16, 46, .22); }

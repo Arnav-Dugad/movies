@@ -326,7 +326,7 @@ export function renderWL() {
     if (showcase) showcase.innerHTML = '';
     if (cnt) cnt.textContent = '';
     syncWLControls([]);
-    ct.innerHTML = `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg><h3>Sign in to see your lists</h3><p>Create an account to save movies and shows</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
+    ct.innerHTML = `<div class="wl-empty">${illustration('ticket', { cls: 'empty-art' })}<h3>Sign in to see your lists</h3><p>Create an account to save movies and shows</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
   renderDuplicateFinder();
@@ -425,7 +425,7 @@ export function renderWL() {
     const nm = listById(state.wlList)?.name || 'list';
     const filtered = !!(wlQuery || wlGenre !== 'all' || wlStatus !== 'all' || wlRating || wlDecade !== 'all' || wlLanguage !== 'all' || wlCountry !== 'all' || wlRuntime !== 'all' || wlMine !== 'all' || wlAdded !== 'all' || wlMetadata !== 'all' || state.wlFilter !== 'all');
     ct.innerHTML = filtered
-      ? `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><h3>No matching titles</h3><p>Try changing or resetting your filters</p></div>`
+      ? `<div class="wl-empty">${illustration('search', { cls: 'empty-art' })}<h3>No matching titles</h3><p>Try changing or resetting your filters</p></div>`
       : `<div class="wl-empty">${illustration('popcorn')}<h3>${esc(nm[0].toUpperCase() + nm.slice(1))} is empty</h3><p>Add movies and shows with the + on any poster</p></div>`;
     return;
   }

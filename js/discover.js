@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { moods, mGenreList, tGenreList, IMG, REGIONS, regionName as countryName } from './config.js';
 import { state } from './state.js';
 import { toast, $, esc } from './ui.js';
+import { illustration } from './illustrations.js';
 import { buildCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
@@ -250,7 +251,7 @@ async function pickMood(index) {
     const items = (data.results || []).filter(item => item.poster_path).slice(0, 20);
     host.innerHTML = `<div class="discover-mood-result-head"><div><span>${icon(mood.icon)} Mood journey</span><h3>${esc(mood.name)}</h3><p>${items.length} quality picks available for streaming in ${esc(regionName())}.</p></div><button data-action="pick-mood" data-idx="${index}">Refresh mood</button></div><div class="discover-result-grid">${items.map(item => buildCard(item, type)).join('')}</div>`;
     observeReveals(host);
-  } catch (_) { host.innerHTML = '<div class="discover-no-results"><strong>Could not build this mood</strong><span>Try another mood or refresh shortly.</span></div>'; }
+  } catch (_) { host.innerHTML = `<div class="discover-no-results">${illustration('unplugged', { cls: 'empty-art' })}<strong>Could not build this mood</strong><span>Try another mood or refresh shortly.</span></div>`; }
 }
 
 export async function randomPick(type) {

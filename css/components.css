@@ -161,12 +161,11 @@
 .card-myrating svg{width:11px;height:11px}
 /* When a title is BOTH rated and watched, the green check drops below the rating
    badge so the top-left corner isn't a pile-up. */
-.card-img:has(.card-myrating) .watched-badge svg{top:40px}
+/* (stacked in css/refinements.css, "Poster badges") */
 /* Recommendation/party cards carry a top-left "% match" badge; if such a card is
    also rated (rare — recommendations skip rated titles), stack the rating under
    it and push the watched check down one more notch. */
-.card-img:has(.card-badge) .card-myrating{top:38px}
-.card-img:has(.card-badge):has(.card-myrating) .watched-badge svg{top:70px}
+/* (stacked in css/refinements.css, "Poster badges") */
 .card-type-badge{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:4px;font-size:.62rem;font-weight:800;z-index:1;letter-spacing:.5px;text-transform:uppercase}
 /* Recommender match badge (top-left) */
 .card-badge{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:50px;font-size:.64rem;font-weight:800;z-index:1;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,var(--red),var(--red2));box-shadow:0 2px 8px var(--red-glow)}

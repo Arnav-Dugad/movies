@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { genreMap, mGenreList, tGenreList, moods } from './config.js';
 import { state } from './state.js';
 import { esc, $ } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { buildCard, skelCards } from './cards.js';
 import { social, getFriendTaste } from './social.js';
@@ -38,11 +39,11 @@ export function renderParty() {
   const ct = $('partyContent');
   if (!ct) return;
   if (!state.user) {
-    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5"><path d="M8 5v14l11-7z"/></svg><h3>Sign in to host a watch party</h3><p>Blend everyone's taste to find the perfect film for movie night.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
+    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px">${illustration('ticket', { cls: 'empty-art' })}<h3>Sign in to host a watch party</h3><p>Blend everyone's taste to find the perfect film for movie night.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
   if (!social.friends.length) {
-    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><h3>Add friends first</h3><p>The matcher blends your circle's tastes — add a friend or two to begin.</p><br><button class="btn-primary" data-action="show-page" data-page="friends">Go to Friends</button></div>`;
+    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px">${illustration('party', { cls: 'empty-art' })}<h3>Add friends first</h3><p>The matcher blends your circle's tastes — add a friend or two to begin.</p><br><button class="btn-primary" data-action="show-page" data-page="friends">Go to Friends</button></div>`;
     return;
   }
 

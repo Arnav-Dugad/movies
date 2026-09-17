@@ -2,8 +2,9 @@
 // With Settings → Glass effects on "Rich cinema glass" (the default), the site
 // sits on a softly lit, blurred stage (the .aurora layer in index.html) and its
 // surfaces are glass over it:
-//   - panels let the stage's light through, carry a lit top edge, and pick up a
-//     faint sheen that travels across them as they scroll past;
+//   - panels let the stage's light through, carry a lit top edge, pick up a
+//     faint sheen that travels across them as they scroll past, and (with a
+//     mouse) catch a soft light where the pointer is;
 //   - menus and dialogs are frosted: translucent, with the page behind blurred.
 // Accent tints, highlights and images stay exactly as designed.
 //
@@ -23,7 +24,7 @@
 
 // Panels: a rule is glassed when one of these is its subject (the last compound
 // of the selector), never merely an ancestor of it.
-export const PANEL_CLASSES = ['stats-panel', 'stats-hero', 'stats-achievements', 'profile-panel', 'profile-connect-card', 'profile-taste-pass', 'settings-panel', 'settings-premium-hero', 'detail-accordion', 'stat-card', 'release-hero', 'release-card', 'notifications-hero', 'notification-card', 'discover-premium-hero', 'discover-studio', 'discover-surprise', 'mood-card', 'fp-hero', 'bo-page-hero', 'challenge-card', 'tv-card', 'pi-card', 'friend-code-card', 'show-progress', 'ep-heatmap', 'person-completion', 'person-link', 'loyalty-card', 'cast-row', 'club-badge', 'hm-readout-card', 'ep-card', 'wl-cover', 'watched-controls', 'wl-controls', 'bo-page-tools', 'release-toolbar', 'taste-match-result', 'fr-card', 'bo-chart-row', 'awards-section', 'year-hero', 'year-total', 'year-month', 'year-side'];
+export const PANEL_CLASSES = ['stats-panel', 'stats-hero', 'stats-achievements', 'profile-panel', 'profile-connect-card', 'profile-taste-pass', 'settings-panel', 'settings-premium-hero', 'detail-accordion', 'stat-card', 'release-hero', 'release-card', 'notifications-hero', 'notification-card', 'discover-premium-hero', 'discover-studio', 'discover-surprise', 'mood-card', 'fp-hero', 'bo-page-hero', 'challenge-card', 'tv-card', 'pi-card', 'friend-code-card', 'show-progress', 'ep-heatmap', 'person-completion', 'person-link', 'loyalty-card', 'cast-row', 'club-badge', 'hm-readout-card', 'ep-card', 'wl-cover', 'watched-controls', 'wl-controls', 'bo-page-tools', 'release-toolbar', 'taste-match-result', 'fr-card', 'bo-chart-row', 'awards-section', 'year-hero', 'year-total', 'year-month', 'year-side', 'year-moments', 'year-genres'];
 // Dialogs and menus: frosted, and a little more opaque so text over busy pages
 // stays easy to read.
 export const OVERLAY_CLASSES = ['profile-dd', 'rate-modal', 'auth-modal', 'pin-modal', 'import-modal', 'spoiler-share-modal', 'scan-modal', 'notification-drop'];
@@ -127,16 +128,20 @@ export function glassKind(selector) {
 /** Pure: the panel parts of a selector list, joined. */
 export const panelSelector = selectorText => selectorParts(selectorText).filter(part => glassKind(part) === 'panel').join(', ');
 
+// Each background layer list's initial value, for layers the CSSOM reports as "initial".
+const LAYER_INITIAL = { 'background-image': 'none', 'background-size': 'auto', 'background-position': '0% 0%', 'background-repeat': 'repeat', 'background-attachment': 'scroll', 'background-origin': 'padding-box', 'background-clip': 'border-box' };
+
 /**
  * Pure: a longhand value as the CSSOM reports it, made writable again. A
  * `background` shorthand whose last layer is only a colour reports that layer's
- * image as "initial" ("radial-gradient(…), initial"), which is not valid when
- * written back as an image list; that layer's image is none.
+ * entries as "initial" ("radial-gradient(…), initial"), which is not valid when
+ * written back as a list, so the edit (or its undo) would be silently dropped;
+ * each such entry is written as the property's initial value instead.
  */
 export function writableValue(prop, value) {
-  if (prop !== 'background-image') return value;
-  const layers = selectorParts(value);
-  return layers.length > 1 ? layers.map(layer => (layer === 'initial' ? 'none' : layer)).join(', ') : value;
+  if (!LAYER_INITIAL[prop]) return value;
+  const layers = selectorParts(String(value));
+  return layers.length > 1 ? layers.map(layer => (layer === 'initial' ? LAYER_INITIAL[prop] : layer)).join(', ') : value;
 }
 
 /** Pure: var(--x) references replaced from `tokens` (chains followed, others kept). */
@@ -153,6 +158,11 @@ export function resolveTokens(value, tokens) {
 // page (--glass-sheen-a, 0 unless glass is on). It is the TOP layer of the
 // panel's background: over its own gradients, under its content.
 export const SHEEN_LAYER = 'linear-gradient(112deg, transparent calc(var(--glass-sheen, -60%) - 18%), rgba(255, 255, 255, var(--glass-sheen-a, 0)) var(--glass-sheen, -60%), transparent calc(var(--glass-sheen, -60%) + 18%))';
+// The pointer light: a wide soft circle at --spot-x/--spot-y (set while a mouse
+// is over the panel), as strong as --glass-spot-a (0 unless glass is on).
+export const SPOT_LAYER = 'radial-gradient(circle 360px at var(--spot-x, -999px) var(--spot-y, -999px), rgba(255, 255, 255, var(--glass-spot-a, 0)), transparent 72%)';
+/** Every layer glass adds on top of a panel's own background, top first. */
+export const GLASS_LAYERS = [SPOT_LAYER, SHEEN_LAYER];
 export const EDGE = 'inset 0 1px 0 var(--glass-edge, transparent)';
 const LAYER_LISTS = { 'background-size': 'auto', 'background-position': '0% 0%', 'background-repeat': 'no-repeat' };
 const unset = value => !value || /^initial(\s*,\s*initial)*$/.test(value);
@@ -170,7 +180,10 @@ export function glassDeclarations(read, kind, alpha, tokens = {}) {
     const next = glassValue(resolveTokens(writableValue(prop, value), tokens), alpha);
     if (next) writes.push({ prop, value: next, priority });
   }
-  if (!writes.length) return null;
+  // A panel rule with no surface colour of its own (a tinted gradient) still
+  // gets the sheen and the pointer light when it paints an image; a dialog needs
+  // a surface to frost.
+  if (!writes.length && (kind === 'overlay' || unset(read('background-image').value))) return null;
   if (kind === 'overlay') {
     writes.push({ prop: 'backdrop-filter', value: 'blur(28px) saturate(160%)', priority: '' });
     writes.push({ prop: '-webkit-backdrop-filter', value: 'blur(28px) saturate(160%)', priority: '' });
@@ -182,17 +195,18 @@ export function glassDeclarations(read, kind, alpha, tokens = {}) {
   if (!unset(imageRead.value)) {
     const existing = writes.find(write => write.prop === 'background-image');
     const base = existing ? existing.value : writableValue('background-image', imageRead.value);
-    const layered = base === 'none' ? SHEEN_LAYER : `${SHEEN_LAYER}, ${base}`;
+    const added = GLASS_LAYERS.join(', ');
+    const layered = base === 'none' ? added : `${added}, ${base}`;
     if (existing) existing.value = layered; else writes.push({ prop: 'background-image', value: layered, priority: imageRead.priority });
-    // This rule's own layer lists gain a leading entry for the sheen, so its
-    // layers keep their sizes, positions and repeats.
+    // This rule's own layer lists gain a leading entry for each glass layer, so
+    // its layers keep their sizes, positions and repeats.
     const layerCount = base === 'none' ? 0 : selectorParts(base).length;
     for (const [prop, first] of Object.entries(LAYER_LISTS)) {
       const { value, priority } = read(prop);
       if (unset(value)) continue;
-      const entries = selectorParts(value);
+      const entries = selectorParts(writableValue(prop, value));
       const full = Array.from({ length: Math.max(layerCount, entries.length) }, (_, i) => entries[i % entries.length]);
-      writes.push({ prop, value: [first, ...full].join(', '), priority });
+      writes.push({ prop, value: [...GLASS_LAYERS.map(() => first), ...full].join(', '), priority });
     }
   }
   const shadow = read('box-shadow');
@@ -224,7 +238,7 @@ function readTokens(doc) {
 
 function writeAll(style, writes) {
   for (const { prop, value, priority } of writes) {
-    edits.push({ kind: 'prop', style, prop, value: style.getPropertyValue(prop), priority: style.getPropertyPriority(prop) });
+    edits.push({ kind: 'prop', style, prop, value: writableValue(prop, style.getPropertyValue(prop)), priority: style.getPropertyPriority(prop) });
     style.setProperty(prop, value, priority || '');
   }
 }
@@ -253,7 +267,7 @@ function glassRules(rules, sheetLight, tokens) {
       for (const group of planned) {
         const index = parent.insertRule(`${group.selector}{}`, ++at);
         const copy = parent.cssRules[index];
-        for (let i = 0; i < rule.style.length; i++) { const prop = rule.style[i]; copy.style.setProperty(prop, rule.style.getPropertyValue(prop), rule.style.getPropertyPriority(prop)); }
+        for (let i = 0; i < rule.style.length; i++) { const prop = rule.style[i]; copy.style.setProperty(prop, writableValue(prop, rule.style.getPropertyValue(prop)), rule.style.getPropertyPriority(prop)); }
         for (const { prop, value, priority } of group.writes) copy.style.setProperty(prop, value, priority || '');
         inserted.push(copy);
       }
@@ -329,6 +343,27 @@ function watchPanels() {
   document.querySelectorAll(PANEL_SELECTOR).forEach(el => { if (!watched.has(el)) { watched.add(el); observer.observe(el); } });
 }
 
+// ---------- the pointer light ----------
+let spotPanel = null, spotFrame = 0, spotEvent = null;
+function clearSpot() {
+  if (!spotPanel) return;
+  spotPanel.style.removeProperty('--spot-x');
+  spotPanel.style.removeProperty('--spot-y');
+  spotPanel = null;
+}
+function paintSpot() {
+  spotFrame = 0;
+  const event = spotEvent;
+  if (!event) return;
+  const panel = event.target?.closest?.(PANEL_SELECTOR) || null;
+  if (panel !== spotPanel) clearSpot();
+  if (!panel || !sheenAllowed()) return;
+  const rect = panel.getBoundingClientRect();
+  panel.style.setProperty('--spot-x', `${Math.round(event.clientX - rect.left)}px`);
+  panel.style.setProperty('--spot-y', `${Math.round(event.clientY - rect.top)}px`);
+  spotPanel = panel;
+}
+
 function sheenAllowed() {
   const root = document.documentElement;
   if (root.dataset.glass === 'quiet' || root.dataset.motion === 'reduced') return false;
@@ -363,5 +398,16 @@ export function initGlass() {
     new MutationObserver(() => { if (!pending) pending = requestAnimationFrame(() => { pending = 0; watchPanels(); }); }).observe(document.body, { childList: true, subtree: true });
     window.addEventListener('scroll', () => { if (sheenAllowed()) schedule(); }, { passive: true, capture: true });
     window.addEventListener('resize', () => { if (sheenAllowed()) schedule(); }, { passive: true });
+  }
+
+  // The pointer light is for a mouse or trackpad: touch has no hover to follow.
+  if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
+    document.addEventListener('pointermove', event => {
+      if (event.pointerType !== 'mouse') return;
+      spotEvent = event;
+      if (!spotFrame) spotFrame = requestAnimationFrame(paintSpot);
+    }, { passive: true });
+    document.addEventListener('pointerleave', () => { spotEvent = null; clearSpot(); }, { passive: true });
+    window.addEventListener('blur', () => { spotEvent = null; clearSpot(); });
   }
 }

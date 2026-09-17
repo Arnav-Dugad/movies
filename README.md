@@ -468,9 +468,21 @@ rules **in place** through the CSSOM instead of adding a stylesheet:
 - The sheen is one extra top background layer, positioned by a `--glass-sheen`
   value that is updated only for panels on screen, at most once per frame while
   scrolling. Reduced motion and quiet glass stop it.
+- With a mouse, a panel also catches a soft **pointer light** where the cursor
+  is: one more top layer, a wide faint circle at `--spot-x`/`--spot-y`. Panels
+  whose own rule is only a tinted gradient get the sheen and the light too.
+  `--spot-x`, `--spot-y` and `--glass-sheen` are registered as non-inheriting
+  properties, so moving them restyles the panel and not everything inside it.
+- The top and bottom navigation are deeper glass (more see-through, blurred and
+  saturated), and glass and primary buttons carry a lit top edge.
+- **Undo is exact.** A rule written with the `background` shorthand reports a
+  colour-only layer as `initial` in every layer list, and a list containing
+  `initial` cannot be written back, so the browser silently ignored the undo and
+  glass layers stayed on under *Quiet and focused*. Every value glass writes or
+  restores now has those entries replaced with the property's initial value.
 - A test page-walk compares every element's background with glass on and off
   across sixteen pages in both themes. The only differences allowed are
-  transparency on surfaces, the sheen layer and the lit edge.
+  transparency on surfaces, the sheen and pointer-light layers and the lit edge.
 
 ### Moving lights
 
@@ -490,6 +502,13 @@ widths are registered CSS properties, so it eases between states. Desktop rows
 keep their arrows and no fade.
 
 ## Posters
+
+**Badges never overlap.** A poster's top-left corner can hold the streaming badge,
+a "% match" badge, your rating and the watched tick. They form one stack: each
+takes the next slot below whatever is above it, from slot heights set once per
+size. The phone home rows use smaller badges, and their own position rules had put
+the watched tick straight on top of your rating; they now set smaller slot heights
+instead. Every combination is checked on phone and desktop.
 
 **Settings → Poster controls → Hide titles under posters** removes the title,
 year and type line from every poster on the site. It is off by default and syncs
@@ -590,15 +609,27 @@ Lists saved with an emoji icon still show the matching drawn icon.
 
 ## Illustrations
 
-Empty lists, the Your Year page, the notification centre and the monthly recap use
-animated scenes drawn as inline SVG (`js/illustrations.js`): a projector with
-turning reels, a flickering beam and dust in the light; a clapperboard that snaps
-shut with a spark; a retro television with a wobbling antenna and a rolling
-picture; a popcorn bucket popping kernels; a desk calendar turning to a starred
-date; and, for Your Year, a film reel and a television held in one orbit. They
-animate only transforms and opacity in CSS, stay sharp at any size, cost no
-requests, and give every copy its own gradient ids so two on one page never
-clash. Reduced motion holds each one on a composed frame.
+Fifteen animated scenes drawn as inline SVG (`js/illustrations.js`) stand in
+wherever a page has nothing else to show:
+
+| Scene | Where |
+|---|---|
+| Admission ticket with a travelling shine | Every sign-in prompt: lists, watched, friends, watch party, profile, settings, franchises, shared lists |
+| Magnifying glass sweeping a film strip | Searches, filters and shared lists with no matches |
+| Plug and socket with a spark | Failed loads: franchises, box office, release calendar, Discover moods, shared lists |
+| Chart whose bars grow and line draws | Stats before sign-in |
+| Bell swinging with sound rings | Release reminders with nothing to show; notifications before sign-in |
+| Trophy with a glint and orbiting stars | Franchises with nothing to show |
+| Two friends and a beating heart | Friends, before the first friend |
+| Sofa, glowing screen and confetti | Watch party, before the first friend |
+| Compass hunting for north | Discover's surprise pick when none is found |
+| Popcorn, projector, retro TV, clapperboard | Empty lists, empty watched history, empty inbox, Your Year's empty cards |
+| Desk calendar, reel-and-TV orbit | The monthly recap, the Your Year hero |
+
+They animate with CSS (transforms and opacity, plus a few dashed strokes that march
+or draw), stay sharp at any size, cost no requests, and give every copy its own
+gradient ids so two on one page never clash. Reduced motion holds each one on a
+composed frame.
 
 ## Haptics
 
@@ -820,7 +851,8 @@ Anyone can be **removed** from your clubs with the × on their badge (always
 visible on touch). The next person with the most time moves up into the twelve
 shown, and the panel lists everyone removed, each with their photo, club and
 hours and their own **Restore** button (plus **Restore all** when there are
-several). The choice
+several). The list starts folded to one line, the removed people's faces and a
+count, and opens with a tap; it stays as you left it while you move around. The choice
 is saved with your preferences and syncs across devices. A removed person also
 leaves what friends see, the cast-list chips on title pages, and milestone
 toasts.
@@ -841,7 +873,20 @@ needs no request:
   guess.
 - **Year strip.** Hours per month for the last twelve months, stacked films and
   TV with a legend, each month headed by its most-watched poster. Pick a month to
-  open it in the calendar.
+  open it in the calendar. On a phone the strip opens scrolled to the month in
+  view (it used to open on the oldest month, with every month that had data
+  off-screen), and the tallest month's poster no longer rises out of the chart.
+- **Your week.** Minutes by weekday for the month, the peak day highlighted, with
+  your current streak of days with viewing (still alive on a day with nothing yet),
+  the best run that month and the best ever. Bulk marks never count.
+- **Compared and marked.** The month's watch time says how it compares with the
+  month before, its biggest day wears a star on the calendar, and the Biggest day
+  tile opens that day.
+- **Moving around.** The calendar is one tab stop: arrow keys move a day or a
+  week, Page Up and Page Down a month, and future days are skipped. On a touch
+  screen, swipe the calendar sideways to change month. **This month** jumps back.
+  The calendar slides in the direction you moved, and bars grow only when the
+  month changes, not on every day you pick.
 
 Films count each play (a rewatch is its own day). Episodes come from the
 per-episode log, read with one rule shared with the binge forecast
@@ -934,6 +979,18 @@ and `?month=8` in the address opens August. Open it from the profile menu or
 the top, and an empty year says what will fill it. The page reuses the cards' own
 summaries, so its numbers always match what you share. Adult titles never appear
 on the page, the film card or the series card.
+
+- **Totals count up** from zero the first time the panel comes into view on a
+  visit (never under reduced motion, and not again when the page rebuilds).
+- **Compared with the year before:** films, series and watch time each carry a
+  "+3 vs 2025" chip when that year has anything in it.
+- **Highlights:** the year in moments (the first and most recent watch of the
+  year, your top-rated film, the biggest series run, and the most rewatched film
+  or the fastest finish), each linking to its title, beside a bar chart of the
+  year's films by genre.
+- **Cards** play once per visit. A data refresh redraws them finished instead of
+  replaying, and a **Replay** button on each card plays it again.
+- The month bars take arrow keys, Home and End.
 
 ### Viewing patterns
 
@@ -1095,7 +1152,8 @@ shelf (`social-heatmap.test.mjs`), and the year-in-series card, shelf flip figur
 odometer numbers and first-sight badges (`year-shelf.test.mjs`), and cinema glass,
 the year-in-films card, the shared year-card pieces, scroll hints and removing
 people from Hours clubs (`glass-years.test.mjs`), and Your Year, the monthly
-recap, moving lights and the illustrations (`year-page.test.mjs`). It needs
+recap, moving lights, the illustrations, year comparisons and highlights, and the
+diary's streaks, weekdays and month totals (`year-page.test.mjs`). It needs
 nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails

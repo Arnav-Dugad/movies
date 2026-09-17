@@ -31,6 +31,7 @@ check('the subject is the last compound', glass.subjectOf('#statsContent .stats-
 check('a panel is glassed as the subject, not as an ancestor', glass.panelSelector('.stats-panel') === '.stats-panel' && glass.panelSelector('.stats-panel .stats-row') === '' && glass.panelSelector('.stats-panel-head') === '');
 check('pseudo-elements of panels are left alone', glass.panelSelector('.profile-panel::before') === '');
 check('mixed lists keep only their panel parts', glass.panelSelector('.card, .settings-panel, .row') === '.settings-panel');
+check("every layer list writes a colour-only layer as that list's initial value, so an undo is never dropped", glass.writableValue('background-size', 'cover, initial') === 'cover, auto' && glass.writableValue('background-repeat', 'no-repeat, initial') === 'no-repeat, repeat' && glass.writableValue('background-position', 'center, initial') === 'center, 0% 0%' && glass.writableValue('color', 'red, initial') === 'red, initial');
 check('a shorthand colour-only layer is written back as none', glass.writableValue('background-image', 'radial-gradient(red, blue), initial') === 'radial-gradient(red, blue), none' && glass.writableValue('background-color', 'initial') === 'initial');
 
 // glassDeclarations against a CSSOM-shaped declaration reader
@@ -38,11 +39,15 @@ const reader = map => prop => ({ value: map[prop] || '', priority: map[`!${prop}
 const panelWrites = glass.glassDeclarations(reader({ 'background-image': 'linear-gradient(145deg, rgb(20, 20, 31), rgb(12, 12, 20))', 'background-size': 'cover', 'box-shadow': '0 10px 30px rgba(0, 0, 0, 0.3)' }), 'panel', 0.4);
 const byProp = writes => Object.fromEntries((writes || []).map(write => [write.prop, write.value]));
 const panel = byProp(panelWrites);
-check('a panel surface turns translucent under a sheen layer', panel['background-image'] === `${glass.SHEEN_LAYER}, linear-gradient(145deg, rgba(20, 20, 31, 0.4), rgba(12, 12, 20, 0.4))`, panel['background-image']);
-check("the panel's own layer sizes keep lining up behind the sheen", panel['background-size'] === 'auto, cover');
+check('a panel surface turns translucent under the pointer light and sheen layers', panel['background-image'] === `${glass.SPOT_LAYER}, ${glass.SHEEN_LAYER}, linear-gradient(145deg, rgba(20, 20, 31, 0.4), rgba(12, 12, 20, 0.4))`, panel['background-image']);
+check('glass adds the pointer light above the sheen', glass.GLASS_LAYERS.length === 2 && glass.GLASS_LAYERS[0] === glass.SPOT_LAYER);
+check("the panel's own layer sizes keep lining up behind the sheen", panel['background-size'] === 'auto, auto, cover');
 check('a panel with a shadow gains the lit top edge', panel['box-shadow'] === `0 10px 30px rgba(0, 0, 0, 0.3), ${glass.EDGE}`);
 const colourOnly = byProp(glass.glassDeclarations(reader({ 'background-color': 'rgb(14, 14, 20)' }), 'panel', 0.4));
 check("a colour-only rule gets no sheen, so it never hides another rule's image", colourOnly['background-color'] === 'rgba(14, 14, 20, 0.4)' && !('background-image' in colourOnly) && !('box-shadow' in colourOnly));
+const tinted = byProp(glass.glassDeclarations(reader({ 'background-image': 'radial-gradient(circle at 88% 8%, rgba(16, 185, 129, 0.09), transparent 23%)' }), 'panel', 0.4));
+check('a tinted panel keeps its colours and still gains the sheen and pointer light', tinted['background-image'] === `${glass.GLASS_LAYERS.join(', ')}, radial-gradient(circle at 88% 8%, rgba(16, 185, 129, 0.09), transparent 23%)`, tinted['background-image']);
+check('a tinted dialog is not frosted', glass.glassDeclarations(reader({ 'background-image': 'linear-gradient(red, blue)' }), 'overlay', 0.74) === null);
 check('a rule with no surface needs nothing', glass.glassDeclarations(reader({ 'background-color': 'rgba(229, 9, 20, 0.2)' }), 'panel', 0.4) === null && glass.glassDeclarations(reader({ color: 'red' }), 'panel', 0.4) === null);
 const overlay = glass.glassDeclarations(reader({ 'background-color': 'var(--bg2)', '!background-color': true }), 'overlay', 0.74, { '--bg2': '#0c0c14' });
 check('dialogs resolve theme tokens, keep !important and are frosted', overlay[0].value === 'rgba(12, 12, 20, 0.74)' && overlay[0].priority === 'important' && overlay.some(write => write.prop === 'backdrop-filter' && write.value.includes('blur')), JSON.stringify(overlay));

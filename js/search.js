@@ -8,6 +8,7 @@ import { icon } from './icons.js';
 import { IMG, PH, genreMap, mGenreList, tGenreList, moods } from './config.js';
 import { state } from './state.js';
 import { esc, debounce, $ } from './ui.js';
+import { illustration } from './illustrations.js';
 import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { prefs, adultFlag } from './prefs.js';
@@ -477,7 +478,7 @@ function showError() {
 }
 function showEmpty(q) {
   const e = $('searchEmpty');
-  e.innerHTML = `<div class="search-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><h3>No matches for “${esc(q)}”</h3><p>Explore something else instead</p><div id="emptyVibe"></div></div>`;
+  e.innerHTML = `<div class="search-state">${illustration('search', { cls: 'empty-art' })}<h3>No matches for “${esc(q)}”</h3><p>Explore something else instead</p><div id="emptyVibe"></div></div>`;
   e.style.display = 'block';
   renderVibeChips($('emptyVibe'), '');
 }

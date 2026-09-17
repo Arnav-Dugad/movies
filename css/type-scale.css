@@ -231,6 +231,24 @@
   #statsContent .diary-cell > b { font-size: 0.805rem; }
 }
 
+#statsContent .diary-switch .diary-today { font-size: 0.848rem; }
+#statsContent .diary-tile-link span { font-size: 0.822rem; }
+#statsContent .diary-tile-link strong { font-size: 1.05rem; }
+#statsContent .diary-tile-link small { font-size: 0.822rem; }
+#statsContent .diary-change { font-size: 0.805rem; }
+#statsContent .diary-week-head p { font-size: 0.865rem; }
+#statsContent .diary-week-bars small { font-size: 0.813rem; }
+#statsContent .diary-streaks span { font-size: 0.805rem; }
+#statsContent .diary-streaks strong { font-size: 1.05rem; }
+#statsContent .diary-streaks strong small { font-size: 0.813rem; }
+
+@media (max-width: 700px) {
+  #statsContent .diary-tv-tiles span { font-size: 0.779rem; }
+  #statsContent .diary-tv-tiles strong { font-size: .95rem; }
+  #statsContent .diary-month > b { font-size: 0.771rem; }
+  #statsContent .diary-streaks strong { font-size: .95rem; }
+}
+
 #statsContent .tv-pacing { font-size: .95rem; }
 #statsContent .challenge-name .challenge-icon { font-size: 1.1em; }
 #statsContent .completion-roles button { font-size: 0.831rem; }

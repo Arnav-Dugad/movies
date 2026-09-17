@@ -5,6 +5,7 @@ import { tmdb } from './api.js';
 import { icon } from './icons.js';
 import { IMG, PH } from './config.js';
 import { $, esc, debounce, toast } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
 
@@ -208,7 +209,7 @@ function paintReleaseTimeline() {
   const events = visibleEvents();
   if (summary) summary.innerHTML = `<strong>${events.length}</strong> upcoming event${events.length === 1 ? '' : 's'}<span>English + Hindi · Times shown in ${esc(localTimeZone())} · ${savedKeys.size} saved</span>`;
   if (!events.length) {
-    content.innerHTML = `<div class="release-empty"><div>${icon('sparkles')}</div><h3>Nothing matches yet</h3><p>Try another filter, a wider date range, or adjust your preferences.</p><button class="btn-glass" data-action="toggle-release-preferences">Open preferences</button></div>`;
+    content.innerHTML = `<div class="release-empty">${illustration('bell', { cls: 'empty-art' })}<h3>Nothing matches yet</h3><p>Try another filter, a wider date range, or adjust your preferences.</p><button class="btn-glass" data-action="toggle-release-preferences">Open preferences</button></div>`;
     startReleaseCountdowns();
     return;
   }
@@ -245,7 +246,7 @@ export async function renderReleaseReminders(force = false) {
     allEvents = result; loadedRange = releaseRange; paintReleaseTimeline();
   } catch (error) {
     console.error('release reminders', error);
-    content.innerHTML = `<div class="release-empty"><div>!</div><h3>Couldn’t load the calendar</h3><p>Please try again in a moment.</p><button class="btn-primary" data-action="retry-releases">Try again</button></div>`;
+    content.innerHTML = `<div class="release-empty">${illustration('unplugged', { cls: 'empty-art' })}<h3>Couldn’t load the calendar</h3><p>Please try again in a moment.</p><button class="btn-primary" data-action="retry-releases">Try again</button></div>`;
   }
 }
 

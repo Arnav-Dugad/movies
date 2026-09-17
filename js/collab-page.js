@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { cardArt } from './cards.js';
 import { listIcon } from './icons.js';
 import { esc, toast, $ } from './ui.js';
+import { illustration } from './illustrations.js';
 import { IMG, PH } from './config.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
@@ -23,8 +24,8 @@ let openId = null;           // the list this page is showing, for the auth re-r
 
 const shell = html => { const host = $('collabContent'); if (host) host.innerHTML = html; };
 
-const notice = (title, body, action = '') => `<div class="collab-notice">
-  <h1>${esc(title)}</h1><p>${esc(body)}</p>${action}</div>`;
+const notice = (title, body, action = '', scene = 'ticket') => `<div class="collab-notice">
+  ${illustration(scene, { cls: 'empty-art' })}<h1>${esc(title)}</h1><p>${esc(body)}</p>${action}</div>`;
 
 function itemHTML(item, canEdit) {
   const poster = item.poster ? `${IMG}w342${item.poster}` : PH;
@@ -112,7 +113,7 @@ export async function openCollabPage(id) {
     if (!list) {
       shell(notice('This list is gone',
         'The link may be old, or whoever made the list deleted it.',
-        '<button class="btn-primary" data-action="back">Back</button>'));
+        '<button class="btn-primary" data-action="back">Back</button>', 'search'));
       return;
     }
     current = list;
@@ -123,7 +124,7 @@ export async function openCollabPage(id) {
     if (gen !== reqGen) return;
     console.error('openCollabPage', error);
     shell(notice('Could not open this list', 'Something went wrong reaching it. Try again in a moment.',
-      '<button class="btn-primary" data-action="back">Back</button>'));
+      '<button class="btn-primary" data-action="back">Back</button>', 'unplugged'));
   }
 }
 

@@ -6,6 +6,7 @@ import { genreMap, mGenreList, tGenreList, IMG, PH, regionLabel } from './config
 import { icon } from './icons.js';
 import { state } from './state.js';
 import { $, esc, debounce, toast } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { observeCountUps, observeReveals } from './effects.js';
 import { buildCtx, badgesHTML, challengesHTML, animateBadgeBars, BADGES } from './badges.js';
@@ -976,7 +977,7 @@ function animateStats(scope, stats) {
 export function renderStats() {
   const container = $('statsContent'); if (!container) return;
   if (!state.user) {
-    container.innerHTML = `<section class="stats-guest"><div>${ICONS.compass}</div><span>CineVerse Intelligence</span><h1>Your cinematic universe starts here.</h1><p>Sign in to turn every watch, rating, and saved title into a living Cineprint.</p><button class="btn-primary" data-action="open-auth">Sign In</button></section>`;
+    container.innerHTML = `<section class="stats-guest">${illustration('stats', { cls: 'empty-art' })}<span>CineVerse Intelligence</span><h1>Your cinematic universe starts here.</h1><p>Sign in to turn every watch, rating, and saved title into a living Cineprint.</p><button class="btn-primary" data-action="open-auth">Sign In</button></section>`;
     return;
   }
 

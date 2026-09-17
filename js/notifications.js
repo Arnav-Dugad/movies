@@ -517,7 +517,7 @@ export function closeNotificationDropdown() {
 function paintDropdown() {
   const host = $('notificationDropdown'); if (!host) return;
   if (!state.user) {
-    host.innerHTML = `<div class="notification-drop-head"><span>Premiere desk</span><strong>Notifications</strong></div><div class="notification-drop-empty"><i>${icon('sparkles')}</i><p>Sign in for episode times, releases, streaming arrivals, and departure warnings.</p><button data-action="open-auth">Sign in</button></div>`;
+    host.innerHTML = `<div class="notification-drop-head"><span>Premiere desk</span><strong>Notifications</strong></div><div class="notification-drop-empty"><span class="drop-empty-art">${illustration('bell')}</span><p>Sign in for episode times, releases, streaming arrivals, and departure warnings.</p><button data-action="open-auth">Sign in</button></div>`;
     return;
   }
   const allowed = events.filter(eventVisible);
@@ -636,7 +636,7 @@ function renderInbox() {
   const host = $('notificationsContent'); if (!host) return;
   if (!state.user) {
     stopNotificationCountdowns();
-    host.innerHTML = `<div class="notification-auth"><i>${icon('sparkles')}</i><h2>Your personal premiere desk</h2><p>Sign in to see episode drops, saved releases, subscription-streaming arrivals, and departure warnings.</p><button class="btn-primary" data-action="open-auth">Sign in</button></div>`;
+    host.innerHTML = `<div class="notification-auth"><span class="notification-empty-art">${illustration('bell')}</span><h2>Your personal premiere desk</h2><p>Sign in to see episode drops, saved releases, subscription-streaming arrivals, and departure warnings.</p><button class="btn-primary" data-action="open-auth">Sign in</button></div>`;
     return;
   }
   const allowed = events.filter(eventVisible), list = visibleEvents(), unreadCount = allowed.filter(unread).length;

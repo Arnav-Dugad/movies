@@ -10,7 +10,12 @@
 //   - TV THIS MONTH: episodes, TV time, shows and binge days for the month in
 //     view, with every show you watched ranked by time and the episode span;
 //   - a YEAR STRIP of hours per month, split into films and TV, each month
-//     headed by its most-watched poster; picking a month opens it in the calendar.
+//     headed by its most-watched poster; picking a month opens it in the calendar;
+//   - YOUR WEEK: minutes by weekday for the month in view, with your streaks.
+//
+// The month in view compares itself with the month before, marks its biggest
+// day, and can be moved through by keyboard (arrow keys move a day or a week,
+// Page Up and Page Down a month) or by swiping the calendar on a touch screen.
 //
 // What counts as viewing. Films come from each play of a watched film (a rewatch
 // is its own day). Episodes come from the per-episode log, read through
@@ -22,6 +27,7 @@
 // Minutes use the title's reported runtime; a title without one still counts as
 // an item and adds no invented time.
 import { IMG, PH } from './config.js';
+import { icon } from './icons.js';
 import { state } from './state.js';
 import { $, esc } from './ui.js';
 import { registerActions } from './events.js';
@@ -179,10 +185,62 @@ export const formatMinutes = minutes => {
   return hours ? `${hours}h${rest ? ` ${rest}m` : ''}` : `${rest}m`;
 };
 
+const noonOf = key => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d, 12); };
+const shiftDay = (key, by) => { const date = noonOf(key); date.setDate(date.getDate() + by); return dayKey(date.getTime()); };
+
+/** Pure: the longest run of consecutive day keys (sorted or not). */
+export function longestRun(keys) {
+  const sorted = [...new Set(keys)].sort();
+  let longest = 0, run = 0, previous = '';
+  for (const key of sorted) {
+    run = previous && shiftDay(previous, 1) === key ? run + 1 : 1;
+    longest = Math.max(longest, run);
+    previous = key;
+  }
+  return longest;
+}
+
+/**
+ * Pure: streaks of days with viewing (bulk marks do not count).
+ * current: the run ending today, or ending yesterday while today is still empty.
+ */
+export function diaryStreaks(days, now = Date.now(), monthValue = '') {
+  const active = [...days.values()].filter(day => day.items).map(day => day.key);
+  const set = new Set(active);
+  const today = dayKey(now);
+  let cursor = set.has(today) ? today : shiftDay(today, -1);
+  let current = 0;
+  while (set.has(cursor)) { current++; cursor = shiftDay(cursor, -1); }
+  return { current, longest: longestRun(active), month: monthValue ? longestRun(active.filter(key => key.startsWith(monthValue))) : 0 };
+}
+
+/** Pure: minutes and items by weekday (Monday first) for one month. */
+export function diaryWeekdays(days, monthValue) {
+  const out = Array.from({ length: 7 }, (_, index) => ({ index, minutes: 0, items: 0, days: 0 }));
+  for (const day of days.values()) {
+    if (!day.key.startsWith(monthValue) || !day.items) continue;
+    const slot = out[(noonOf(day.key).getDay() + 6) % 7];
+    slot.minutes += day.minutes; slot.items += day.items; slot.days++;
+  }
+  return out;
+}
+
+/** Pure: a month's totals (`YYYY-MM`). */
+export function monthTotals(days, monthValue) {
+  const totals = { minutes: 0, tv: 0, film: 0, items: 0, active: 0, busiest: null };
+  for (const day of days.values()) {
+    if (!day.key.startsWith(monthValue)) continue;
+    totals.minutes += day.minutes; totals.tv += day.tvMinutes || 0; totals.film += day.filmMinutes || 0;
+    totals.items += day.items; totals.active += day.items ? 1 : 0;
+    if (day.minutes > (totals.busiest?.minutes || 0)) totals.busiest = day;
+  }
+  return totals;
+}
+
 const topTitles = titles => [...titles.values()].sort((a, b) => b.minutes - a.minutes || b.count - a.count);
 
 // ---------- view state ----------
-const view = { month: '', day: '' };
+const view = { month: '', day: '', slide: '' };
 
 function model() {
   const events = diaryEvents({ watched: state.watched, episodeProgress: state.episodeProgress });
@@ -208,6 +266,7 @@ function calendarHTML(days, monthValue, selected) {
   const today = dayKey(Date.now());
   const inMonth = [...days.values()].filter(day => day.key.startsWith(monthValue));
   const max = Math.max(0, ...inMonth.map(day => day.minutes));
+  const best = max ? inMonth.find(day => day.minutes === max)?.key : '';
   const cells = [];
   for (let i = 0; i < lead; i++) cells.push('<span class="diary-cell pad" aria-hidden="true"></span>');
   for (let date = 1; date <= count; date++) {
@@ -222,12 +281,12 @@ function calendarHTML(days, monthValue, selected) {
     const summary = day && (day.items || day.marked)
       ? `${day.items ? `${day.items} watched, ${formatMinutes(day.minutes)}` : ''}${day.items && day.marked ? '; ' : ''}${day.marked ? `${day.marked} marked in bulk` : ''}${titles.length ? ` — ${titles.slice(0, 3).map(title => title.title).join(', ')}` : ''}`
       : 'nothing watched';
-    cells.push(`<button class="diary-cell s${step}${key === today ? ' today' : ''}${key === selected ? ' selected' : ''}${future ? ' future' : ''}${day?.marked && !day.items ? ' marked-only' : ''}" data-action="diary-day" data-day="${key}" aria-pressed="${key === selected}" aria-label="${esc(`${dateLabel}: ${summary}`)}"${future ? ' disabled' : ''} data-tip="${esc(day?.items ? `${formatMinutes(day.minutes)} · ${titles.slice(0, 2).map(title => title.title).join(', ')}` : dateLabel)}">
-      <b>${date}</b>${fan ? `<span class="diary-fan">${fan}${extra}</span>` : ''}${day?.items ? `<small>${formatMinutes(day.minutes)}</small>` : ''}
+    cells.push(`<button class="diary-cell s${step}${key === today ? ' today' : ''}${key === selected ? ' selected' : ''}${future ? ' future' : ''}${key === best ? ' best' : ''}${day?.marked && !day.items ? ' marked-only' : ''}" data-action="diary-day" data-day="${key}" aria-pressed="${key === selected}" tabindex="${key === selected ? 0 : -1}" aria-label="${esc(`${dateLabel}: ${summary}${key === best ? ', your biggest day this month' : ''}`)}"${future ? ' disabled' : ''} data-tip="${esc(day?.items ? `${formatMinutes(day.minutes)} · ${titles.slice(0, 2).map(title => title.title).join(', ')}` : dateLabel)}" style="--d:${date}">
+      <b>${date}${key === best ? `<i class="diary-best" aria-hidden="true">${icon('starSolid')}</i>` : ''}</b>${fan ? `<span class="diary-fan">${fan}${extra}</span>` : ''}${day?.items ? `<small>${formatMinutes(day.minutes)}</small>` : ''}
     </button>`);
   }
   return `<div class="diary-weekdays" aria-hidden="true">${WEEKDAYS.map(name => `<span>${esc(name)}</span>`).join('')}</div>
-    <div class="diary-grid" role="group" aria-label="${esc(first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }))}">${cells.join('')}</div>
+    <div class="diary-grid${view.slide ? ` slide-${view.slide}` : ''}" role="group" aria-label="${esc(`${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}. Arrow keys move between days, Page Up and Page Down between months.`)}">${cells.join('')}</div>
     <div class="diary-legend" aria-hidden="true"><span>Less</span>${[0, 1, 2, 3, 4].map(step => `<i class="s${step}"></i>`).join('')}<span>More</span><small>shaded by minutes watched</small></div>`;
 }
 
@@ -293,6 +352,31 @@ function yearHTML(days, monthValue) {
     <div class="diary-year-legend" aria-hidden="true"><span><i class="film"></i>Films</span><span><i class="tv"></i>TV</span></div>`;
 }
 
+const WEEKDAY_LONG = [1, 2, 3, 4, 5, 6, 0].map(index => new Date(2024, 0, 7 + index).toLocaleDateString(undefined, { weekday: 'long' }));
+
+function weekHTML(days, monthValue, monthName) {
+  const week = diaryWeekdays(days, monthValue);
+  const streaks = diaryStreaks(days, Date.now(), monthValue);
+  const byMinutes = week.some(slot => slot.minutes);
+  const value = slot => (byMinutes ? slot.minutes : slot.items);
+  const top = Math.max(0, ...week.map(value));
+  const peak = top ? week.find(slot => value(slot) === top) : null;
+  const bars = week.map(slot => {
+    const share = top ? Math.max(value(slot) ? 6 : 0, Math.round(value(slot) / top * 100)) : 0;
+    const label = `${WEEKDAY_LONG[slot.index]}s: ${byMinutes ? formatMinutes(slot.minutes) : `${slot.items} watched`}`;
+    return `<li class="${peak === slot ? 'peak' : ''}" aria-label="${esc(label)}" style="--i:${slot.index}"><span class="diary-week-bar"><i style="--h:${share}%"></i></span><small>${esc(WEEKDAYS[slot.index].slice(0, 2))}</small></li>`;
+  }).join('');
+  return `<div class="diary-week">
+    <div class="diary-week-head"><span class="diary-kicker">Your week</span><p>${peak ? `Most on <b>${esc(WEEKDAY_LONG[peak.index])}s</b> in ${esc(monthName.split(' ')[0])}` : `Nothing watched in ${esc(monthName)} yet`}</p></div>
+    <ol class="diary-week-bars" aria-label="${esc(`Viewing by weekday in ${monthName}`)}">${bars}</ol>
+    <div class="diary-streaks">
+      <div class="${streaks.current ? 'live' : ''}"><span>Streak</span><strong>${streaks.current}<small> day${streaks.current === 1 ? '' : 's'}</small></strong></div>
+      <div><span>Month best</span><strong>${streaks.month}<small> day${streaks.month === 1 ? '' : 's'}</small></strong></div>
+      <div><span>Best ever</span><strong>${streaks.longest}<small> day${streaks.longest === 1 ? '' : 's'}</small></strong></div>
+    </div>
+  </div>`;
+}
+
 function tvHTML(days, monthValue, monthName) {
   const tv = diaryMonthTV(days, monthValue);
   const note = tv.marked ? `<small>${tv.marked} more marked in bulk, not counted</small>` : '';
@@ -339,40 +423,81 @@ function bodyHTML() {
   }
   const [year, month] = view.month.split('-').map(Number);
   const monthName = new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  const monthDays = [...days.values()].filter(day => day.key.startsWith(view.month));
-  const totals = monthDays.reduce((sum, day) => ({ minutes: sum.minutes + day.minutes, tv: sum.tv + (day.tvMinutes || 0), film: sum.film + (day.filmMinutes || 0), items: sum.items + day.items, active: sum.active + (day.items ? 1 : 0) }), { minutes: 0, tv: 0, film: 0, items: 0, active: 0 });
-  const busiest = monthDays.reduce((best, day) => (day.minutes > (best?.minutes || 0) ? day : best), null);
+  const totals = monthTotals(days, view.month);
+  const previousKey = shiftMonth(view.month, -1);
+  const previous = monthTotals(days, previousKey);
+  const previousName = new Date(`${previousKey}-15T12:00:00`).toLocaleDateString(undefined, { month: 'short' });
+  const busiest = totals.busiest;
+  const diff = totals.minutes - previous.minutes;
+  const change = previous.minutes || totals.minutes
+    ? `<em class="diary-change ${diff > 0 ? 'up' : diff < 0 ? 'down' : 'same'}">${diff ? `${diff > 0 ? '+' : '−'}${formatMinutes(Math.abs(diff))}` : 'Same'} vs ${esc(previousName)}</em>`
+    : '';
   return `<div class="diary-top">
       <div class="diary-switch">
-        <button data-action="diary-month" data-dir="-1" aria-label="Previous month">‹</button>
-        <h3>${esc(monthName)}</h3>
-        <button data-action="diary-month" data-dir="1" aria-label="Next month"${view.month >= current ? ' disabled' : ''}>›</button>
+        <button data-action="diary-month" data-dir="-1" aria-label="Previous month">${icon('chevronRight', { cls: 'flip' })}</button>
+        <h3 aria-live="polite">${esc(monthName)}</h3>
+        <button data-action="diary-month" data-dir="1" aria-label="Next month"${view.month >= current ? ' disabled' : ''}>${icon('chevronRight')}</button>
+        ${view.month !== current ? '<button class="diary-today" data-action="diary-today">This month</button>' : ''}
       </div>
       <div class="diary-tiles">
-        <div><span>Watched</span><strong>${formatMinutes(totals.minutes)}</strong>${totals.minutes ? `<small>${formatMinutes(totals.tv)} TV · ${formatMinutes(totals.film)} films</small>` : ''}</div>
+        <div><span>Watched</span><strong>${formatMinutes(totals.minutes)}</strong>${totals.minutes ? `<small>${formatMinutes(totals.tv)} TV · ${formatMinutes(totals.film)} films</small>` : ''}${change}</div>
         <div><span>Titles &amp; episodes</span><strong>${totals.items}</strong></div>
         <div><span>Days with viewing</span><strong>${totals.active}</strong></div>
-        <div><span>Biggest day</span><strong>${busiest?.minutes ? esc(new Date(`${busiest.key}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })) : '—'}</strong></div>
+        ${busiest?.minutes
+          ? `<button class="diary-tile-link" data-action="diary-day" data-day="${busiest.key}" aria-label="${esc(`Biggest day: ${new Date(`${busiest.key}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}, ${formatMinutes(busiest.minutes)}. Open it.`)}"><span>Biggest day</span><strong>${esc(new Date(`${busiest.key}T12:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }))}</strong><small>${formatMinutes(busiest.minutes)}</small></button>`
+          : '<div><span>Biggest day</span><strong>—</strong></div>'}
       </div>
     </div>
     <div class="diary-layout">
       <div class="diary-calendar">${calendarHTML(days, view.month, view.day)}</div>
-      ${reelHTML(days.get(view.day), view.day)}
+      <div class="diary-side">
+        ${reelHTML(days.get(view.day), view.day)}
+        ${weekHTML(days, view.month, monthName)}
+      </div>
     </div>
     ${tvHTML(days, view.month, monthName)}
     <div class="diary-year-wrap"><span class="diary-kicker">Last 12 months</span>${yearHTML(days, view.month)}</div>`;
 }
 
+// The 12-month strip scrolls sideways on a phone: keep the month in view on screen.
+function settle() {
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.diary-year').forEach(strip => {
+      const active = strip.querySelector('.diary-month.active');
+      if (!active || strip.scrollWidth <= strip.clientWidth + 1) return;
+      strip.scrollLeft = Math.max(0, active.offsetLeft - strip.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2);
+    });
+  });
+}
+
 export function diaryPanel() {
+  settle();
   return `<section class="stats-panel watch-diary">
     <div class="stats-section-head"><div><span>Daily &amp; monthly</span><h2>Watch Diary</h2><p>Every film and episode on the day you watched it, with a month of TV at a glance. Days are shaded by minutes watched; whole seasons marked at once are listed, never counted as viewing.</p></div></div>
-    <div id="diaryRoot">${bodyHTML()}</div>
+    <div id="diaryRoot" class="animate">${bodyHTML()}</div>
   </section>`;
 }
 
-function repaint() {
+// Bars grow and the calendar slides only when the month changes, not on every day picked.
+function repaint(focusDay = false, animate = false) {
   const root = $('diaryRoot');
-  if (root) root.innerHTML = bodyHTML();
+  if (!root) return;
+  root.classList.toggle('animate', animate);
+  root.innerHTML = bodyHTML();
+  view.slide = '';
+  settle();
+  if (focusDay) root.querySelector(`.diary-cell[data-day="${view.day}"]`)?.focus({ preventScroll: true });
+}
+
+function goMonth(next, { day = '', focusDay = false } = {}) {
+  const current = monthKey(Date.now());
+  if (!next || next > current) return false;
+  const from = view.month || current;
+  if (next !== from) view.slide = next > from ? 'next' : 'prev';
+  const changed = next !== from;
+  view.month = next; view.day = day;
+  repaint(focusDay, changed);
+  return true;
 }
 
 const shiftMonth = (value, by) => {
@@ -383,14 +508,51 @@ const shiftMonth = (value, by) => {
 
 export function initDiary() {
   registerActions({
-    'diary-day': el => { view.day = el.dataset.day; repaint(); document.querySelector(`.diary-cell[data-day="${view.day}"]`)?.focus({ preventScroll: true }); },
-    'diary-month': el => {
-      const next = shiftMonth(view.month || monthKey(Date.now()), +el.dataset.dir || 0);
-      if (next > monthKey(Date.now())) return;
-      view.month = next; view.day = '';
-      repaint();
+    'diary-day': el => {
+      const key = el.dataset.day;
+      if (!key) return;
+      if (!key.startsWith(view.month)) { goMonth(key.slice(0, 7), { day: key, focusDay: true }); return; }
+      view.day = key; repaint(true);
     },
-    'diary-month-pick': el => { view.month = el.dataset.month; view.day = ''; repaint(); },
+    'diary-month': el => goMonth(shiftMonth(view.month || monthKey(Date.now()), +el.dataset.dir || 0)),
+    'diary-month-pick': el => goMonth(el.dataset.month),
+    'diary-today': () => goMonth(monthKey(Date.now()), { day: dayKey(Date.now()) }),
   });
+
+  // Keyboard: the calendar is one tab stop; arrows move a day or a week,
+  // Page Up / Page Down a month. Future days are skipped over.
+  document.addEventListener('keydown', event => {
+    const cell = event.target.closest?.('.diary-cell[data-day]');
+    if (!cell) return;
+    const steps = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    let key = '';
+    if (steps[event.key]) key = shiftDay(cell.dataset.day, steps[event.key]);
+    else if (event.key === 'PageUp' || event.key === 'PageDown') {
+      const month = shiftMonth(cell.dataset.day.slice(0, 7), event.key === 'PageUp' ? -1 : 1);
+      const [y, m] = month.split('-').map(Number);
+      const last = new Date(y, m, 0).getDate();
+      key = `${month}-${pad(Math.min(+cell.dataset.day.slice(8), last))}`;
+    } else return;
+    event.preventDefault();
+    const today = dayKey(Date.now());
+    if (key > today) key = today;
+    if (key === cell.dataset.day) return;
+    if (key.startsWith(view.month)) { view.day = key; repaint(true); } else goMonth(key.slice(0, 7), { day: key, focusDay: true });
+  });
+
+  // Touch: swipe the calendar sideways to change month.
+  let swipe = null;
+  document.addEventListener('pointerdown', event => {
+    if (event.pointerType !== 'touch' || !event.target.closest?.('.diary-calendar')) { swipe = null; return; }
+    swipe = { x: event.clientX, y: event.clientY, at: performance.now() };
+  }, { passive: true });
+  document.addEventListener('pointerup', event => {
+    if (!swipe || event.pointerType !== 'touch') return;
+    const dx = event.clientX - swipe.x, dy = event.clientY - swipe.y, quick = performance.now() - swipe.at < 700;
+    swipe = null;
+    if (!quick || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+    goMonth(shiftMonth(view.month || monthKey(Date.now()), dx < 0 ? 1 : -1));
+  }, { passive: true });
+  document.addEventListener('pointercancel', () => { swipe = null; }, { passive: true });
   document.addEventListener('cv:auth', () => { view.month = ''; view.day = ''; });
 }

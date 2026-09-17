@@ -1,8 +1,9 @@
 // ===== ANIMATED ILLUSTRATIONS =====
-// Hand-built SVG scenes for the moments a page has nothing else to show: empty
-// lists, the Your Year hero and the monthly recap. Each is a single inline SVG
-// animated only with CSS transforms and opacity (css/refinements.css, "Animated
-// illustrations"), so it stays on the compositor, scales to any size without
+// Hand-built SVG scenes for the moments a page has nothing else to show: sign-in
+// prompts, empty lists, searches with no matches, failed loads, the Your Year
+// hero and the monthly recap. Each is a single inline SVG animated with CSS
+// (css/refinements.css, "Animated illustrations"): transforms and opacity, plus
+// a few dashed strokes that march or draw. It scales to any size without
 // blurring and costs no requests.
 //
 // Every scene is decorative by default (aria-hidden); pass `label` when the
@@ -188,6 +189,206 @@ const SCENES = {
       <path class="t1" d="M36 30 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
       <path class="t2" d="M204 26 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/>
       <path class="t3" d="M120 150 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z"/>
+    </g>`,
+  // An admission ticket floating on a tilt, a light sweeping across it.
+  ticket: id => `
+    <defs>
+      <linearGradient id="${id}-paper" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ff3b47"/><stop offset=".55" stop-color="#c8102e"/><stop offset="1" stop-color="#6d28d9"/>
+      </linearGradient>
+      <linearGradient id="${id}-shine" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+      </linearGradient>
+      <clipPath id="${id}-clip"><path d="M62 50 H178 a12 12 0 0 1 12 12 V78 a12 12 0 0 0 0 24 V118 a12 12 0 0 1 -12 12 H62 a12 12 0 0 1 -12 -12 V102 a12 12 0 0 0 0 -24 V62 a12 12 0 0 1 12 -12 Z"/></clipPath>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="160" rx="66" ry="7"/>
+    <g class="art-float a">
+      <g transform="rotate(-8 120 90)">
+        <path d="M62 50 H178 a12 12 0 0 1 12 12 V78 a12 12 0 0 0 0 24 V118 a12 12 0 0 1 -12 12 H62 a12 12 0 0 1 -12 -12 V102 a12 12 0 0 0 0 -24 V62 a12 12 0 0 1 12 -12 Z" fill="url(#${id}-paper)"/>
+        <rect x="58" y="58" width="124" height="64" rx="8" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1.5" stroke-dasharray="2 4"/>
+        <path d="M150 56 V124" stroke="rgba(255,255,255,.55)" stroke-width="2" stroke-dasharray="3 5"/>
+        <text x="102" y="87" text-anchor="middle" font-size="15" font-weight="800" letter-spacing="3" fill="#fff" font-family="system-ui, sans-serif">ADMIT</text>
+        <text x="102" y="106" text-anchor="middle" font-size="15" font-weight="800" letter-spacing="3" fill="#fff" font-family="system-ui, sans-serif">ONE</text>
+        <path class="art-star-spin" d="M170 80 l2.6 5.4 5.9 .9 -4.3 4.1 1 5.9 -5.2 -2.8 -5.2 2.8 1 -5.9 -4.3 -4.1 5.9 -.9z" fill="#fde68a" style="transform-origin:170px 89px"/>
+        <g clip-path="url(#${id}-clip)"><g class="art-shine"><rect x="-10" y="30" width="46" height="120" fill="url(#${id}-shine)" transform="skewX(-18)"/></g></g>
+      </g>
+    </g>
+    <g class="art-twinkle" fill="#fde68a">
+      <path class="t1" d="M40 40 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
+      <path class="t2" d="M206 34 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/>
+      <path class="t3" d="M212 140 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z"/>
+    </g>`,
+
+  // A magnifying glass sweeping along a strip of film, a question drifting above.
+  search: id => `
+    <defs>
+      <linearGradient id="${id}-rim" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#e5e7eb"/><stop offset=".5" stop-color="#9ca3af"/><stop offset="1" stop-color="#4b5563"/>
+      </linearGradient>
+      <radialGradient id="${id}-lens" cx=".35" cy=".3" r=".75">
+        <stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset=".6" stop-color="#7dd3fc" stop-opacity=".12"/><stop offset="1" stop-color="#0ea5e9" stop-opacity=".2"/>
+      </radialGradient>
+      <linearGradient id="${id}-frame" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#7c3aed"/><stop offset="1" stop-color="#e50914"/>
+      </linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="166" rx="84" ry="6"/>
+    <g class="art-drift">
+      <rect x="10" y="104" width="220" height="44" rx="6" fill="#15151f" stroke="var(--art-edge)" stroke-width="2"/>
+      ${Array.from({ length: 11 }, (_, i) => `<rect x="${16 + i * 20}" y="108" width="9" height="5" rx="1.5" fill="#2e2e3d"/><rect x="${16 + i * 20}" y="139" width="9" height="5" rx="1.5" fill="#2e2e3d"/>`).join('')}
+      ${[0, 1, 2, 3, 4].map(i => `<rect x="${18 + i * 42}" y="116" width="36" height="20" rx="3" fill="url(#${id}-frame)" opacity="${0.35 + i * 0.12}"/>`).join('')}
+    </g>
+    <g class="art-sweep">
+      <path d="M118 96 L146 124" stroke="#374151" stroke-width="12" stroke-linecap="round"/>
+      <path d="M121 99 L143 121" stroke="#6b7280" stroke-width="5" stroke-linecap="round"/>
+      <circle cx="96" cy="74" r="30" fill="url(#${id}-lens)" stroke="url(#${id}-rim)" stroke-width="8"/>
+      <path d="M80 62 a20 20 0 0 1 16 -8" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <text class="art-question" x="176" y="58" text-anchor="middle" font-size="34" font-weight="800" fill="#fbbf24" font-family="system-ui, sans-serif">?</text>`,
+
+  // Two friends side by side, a heart pulsing on the line that joins them.
+  friends: id => `
+    <defs>
+      <linearGradient id="${id}-a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f43f5e"/><stop offset="1" stop-color="#be123c"/></linearGradient>
+      <linearGradient id="${id}-b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#6d28d9"/></linearGradient>
+      <linearGradient id="${id}-link" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f43f5e"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="164" rx="86" ry="7"/>
+    <path class="art-link" d="M76 92 C 100 60, 140 60, 164 92" fill="none" stroke="url(#${id}-link)" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 8"/>
+    <g class="art-float a">
+      <circle cx="68" cy="84" r="20" fill="url(#${id}-a)"/>
+      <path d="M36 150 a32 32 0 0 1 64 0 z" fill="url(#${id}-a)" opacity=".9"/>
+      <circle cx="61" cy="82" r="2.4" fill="#fff"/><circle cx="75" cy="82" r="2.4" fill="#fff"/>
+      <path d="M61 91 q7 6 14 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+    <g class="art-float b">
+      <circle cx="172" cy="84" r="20" fill="url(#${id}-b)"/>
+      <path d="M140 150 a32 32 0 0 1 64 0 z" fill="url(#${id}-b)" opacity=".9"/>
+      <circle cx="165" cy="82" r="2.4" fill="#fff"/><circle cx="179" cy="82" r="2.4" fill="#fff"/>
+      <path d="M165 91 q7 6 14 0" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+    <g class="art-heart" style="transform-origin:120px 62px">
+      <path d="M120 74 C 104 62, 106 46, 116 46 C 119 46, 120 49, 120 49 C 120 49, 121 46, 124 46 C 134 46, 136 62, 120 74 Z" fill="#fb7185"/>
+      <path d="M113 52 q2 -2 5 -1" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <g class="art-twinkle" fill="#fde68a">
+      <path class="t1" d="M30 40 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
+      <path class="t2" d="M210 38 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
+    </g>`,
+
+  // A sofa facing a glowing screen, confetti drifting down.
+  party: id => `
+    <defs>
+      <linearGradient id="${id}-screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0ea5e9"/><stop offset=".5" stop-color="#7c3aed"/><stop offset="1" stop-color="#e50914"/></linearGradient>
+      <linearGradient id="${id}-sofa" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#be123c"/><stop offset="1" stop-color="#7f1d1d"/></linearGradient>
+      <radialGradient id="${id}-glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#a78bfa" stop-opacity=".5"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></radialGradient>
+    </defs>
+    <ellipse class="art-glow" cx="120" cy="58" rx="100" ry="50" fill="url(#${id}-glow)"/>
+    <rect x="62" y="20" width="116" height="70" rx="10" fill="#0b0b12" stroke="var(--art-edge)" stroke-width="2"/>
+    <rect class="art-hue" x="70" y="28" width="100" height="54" rx="6" fill="url(#${id}-screen)"/>
+    <path class="art-play" d="M112 44 L132 55 L112 66 Z" fill="#fff" style="transform-origin:120px 55px"/>
+    <ellipse class="art-shadow" cx="120" cy="166" rx="92" ry="6"/>
+    <path d="M40 128 q0 -18 18 -18 h124 q18 0 18 18 v22 h-160 z" fill="url(#${id}-sofa)"/>
+    <rect x="30" y="118" width="22" height="38" rx="10" fill="#9f1239"/><rect x="188" y="118" width="22" height="38" rx="10" fill="#9f1239"/>
+    <path d="M58 128 h124" stroke="rgba(0,0,0,.25)" stroke-width="2"/><path d="M120 112 v36" stroke="rgba(0,0,0,.2)" stroke-width="2"/>
+    <g>
+      ${[[34, '#fbbf24', 0], [64, '#22d3ee', 1], [96, '#f43f5e', 2], [150, '#a78bfa', 3], [184, '#34d399', 4], [212, '#fbbf24', 5]].map(([x, fill, n]) => `<rect class="art-confetti c${n}" x="${x}" y="-8" width="6" height="10" rx="1.5" fill="${fill}" style="transform-origin:${x + 3}px -3px"/>`).join('')}
+    </g>`,
+
+  // A chart card whose bars grow and whose trend line draws itself.
+  stats: id => `
+    <defs>
+      <linearGradient id="${id}-card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#23232f"/><stop offset="1" stop-color="#121219"/></linearGradient>
+      <linearGradient id="${id}-bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#0e7490"/></linearGradient>
+      <linearGradient id="${id}-hot" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#e50914"/></linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="164" rx="80" ry="7"/>
+    <rect x="40" y="26" width="160" height="126" rx="16" fill="url(#${id}-card)" stroke="var(--art-edge)" stroke-width="2"/>
+    <rect x="54" y="40" width="46" height="7" rx="3.5" fill="var(--art-edge)"/><rect x="54" y="52" width="28" height="5" rx="2.5" fill="var(--art-edge)" opacity=".7"/>
+    <path d="M54 136 H186" stroke="var(--art-edge)" stroke-width="2"/>
+    ${[[60, 44, 0], [84, 30, 1], [108, 56, 2], [132, 40, 3], [156, 70, 4]].map(([x, h, n]) => `<rect class="art-bar b${n}" x="${x}" y="${134 - h}" width="16" height="${h}" rx="4" fill="url(#${id}-${n === 4 ? 'hot' : 'bar'})" style="transform-origin:${x + 8}px 134px"/>`).join('')}
+    <path class="art-line" d="M68 96 L92 108 L116 80 L140 94 L164 60" fill="none" stroke="#fde68a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" pathLength="100" stroke-dasharray="100"/>
+    <circle class="art-ping" cx="164" cy="60" r="5" fill="#fbbf24" style="transform-origin:164px 60px"/>
+    <g class="art-twinkle" fill="#fde68a"><path class="t1" d="M204 22 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/></g>`,
+
+  // A bell swinging on its hook, rings of sound going out from it.
+  bell: id => `
+    <defs>
+      <linearGradient id="${id}-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset=".5" stop-color="#f59e0b"/><stop offset="1" stop-color="#b45309"/></linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="164" rx="56" ry="7"/>
+    <g fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round">
+      <path class="art-wave w1" d="M62 64 a70 70 0 0 0 0 60" style="transform-origin:120px 94px"/>
+      <path class="art-wave w2" d="M44 54 a90 90 0 0 0 0 80" style="transform-origin:120px 94px"/>
+      <path class="art-wave w1" d="M178 64 a70 70 0 0 1 0 60" style="transform-origin:120px 94px"/>
+      <path class="art-wave w2" d="M196 54 a90 90 0 0 1 0 80" style="transform-origin:120px 94px"/>
+    </g>
+    <g class="art-swing" style="transform-origin:120px 30px">
+      <circle cx="120" cy="30" r="6" fill="none" stroke="#9ca3af" stroke-width="3"/>
+      <g class="art-clapper" style="transform-origin:120px 120px"><circle cx="120" cy="136" r="9" fill="#b45309"/></g>
+      <path d="M120 36 C 92 36, 84 62, 84 92 L 76 124 H 164 L 156 92 C 156 62, 148 36, 120 36 Z" fill="url(#${id}-gold)"/>
+      <rect x="70" y="120" width="100" height="10" rx="5" fill="#d97706"/>
+      <path d="M98 60 C 96 72, 96 84, 96 96" stroke="#fff" stroke-opacity=".55" stroke-width="4" stroke-linecap="round" fill="none"/>
+    </g>
+    <circle class="art-ping" cx="160" cy="46" r="10" fill="#e50914" style="transform-origin:160px 46px"/>
+    <text x="160" y="50.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="system-ui, sans-serif">1</text>`,
+
+  // A trophy catching a travelling glint, stars circling it.
+  trophy: id => `
+    <defs>
+      <linearGradient id="${id}-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fef3c7"/><stop offset=".35" stop-color="#fbbf24"/><stop offset="1" stop-color="#b45309"/></linearGradient>
+      <linearGradient id="${id}-shine" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".75"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <clipPath id="${id}-cup"><path d="M84 30 H156 V62 C156 90, 138 106, 120 106 C102 106, 84 90, 84 62 Z"/></clipPath>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="164" rx="60" ry="7"/>
+    <path d="M84 40 H62 C58 72, 72 84, 90 86 M156 40 H178 C182 72, 168 84, 150 86" fill="none" stroke="url(#${id}-gold)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M84 30 H156 V62 C156 90, 138 106, 120 106 C102 106, 84 90, 84 62 Z" fill="url(#${id}-gold)"/>
+    <g clip-path="url(#${id}-cup)"><g class="art-shine"><rect x="40" y="20" width="30" height="100" fill="url(#${id}-shine)" transform="skewX(-20)"/></g></g>
+    <rect x="112" y="104" width="16" height="22" fill="#d97706"/>
+    <rect x="88" y="124" width="64" height="14" rx="4" fill="#92400e"/><rect x="80" y="136" width="80" height="16" rx="5" fill="#451a03"/>
+    <path class="art-star-spin" d="M120 50 l4.4 9 9.9 1.4 -7.2 7 1.7 9.8 -8.8 -4.6 -8.8 4.6 1.7 -9.8 -7.2 -7 9.9 -1.4z" fill="#fff7d6" style="transform-origin:120px 64px"/>
+    <g class="art-orbit-x o1"><g class="art-orbit-y o1"><path d="M120 86 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" fill="#fde68a"/></g></g>
+    <g class="art-orbit-x o2"><g class="art-orbit-y o2"><circle cx="120" cy="92" r="3" fill="#fb7185"/></g></g>`,
+
+  // A compass whose needle hunts for north over a dotted route.
+  compass: id => `
+    <defs>
+      <radialGradient id="${id}-face" cx=".4" cy=".35" r=".75"><stop offset="0" stop-color="#2f2f40"/><stop offset="1" stop-color="#101018"/></radialGradient>
+      <linearGradient id="${id}-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#b45309"/></linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="166" rx="64" ry="7"/>
+    <path class="art-route" d="M18 150 C 50 120, 60 170, 96 150 S 150 120, 222 140" fill="none" stroke="#22d3ee" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="4 7" opacity=".7"/>
+    <circle cx="120" cy="84" r="58" fill="url(#${id}-face)" stroke="url(#${id}-rim)" stroke-width="7"/>
+    <g class="art-spin slow" style="transform-origin:120px 84px; animation-duration: 40s">
+      ${Array.from({ length: 24 }, (_, i) => { const a = i * 15 * Math.PI / 180, r1 = i % 6 === 0 ? 40 : 45, r2 = 50; return `<path d="M${(120 + r1 * Math.sin(a)).toFixed(2)} ${(84 - r1 * Math.cos(a)).toFixed(2)} L${(120 + r2 * Math.sin(a)).toFixed(2)} ${(84 - r2 * Math.cos(a)).toFixed(2)}" stroke="rgba(255,255,255,${i % 6 === 0 ? '.6' : '.2'})" stroke-width="${i % 6 === 0 ? 2.4 : 1.4}" stroke-linecap="round"/>`; }).join('')}
+    </g>
+    <text x="120" y="52" text-anchor="middle" font-size="11" font-weight="800" fill="#fbbf24" font-family="system-ui, sans-serif">N</text>
+    <g class="art-needle" style="transform-origin:120px 84px">
+      <path d="M120 44 L129 84 L111 84 Z" fill="#e50914"/>
+      <path d="M120 124 L129 84 L111 84 Z" fill="#e5e7eb"/>
+    </g>
+    <circle cx="120" cy="84" r="6" fill="#fbbf24" stroke="#78350f" stroke-width="2"/>`,
+
+  // A plug and its socket easing apart and together, a spark between them.
+  unplugged: id => `
+    <defs>
+      <linearGradient id="${id}-body" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3a4d"/><stop offset="1" stop-color="#16161f"/></linearGradient>
+      <linearGradient id="${id}-pin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#b45309"/></linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="150" rx="96" ry="6"/>
+    <path d="M4 96 C 30 96, 36 90, 56 90" fill="none" stroke="#2a2a38" stroke-width="7" stroke-linecap="round"/>
+    <path d="M236 96 C 210 96, 204 90, 184 90" fill="none" stroke="#2a2a38" stroke-width="7" stroke-linecap="round"/>
+    <g class="art-plug">
+      <rect x="54" y="68" width="42" height="44" rx="10" fill="url(#${id}-body)" stroke="var(--art-edge)" stroke-width="2"/>
+      <rect x="96" y="76" width="18" height="7" rx="2" fill="url(#${id}-pin)"/><rect x="96" y="97" width="18" height="7" rx="2" fill="url(#${id}-pin)"/>
+    </g>
+    <g class="art-socket">
+      <rect x="146" y="64" width="42" height="52" rx="10" fill="url(#${id}-body)" stroke="var(--art-edge)" stroke-width="2"/>
+      <rect x="148" y="75" width="10" height="9" rx="2" fill="#0b0b12"/><rect x="148" y="96" width="10" height="9" rx="2" fill="#0b0b12"/>
+      <circle cx="176" cy="90" r="4" fill="#e50914" class="art-blink"/>
+    </g>
+    <g class="art-zap" fill="#fbbf24" style="transform-origin:130px 90px">
+      <path d="M131 70 L122 90 H131 L125 110 L140 86 H131 L137 70 Z"/>
     </g>`,
 };
 

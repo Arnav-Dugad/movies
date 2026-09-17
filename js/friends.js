@@ -1,6 +1,7 @@
 // ===== FRIENDS PAGE (/friends) =====
 import { state } from './state.js';
 import { esc, toast, $ } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { social, displayCode, sendRequest, acceptRequest, declineRequest, removeFriend, resolveCode, resolveEmail, searchByName, getFriendTaste, getFriendClubs } from './social.js';
 import { avatarInner } from './avatar.js';
@@ -99,7 +100,7 @@ export function renderFriends() {
   const ct = $('friendsContent');
   if (!ct) return;
   if (!state.user) {
-    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg><h3>Sign in to add friends</h3><p>Connect with friends & family to plan movie nights together.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
+    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px">${illustration('ticket', { cls: 'empty-art' })}<h3>Sign in to add friends</h3><p>Connect with friends & family to plan movie nights together.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
 
@@ -113,7 +114,7 @@ export function renderFriends() {
           : `<button class="dbtn-icon" data-action="remove-friend" data-pair="${esc(f.pairId)}" data-tip="Remove friend" aria-label="Remove friend" style="width:36px;height:36px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2"/><circle cx="11" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="8"/></svg></button>`;
         return `<div class="friend-row">${avatarInner(null, f.name)}<div class="friend-meta"><div class="friend-name">${esc(f.name)}</div><div class="friend-sub">Friend</div><div class="friend-clubs" data-friend-clubs="${esc(f.uid)}"></div></div><div class="friend-actions">${remBtn}</div></div>`;
       }).join('')
-    : `<p style="color:var(--text3);font-size:.88rem">No friends yet — share your code or add one above.</p>`;
+    : `<div class="friends-empty">${illustration('friends', { cls: 'empty-art' })}<p>No friends yet — share your code or add one above.</p></div>`;
 
   const out = social.reqOut.length ? `<div class="d-sec-title" style="margin-top:24px">Pending</div>${social.reqOut.map(r => `<div class="friend-row">${avatarInner(null, r.toName)}<div class="friend-meta"><div class="friend-name">${esc(r.toName || 'Friend')}</div><div class="friend-sub">Request sent</div></div></div>`).join('')}` : '';
 

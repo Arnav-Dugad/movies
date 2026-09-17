@@ -2,6 +2,7 @@
 import { state, isWatched } from './state.js';
 import { icon } from './icons.js';
 import { $, esc, toast } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { AVATARS, genreMap, IMG, PH } from './config.js';
 import { avatarBg, avatarMarkup, avatarPresetId } from './avatar.js';
@@ -152,6 +153,10 @@ function completedShelf() {
 }
 
 // ---------- Hours clubs ----------
+// The removed list starts folded to one line (faces and a count) and stays as
+// you left it while you move around the site.
+let removedOpen = false;
+
 function clubsPanel() {
   return `<section class="profile-panel profile-clubs"><div class="profile-panel-head"><div><span>${prefs.shareMilestones === false ? 'Private' : 'Visible to friends'}</span><h2>Hours clubs</h2></div><b id="profileClubCount">…</b></div>
     <div id="profileClubs" class="club-grid"><div class="insight-loading"><i></i><span>Counting time with the cast…</span></div></div>
@@ -173,14 +178,24 @@ async function paintClubs({ fetch = true } = {}) {
   const foot = $('profileClubsRemoved');
   if (foot) {
     foot.hidden = !removed.length;
-    foot.innerHTML = removed.length ? `<div class="club-removed-head"><span>Removed from your clubs</span>${removed.length > 1 ? '<button type="button" class="club-restore-all" data-action="club-restore-all">Restore all</button>' : ''}</div>
+    foot.classList.toggle('open', removedOpen);
+    const face = badge => (badge.profile ? `<img src="${IMG}w92${badge.profile}" alt="" loading="lazy" data-ph="${PH}">` : icon('person'));
+    foot.innerHTML = removed.length ? `<div class="club-removed-head">
+        <button type="button" class="club-removed-toggle" data-action="club-removed-toggle" aria-expanded="${removedOpen}" aria-controls="profileClubsRemovedList">
+          <span class="club-removed-faces" aria-hidden="true">${removed.slice(0, 4).map(badge => `<i>${face(badge)}</i>`).join('')}</span>
+          <span class="club-removed-label">${removed.length} removed from your clubs</span>
+          ${icon('chevronDown', { cls: 'club-removed-chev' })}
+        </button>
+        ${removed.length > 1 ? '<button type="button" class="club-restore-all" data-action="club-restore-all">Restore all</button>' : ''}
+      </div>
+      <div class="club-removed-body" id="profileClubsRemovedList"${removedOpen ? '' : ' inert'}><div>
       <ul class="club-removed-list">${removed.map(badge => `<li>
         <span class="club-removed-face">${badge.profile ? `<img src="${IMG}w185${badge.profile}" alt="" loading="lazy" data-ph="${PH}">` : icon('person')}</span>
         <span class="club-removed-name"><b>${esc(badge.name)}</b><small>${badge.club}h club · ${badge.hours}h</small></span>
         <button type="button" data-action="club-restore" data-id="${badge.id}" data-name="${esc(badge.name)}" aria-label="${esc(`Restore ${badge.name} to your hours clubs`)}">Restore</button>
-      </li>`).join('')}</ul>` : '';
+      </li>`).join('')}</ul></div></div>` : '';
   }
-  if (!badges.length) { host.innerHTML = `<p class="finale-shelf-empty">${removed.length ? 'Everyone in your clubs is removed. Restore them below.' : 'Watch ten hours of episodes with someone in the cast and your first badge appears here.'}</p>`; return; }
+  if (!badges.length) { host.innerHTML = `<p class="finale-shelf-empty">${removed.length ? 'Everyone in your clubs is removed. Open the list below to restore them.' : 'Watch ten hours of episodes with someone in the cast and your first badge appears here.'}</p>`; return; }
   const fresh = takeNewBadges(badges);
   let stagger = 0;
   host.innerHTML = badges.map(badge => `<article class="club-badge" data-club-id="${badge.id}">
@@ -198,7 +213,7 @@ export function renderProfile() {
   const ct = $('profileContent');
   if (!ct) return;
   if (!state.user) {
-    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:56px;height:56px;color:var(--text3);margin-bottom:14px;opacity:.5"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg><h3>Sign in to view your profile</h3><p>Create an account to personalise CineVerse.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
+    ct.innerHTML = `<div class="wl-empty" style="padding:40px 20px">${illustration('ticket', { cls: 'empty-art' })}<h3>Sign in to view your profile</h3><p>Create an account to personalise CineVerse.</p><br><button class="btn-primary" data-action="open-auth">Sign In</button></div>`;
     return;
   }
 
@@ -327,6 +342,14 @@ export function initProfile() {
       updatePref('hiddenClubs', (prefs.hiddenClubs || []).filter(value => value !== id));
       paintClubs({ fetch: false }).catch(() => {});
       toast(`${el.dataset.name || 'They'} ${el.dataset.name ? 'is' : 'are'} back in your hours clubs`, 'success');
+    },
+    'club-removed-toggle': el => {
+      removedOpen = !removedOpen;
+      const foot = el.closest('.club-removed');
+      foot?.classList.toggle('open', removedOpen);
+      el.setAttribute('aria-expanded', String(removedOpen));
+      const body = foot?.querySelector('.club-removed-body');
+      if (body) body.inert = !removedOpen;
     },
     'club-restore-all': () => {
       updatePref('hiddenClubs', []);

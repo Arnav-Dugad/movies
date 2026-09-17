@@ -3,6 +3,7 @@ import { tmdb } from './api.js';
 import { mGenreList, tGenreList } from './config.js';
 import { state } from './state.js';
 import { $ } from './ui.js';
+import { illustration } from './illustrations.js';
 import { buildCard } from './cards.js';
 import { registerActions } from './events.js';
 import { observeReveals } from './effects.js';
@@ -95,7 +96,7 @@ function resetGenre(kind) {
 function paintResults(grid, results, type, append) {
   const html = (results || []).filter(x => x.poster_path).map(x => buildCard(x, type)).join('');
   if (append) grid.insertAdjacentHTML('beforeend', html);
-  else grid.innerHTML = html || `<div class="browse-empty"><strong>No matches</strong><span>Try clearing one or two filters.</span></div>`;
+  else grid.innerHTML = html || `<div class="browse-empty">${illustration('search', { cls: 'empty-art' })}<strong>No matches</strong><span>Try clearing one or two filters.</span></div>`;
   observeReveals(grid);
 }
 

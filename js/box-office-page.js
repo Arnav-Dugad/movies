@@ -1,5 +1,6 @@
 // ===== /box-office =====
 import { $, esc, debounce } from './ui.js';
+import { illustration } from './illustrations.js';
 import { pool } from './api.js';
 import { IMG, PH } from './config.js';
 import { registerActions } from './events.js';
@@ -42,7 +43,7 @@ async function loadNext({ paintAfter = true } = {}) {
     return true;
   } catch (error) {
     console.warn('box office page', error);
-    if (!items.length) $('boxOfficeContent').innerHTML = shell('<div class="wl-empty"><h3>Box-office data is unavailable</h3><button class="btn-primary" data-action="box-office-retry">Try again</button></div>');
+    if (!items.length) $('boxOfficeContent').innerHTML = shell(`<div class="wl-empty">${illustration('unplugged', { cls: 'empty-art' })}<h3>Box-office data is unavailable</h3><button class="btn-primary" data-action="box-office-retry">Try again</button></div>`);
     return false;
   } finally { loading = false; }
 }
