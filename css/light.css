@@ -257,3 +257,9 @@
 :root[data-theme="light"] .privacy-map .cv-icon.yes { color: #047857; }
 :root[data-theme="light"] .vault-steps li .cv-icon { color: #b45309; }
 :root[data-theme="light"] .region-now { background: rgba(14, 165, 233, .06); }
+:root[data-theme="light"] .notification-radar-key button { background: rgba(20, 20, 30, .03); }
+:root[data-theme="light"] .settings-recent, :root[data-theme="light"] .settings-recent li { background: rgba(20, 20, 30, .025); }
+:root[data-theme="light"] .settings-recent-icon { background: rgba(217, 119, 6, .1); color: #b45309; }
+:root[data-theme="light"] .settings-jump-tip { background: rgba(246, 243, 237, .96); box-shadow: 0 16px 34px rgba(45, 36, 22, .16); }
+:root[data-theme="light"] .settings-jump-tip-art { background: rgba(20, 20, 30, .04); }
+:root[data-theme="light"] .settings-jump-tip em { background: rgba(217, 119, 6, .12); color: #b45309; }

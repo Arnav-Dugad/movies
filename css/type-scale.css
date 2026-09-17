@@ -339,3 +339,12 @@
 #settingsContent .vault-steps li small { font-size: 0.813rem; }
 #settingsContent .region-now b { font-size: .9rem; }
 #settingsContent .region-now span { font-size: .95rem; }
+#settingsContent .settings-recent-head h3 { font-size: 0.856rem; }
+#settingsContent .settings-recent-head small { font-size: 0.831rem; }
+#settingsContent .settings-recent li b { font-size: 0.865rem; }
+#settingsContent .settings-recent li small { font-size: 0.822rem; }
+#settingsContent .settings-recent li button { font-size: 0.831rem; }
+#settingsContent .settings-recent-empty { font-size: 0.856rem; }
+#settingsContent .settings-jump-tip b { font-size: .86rem; }
+#settingsContent .settings-jump-tip small { font-size: 0.831rem; }
+#settingsContent .settings-jump-tip em { font-size: 0.805rem; }

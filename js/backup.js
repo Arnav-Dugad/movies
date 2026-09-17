@@ -152,6 +152,7 @@ function downloadBackup() {
   link.href = url; link.download = `cineverse-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Collection backup downloaded', 'success');
+  document.dispatchEvent(new CustomEvent('cv:backup-downloaded', { detail: { kind: 'collection' } }));
 }
 
 function downloadWatched() {
@@ -162,6 +163,7 @@ function downloadWatched() {
   link.href = url; link.download = `cineverse-watched-${new Date().toISOString().slice(0, 10)}.json`; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast(`Exported ${Object.keys(state.watched).length} watched titles`, 'success');
+  document.dispatchEvent(new CustomEvent('cv:backup-downloaded', { detail: { kind: 'watched' } }));
 }
 
 async function restoreFile(file, input) {

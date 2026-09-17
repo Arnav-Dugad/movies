@@ -10,7 +10,7 @@ import { icon } from './icons.js';
 import { state } from './state.js';
 import { IMG, PH, providerUrl, regionLabel } from './config.js';
 import { $, esc, debounce, toast } from './ui.js';
-import { illustration } from './illustrations.js';
+import { illustration, radarBlips, RADAR_SWEEP_MS } from './illustrations.js';
 import { registerActions } from './events.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
 import { db, firebase } from './firebase.js';
@@ -137,30 +137,69 @@ function recapEvents() {
 
 // ===== ARRIVALS =====
 // Unread notifications this visit has not seen before are "arrivals". The radar in
-// the hero flares one blip per arrival (up to four) and ripples a ring, in time
-// with them landing: on opening the inbox with new items, after a refresh that
-// brings more, or when the month's recap appears.
-let knownKeys = null, pendingArrivals = 0;
+// the hero shows one blip per category with unread items, in that category's
+// colour; when items arrive (opening the inbox with new items, a refresh that
+// brings more, the month's recap appearing) the blips of their categories flare
+// in turn and a ring ripples out. With the notification popover open, its mailbox
+// raises its flag as a letter drops in.
+let knownKeys = null;
+const pendingCategories = new Set();
 function noteArrivals() {
-  const unreadKeys = events.filter(eventVisible).filter(unread).map(event => event.key);
+  const unreadEvents = events.filter(eventVisible).filter(unread);
   knownKeys ||= new Set();
-  const fresh = unreadKeys.filter(key => !knownKeys.has(key));
-  unreadKeys.forEach(key => knownKeys.add(key));
-  if (fresh.length) { pendingArrivals += fresh.length; pulseRadar(); }
+  const fresh = unreadEvents.filter(event => !knownKeys.has(event.key));
+  unreadEvents.forEach(event => knownKeys.add(event.key));
+  if (!fresh.length) return;
+  fresh.forEach(event => pendingCategories.add(event.category));
+  pulseRadar();
+  if (isNotificationDropdownOpen()) deliverMail();
 }
+
+/** Pure: unread counts by category. */
+export function unreadByCategory(list) {
+  const counts = {};
+  for (const event of list || []) counts[event.category] = (counts[event.category] || 0) + 1;
+  return counts;
+}
+
+// Blips flare as the sweep passes them. A blip drawn later than the radar (a
+// count changed, an arrival finished) is given the delay that keeps it in step.
+function syncBlips(radar) {
+  const born = +radar.dataset.born || performance.now();
+  const phase = (performance.now() - born) % RADAR_SWEEP_MS;
+  radar.querySelectorAll('.art-blip.cat').forEach(blip => { blip.style.animationDelay = `${Math.round(+blip.dataset.bearingMs - phase)}ms`; });
+}
+
 function pulseRadar() {
   const box = document.querySelector('.notification-radar'), radar = box?.querySelector('.cv-art-radar');
-  if (!radar || !pendingArrivals) return;
-  radar.dataset.arrivals = String(Math.min(4, pendingArrivals));
-  pendingArrivals = 0;
+  if (!radar || !pendingCategories.size) return;
+  let order = 0;
+  radar.querySelectorAll('.art-blip.cat').forEach(blip => {
+    const fresh = pendingCategories.has(blip.dataset.category);
+    blip.classList.toggle('fresh', fresh);
+    if (fresh) blip.style.setProperty('--k', `${(order++) * 320}ms`);
+  });
+  pendingCategories.clear();
   radar.classList.remove('arrive'); box.classList.remove('arrived');
   void radar.getBoundingClientRect();
   radar.classList.add('arrive'); box.classList.add('arrived');
   clearTimeout(pulseRadar.timer);
   pulseRadar.timer = setTimeout(() => {
     radar.classList.remove('arrive');
+    radar.querySelectorAll('.art-blip.fresh').forEach(blip => blip.classList.remove('fresh'));
+    syncBlips(radar);
     document.querySelector('.notification-radar.arrived')?.classList.remove('arrived');
   }, 3600);
+}
+
+function deliverMail() {
+  const mailbox = document.querySelector('#notificationDropdown .drop-head-art .cv-art-mailbox');
+  if (!mailbox) return;
+  mailbox.classList.remove('delivered');
+  void mailbox.getBoundingClientRect();
+  mailbox.classList.add('delivered');
+  clearTimeout(deliverMail.timer);
+  deliverMail.timer = setTimeout(() => mailbox.classList.remove('delivered'), 4200);
 }
 
 function dedupeSort(items) {
@@ -552,7 +591,9 @@ function paintDropdown() {
   const list = [...allowed].sort((a, b) => Number(unread(b)) - Number(unread(a)) || b.priority - a.priority).slice(0, 6);
   const count = allowed.filter(unread).length;
   const urgent = allowed.filter(event => event.urgent).length;
+  const mailbox = host.querySelector('.drop-head-art .cv-art-mailbox');
   host.innerHTML = `<div class="notification-drop-head">
+      <i class="drop-head-art" aria-hidden="true">${illustration('mailbox', { cls: 'idle' })}</i>
       <span>Live collection intelligence</span>
       <strong>Notifications <b>${count ? `${count} new` : 'caught up'}</b></strong>
       <button data-action="close-notifications" aria-label="Close notifications">×</button>
@@ -564,6 +605,8 @@ function paintDropdown() {
       ${count ? '<button data-action="read-all-notifications" title="Mark everything read">Read all</button>' : ''}
       <button data-action="open-notification-preferences">Preferences</button>
     </div>`;
+  // The mailbox is carried across a repaint, so a flag already raised stays up.
+  if (mailbox) host.querySelector('.drop-head-art .cv-art-mailbox')?.replaceWith(mailbox);
   dropIndex = -1;
 }
 
@@ -644,6 +687,12 @@ function heroHTML(allowed) {
   // Only calendar events can be "next up" — a detection is dated now, not ahead.
   const next = allowed.filter(event => event.bucket !== 'recent' && event.at > Date.now()).sort((a, b) => a.at - b.at)[0];
   const departures = allowed.filter(event => event.category === 'departures').length;
+  const counts = unreadByCategory(allowed.filter(unread));
+  const blips = radarBlips(counts);
+  // The radar's colours, spelled out: each category with unread items, as a filter.
+  const key = blips.length
+    ? `<div class="notification-radar-key" aria-label="Unread by category">${blips.map(blip => `<button type="button" data-action="notification-filter" data-filter="${blip.key}" aria-label="${esc(`${blip.count} unread ${blip.label}`)}"><i style="background:${blip.color}"></i>${esc(blip.label)}<b>${blip.count}</b></button>`).join('')}</div>`
+    : '<p class="notification-radar-key quiet">Nothing unread. New arrivals light up the radar.</p>';
   return `<section class="notifications-hero">
     <div>
       <span>Personal premiere desk</span><h1>Notifications</h1>
@@ -654,9 +703,10 @@ function heroHTML(allowed) {
         ${departures ? `<i>${departures} departure warning${departures === 1 ? '' : 's'}</i>` : ''}
         <span>Times in ${esc(localTimeZone())}</span><span>${esc(regionLabel(state.region))}</span>
       </div>
+      ${key}
       ${next ? `<div class="notification-next"><span>Next up</span><strong>${esc(next.title)}</strong><em>${esc(next.headline)}</em><b data-countdown="${next.at}">${esc(countdownText(next.at))}</b></div>` : ''}
     </div>
-    <div class="notification-radar has-art" aria-hidden="true">${illustration('radar', { cls: 'radar-art' })}<b>${allowed.length}</b><span>live signals</span></div>
+    <div class="notification-radar has-art" aria-hidden="true">${illustration('radar', { cls: 'radar-art', data: { counts } })}<b>${allowed.length}</b><span>live signals</span></div>
   </section>`;
 }
 
@@ -676,6 +726,7 @@ function renderInbox() {
   // progress continue instead of starting over.
   const radar = host.querySelector('.notification-radar .cv-art-radar');
   const arrived = host.querySelector('.notification-radar.arrived');
+  const arriving = radar?.classList.contains('arrive');
   host.innerHTML = `${heroHTML(allowed)}
     <section class="notification-toolbar">
       <div class="notification-tabs" role="tablist" aria-label="Notification categories">${tabs.map(([value, label, total]) => `<button class="${filter === value ? 'active' : ''}" role="tab" aria-selected="${filter === value}" data-action="notification-filter" data-filter="${value}">${label}<b>${total}</b></button>`).join('')}</div>
@@ -702,7 +753,22 @@ function renderInbox() {
   if (input) input.addEventListener('input', debounce(function () { query = this.value.trim(); renderNotificationResults(); }, 180));
   mountProviderIntel();
   startCountdowns();
-  if (radar) host.querySelector('.notification-radar .cv-art-radar')?.replaceWith(radar);
+  const drawn = host.querySelector('.notification-radar .cv-art-radar');
+  if (radar && drawn) {
+    // Keep the running radar, with this render's blips (counts may have changed).
+    const blips = drawn.querySelector('.art-radar-blips'), kept = radar.querySelector('.art-radar-blips');
+    if (blips && kept && blips.innerHTML !== kept.dataset.drawn) {
+      const fresh = new Set([...kept.querySelectorAll('.art-blip.fresh')].map(blip => blip.dataset.category));
+      kept.innerHTML = blips.innerHTML;
+      kept.querySelectorAll('.art-blip.cat').forEach((blip, index) => { if (arriving && fresh.has(blip.dataset.category)) { blip.classList.add('fresh'); blip.style.setProperty('--k', `${index * 320}ms`); } });
+      syncBlips(radar);
+    }
+    if (kept) kept.dataset.drawn = blips?.innerHTML || '';
+    drawn.replaceWith(radar);
+  } else if (drawn) {
+    drawn.dataset.born = String(performance.now());
+    const blips = drawn.querySelector('.art-radar-blips'); if (blips) blips.dataset.drawn = blips.innerHTML;
+  }
   if (arrived) host.querySelector('.notification-radar')?.classList.add('arrived');
   pulseRadar();
 }

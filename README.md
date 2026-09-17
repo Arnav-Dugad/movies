@@ -506,7 +506,28 @@ The glass picker is no longer the only preview in Settings (`js/settings.js`):
 - **Backup in three steps.** Download, keep it safe, restore (which merges and never
   deletes newer records), drawn as three linked cards.
 - **Region.** The chosen country is shown as a code badge and its name, and follows
-  the picker.
+  the picker. **The globe turns to it:** each region has a rough longitude, so the
+  land starts where the old region stood and slides the short way round (east for
+  India to Japan, across the date line for New Zealand to the US), taking longer the
+  further it goes, before the pin lands.
+- **Recently changed.** A strip under the search lists the last three settings you
+  changed on this device, newest first: the setting, what it was and what it is now
+  ("Content density: Comfortable → Compact · 2 min ago"). **Show** opens its section
+  and scrolls the setting into view with a pulse; **Undo** puts back what it was (a
+  theme plays its circular switch). Changing the same setting again replaces its
+  entry. A section reset, or the full reset under Maintenance, is one entry that
+  undoes as one. Changes that arrive from another device are not listed, and an
+  undo does not add an entry.
+- **Section previews.** Resting the pointer on a chip in the jump bar (or reaching it
+  with the keyboard) shows a small card with that section's animated picture, its
+  one line and how many of its settings you have changed. Scrolling hides it.
+- **Sections fold on phones.** On a narrow screen every section starts folded to its
+  heading, its picture, name, one line and Reset, so Settings reads as a short list.
+  Tap a heading (or its chevron) to open it; which are open is remembered. Search,
+  the jump bar and Show open what they need.
+- **Scenes that answer here too.** The vault door swings open, glowing, with the file
+  inside, once a backup (or the watched-only export) has been handed to the browser,
+  and closes again. Turning a privacy switch off snaps the padlock shut with a flash.
 
 How it works (`js/glass.js`): the panels are styled in hundreds of rules, and
 the light theme is compiled from those same rules, so glass edits the matching
@@ -700,12 +721,21 @@ wherever a page has nothing else to show, and in a few places that deserve one:
 
 **Scenes that answer what happens:**
 
+- **Radar by category.** The notification radar shows a blip for each category with
+  unread items, in that category's colour (Episodes violet, Releases gold, Streaming
+  green, Departures orange, Recaps pink, History cyan), at its own bearing and larger
+  the more there are. Each flares as the sweep passes it. A key under the hero spells
+  the colours out with counts, and each entry filters the inbox to that category.
 - **Radar arrivals.** Unread notifications this visit has not seen before are
   arrivals. When they land (opening the inbox with new items, a refresh that brings
-  more, a monthly recap appearing) the radar flares one blip per arrival, up to four,
-  in turn, ripples a ring out from the centre and bumps the count. The radar is
-  carried across the inbox's redraws, so its sweep and a pulse in progress continue
-  rather than restarting.
+  more, a monthly recap appearing) the blips of their categories flare in turn, a ring
+  ripples out from the centre and the count bumps. The radar is carried across the
+  inbox's redraws, with fresh blips when the counts change; a blip drawn later is
+  given the delay that keeps it in step with the sweep.
+- **The mailbox flag goes up.** The notification popover's heading carries a small
+  mailbox. When something arrives while the popover is open, a letter drops in and
+  the flag rises, then lowers a few seconds later. The mailbox is carried across the
+  popover's repaints.
 - **Coins rise.** The Box Office coins rest as a stack and drop in one by one, with
   their line redrawing, when you switch between Movies, Franchises and Directors or
   change the sort. The page repaints its shell on every search keystroke and page of
@@ -1286,7 +1316,8 @@ people from Hours clubs (`glass-years.test.mjs`), and Your Year, the monthly
 recap, moving lights, the illustrations, year comparisons and highlights, and the
 diary's streaks, weekdays, month totals and On this day, streak milestones, gear
 geometry, the tearing ticket, the radar's arrival parts and Settings section resets
-(`year-page.test.mjs`). It needs
+(`year-page.test.mjs`), which also covers the globe's turn, Recently changed,
+setting values in words, the radar's category blips and unread counts. It needs
 nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails

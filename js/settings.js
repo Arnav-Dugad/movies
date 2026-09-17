@@ -18,6 +18,10 @@ import { loadMovieProgress } from './movie-progress.js';
 
 let cloudSyncTimer = null;
 let lastSearch = '';
+let lastPrefs = {};             // preferences as last seen, for Recently changed
+let batch = null;               // a reset in progress: its changes become one entry
+let undoing = false;            // an Undo in progress is not itself recorded
+let skipThemeRecord = false;    // the theme commits later than the reset or undo that asked for it
 
 function queueCloudSettings() {
   if (!state.user) return;
@@ -134,11 +138,207 @@ const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 /** Pure: the keys of a section that differ from their defaults. */
 export const changedKeys = (keys, current, defaults) => (keys || []).filter(key => !sameValue(current[key], defaults[key]));
 
+// ---------- scenes that answer ----------
+const motionReduced = () => {
+  const root = document.documentElement;
+  return root.dataset.motion === 'reduced' || (root.dataset.motion !== 'full' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+};
+/** Replay a one-off class on a scene (the vault opening, the lock snapping shut). */
+function playScene(selector, cls, ms) {
+  const art = document.querySelector(selector);
+  if (!art || motionReduced()) return null;
+  art.classList.remove(cls);
+  void art.getBoundingClientRect();
+  art.classList.add(cls);
+  clearTimeout(art[`_${cls}Timer`]);
+  art[`_${cls}Timer`] = setTimeout(() => art.classList.remove(cls), ms);
+  return art;
+}
+
+// Rough longitude of each streaming region, so the globe turns the right way and
+// about the right distance when the region changes.
+export const REGION_LONGITUDE = {
+  AE: 54, AR: -64, AT: 14, AU: 134, BE: 4, BG: 25, BR: -52, CA: -106, CH: 8, CL: -71, CO: -74, CZ: 15, DE: 10, DK: 10,
+  EC: -78, EE: 25, EG: 30, ES: -4, FI: 26, FR: 2, GB: -2, GR: 22, HK: 114, HR: 16, HU: 19, ID: 118, IE: -8, IL: 35,
+  IN: 79, IT: 12, JP: 138, KR: 128, LT: 24, LV: 25, MA: -7, MX: -102, MY: 102, NL: 5, NO: 9, NZ: 174, PE: -76, PH: 122,
+  PL: 19, PT: -8, RO: 25, RS: 21, RU: 100, SA: 45, SE: 15, SG: 104, SI: 15, SK: 19, TH: 101, TR: 35, TW: 121, UA: 32,
+  US: -98, VE: -66, VN: 106, ZA: 25,
+};
+/**
+ * Pure: how the globe turns from one region to another: the land starts offset by
+ * the shortest angle between them (a quarter turn of the drawing is 112 units per
+ * 180°) and slides home, taking longer the further it goes. null when it need not move.
+ */
+export function globeSpin(fromCode, toCode) {
+  const from = REGION_LONGITUDE[fromCode], to = REGION_LONGITUDE[toCode];
+  if (from === undefined || to === undefined || fromCode === toCode) return null;
+  let delta = to - from;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  if (!delta) return null;
+  return { offset: Math.round(delta / 180 * 112), ms: Math.round(700 + Math.abs(delta) / 180 * 900) };
+}
+function spinGlobe(fromCode, toCode) {
+  const spin = globeSpin(fromCode, toCode);
+  const globe = document.querySelector('#settings-region .cv-art-globe');
+  if (!spin || !globe || motionReduced()) return;
+  globe.style.setProperty('--spin-from', `${spin.offset}px`);
+  globe.style.setProperty('--spin-ms', `${spin.ms}ms`);
+  playScene('#settings-region .cv-art-globe', 'spinning', spin.ms + 700);
+}
+
+const PREF_LABELS = {
+  theme: 'Theme', density: 'Content density', textSize: 'Text size', glass: 'Glass effects', motion: 'Interface motion',
+  lightDrift: 'Moving lights', castMilestones: 'Cast milestones', streakMilestones: 'Streak milestones', ambientColour: 'Title colour', highContrast: 'High-contrast type', compactNav: 'Compact navigation',
+  hidePosterCaptions: 'Hide titles under posters', cleanHomePosters: 'Clean posters', posterCommunityRating: 'Community rating', posterPersonalRating: 'Your rating', posterWatchedMark: 'Watched mark', posterListButton: 'Add to list', posterRateButton: 'Quick rating', posterMatchBadge: 'Match badge', posterProviderLogo: 'Streaming logo', posterDismissButton: 'Not interested', posterPreview: 'Hover previews',
+  autoplay: 'Ambient hero previews', backdropArt: 'Decorative backdrop art', posterTilt: 'Poster depth effect', haptics: 'Mobile haptics',
+  showRatings: 'Community ratings', showWatched: 'Watched artwork marks', spoilerShield: 'Spoiler shield',
+  mature: 'Show mature content', matureInRecs: 'Mature titles in recommendations', matureBlur: 'Blur mature artwork',
+  detailBoxOfficeExpanded: 'Open Box Office', detailGalleryExpanded: 'Open Gallery', detailReviewsExpanded: 'Open Reviews',
+  rememberSearch: 'Remember searches', rememberViewed: 'Remember recently viewed', discoverable: 'Find me by name', shareMilestones: 'Share hours clubs', shareTaste: 'Friend taste matching',
+  detailHidden: 'Title page parts',
+};
+/** Pure: a preference value in words. */
+export function prefValueLabel(key, value) {
+  const choices = { theme: THEME_CHOICES, density: DENSITY_CHOICES, textSize: TEXT_CHOICES, motion: MOTION_CHOICES, glass: GLASS_CHOICES }[key];
+  if (choices) return choices.find(([choice]) => choice === value)?.[1] || String(value);
+  if (key === 'detailHidden') return Array.isArray(value) && value.length ? `${value.length} hidden` : 'All shown';
+  return value ? 'On' : 'Off';
+}
+const sectionOfKey = key => (key === 'detailHidden' ? 'parts' : SECTIONS.find(section => section.keys?.includes(key))?.id || 'appearance');
+
+// ---------- recently changed ----------
+// The last three changes made on this device, newest first, each with Show (scroll
+// to the setting) and Undo (put back what it was). A section reset, or the full
+// reset under Maintenance, is one change. Changes that arrive from another device
+// are not listed; undoing a change does not add one.
+const RECENT_LIMIT = 3;
+const recentKey = () => `cv_settings_recent_v1_${state.user?.uid || 'guest'}`;
+function readRecent() {
+  try { const list = JSON.parse(localStorage.getItem(recentKey()) || '[]'); return Array.isArray(list) ? list.filter(entry => entry && entry.id).slice(0, RECENT_LIMIT) : []; }
+  catch (_) { return []; }
+}
+function writeRecent(list) {
+  try { localStorage.setItem(recentKey(), JSON.stringify(list.slice(0, RECENT_LIMIT))); } catch (_) {}
+}
+/** Pure: the list after recording a change: the same setting replaces its older entry. */
+export function addRecent(list, entry, limit = RECENT_LIMIT) {
+  return [entry, ...(list || []).filter(item => item.id !== entry.id)].slice(0, limit);
+}
+function record(entry) {
+  writeRecent(addRecent(readRecent(), entry));
+  paintRecent();
+}
+const ago = at => {
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (seconds < 45) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+};
+function recentText(entry) {
+  if (entry.region) return { title: 'Streaming region', detail: `${regionName(entry.region.before)} → ${regionName(entry.region.after)}`, section: 'region' };
+  if (entry.label) return { title: entry.label, detail: `${Object.keys(entry.before || {}).length} setting${Object.keys(entry.before || {}).length === 1 ? '' : 's'} back to default`, section: entry.section };
+  const key = Object.keys(entry.before || {})[0];
+  return { title: PREF_LABELS[key] || key, detail: `${prefValueLabel(key, entry.before[key])} → ${prefValueLabel(key, entry.after?.[key])}`, section: sectionOfKey(key) };
+}
+function recentHTML() {
+  const list = readRecent();
+  const items = list.map((entry, index) => {
+    const text = recentText(entry), section = sectionById(text.section);
+    return `<li style="--i:${index}"><span class="settings-recent-icon" aria-hidden="true">${icon(section?.icon || 'spark')}</span>
+      <div><b>${esc(text.title)}</b><small>${esc(text.detail)} · ${esc(ago(entry.at))}</small></div>
+      <button type="button" data-action="settings-recent-show" data-id="${esc(entry.id)}" aria-label="${esc(`Show ${text.title}`)}">Show</button>
+      <button type="button" class="undo" data-action="settings-recent-undo" data-id="${esc(entry.id)}" aria-label="${esc(`Undo ${text.title}`)}">${icon('rotate')}Undo</button>
+    </li>`;
+  }).join('');
+  return `<section class="settings-recent" id="settingsRecent" aria-labelledby="settingsRecentHead">
+    <div class="settings-recent-head"><h3 id="settingsRecentHead">Recently changed</h3>${list.length ? `<small>Your last ${list.length === 1 ? 'change' : `${list.length} changes`} on this device</small>` : ''}</div>
+    ${list.length ? `<ol>${items}</ol>` : '<p class="settings-recent-empty">Nothing changed yet. The last three settings you change appear here, each with Show and Undo.</p>'}
+  </section>`;
+}
+function paintRecent() {
+  const host = document.getElementById('settingsRecent');
+  if (host) host.outerHTML = recentHTML();
+}
+
+// ---------- collapsible sections on phones ----------
+// On a phone every section folds to its heading (picture, name, one line, Reset),
+// so the page reads as a list; a tap opens one. Which are open is remembered.
+const OPEN_KEY = 'cv_settings_open_v1';
+const phoneLayout = () => !!window.matchMedia?.('(max-width: 640px)').matches;
+function openSections() {
+  try { const list = JSON.parse(localStorage.getItem(OPEN_KEY) || '[]'); return new Set(Array.isArray(list) ? list : []); }
+  catch (_) { return new Set(); }
+}
+function setSectionOpen(id, open) {
+  const set = openSections();
+  if (open) set.add(id); else set.delete(id);
+  try { localStorage.setItem(OPEN_KEY, JSON.stringify([...set])); } catch (_) {}
+  const panel = document.getElementById(`settings-${id}`);
+  if (!panel) return;
+  panel.classList.toggle('is-collapsed', !open);
+  panel.querySelector('.settings-collapse')?.setAttribute('aria-expanded', String(open));
+  if (open && phoneLayout()) { panel.classList.remove('just-opened'); void panel.offsetWidth; panel.classList.add('just-opened'); }
+}
+function applyCollapse() {
+  const set = openSections();
+  document.querySelectorAll('#settingsContent [data-section-panel]').forEach(panel => {
+    const open = set.has(panel.dataset.sectionPanel);
+    panel.classList.toggle('is-collapsed', !open);
+    panel.querySelector('.settings-collapse')?.setAttribute('aria-expanded', String(open));
+  });
+}
+/** Open a section if it is folded (phones), then bring `target` into view with a pulse. */
+function reveal(id, target) {
+  const panel = document.getElementById(`settings-${id}`);
+  if (!panel) return;
+  if (panel.classList.contains('is-collapsed')) setSectionOpen(id, true);
+  if (panel.classList.contains('search-hide') || target?.classList.contains('search-hide')) { const input = $('settingsSearch'); if (input) input.value = ''; lastSearch = ''; searchSettings(''); }
+  const node = target || panel.querySelector('.settings-panel-head');
+  node.scrollIntoView({ block: target ? 'center' : 'start', behavior: 'smooth' });
+  node.classList.remove('search-hit'); void node.offsetWidth; node.classList.add('search-hit');
+}
+function settingRow(key) {
+  if (key === 'glass') return document.querySelector('.glass-previews[data-group="glass"]')?.closest('.settings-glass-row');
+  return document.querySelector(`#settingsContent input[data-pref="${key}"]`)?.closest('.settings-switch-row')
+    || document.querySelector(`#settingsContent .pp-group[data-pref="${key}"]`)?.closest('.settings-glass-row') || null;
+}
+
+// ---------- jump bar previews ----------
+// Hovering (or keyboard-focusing) a section chip shows a small card with that
+// section's picture, its one line and how many of its settings you have changed.
+let tipTimer = 0;
+function showJumpTip(button) {
+  const tip = document.getElementById('settingsJumpTip'), bar = button.closest('.settings-toolbar');
+  const section = sectionById(button.dataset.section);
+  if (!tip || !bar || !section) return;
+  const changed = changedKeys(section.keys, prefs, DEFAULT_PREFS).length;
+  tip.innerHTML = `<i class="settings-jump-tip-art" aria-hidden="true">${illustration(section.scene)}</i><div><b>${esc(section.title)}</b><small>${esc(section.blurb)}</small>${changed ? `<em>${changed} changed from default</em>` : ''}</div>`;
+  tip.hidden = false;
+  const chip = button.getBoundingClientRect(), box = bar.getBoundingClientRect();
+  const width = tip.offsetWidth;
+  const left = Math.max(8, Math.min(box.width - width - 8, chip.left + chip.width / 2 - box.left - width / 2));
+  tip.style.left = `${Math.round(left)}px`;
+  tip.style.top = `${Math.round(chip.bottom - box.top + 10)}px`;
+  tip.style.setProperty('--arrow', `${Math.round(chip.left + chip.width / 2 - box.left - left)}px`);
+  button.setAttribute('aria-describedby', 'settingsJumpTip');
+}
+function hideJumpTip() {
+  clearTimeout(tipTimer);
+  const tip = document.getElementById('settingsJumpTip');
+  if (tip) tip.hidden = true;
+  document.querySelectorAll('.settings-jump [aria-describedby]').forEach(button => button.removeAttribute('aria-describedby'));
+}
+
 function panelHead(id) {
   const section = sectionById(id);
   const changed = changedKeys(section.keys, prefs, DEFAULT_PREFS).length;
   const reset = section.keys ? `<button type="button" class="settings-reset" data-action="settings-reset-section" data-section="${id}"${changed ? '' : ' disabled'} aria-label="${esc(changed ? `Reset ${section.title} to defaults, ${changed} changed` : `${section.title} is at its defaults`)}">${icon('rotate')}<em>${changed ? 'Reset' : 'Defaults'}</em><b class="settings-reset-count"${changed ? '' : ' hidden'}>${changed}</b></button>` : '';
-  return `<div class="settings-panel-head has-art"><i class="settings-head-art" aria-hidden="true">${illustration(section.scene)}</i><div><span>${esc(section.kicker)}</span><h2>${esc(section.title)}</h2><p class="settings-head-blurb">${esc(section.blurb)}</p></div>${reset}</div>`;
+  const fold = `<button type="button" class="settings-collapse" data-action="settings-collapse" data-section="${id}" aria-expanded="false" aria-controls="settings-${id}" aria-label="${esc(`Show or hide ${section.title}`)}">${icon('chevronDown')}</button>`;
+  return `<div class="settings-panel-head has-art"><i class="settings-head-art" aria-hidden="true">${illustration(section.scene)}</i><div><span>${esc(section.kicker)}</span><h2>${esc(section.title)}</h2><p class="settings-head-blurb">${esc(section.blurb)}</p></div>${reset}${fold}</div>`;
 }
 
 function toolbarHTML() {
@@ -147,6 +347,7 @@ function toolbarHTML() {
       <input type="search" id="settingsSearch" placeholder="Search settings, like “poster” or “motion”" autocomplete="off" spellcheck="false" aria-label="Search settings" aria-describedby="settingsSearchCount">
       <b id="settingsSearchCount" aria-live="polite"></b>
     </label>
+    <div class="settings-jump-tip" id="settingsJumpTip" role="tooltip" hidden></div>
     <nav class="settings-jump" aria-label="Settings sections">${SECTIONS.map(section => `<button type="button" data-action="settings-jump" data-section="${section.id}">${icon(section.icon)}<span>${esc(section.chip)}</span><i class="settings-jump-dot" hidden></i></button>`).join('')}</nav>
     <p class="settings-legend"><i></i>Changed from the default</p>
   </div>
@@ -340,6 +541,7 @@ export function renderSettings() {
   ct.innerHTML = `<div class="settings-shell">
     <section class="settings-premium-hero"><div><span>Experience control</span><h2>Make the universe yours.</h2><p>Fine-tune the look, motion, discovery signals and privacy of CineVerse. Changes apply instantly and sync efficiently to your account.</p></div><b class="settings-hero-art">${illustration('gears')}</b></section>
     ${toolbarHTML()}
+    ${recentHTML()}
     <div class="settings-layout">
       <main>
         <section class="settings-panel" id="settings-appearance" data-section-panel="appearance">${panelHead('appearance')}
@@ -417,6 +619,7 @@ export function renderSettings() {
     </div>
   </div>`;
   syncPreviews();
+  applyCollapse();
   watchSections();
   // A redraw (a section reset, the mature switch) keeps an active search applied.
   if (lastSearch) { const input = $('settingsSearch'); if (input) { input.value = lastSearch; searchSettings(lastSearch); } }
@@ -427,7 +630,44 @@ function clearSearchHistory() {
   if (state.user) { try { localStorage.removeItem('cv_history_' + state.user.uid); } catch (_) {} }
 }
 
+function applyRegion(code) {
+  const before = state.region;
+  state.region = code;
+  try { localStorage.setItem('cv_region', code); } catch (_) {}
+  const select = $('settingsRegion'); if (select && select.value !== code) select.value = code;
+  const now = $('regionNow'); if (now) now.innerHTML = `<b>${esc(code)}</b><span>${esc(regionName(code))}</span>`;
+  queueCloudSettings();
+  document.dispatchEvent(new Event('cv:region'));
+  spinGlobe(before, code);
+}
+
 export function initSettings() {
+  lastPrefs = { ...prefs };
+  // The vault swings open once a backup file has been handed to the browser.
+  document.addEventListener('cv:backup-downloaded', () => playScene('#settings-vault .cv-art-vault', 'open', 3000));
+  // A tap on a folded heading opens it (phones), except on its own buttons.
+  document.addEventListener('click', event => {
+    const head = event.target.closest?.('#settingsContent .settings-panel-head.has-art');
+    if (!head || !phoneLayout() || event.target.closest('button, a, input, select, label')) return;
+    head.querySelector('.settings-collapse')?.click();
+  });
+  // Section chip previews: after a short hover, or on keyboard focus.
+  document.addEventListener('pointerover', event => {
+    const button = event.target.closest?.('.settings-jump button');
+    if (!button || event.pointerType !== 'mouse') return;
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(() => showJumpTip(button), 220);
+  });
+  document.addEventListener('pointerout', event => {
+    const button = event.target.closest?.('.settings-jump button');
+    if (button && !button.contains(event.relatedTarget)) hideJumpTip();
+  });
+  document.addEventListener('focusin', event => {
+    const button = event.target.closest?.('.settings-jump button');
+    if (button && button.matches(':focus-visible')) showJumpTip(button);
+  });
+  document.addEventListener('focusout', event => { if (event.target.closest?.('.settings-jump button')) hideJumpTip(); });
+  document.addEventListener('scroll', event => { if (event.target === document || event.target.closest?.('.settings-jump')) hideJumpTip(); }, { capture: true, passive: true });
   // Search: filters as you type; Enter jumps to the first match, Escape clears.
   document.addEventListener('input', event => {
     if (event.target.id !== 'settingsSearch') return;
@@ -455,11 +695,51 @@ export function initSettings() {
     options[next].click();
   });
   registerActions({
-    'settings-region': el => { const now = $('regionNow'); if (now) now.innerHTML = `<b>${esc(el.value)}</b><span>${esc(regionName(el.value))}</span>`; state.region = el.value; try { localStorage.setItem('cv_region', state.region); } catch (_) {} queueCloudSettings(); document.dispatchEvent(new Event('cv:region')); toast('Streaming region updated', 'success'); },
+    'settings-region': el => {
+      const before = state.region;
+      if (el.value === before) return;
+      applyRegion(el.value);
+      record({ id: 'region', region: { before, after: el.value }, at: Date.now() });
+      toast('Streaming region updated', 'success');
+    },
+    'settings-collapse': el => {
+      const panel = document.getElementById(`settings-${el.dataset.section}`);
+      if (panel) setSectionOpen(el.dataset.section, panel.classList.contains('is-collapsed'));
+    },
+    'settings-recent-show': el => {
+      const entry = readRecent().find(item => item.id === el.dataset.id);
+      if (!entry) return;
+      const text = recentText(entry);
+      const key = entry.region || entry.label ? null : Object.keys(entry.before || {})[0];
+      const row = key ? settingRow(key) : null;
+      reveal(text.section, row);
+    },
+    'settings-recent-undo': el => {
+      const entry = readRecent().find(item => item.id === el.dataset.id);
+      if (!entry) return;
+      const keys = Object.keys(entry.before || {});
+      undoing = true;
+      try {
+        if (entry.region) applyRegion(entry.region.before);
+        keys.filter(key => key !== 'theme').forEach(key => updatePref(key, entry.before[key]));
+      } finally { undoing = false; }
+      if (keys.includes('theme')) {
+        skipThemeRecord = true;
+        const box = el.getBoundingClientRect();
+        setTheme(entry.before.theme, { x: box.left + box.width / 2, y: box.top + box.height / 2 });
+      }
+      if (keys.some(key => key === 'discoverable' || key === 'shareTaste')) document.dispatchEvent(new Event('cv:privacy'));
+      writeRecent(readRecent().filter(item => item.id !== entry.id));
+      const text = recentText(entry);
+      if (keys.includes('mature')) renderSettings(); else { syncPreviews(); paintRecent(); }
+      toast(`Undone: ${text.title}`, 'info');
+    },
     'settings-toggle': el => {
       const key = el.dataset.pref;
       el.closest('.settings-switch-row')?.classList.toggle('is-on', !!el.checked);
       updatePref(key, !!el.checked);
+      // Switching a privacy setting off snaps the section's padlock shut.
+      if (!el.checked && SECTIONS.find(section => section.id === 'privacy').keys.includes(key)) playScene('#settings-privacy .cv-art-lock', 'snap', 1300);
       if (key === 'rememberSearch' && !el.checked) clearSearchHistory();
       // The panel itself changes shape (the blur option only exists while mature
       // is on). updatePref has already announced `cv:mature`, which is what adds
@@ -505,8 +785,10 @@ export function initSettings() {
     },
     'settings-pref': el => { updatePref(el.dataset.pref, el.value); toast('Preference saved', 'success'); },
     'settings-jump': el => {
+      hideJumpTip();
       const panel = document.getElementById(`settings-${el.dataset.section}`);
       if (!panel) return;
+      if (panel.classList.contains('is-collapsed')) setSectionOpen(el.dataset.section, true);
       if (panel.classList.contains('search-hide')) { const input = $('settingsSearch'); if (input) input.value = ''; lastSearch = ''; searchSettings(''); }
       spyPausedUntil = Date.now() + 1500;
       markCurrent(el.dataset.section);
@@ -520,7 +802,9 @@ export function initSettings() {
       if (!keys.length) return;
       const privacy = keys.some(key => key === 'discoverable' || key === 'shareTaste');
       const reshape = keys.includes('mature');
-      keys.filter(key => key !== 'theme').forEach(key => updatePref(key, DEFAULT_PREFS[key]));
+      batch = { id: `reset:${section.id}`, label: `${section.title} reset`, section: section.id, before: {}, after: {}, at: Date.now() };
+      try { keys.filter(key => key !== 'theme').forEach(key => updatePref(key, DEFAULT_PREFS[key])); }
+      finally { const done = batch; batch = null; if (keys.includes('theme')) { done.before.theme = prefs.theme; done.after.theme = DEFAULT_PREFS.theme; skipThemeRecord = true; } if (Object.keys(done.before).length) record(done); }
       if (keys.includes('theme')) setTheme(DEFAULT_PREFS.theme, (() => { const box = el.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })());
       if (privacy) document.dispatchEvent(new Event('cv:privacy'));
       if (reshape) renderSettings(); else syncPreviews();
@@ -537,7 +821,11 @@ export function initSettings() {
     },
     'clear-search-history': () => { clearSearchHistory(); toast('Search history cleared', 'info'); },
     'clear-recent-history': () => { state.recentlyViewed = []; try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {} toast('Recently viewed cleared', 'info'); },
-    'reset-experience': () => { resetPrefs(); document.dispatchEvent(new Event('cv:privacy')); renderSettings(); toast('Experience settings reset', 'success'); },
+    'reset-experience': () => {
+      batch = { id: 'reset:all', label: 'All experience settings reset', section: 'maintenance', before: {}, after: {}, at: Date.now() };
+      try { resetPrefs(); } finally { const done = batch; batch = null; if (Object.keys(done.before).length) record(done); }
+      document.dispatchEvent(new Event('cv:privacy')); renderSettings(); toast('Experience settings reset', 'success');
+    },
     'repair-episode-progress': async el => {
       if (!state.user || el.disabled) return;
       const label = el.querySelector('b'), status = el.querySelector('[data-repair-status]');
@@ -588,6 +876,17 @@ export function initSettings() {
     },
   });
   document.addEventListener('cv:prefs', event => {
+    // Recently changed: diff against the last known preferences.
+    const changed = Object.keys(PREF_LABELS).filter(key => !sameValue(prefs[key], lastPrefs[key]));
+    if (!event.detail?.cloud && !undoing && changed.length) {
+      if (batch) changed.forEach(key => { if (!(key in batch.before)) batch.before[key] = lastPrefs[key]; batch.after[key] = prefs[key]; });
+      else {
+        const keys = skipThemeRecord && changed.includes('theme') ? changed.filter(key => key !== 'theme') : changed;
+        if (changed.includes('theme')) skipThemeRecord = false;
+        keys.forEach(key => record({ id: key, before: { [key]: lastPrefs[key] }, after: { [key]: prefs[key] }, at: Date.now() }));
+      }
+    }
+    lastPrefs = { ...prefs };
     if (!event.detail?.cloud) queueCloudSettings();
     // A preference changed anywhere (the profile menu's theme switch, another
     // device) moves the matching preview on an open Settings page.

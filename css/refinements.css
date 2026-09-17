@@ -2195,10 +2195,10 @@ html[data-motion="reduced"] .cv-art .art-pin { opacity: 1; }
 
 .cv-art .art-meridian { animation: cv-art-meridian 6s linear infinite; }
 .cv-art .art-meridian.m1 { animation-delay: -2s; } .cv-art .art-meridian.m2 { animation-delay: -4s; }
-.cv-art .art-land { animation: cv-art-land 12s linear infinite; }
+.cv-art .art-land { animation: cv-art-land 14s ease-in-out infinite; }
 .cv-art .art-pin-drop { animation: cv-art-pin-drop 2.4s cubic-bezier(.3, 1.4, .5, 1) infinite; }
 @keyframes cv-art-meridian { from { transform: scaleX(1); } 50% { transform: scaleX(0); } to { transform: scaleX(-1); } }
-@keyframes cv-art-land { from { transform: translateX(-40px); } to { transform: translateX(40px); } }
+@keyframes cv-art-land { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-36px); } }
 @keyframes cv-art-pin-drop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 
 .cv-art .art-spokes { animation: cv-art-spin 8s linear infinite; }
@@ -2226,10 +2226,11 @@ html[data-motion="reduced"] .cv-art .art-pin { opacity: 1; }
    ring ripples out from the centre. js/notifications.js adds .arrive. */
 .cv-art .art-radar-ring { opacity: 0; }
 .cv-art-radar.arrive .art-radar-ring { animation: cv-art-ring 1.1s ease-out 3; }
-.cv-art-radar.arrive .art-blip.b1 { animation: cv-art-blip-arrive .9s ease-out both; }
-.cv-art-radar.arrive:is([data-arrivals="2"], [data-arrivals="3"], [data-arrivals="4"]) .art-blip.b2 { animation: cv-art-blip-arrive .9s ease-out .35s both; }
-.cv-art-radar.arrive:is([data-arrivals="3"], [data-arrivals="4"]) .art-blip.b3 { animation: cv-art-blip-arrive .9s ease-out .7s both; }
-.cv-art-radar.arrive[data-arrivals="4"] .art-blip.b4 { animation: cv-art-blip-arrive .9s ease-out 1.05s both; }
+/* Category blips (the notification hero): coloured, sized by count, flaring as
+   the sweep passes; the categories that just received items flare in turn. */
+.cv-art .art-blip.cat { opacity: .65; animation-name: cv-art-blip-cat; }
+.cv-art-radar.arrive .art-blip.cat.fresh { animation: cv-art-blip-arrive .9s ease-out both; animation-delay: var(--k, 0ms) !important; }
+@keyframes cv-art-blip-cat { 0% { opacity: 1; transform: scale(1.45); } 60%, 100% { opacity: .65; transform: scale(1); } }
 @keyframes cv-art-ring { 0% { opacity: .8; transform: scale(.3); } 100% { opacity: 0; transform: scale(2.4); } }
 @keyframes cv-art-blip-arrive { 0% { opacity: .2; transform: scale(.6); } 35% { opacity: 1; transform: scale(2.2); } 100% { opacity: 1; transform: scale(1); } }
 .notification-radar.arrived > b { animation: cv-radar-count .6s cubic-bezier(.34, 1.56, .64, 1); }
@@ -2335,3 +2336,93 @@ html[data-motion="reduced"] .cv-art .art-pin { opacity: 1; }
 .scan-camera video { position: relative; z-index: 1; }
 div.person-empty { display: grid; justify-items: center; gap: 4px; text-align: center; }
 .person-empty .person-empty-art { width: 150px; height: auto; }
+
+/* ----- Scenes that answer, second round ----- */
+/* The vault swings open after a backup download, glows, shows the file, and closes. */
+.cv-art-vault.open .art-vault-door { animation: cv-vault-door 3s cubic-bezier(.5, 0, .2, 1) both; }
+.cv-art-vault.open .art-vault-glow { animation: cv-vault-glow 3s ease-in-out both; }
+.cv-art-vault.open .art-vault-file { animation: cv-vault-file 3s cubic-bezier(.3, 1.3, .5, 1) both; }
+.cv-art-vault.open .art-vault-light { animation: none; fill: #fbbf24; }
+.cv-art .art-vault-glow, .cv-art .art-vault-file { opacity: 0; }
+@keyframes cv-vault-door { 0% { transform: scaleX(1) skewY(0); } 28%, 72% { transform: scaleX(.12) skewY(-12deg); } 100% { transform: scaleX(1) skewY(0); } }
+@keyframes cv-vault-glow { 0%, 15% { opacity: 0; } 35%, 70% { opacity: 1; } 90%, 100% { opacity: 0; } }
+@keyframes cv-vault-file { 0%, 22% { opacity: 0; transform: translateY(14px) scale(.8); } 38%, 66% { opacity: 1; transform: translateY(-4px) scale(1); } 80%, 100% { opacity: 0; transform: translateY(6px) scale(.9); } }
+
+/* The globe turns to a new region: the land starts where the old region stood and
+   slides home, meridians racing, then the pin lands. */
+.cv-art-globe.spinning .art-land { animation: cv-globe-spin var(--spin-ms, 1200ms) cubic-bezier(.3, .1, .15, 1) both; }
+.cv-art-globe.spinning .art-meridian { animation-duration: .9s; }
+.cv-art-globe.spinning .art-pin-drop { animation: cv-globe-pin .7s cubic-bezier(.3, 1.6, .5, 1) calc(var(--spin-ms, 1200ms) - 150ms) both; }
+@keyframes cv-globe-spin { from { transform: translateX(var(--spin-from, 0px)); } to { transform: translateX(0); } }
+@keyframes cv-globe-pin { 0% { opacity: 0; transform: translateY(-34px) scale(.7); } 60% { opacity: 1; transform: translateY(3px) scale(1.05); } 100% { opacity: 1; transform: none; } }
+
+/* The padlock snaps shut when a privacy switch goes off. */
+.cv-art-lock.snap .art-shackle { animation: cv-lock-snap .7s cubic-bezier(.3, 1.7, .5, 1) both; }
+.cv-art-lock.snap .art-glow { animation: cv-lock-flash .9s ease-out both; }
+.cv-art-lock.snap .art-pin { animation: none; opacity: 1; }
+@keyframes cv-lock-snap { 0% { transform: translateY(-16px); } 55% { transform: translateY(2px); } 100% { transform: translateY(0); } }
+@keyframes cv-lock-flash { 0% { opacity: .3; transform: scale(.8); } 30% { opacity: 1; transform: scale(1.15); } 100% { opacity: .6; transform: scale(1); } }
+
+/* The popover's mailbox waits with its flag down; a new arrival drops a letter in
+   and raises the flag, which lowers again a few seconds later. */
+.cv-art-mailbox.idle .art-letter { animation: none; opacity: 0; }
+.cv-art-mailbox.idle .art-flag { animation: none; transform: rotate(90deg); transition: transform .5s cubic-bezier(.34, 1.4, .64, 1); }
+.cv-art-mailbox.idle.delivered .art-letter { animation: cv-mail-drop 1.4s cubic-bezier(.5, 0, .3, 1) both; }
+.cv-art-mailbox.idle.delivered .art-flag { transform: rotate(0); transition-delay: .9s; }
+@keyframes cv-mail-drop { 0% { opacity: 0; transform: translateY(-30px); } 25% { opacity: 1; } 70% { opacity: 1; transform: translateY(24px); } 100% { opacity: 0; transform: translateY(32px); } }
+.drop-head-art { position: absolute; right: 54px; top: 50%; width: 70px; transform: translateY(-50%); pointer-events: none; }
+.drop-head-art .cv-art { width: 100%; }
+
+/* Notification hero: the radar's categories as a key that filters. */
+.notification-radar-key { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.notification-radar-key button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255, 255, 255, .03); color: var(--text2); font-size: .74rem; font-weight: 700; transition: background .2s, color .2s; }
+.notification-radar-key button:hover, .notification-radar-key button:focus-visible { background: rgba(255, 255, 255, .07); color: var(--text); }
+.notification-radar-key i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+.notification-radar-key b { color: var(--text); font-variant-numeric: tabular-nums; }
+.notification-radar-key.quiet { color: var(--text3); font-size: .78rem; }
+
+/* ----- Settings: sections fold on phones ----- */
+.settings-collapse { display: none; width: 36px; height: 36px; flex: none; place-items: center; border: 1px solid var(--glass-border); border-radius: 50%; color: var(--text2); }
+.settings-collapse .cv-icon { width: 17px; height: 17px; transition: transform .35s var(--ease-out); }
+.settings-collapse[aria-expanded="true"] .cv-icon { transform: rotate(180deg); }
+@media (max-width: 640px) {
+  .settings-collapse { display: grid; }
+  .settings-panel-head.has-art { display: grid; grid-template-columns: 58px minmax(0, 1fr) 36px; align-items: start; gap: 4px 12px; cursor: pointer; }
+  .settings-panel-head.has-art > .settings-head-art { grid-row: 1 / span 2; }
+  .settings-panel-head.has-art > .settings-collapse { grid-column: 3; grid-row: 1; }
+  .settings-panel-head.has-art > .settings-reset { grid-column: 2 / span 2; grid-row: 2; justify-self: start; margin-left: 0; }
+  #settingsContent:not(.is-searching) .settings-panel.is-collapsed > :not(.settings-panel-head) { display: none !important; }
+  #settingsContent:not(.is-searching) .settings-panel.is-collapsed .settings-panel-head { margin-bottom: 0; }
+  .settings-panel.just-opened:not(.is-collapsed) > :not(.settings-panel-head) { animation: cv-detail-rise .4s var(--ease-out) both; }
+}
+
+/* ----- Settings: recently changed ----- */
+.settings-recent { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--glass-border); border-radius: 18px; background: rgba(255, 255, 255, .02); }
+.settings-recent-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.settings-recent-head h3 { font-size: .8rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text2); }
+.settings-recent-head small { color: var(--text3); font-size: .74rem; }
+.settings-recent ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.settings-recent li { min-width: 0; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(255, 255, 255, .025); animation: cv-detail-rise .4s var(--ease-out) both; animation-delay: calc(var(--i) * 60ms); }
+.settings-recent-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: rgba(251, 191, 36, .1); color: var(--gold); }
+.settings-recent-icon .cv-icon { width: 17px; height: 17px; }
+.settings-recent li > div { min-width: 0; }
+.settings-recent li b { display: block; overflow: hidden; font-size: .82rem; text-overflow: ellipsis; white-space: nowrap; }
+.settings-recent li small { display: block; overflow: hidden; color: var(--text3); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
+.settings-recent li button { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 0 9px; border: 1px solid var(--glass-border); border-radius: 999px; color: var(--text2); font-size: .74rem; font-weight: 700; transition: background .2s, color .2s; }
+.settings-recent li button:hover, .settings-recent li button:focus-visible { background: rgba(255, 255, 255, .07); color: var(--text); }
+.settings-recent li button.undo .cv-icon { width: 13px; height: 13px; }
+.settings-recent li button.undo:hover .cv-icon { transform: rotate(-200deg); transition: transform .45s var(--ease-out); }
+.settings-recent-empty { margin-top: 6px; color: var(--text3); font-size: .8rem; }
+@media (max-width: 1100px) { .settings-recent ol { grid-template-columns: 1fr; } }
+
+/* ----- Settings: jump bar previews ----- */
+.settings-jump-tip { position: absolute; z-index: 5; width: 280px; display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--glass-border); border-radius: 16px; background: rgba(12, 12, 19, .94); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 18px 40px rgba(0, 0, 0, .45); pointer-events: none; animation: cv-tip-in .22s var(--ease-out); }
+.settings-jump-tip[hidden] { display: none; }
+.settings-jump-tip::before { content: ""; position: absolute; top: -6px; left: calc(var(--arrow, 50%) - 6px); width: 12px; height: 12px; border-top: 1px solid var(--glass-border); border-left: 1px solid var(--glass-border); background: inherit; transform: rotate(45deg); }
+.settings-jump-tip-art { width: 76px; height: 57px; display: grid; place-items: center; border-radius: 12px; background: rgba(255, 255, 255, .04); }
+.settings-jump-tip-art .cv-art { width: 96%; }
+.settings-jump-tip b { display: block; font-size: .86rem; }
+.settings-jump-tip small { display: block; margin-top: 2px; color: var(--text3); font-size: .74rem; line-height: 1.4; }
+.settings-jump-tip em { display: inline-block; margin-top: 5px; padding: 1px 7px; border-radius: 999px; background: rgba(251, 191, 36, .14); color: var(--gold); font-size: .68rem; font-style: normal; font-weight: 800; }
+@keyframes cv-tip-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .settings-jump-tip, .settings-recent li, .settings-panel.just-opened > * { animation: none !important; } }

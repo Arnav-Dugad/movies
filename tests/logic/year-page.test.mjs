@@ -171,4 +171,25 @@ check('a section counts only its own keys that differ from the defaults', settin
 check('lists compare by value, not identity', settings.changedKeys(['detailHidden'], { ...DEFAULT_PREFS, detailHidden: [] }, DEFAULT_PREFS).length === 0 && settings.changedKeys(['detailHidden'], { ...DEFAULT_PREFS, detailHidden: ['cast'] }, DEFAULT_PREFS).join() === 'detailHidden');
 check('a section with no keys has nothing to reset', settings.changedKeys(undefined, DEFAULT_PREFS, DEFAULT_PREFS).length === 0);
 
+// ---------- settings: globe, recently changed, value labels ----------
+const eastward = settings.globeSpin('IN', 'JP');
+check('the globe turns east the short way, further for further countries', eastward.offset === 37 && eastward.ms > 700 && settings.globeSpin('GB', 'NZ').offset > 0 && settings.globeSpin('IN', 'US').offset < 0, JSON.stringify([eastward, settings.globeSpin('GB', 'NZ'), settings.globeSpin('IN', 'US')]));
+check('across the date line it goes the short way round', settings.globeSpin('NZ', 'US').offset > 0 && Math.abs(settings.globeSpin('NZ', 'US').offset) < 112);
+check('no turn for the same region or an unknown one', settings.globeSpin('IN', 'IN') === null && settings.globeSpin('IN', 'XX') === null);
+check('every streaming region has a longitude', (await import(SRC + 'config.js')).REGIONS.every(([code]) => typeof settings.REGION_LONGITUDE[code] === 'number'));
+const recent = settings.addRecent(settings.addRecent(settings.addRecent([], { id: 'a' }), { id: 'b' }), { id: 'c' });
+check('recent changes keep the newest three, newest first', settings.addRecent(recent, { id: 'd' }).map(e => e.id).join() === 'd,c,b');
+check('changing the same setting again replaces its entry', settings.addRecent(recent, { id: 'a', at: 2 }).map(e => e.id).join() === 'a,c,b');
+check('values read in words', settings.prefValueLabel('density', 'compact') === 'Compact' && settings.prefValueLabel('theme', 'system') === 'Match device' && settings.prefValueLabel('glass', 'quiet') === 'Quiet and focused' && settings.prefValueLabel('spoilerShield', true) === 'On' && settings.prefValueLabel('detailHidden', ['a', 'b']) === '2 hidden' && settings.prefValueLabel('detailHidden', []) === 'All shown');
+
+// ---------- notifications: radar blips by category ----------
+const blips = art.radarBlips({ episodes: 3, streaming: 12, departures: 0, recap: 1 });
+check('a blip for each category with unread items, in its colour', blips.map(b => `${b.key}:${b.color}`).join() === 'episodes:#a78bfa,streaming:#34d399,recap:#f472b6');
+check('blips grow with the count, capped', blips.find(b => b.key === 'streaming').r === 9.4 && blips.find(b => b.key === 'recap').r === 4.6);
+check('each blip flares when the sweep reaches its bearing', blips.every(b => { const category = art.RADAR_CATEGORIES.find(c => c.key === b.key); return Math.abs(b.delay - category.bearing / 360 * art.RADAR_SWEEP_MS) < 1 && Math.abs(Math.hypot(b.x - 120, b.y - 90) - 50) < 0.2; }));
+check('no unread means no blips, and the default radar keeps its four', art.radarBlips({}).length === 0 && (art.illustration('radar').match(/art-blip b/g) || []).length === 4 && (art.illustration('radar', { data: { counts: { releases: 2 } } }).match(/art-blip cat/g) || []).length === 1);
+const notificationsMod = await import(SRC + 'notifications.js');
+check('unread counts by category', JSON.stringify(notificationsMod.unreadByCategory([{ category: 'episodes' }, { category: 'episodes' }, { category: 'recap' }])) === '{"episodes":2,"recap":1}');
+check('every notification category has a radar colour', ['episodes', 'releases', 'streaming', 'departures', 'recap', 'provider'].every(key => art.RADAR_CATEGORIES.some(c => c.key === key)));
+
 summary();

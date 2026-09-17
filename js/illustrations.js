@@ -13,6 +13,41 @@
 
 let serial = 0;
 
+const hex = value => String(value).replace(/[^#0-9a-f]/gi, '');
+/** The blips as SVG, each flaring when the sweep passes its bearing. */
+function radarBlipsSVG(blips) {
+  return blips.map(blip => `<circle class="art-blip cat" data-category="${blip.key}" data-bearing-ms="${Math.round(blip.delay)}" cx="${blip.x}" cy="${blip.y}" r="${blip.r}" fill="${hex(blip.color)}" style="transform-origin:${blip.x}px ${blip.y}px;animation-delay:${Math.round(blip.delay)}ms"/>`).join('');
+}
+
+// ---------- radar blips ----------
+// The notification radar can show one blip per category with unread items: each
+// sits at its category's bearing, is drawn in that category's colour, grows with
+// the count, and flares as the sweep passes it (the sweep turns once every 3s,
+// starting east and going clockwise, so a bearing of θ is reached at θ/360 × 3s).
+export const RADAR_SWEEP_MS = 3000;
+export const RADAR_CATEGORIES = [
+  { key: 'episodes', label: 'Episodes', color: '#a78bfa', bearing: 300 },
+  { key: 'releases', label: 'Releases', color: '#fbbf24', bearing: 20 },
+  { key: 'streaming', label: 'Streaming', color: '#34d399', bearing: 80 },
+  { key: 'departures', label: 'Departures', color: '#fb923c', bearing: 140 },
+  { key: 'recap', label: 'Recaps', color: '#f472b6', bearing: 200 },
+  { key: 'provider', label: 'History', color: '#22d3ee', bearing: 250 },
+];
+
+/** Pure: the blips for unread counts by category ({ episodes: 3, … }); empty categories have none. */
+export function radarBlips(counts = {}) {
+  return RADAR_CATEGORIES.filter(category => +counts[category.key] > 0).map(category => {
+    const count = +counts[category.key];
+    const angle = category.bearing * Math.PI / 180;
+    return {
+      key: category.key, label: category.label, color: category.color, count,
+      x: +(120 + 50 * Math.cos(angle)).toFixed(1), y: +(90 + 50 * Math.sin(angle)).toFixed(1),
+      r: +(4 + Math.min(count, 9) * 0.6).toFixed(1),
+      delay: category.bearing / 360 * RADAR_SWEEP_MS,
+    };
+  });
+}
+
 /** Pure: a toothed gear outline centred at (cx, cy), for the gears scene. */
 export function gearPath(cx, cy, outer, inner, teeth) {
   const step = Math.PI * 2 / teeth;
@@ -443,7 +478,7 @@ const SCENES = {
     </g>`,
 
   // A radar screen: a sweep turns and each blip flares as the beam passes it.
-  radar: id => `
+  radar: (id, data) => `
     <defs>
       <radialGradient id="${id}-screen" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#0f2e2e"/><stop offset="1" stop-color="#07131a"/></radialGradient>
       <linearGradient id="${id}-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6b7280"/><stop offset="1" stop-color="#1f2937"/></linearGradient>
@@ -458,7 +493,7 @@ const SCENES = {
       <path d="M120 90 L190 90 A70 70 0 0 0 184.7 63.2 Z" fill="#22d3ee" opacity=".2"/>
       <path d="M120 90 L190 90" stroke="#67e8f9" stroke-width="2.4" stroke-linecap="round"/>
     </g>
-    ${[[150, 70, 'b1'], [95, 120, 'b2'], [140, 125, 'b3'], [80, 65, 'b4']].map(([x, y, cls]) => `<circle class="art-blip ${cls}" cx="${x}" cy="${y}" r="4.5" fill="${cls === 'b1' ? '#f43f5e' : '#34d399'}" style="transform-origin:${x}px ${y}px"/>`).join('')}
+    <g class="art-radar-blips">${data?.counts ? radarBlipsSVG(radarBlips(data.counts)) : [[150, 70, 'b1'], [95, 120, 'b2'], [140, 125, 'b3'], [80, 65, 'b4']].map(([x, y, cls]) => `<circle class="art-blip ${cls}" cx="${x}" cy="${y}" r="4.5" fill="${cls === 'b1' ? '#f43f5e' : '#34d399'}" style="transform-origin:${x}px ${y}px"/>`).join('')}</g>
     <circle class="art-radar-ring" cx="120" cy="90" r="30" fill="none" stroke="#67e8f9" stroke-width="2.5" style="transform-origin:120px 90px"/>
     <circle cx="120" cy="90" r="4" fill="#67e8f9"/>`,
 
@@ -638,7 +673,7 @@ const SCENES = {
     <ellipse class="art-shadow" cx="120" cy="166" rx="54" ry="6"/>
     <circle cx="120" cy="96" r="56" fill="url(#${id}-sea)"/>
     <g clip-path="url(#${id}-ball)">
-      <g class="art-land"><path d="M70 70 q18 -12 34 0 q8 10 -4 20 q-16 6 -26 -4 z M130 60 q20 -6 30 8 q4 14 -12 16 q-16 -2 -18 -24 z M92 118 q16 -8 30 4 q6 14 -10 20 q-18 0 -20 -24 z M168 108 q14 0 16 14 q-4 12 -16 6 z" fill="#34d399" opacity=".85"/></g>
+      <g class="art-land">${[-224, -112, 0, 112, 224].map(dx => `<path transform="translate(${dx} 0)" d="M70 70 q18 -12 34 0 q8 10 -4 20 q-16 6 -26 -4 z M130 60 q20 -6 30 8 q4 14 -12 16 q-16 -2 -18 -24 z M92 118 q16 -8 30 4 q6 14 -10 20 q-18 0 -20 -24 z M168 108 q14 0 16 14 q-4 12 -16 6 z" fill="#34d399" opacity=".85"/>`).join('')}</g>
       ${[0, 1, 2].map(i => `<ellipse class="art-meridian m${i}" cx="120" cy="96" rx="56" ry="56" fill="none" stroke="#bfdbfe" stroke-opacity=".35" stroke-width="1.5" style="transform-origin:120px 96px"/>`).join('')}
       <path d="M64 96 H176 M70 70 H170 M70 122 H170" stroke="#bfdbfe" stroke-opacity=".3" stroke-width="1.5"/>
     </g>
@@ -654,21 +689,27 @@ const SCENES = {
     <defs>
       <linearGradient id="${id}-steel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6b7280"/><stop offset="1" stop-color="#1f2937"/></linearGradient>
       <radialGradient id="${id}-door" cx=".4" cy=".35" r=".75"><stop offset="0" stop-color="#d1d5db"/><stop offset="1" stop-color="#4b5563"/></radialGradient>
+      <radialGradient id="${id}-gold" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fbbf24" stop-opacity=".55"/><stop offset="1" stop-color="#fbbf24" stop-opacity="0"/></radialGradient>
     </defs>
     <ellipse class="art-shadow" cx="120" cy="166" rx="74" ry="6"/>
     <rect x="52" y="26" width="136" height="130" rx="18" fill="url(#${id}-steel)"/>
     <rect x="60" y="34" width="120" height="114" rx="12" fill="none" stroke="#fff" stroke-opacity=".1" stroke-width="2"/>
-    <circle cx="120" cy="90" r="44" fill="url(#${id}-door)"/>
-    <circle cx="120" cy="90" r="36" fill="none" stroke="#374151" stroke-width="3" stroke-dasharray="3 5"/>
-    <g class="art-spokes" style="transform-origin:120px 90px">
-      ${[0, 60, 120].map(a => `<rect x="84" y="87" width="72" height="6" rx="3" fill="#9ca3af" transform="rotate(${a} 120 90)"/>`).join('')}
-    </g>
-    <g class="art-dial-turn" style="transform-origin:120px 90px">
-      <circle cx="120" cy="90" r="14" fill="#111827" stroke="#fbbf24" stroke-width="3"/>
-      <path d="M120 78 V86" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="120" cy="90" r="44" fill="#0b0b12"/>
+    <circle class="art-vault-glow" cx="120" cy="90" r="40" fill="url(#${id}-gold)"/>
+    <g class="art-vault-file"><rect x="104" y="72" width="30" height="38" rx="4" fill="#f8fafc"/><path d="M109 84 h20 M109 91 h16 M109 98 h20" stroke="#94a3b8" stroke-width="2.4" stroke-linecap="round"/><text x="119" y="81" text-anchor="middle" font-size="7" font-weight="800" fill="#b45309" font-family="system-ui, sans-serif">JSON</text></g>
+    <g class="art-vault-door" style="transform-origin:76px 90px">
+      <circle cx="120" cy="90" r="44" fill="url(#${id}-door)"/>
+      <circle cx="120" cy="90" r="36" fill="none" stroke="#374151" stroke-width="3" stroke-dasharray="3 5"/>
+      <g class="art-spokes" style="transform-origin:120px 90px">
+        ${[0, 60, 120].map(a => `<rect x="84" y="87" width="72" height="6" rx="3" fill="#9ca3af" transform="rotate(${a} 120 90)"/>`).join('')}
+      </g>
+      <g class="art-dial-turn" style="transform-origin:120px 90px">
+        <circle cx="120" cy="90" r="14" fill="#111827" stroke="#fbbf24" stroke-width="3"/>
+        <path d="M120 78 V86" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+      </g>
     </g>
     ${[[58, 50], [58, 130], [182, 50], [182, 130]].map(([x, y]) => `<rect x="${x - 6}" y="${y - 8}" width="12" height="16" rx="3" fill="#374151"/>`).join('')}
-    <circle class="art-blink" cx="168" cy="142" r="4" fill="#22c55e"/>`,
+    <circle class="art-blink art-vault-light" cx="168" cy="142" r="4" fill="#22c55e"/>`,
 
   // A mailbox raising its flag as a letter slides in.
   mailbox: id => `
@@ -732,12 +773,15 @@ const SCENES = {
 
 export const ILLUSTRATIONS = Object.keys(SCENES);
 
-/** An animated scene as an inline SVG string. Unknown names fall back to the projector. */
-export function illustration(name, { label = '', cls = '' } = {}) {
+/**
+ * An animated scene as an inline SVG string. Unknown names fall back to the projector.
+ * `data` is handed to scenes that draw from it (the radar's category blips).
+ */
+export function illustration(name, { label = '', cls = '', data = null } = {}) {
   const scene = SCENES[name] ? name : 'projector';
   const id = `cvart${++serial}`;
   const a11y = label ? `role="img" aria-label="${String(label).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch])}"` : 'aria-hidden="true" focusable="false"';
-  return `<svg class="cv-art cv-art-${scene}${cls ? ` ${cls}` : ''}" viewBox="0 0 240 180" ${a11y}>${SCENES[scene](id)}</svg>`;
+  return `<svg class="cv-art cv-art-${scene}${cls ? ` ${cls}` : ''}" viewBox="0 0 240 180" ${a11y}>${SCENES[scene](id, data)}</svg>`;
 }
 
 const motionReduced = () => {
