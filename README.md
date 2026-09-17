@@ -409,6 +409,15 @@ use the View Transitions API, so the page swaps once under a snapshot instead of
 every element animating its colours. Browsers without it get a circular wipe, and
 reduced motion switches instantly.
 
+**On phones** the switch used to take one and a half to two seconds to start
+(measured with the CPU slowed 4×): the light theme was compiled on the first
+switch, glass rebuilt a copy of every background, and every home section, on
+screen or not, was restyled under the snapshot. Now the light theme is compiled
+ahead of time while the browser is idle (or at the first touch of the profile
+menu or a theme switch), glass edits rules in place, and off-screen home sections
+skip rendering until they are near (`content-visibility: auto`). On the same
+slowed phone the circle starts in about half a second.
+
 ## Detail pages, your way
 
 **Settings → Detail pages → What appears** has a switch for every part of a
@@ -427,28 +436,50 @@ The choice syncs with your other preferences.
 
 With **Settings → Glass effects** on *Rich cinema glass* (the default), the site
 sits on a softly lit stage (red, violet, cyan and a little amber, deeply
-blurred), and its panels are glass over it: their surfaces let that light
-through, in both themes. *Quiet and focused* turns it off.
+blurred) and its surfaces are glass over it, in both themes:
 
-The panels are styled in dozens of rules across the stylesheets, and the light
-theme is compiled from those rules at runtime, so glass is compiled the same way
-(`js/glass.js`):
+- **Panels** let that light through, carry a faint lit top edge, and pick up a
+  sheen: a soft diagonal band that travels across each panel as it scrolls past.
+- **Menus and dialogs** (the profile menu, the notification popover, the rating,
+  sign-in and share dialogs) are frosted: translucent, with the page behind them
+  blurred.
+- Accents, tints and images stay exactly as designed.
 
-- It reads every rule and copies its background declarations into one stylesheet
-  after all the others, in the same order and inside the same `@media` and
-  `@supports` blocks.
-- Only rules whose subject is a panel change, and only their near-opaque
-  **neutral** surface colours, which turn translucent. Accents, tints and images
-  stay exactly as designed.
-- Copying every background declaration, not just the panels', is what keeps it
-  correct. A panel-only copy would come later than, and so outrank, any
-  equally specific rule that also paints that panel (a "danger" variant, a hover
-  state).
-- It rebuilds when the theme or the setting changes, from whichever palette is
-  active: about 10ms, and about 90KB in dark.
+Settings shows both choices as **live previews**: a tiny lit stage with a panel
+over it, the rich one drifting and catching its sheen, the quiet one flat. They
+form a radio group, so the arrow keys move the choice.
+
+How it works (`js/glass.js`): the panels are styled in hundreds of rules, and
+the light theme is compiled from those same rules, so glass edits the matching
+rules **in place** through the CSSOM instead of adding a stylesheet:
+
+- Only rules whose subject (the last compound of the selector) is a panel or a
+  dialog change, and in them only near-opaque **neutral** surface colours. Theme
+  tokens such as `var(--bg2)` are resolved against the palette the rule applies
+  in.
+- A selector list that mixes panels with other elements is split, so the other
+  elements keep exactly what they had.
+- Editing in place adds no rules, so specificity, order and media queries resolve
+  as written, and a theme switch costs no more style work than it would without
+  glass. (The first version copied every background declaration into a ~90 KB
+  sheet, which made each theme switch restyle the page twice.)
+- Every edit is logged, and undone for *Quiet and focused* and around the light
+  theme compile, which must read the stylesheets as written.
+- The sheen is one extra top background layer, positioned by a `--glass-sheen`
+  value that is updated only for panels on screen, at most once per frame while
+  scrolling. Reduced motion and quiet glass stop it.
 - A test page-walk compares every element's background with glass on and off
-  across fifteen pages in both themes. The only differences allowed are
-  transparency on panel surfaces.
+  across sixteen pages in both themes. The only differences allowed are
+  transparency on surfaces, the sheen layer and the lit edge.
+
+### Moving lights
+
+The stage's lights drift slowly toward where you tap or click and lean the way
+you scroll, then settle back (`js/stage.js`). The drift is two CSS variables,
+eased toward a target on each frame while the lights move and left alone at rest.
+The lights read them through `translate`, so the drift combines with their own
+slow animation. **Settings → Moving lights** turns it off, and reduced motion
+keeps the lights still.
 
 ## Scroll hints
 
@@ -557,6 +588,18 @@ Every emoji and text symbol in the interface is a drawn SVG from `js/icons.js`:
 one 24px grid, 1.75 stroke, soft duotone fills, sized to the text around it.
 Lists saved with an emoji icon still show the matching drawn icon.
 
+## Illustrations
+
+Empty lists, the Your Year page, the notification centre and the monthly recap use
+animated scenes drawn as inline SVG (`js/illustrations.js`): a projector with
+turning reels, a flickering beam and dust in the light; a clapperboard that snaps
+shut with a spark; a retro television with a wobbling antenna and a rolling
+picture; a popcorn bucket popping kernels; a desk calendar turning to a starred
+date; and, for Your Year, a film reel and a television held in one orbit. They
+animate only transforms and opacity in CSS, stay sharp at any size, cost no
+requests, and give every copy its own gradient ids so two on one page never
+clash. Reduced motion holds each one on a composed frame.
+
 ## Haptics
 
 With **Haptics** on, ticking an episode, marking a season or "up to here",
@@ -571,10 +614,12 @@ A TV title page has a **Season heatmap** under its seasons (`js/season-heatmap.j
 a row per season, a square per episode, and a tick on each episode you have seen.
 
 - **Two colourings.** *Rating* uses TMDB's rating in fixed bands (under 6, 6, 7,
-  7.5, 8, 8.5, 9+), one hue. *Standouts* compares each episode with its own
-  season's average: blue below, grey within 0.2, amber above, in symmetric steps
-  of 0.2, 0.5 and 1 point. So a strong episode in a weak season still stands out.
-  The choice is remembered.
+  7.5, 8, 8.5, 9+) on a gradient from red through amber and yellow to green.
+  *Standouts* compares each episode with its own season's average: red below,
+  grey within 0.2, green above, in symmetric steps of 0.2, 0.5 and 1 point. So a
+  strong episode in a weak season still stands out. Each step was chosen in OKLCH
+  so the tick drawn on it keeps at least 4:1 contrast, in both themes. The choice
+  is remembered.
 - **Readout.** Hovering, focusing or tapping a square shows its still, air date,
   runtime, rating and votes, how it compares with its season, and when you
   watched it, with an Open button.
@@ -652,11 +697,23 @@ The bell's unread pulse used to be a ring drawn inside the button, and it read a
 a stray pink circle. The pulse now belongs to the red count badge, only for items
 that need attention.
 
-Items are scored and grouped by urgency (Needs attention / Today / This week /
-Coming later / Recently detected), carry live countdowns inside three days, and
-can be snoozed for 24 hours or dismissed. Desktop alerts are optional, local, and
-fire only for urgent unread items while the tab is in the background — there is
-no push server and no subscription endpoint.
+Items are scored and grouped by urgency (Needs attention / Today / Your monthly
+recap / This week / Coming later / Recently detected), carry live countdowns inside
+three days, and can be snoozed for 24 hours or dismissed. Desktop alerts are
+optional, local, and fire only for urgent unread items (and the monthly recap on
+the 1st) while the tab is in the background — there is no push server and no
+subscription endpoint.
+
+### Monthly recap
+
+On the 1st of each month the inbox gains a card for the month before
+(`js/monthly-recap.js`): the films you watched and the series you finished, the
+time spent on films, your top-rated film, and a fan of up to four posters. It
+opens that month on **Your Year**. It is worked out on the device each time the
+inbox is scored and never cached, so it appears at midnight and always matches
+your history, and it stays until the next month's recap replaces it. It can raise
+a desktop alert on the 1st only. **Notification preferences → Monthly recap**
+turns it off. Adult titles never appear.
 
 ### Streaming Departure Warning
 
@@ -761,7 +818,9 @@ the taste profile, so no new security rule was needed.
 
 Anyone can be **removed** from your clubs with the × on their badge (always
 visible on touch). The next person with the most time moves up into the twelve
-shown, and the panel names who is removed with a **Restore** button. The choice
+shown, and the panel lists everyone removed, each with their photo, club and
+hours and their own **Restore** button (plus **Restore all** when there are
+several). The choice
 is saved with your preferences and syncs across devices. A removed person also
 leaves what friends see, the cast-list chips on title pages, and milestone
 toasts.
@@ -861,6 +920,20 @@ rewatched in 2026 counts once in each. Adult titles never appear.
 Both cards share one drawing module (`js/year-card.js`). Month bars rise one
 after another, and the busiest month (every month tied for it) rises in gold
 with a soft glow that grows with the bar.
+
+### Your Year
+
+`/year` (or `/year/2026`) puts the two cards side by side (`js/your-year.js`),
+each drawing itself as it scrolls into view, under a combined total: films,
+finished series, watch time across both and the busiest month, with one month
+chart that stacks film viewings and series finishes. The watch time says what it
+adds: that year's film viewings plus the whole runs of the series finished that
+year. Tapping a month (or opening a monthly recap) lists exactly what made it up,
+and `?month=8` in the address opens August. Open it from the profile menu or
+**Your year** on the Cineprint panel; every year with something in it is a chip at
+the top, and an empty year says what will fill it. The page reuses the cards' own
+summaries, so its numbers always match what you share. Adult titles never appear
+on the page, the film card or the series card.
 
 ### Viewing patterns
 
@@ -1021,7 +1094,9 @@ standouts, insights and watch order, the finale build-up and the Completed serie
 shelf (`social-heatmap.test.mjs`), and the year-in-series card, shelf flip figures,
 odometer numbers and first-sight badges (`year-shelf.test.mjs`), and cinema glass,
 the year-in-films card, the shared year-card pieces, scroll hints and removing
-people from Hours clubs (`glass-years.test.mjs`). It needs nothing installed.
+people from Hours clubs (`glass-years.test.mjs`), and Your Year, the monthly
+recap, moving lights and the illustrations (`year-page.test.mjs`). It needs
+nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.

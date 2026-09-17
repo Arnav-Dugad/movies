@@ -54,7 +54,7 @@ function show(event) {
     ...(event.poster ? { icon: `${IMG}w185${event.poster}` } : {}),
     tag: `cineverse-${event.key}`,
     silent: !state.notificationPreferences?.sound,
-    data: { path: `/${event.mediaType}/${event.id}` },
+    data: { path: event.path || `/${event.mediaType}/${event.id}` },
   });
   notification.onclick = () => {
     try { window.focus(); } catch (_) {}
@@ -65,13 +65,14 @@ function show(event) {
 }
 
 // `events` must already be filtered to what the user is allowed to see. Only
-// urgent, unread items qualify, and nothing fires while the tab is focused —
+// urgent, unread items (and the monthly recap on the 1st) qualify, and nothing
+// fires while the tab is focused —
 // an OS alert for something already on screen is just noise.
 export function deliverDesktopAlerts(events) {
   if (!pushEnabled() || pushPermission() !== 'granted' || !state.user) return;
   if (document.visibilityState === 'visible' && document.hasFocus()) return;
   const sent = new Set(readSent());
-  const queue = events.filter(event => event.urgent && !sent.has(event.key)).slice(0, MAX_PER_BURST);
+  const queue = events.filter(event => (event.urgent || event.alertable) && !sent.has(event.key)).slice(0, MAX_PER_BURST);
   if (!queue.length) return;
   for (const event of queue) {
     try { show(event); sent.add(event.key); } catch (error) { console.warn('desktop alert', error); return; }

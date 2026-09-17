@@ -5,9 +5,10 @@
 //
 // Two ways to colour it:
 //   - Rating: TMDB's community rating in fixed bands (under 6, 6, 7, 7.5, 8,
-//     8.5, 9+), one hue, so a colour means the same score on every show.
-//   - Standouts: each episode against its own season's average, blue below and
-//     amber above with grey for "about average", so a strong episode in a weak
+//     8.5, 9+), red through yellow to green and a step lighter each band, so a
+//     colour means the same score on every show.
+//   - Standouts: each episode against its own season's average, red below and
+//     green above with grey for "about average", so a strong episode in a weak
 //     season is as visible as one in a great season.
 //
 // Around the grid: a sparkline and average for each season (the strongest

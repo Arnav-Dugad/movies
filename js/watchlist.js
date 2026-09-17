@@ -2,6 +2,7 @@
 import { auth, db, firebase } from './firebase.js';
 import { haptic } from './haptics.js';
 import { icon, listIcon } from './icons.js';
+import { illustration } from './illustrations.js';
 import { state } from './state.js';
 import { IMG, PH, genreMap } from './config.js';
 import { esc, toast, $, debounce } from './ui.js';
@@ -425,7 +426,7 @@ export function renderWL() {
     const filtered = !!(wlQuery || wlGenre !== 'all' || wlStatus !== 'all' || wlRating || wlDecade !== 'all' || wlLanguage !== 'all' || wlCountry !== 'all' || wlRuntime !== 'all' || wlMine !== 'all' || wlAdded !== 'all' || wlMetadata !== 'all' || state.wlFilter !== 'all');
     ct.innerHTML = filtered
       ? `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><h3>No matching titles</h3><p>Try changing or resetting your filters</p></div>`
-      : `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg><h3>${esc(nm[0].toUpperCase() + nm.slice(1))} is empty</h3><p>Add movies and shows with the + on any poster</p></div>`;
+      : `<div class="wl-empty">${illustration('popcorn')}<h3>${esc(nm[0].toUpperCase() + nm.slice(1))} is empty</h3><p>Add movies and shows with the + on any poster</p></div>`;
     return;
   }
 

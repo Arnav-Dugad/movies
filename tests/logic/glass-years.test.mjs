@@ -33,20 +33,22 @@ check('pseudo-elements of panels are left alone', glass.panelSelector('.profile-
 check('mixed lists keep only their panel parts', glass.panelSelector('.card, .settings-panel, .row') === '.settings-panel');
 check('a shorthand colour-only layer is written back as none', glass.writableValue('background-image', 'radial-gradient(red, blue), initial') === 'radial-gradient(red, blue), none' && glass.writableValue('background-color', 'initial') === 'initial');
 
-// compileRules against a CSSOM-shaped rule list
-const style = map => ({ getPropertyValue: prop => map[prop] || '', getPropertyPriority: () => '' });
-const rules = [
-  { selectorText: '.settings-danger', style: style({ 'background-image': 'radial-gradient(rgba(229, 9, 20, 0.09), transparent), initial', 'background-color': 'rgba(229, 9, 20, 0.02)' }) },
-  { selectorText: '.settings-panel', style: style({ 'background-image': 'linear-gradient(145deg, rgb(20, 20, 31), rgb(12, 12, 20))' }) },
-  { selectorText: '.card, .stats-panel', style: style({ 'background-color': 'rgb(14, 14, 20)' }) },
-  { selectorText: '.label', style: style({ color: 'red' }) },
-  { constructor: { name: 'CSSMediaRule' }, conditionText: '(max-width: 700px)', cssRules: [{ selectorText: '.stats-panel', style: style({ 'background-color': 'rgb(10, 10, 16)' }) }] },
-];
-const compiled = glass.compileRules(rules, 0.5);
-check('every background declaration is copied in order, surfaces glassed only on panels', compiled.indexOf('.settings-danger{') < compiled.indexOf('.settings-panel{') && compiled.includes('.settings-panel{background-image:linear-gradient(145deg, rgba(20, 20, 31, 0.5), rgba(12, 12, 20, 0.5));') && compiled.includes('.card{background-color:rgb(14, 14, 20);}') && compiled.includes('.stats-panel{background-color:rgba(14, 14, 20, 0.5);}'), compiled);
-check('non-background rules are not copied', !compiled.includes('.label'));
-check('copies stay inside their media query', /@media \(max-width: 700px\)\{\n\.stats-panel\{background-color:rgba\(10, 10, 16, 0\.5\);\}\n\}/.test(compiled));
-check('copied shorthand layers stay valid', compiled.includes('transparent), none;'));
+// glassDeclarations against a CSSOM-shaped declaration reader
+const reader = map => prop => ({ value: map[prop] || '', priority: map[`!${prop}`] ? 'important' : '' });
+const panelWrites = glass.glassDeclarations(reader({ 'background-image': 'linear-gradient(145deg, rgb(20, 20, 31), rgb(12, 12, 20))', 'background-size': 'cover', 'box-shadow': '0 10px 30px rgba(0, 0, 0, 0.3)' }), 'panel', 0.4);
+const byProp = writes => Object.fromEntries((writes || []).map(write => [write.prop, write.value]));
+const panel = byProp(panelWrites);
+check('a panel surface turns translucent under a sheen layer', panel['background-image'] === `${glass.SHEEN_LAYER}, linear-gradient(145deg, rgba(20, 20, 31, 0.4), rgba(12, 12, 20, 0.4))`, panel['background-image']);
+check("the panel's own layer sizes keep lining up behind the sheen", panel['background-size'] === 'auto, cover');
+check('a panel with a shadow gains the lit top edge', panel['box-shadow'] === `0 10px 30px rgba(0, 0, 0, 0.3), ${glass.EDGE}`);
+const colourOnly = byProp(glass.glassDeclarations(reader({ 'background-color': 'rgb(14, 14, 20)' }), 'panel', 0.4));
+check("a colour-only rule gets no sheen, so it never hides another rule's image", colourOnly['background-color'] === 'rgba(14, 14, 20, 0.4)' && !('background-image' in colourOnly) && !('box-shadow' in colourOnly));
+check('a rule with no surface needs nothing', glass.glassDeclarations(reader({ 'background-color': 'rgba(229, 9, 20, 0.2)' }), 'panel', 0.4) === null && glass.glassDeclarations(reader({ color: 'red' }), 'panel', 0.4) === null);
+const overlay = glass.glassDeclarations(reader({ 'background-color': 'var(--bg2)', '!background-color': true }), 'overlay', 0.74, { '--bg2': '#0c0c14' });
+check('dialogs resolve theme tokens, keep !important and are frosted', overlay[0].value === 'rgba(12, 12, 20, 0.74)' && overlay[0].priority === 'important' && overlay.some(write => write.prop === 'backdrop-filter' && write.value.includes('blur')), JSON.stringify(overlay));
+check('token chains resolve and unknown variables stay', glass.resolveTokens('var(--a) var(--zz)', { '--a': 'var(--b)', '--b': '#fff' }) === '#fff var(--zz)');
+check('panels and dialogs are told apart by their subject', glass.glassKind('.profile-dd') === 'overlay' && glass.glassKind('#x .year-total') === 'panel' && glass.glassKind('.year-total .row') === '' && glass.glassKind('.year-side::after') === '');
+check('the sheen travels as a panel scrolls up the screen, clamped at the edges', glass.sheenAt(1000, 800) < glass.sheenAt(400, 800) && glass.sheenAt(400, 800) < glass.sheenAt(0, 800) && glass.sheenAt(-9999, 800) === glass.sheenAt(-200, 800) && glass.sheenAt(9999, 800) === glass.sheenAt(1000, 800));
 
 // ---------- year cards ----------
 check('the busiest month glows, and ties all glow', JSON.stringify(card.busiestMonths([0, 2, 0, 5, 5, 1, 0, 0, 0, 0, 0, 0])) === '[3,4]');

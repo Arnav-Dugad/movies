@@ -378,22 +378,42 @@
   const systemLight = () => { try { return root.matchMedia('(prefers-color-scheme: light)').matches; } catch (_) { return false; } };
   const resolve = choice => (choice === 'light' || (choice === 'system' && systemLight()) ? 'light' : 'dark');
 
+  // Builds the light sheet once. `enabled` false builds it switched off, so it can
+  // be prepared ahead of a switch (warm) without the page changing. Anything
+  // that edits the source rules (js/glass.js) steps aside for the compile, so
+  // the light palette is always compiled from the stylesheets as written.
+  function ensureSheet(doc, enabled) {
+    let style = doc.getElementById(STYLE_ID);
+    if (style) return style;
+    const started = root.performance ? root.performance.now() : 0;
+    const hooks = root.CVGlassHooks;
+    try { hooks?.beforeCompile?.(); } catch (_) {}
+    style = doc.createElement('style');
+    style.id = STYLE_ID;
+    style.media = enabled ? 'all' : 'not all';
+    style.textContent = compile(doc);
+    valueMemo.clear();   // the compile runs once per page; free its scratch space
+    // Before css/light.css, so the hand-tuned layer always has the last word.
+    const anchor = doc.querySelector('link[data-theme="light"]');
+    if (anchor) anchor.parentNode.insertBefore(style, anchor); else doc.head.appendChild(style);
+    api.compileMs = root.performance ? Math.round(root.performance.now() - started) : 0;
+    try { hooks?.afterCompile?.(style); } catch (_) {}
+    return style;
+  }
+
+  /** Prepare the light sheet ahead of a switch, without changing the page. */
+  function warm() {
+    const doc = root.document;
+    if (!doc?.head) return;
+    ensureSheet(doc, doc.documentElement.dataset.theme === 'light');
+  }
+
   function apply(choice) {
     const doc = root.document;
     const theme = resolve(choice);
     const html = doc.documentElement;
     let style = doc.getElementById(STYLE_ID);
-    if (theme === 'light' && !style) {
-      const started = root.performance ? root.performance.now() : 0;
-      style = doc.createElement('style');
-      style.id = STYLE_ID;
-      style.textContent = compile(doc);
-      valueMemo.clear();   // the compile runs once per page; free its scratch space
-      // Before css/light.css, so the hand-tuned layer always has the last word.
-      const anchor = doc.querySelector('link[data-theme="light"]');
-      if (anchor) anchor.parentNode.insertBefore(style, anchor); else doc.head.appendChild(style);
-      api.compileMs = root.performance ? Math.round(root.performance.now() - started) : 0;
-    }
+    if (theme === 'light' && !style) style = ensureSheet(doc, true);
     if (style) style.media = theme === 'light' ? 'all' : 'not all';
     html.dataset.theme = theme;
     html.style.colorScheme = theme;
@@ -402,7 +422,7 @@
     return theme;
   }
 
-  const api = { rgbToOklch, oklchToRgb, flipL, transformRGBA, transformValue, declarations, compileBlock, compileRules, parseColor, resolve, apply, stored, compileMs: 0, META };
+  const api = { rgbToOklch, oklchToRgb, flipL, transformRGBA, transformValue, declarations, compileBlock, compileRules, parseColor, resolve, apply, warm, stored, compileMs: 0, META };
   root.CVTheme = api;
 
   if (root.document && root.document.documentElement) {

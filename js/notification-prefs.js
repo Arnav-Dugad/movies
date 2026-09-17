@@ -4,10 +4,10 @@
 import { state } from './state.js';
 import { db, firebase } from './firebase.js';
 
-export const NOTIFICATION_CATEGORIES = ['episodes', 'releases', 'streaming', 'departures', 'providerChanges'];
+export const NOTIFICATION_CATEGORIES = ['episodes', 'releases', 'streaming', 'departures', 'providerChanges', 'recaps'];
 
 export const DEFAULT_NOTIFICATION_PREFS = Object.freeze({
-  episodes: true, releases: true, streaming: true, departures: true, providerChanges: true,
+  episodes: true, releases: true, streaming: true, departures: true, providerChanges: true, recaps: true,
   push: false, sound: false,
   mutedItems: [], mutedProviders: [], snoozed: {}, dismissed: [], updatedAt: 0,
 });
@@ -122,7 +122,7 @@ export function snoozedCount() {
 
 export function notificationAllowed(event) {
   const prefs = clean(state.notificationPreferences);
-  const category = event.category === 'provider' ? 'providerChanges' : event.category;
+  const category = { provider: 'providerChanges', recap: 'recaps' }[event.category] || event.category;
   if (prefs[category] === false) return false;
   if (prefs.mutedItems.includes(`${event.mediaType}_${event.id}`)) return false;
   if (prefs.dismissed.includes(event.key)) return false;

@@ -50,6 +50,9 @@ export function initScrollHints() {
   window.addEventListener('resize', sweep, { passive: true });
   // Rows are rendered and refilled all the time; one pass per frame follows them.
   new MutationObserver(sweep).observe(document.body, { childList: true, subtree: true });
+  // A row in a section that skipped rendering (content-visibility) has no width
+  // to measure until it comes on screen.
+  document.addEventListener('contentvisibilityautostatechange', sweep, true);
   // Images arriving can widen a row after it rendered.
   document.addEventListener('load', event => { if (event.target instanceof HTMLImageElement) sweep(); }, true);
   sweep();

@@ -55,6 +55,25 @@ function tilesFor(summary) {
   return tiles.slice(0, 4);
 }
 
+/** The card's drawing for a year summary: `draw(ctx, time)`, its timeline and a closer. */
+export async function seriesCardArt(summary) {
+  // The wall shows the year's most recent finishes, in order.
+  const wall = summary.shows.slice(-12);
+  const { posters, close } = await posterBitmaps(wall);
+  const ground = groundCanvas({ label: `${summary.year} IN SERIES` });
+  const plan = yearTimeline(summary);
+  const tiles = tilesFor(summary);
+  const draw = (ctx, time) => {
+    ctx.clearRect(0, 0, ground.width, ground.height);
+    ctx.drawImage(ground, 0, 0);
+    drawHeadline(ctx, time, plan, { count: summary.count, noun: 'series', line: `finished in ${summary.year}` });
+    drawTiles(ctx, tiles, time, plan);
+    const twoRows = drawWall(ctx, wall, posters, time, plan);
+    drawMonths(ctx, summary.byMonth, time, plan, { tall: !twoRows });
+  };
+  return { draw, plan, close };
+}
+
 /** Open the share studio with a year's card. `finished` are shelf rows. */
 export function openSeriesYear(finished, year) {
   const summary = seriesYear(finished, year);
@@ -71,20 +90,7 @@ export function openSeriesYear(finished, year) {
       shareText: `I finished ${summary.count} series in ${year} — my year on CineVerse`, copied: 'Link copied', alt: 'Year in series card:',
     },
     build: async () => {
-      // The wall shows the year's most recent finishes, in order.
-      const wall = summary.shows.slice(-12);
-      const { posters, close } = await posterBitmaps(wall);
-      const ground = groundCanvas({ label: `${summary.year} IN SERIES` });
-      const plan = yearTimeline(summary);
-      const tiles = tilesFor(summary);
-      const draw = (ctx, time) => {
-        ctx.clearRect(0, 0, ground.width, ground.height);
-        ctx.drawImage(ground, 0, 0);
-        drawHeadline(ctx, time, plan, { count: summary.count, noun: 'series', line: `finished in ${summary.year}` });
-        drawTiles(ctx, tiles, time, plan);
-        const twoRows = drawWall(ctx, wall, posters, time, plan);
-        drawMonths(ctx, summary.byMonth, time, plan, { tall: !twoRows });
-      };
+      const { draw, plan, close } = await seriesCardArt(summary);
       return studioResult({ title, draw, end: plan.end, close });
     },
   });

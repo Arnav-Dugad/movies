@@ -284,3 +284,7 @@
 #settingsContent .settings-parts-head button { font-size: 0.848rem; }
 #settingsContent .settings-parts-head b { font-size: .88rem; }
 #settingsContent .settings-part { font-size: 0.873rem; }
+#settingsContent .settings-glass-row > span strong { font-size: .9rem; }
+#settingsContent .settings-glass-row > span small { font-size: 0.848rem; }
+#settingsContent .gp-copy strong { font-size: 0.873rem; }
+#settingsContent .gp-copy small { font-size: 0.831rem; }

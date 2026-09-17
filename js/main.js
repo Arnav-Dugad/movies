@@ -6,6 +6,7 @@ import { initImageFallback, initCardSync } from './cards.js';
 import { loadPrefs } from './prefs.js';
 import { initGlass } from './glass.js';
 import { initScrollHints } from './scroll-hints.js';
+import { initStage } from './stage.js';
 import { initAuth } from './auth.js';
 import { initWatchlist, toggleWatched } from './watchlist.js';
 import { onShowComplete, backfillLegacyShows, fetchHistoricalShowMeta, pendingLegacyShows, initEpisodeRefresh } from './episodes.js';
@@ -33,6 +34,7 @@ import { initSocial } from './social.js';
 import { initFriends } from './friends.js';
 import { initParty } from './party.js';
 import { initProfile } from './profile.js';
+import { initYear } from './your-year.js';
 import { initSettings } from './settings.js';
 import { initOnboarding } from './onboarding.js';
 import { initContinueDrag } from './continue-drag.js';
@@ -70,6 +72,7 @@ async function init() {
   // built from the active palette (js/glass.js).
   initGlass();
   initScrollHints();
+  initStage();
 
   // Wire delegation + all action handlers before any content renders.
   initDelegation();
@@ -125,6 +128,7 @@ async function init() {
   initFriends();
   initParty();
   initProfile();
+  initYear();
   initSettings();
   initOnboarding();
   initContinueDrag();

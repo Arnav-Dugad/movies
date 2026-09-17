@@ -101,12 +101,31 @@ export function filmTiles(summary) {
 /** Pure: when each part of the card arrives (ms). */
 export const filmTimeline = summary => cardTimeline(summary.wall.length);
 
+const filmLine = summary => (summary.plays > summary.count ? `${summary.plays} viewings with rewatches` : `watched in ${summary.year}`);
+
+/** The card's drawing for a year summary: `draw(ctx, time)`, its timeline and a closer. */
+export async function filmsCardArt(summary) {
+  const { posters, close } = await posterBitmaps(summary.wall);
+  const ground = groundCanvas({ label: `${summary.year} IN FILMS`, glow: ['rgba(14,165,233,.28)', 'rgba(229,9,20,.12)'] });
+  const plan = filmTimeline(summary);
+  const tiles = filmTiles(summary);
+  const line = filmLine(summary);
+  const draw = (ctx, time) => {
+    ctx.clearRect(0, 0, ground.width, ground.height);
+    ctx.drawImage(ground, 0, 0);
+    drawHeadline(ctx, time, plan, { count: summary.count, noun: summary.count === 1 ? 'film' : 'films', line });
+    drawTiles(ctx, tiles, time, plan);
+    const twoRows = drawWall(ctx, summary.wall, posters, time, plan);
+    drawMonths(ctx, summary.byMonth, time, plan, { tall: !twoRows });
+  };
+  return { draw, plan, close };
+}
+
 /** Open the share studio with a year's film card. */
 export function openFilmsYear(year, { exclude = () => false } = {}) {
   const summary = filmsYear(state.watched, year, { ratings: state.ratings, exclude });
   if (!summary.count) return;
   const title = `${year} in films`;
-  const extra = summary.plays > summary.count ? `${summary.plays} viewings with rewatches` : `watched in ${summary.year}`;
   return openShareStudio({
     title,
     url: `${location.origin}/profile`,
@@ -118,18 +137,7 @@ export function openFilmsYear(year, { exclude = () => false } = {}) {
       shareText: `I watched ${summary.count} films in ${year} — my year on CineVerse`, copied: 'Link copied', alt: 'Year in films card:',
     },
     build: async () => {
-      const { posters, close } = await posterBitmaps(summary.wall);
-      const ground = groundCanvas({ label: `${summary.year} IN FILMS`, glow: ['rgba(14,165,233,.28)', 'rgba(229,9,20,.12)'] });
-      const plan = filmTimeline(summary);
-      const tiles = filmTiles(summary);
-      const draw = (ctx, time) => {
-        ctx.clearRect(0, 0, ground.width, ground.height);
-        ctx.drawImage(ground, 0, 0);
-        drawHeadline(ctx, time, plan, { count: summary.count, noun: summary.count === 1 ? 'film' : 'films', line: extra });
-        drawTiles(ctx, tiles, time, plan);
-        const twoRows = drawWall(ctx, summary.wall, posters, time, plan);
-        drawMonths(ctx, summary.byMonth, time, plan, { tall: !twoRows });
-      };
+      const { draw, plan, close } = await filmsCardArt(summary);
       return studioResult({ title, draw, end: plan.end, close });
     },
   });

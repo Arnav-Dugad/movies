@@ -40,6 +40,9 @@ export const DEFAULT_PREFS = Object.freeze({
   // People removed from Hours clubs (TMDB person ids). The next person with the
   // most time takes their place; restoring brings them back.
   hiddenClubs: [],
+  // The background lights drift toward where you tap and the way you scroll
+  // (js/stage.js). Reduced motion keeps them still regardless.
+  lightDrift: true,
 });
 
 export let prefs = { ...DEFAULT_PREFS };
@@ -67,7 +70,7 @@ export function cleanPersonIds(value) {
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
-  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'hidePosterCaptions', 'ambientColour', 'castMilestones', 'shareMilestones', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'detailHeatmapExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur', 'matureInRecs'].forEach(key => {
+  ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'hidePosterCaptions', 'ambientColour', 'castMilestones', 'shareMilestones', 'lightDrift', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'detailHeatmapExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur', 'matureInRecs'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   next.detailHidden = cleanDetailHidden(raw.detailHidden);

@@ -7,6 +7,7 @@
 import { state } from './state.js';
 import { IMG, PH, genreMap } from './config.js';
 import { esc, debounce, $, toast } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { cardArt, rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.js';
 import { ensureWatchedMeta } from './watched-meta.js';
@@ -199,7 +200,7 @@ function renderGrid() {
     const scope = state.watchedFilter === 'movie' ? 'movies' : state.watchedFilter === 'tv' ? 'TV shows' : 'titles';
     ct.innerHTML = anyWatched
       ? `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><h3>No matches</h3><p>Try a different search, genre, or filter</p></div>`
-      : `<div class="wl-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6L9 17l-5-5"/></svg><h3>No watched ${scope} yet</h3><p>Open a title and tap the check mark to mark it watched</p></div>`;
+      : `<div class="wl-empty">${illustration('projector')}<h3>No watched ${scope} yet</h3><p>Open a title and tap the check mark to mark it watched</p></div>`;
     return;
   }
 

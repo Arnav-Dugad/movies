@@ -28,6 +28,7 @@ import { closeAuth, isAuthOpen, closeDelete, isDeleteOpen } from './auth.js';
 import { renderFriends } from './friends.js';
 import { renderParty } from './party.js';
 import { renderProfile } from './profile.js';
+import { renderYear } from './your-year.js';
 import { renderSettings } from './settings.js';
 import { renderReleaseReminders } from './release-reminders.js';
 import { closeScanner, isScannerOpen } from './scan.js';
@@ -56,6 +57,7 @@ const ROUTES = [
   { test: /^\/friends\/?$/, page: 'friendsPage', render: () => renderFriends() },
   { test: /^\/party\/?$/, page: 'partyPage', render: () => renderParty() },
   { test: /^\/profile\/?$/, page: 'profilePage', render: () => renderProfile() },
+  { test: /^\/year(?:\/(\d{4}))?\/?$/, page: 'yearPage', render: (p, query) => renderYear(p[0] ? +p[0] : 0, query) },
   { test: /^\/settings\/?$/, page: 'settingsPage', render: () => renderSettings() },
   { test: /^\/movie\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'movie') },
   { test: /^\/tv\/(\d+)\/?$/, page: 'detailPage', render: (p) => openDetail(+p[0], 'tv') },
@@ -86,6 +88,7 @@ const TITLES = {
   friendsPage: 'Friends — CineVerse',
   partyPage: 'Watch Party — CineVerse',
   profilePage: 'Profile — CineVerse',
+  yearPage: 'Your Year — CineVerse',
   settingsPage: 'Settings — CineVerse',
   detailPage: 'CineVerse',
   personPage: 'CineVerse',
@@ -95,7 +98,7 @@ const TITLES = {
   collabPage: 'Shared List — CineVerse',
 };
 
-const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', franchises: '/franchises', 'box-office': '/box-office', notifications: '/notifications', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', settings: '/settings' };
+const PAGE_TO_PATH = { home: '/', movies: '/movies', tv: '/tv', watchlist: '/watchlist', watched: '/watched', discover: '/discover', reminders: '/reminders', franchises: '/franchises', 'box-office': '/box-office', notifications: '/notifications', stats: '/stats', search: '/search', friends: '/friends', party: '/party', profile: '/profile', year: '/year', settings: '/settings' };
 
 let currentPath = null;
 
@@ -113,7 +116,7 @@ const ROUTE_NAMES = {
   remindersPage: 'Release Reminders', franchisesPage: 'Franchises', boxOfficePage: 'Box Office',
   notificationsPage: 'Notifications', wlPage: 'My List', watchedPage: 'Watched',
   statsPage: 'My Stats', searchPage: 'Search', friendsPage: 'Friends', partyPage: 'Watch Party',
-  profilePage: 'Profile', settingsPage: 'Settings', detailPage: 'Title details',
+  profilePage: 'Profile', yearPage: 'Your Year', settingsPage: 'Settings', detailPage: 'Title details',
   personPage: 'Person', studioPage: 'Studio', collectionPage: 'Collection',
   sharedListPage: 'Shared list',
   collabPage: 'Shared list',
@@ -360,6 +363,7 @@ export function initRouter() {
     else if (currentPath === '/friends') renderFriends();
     else if (currentPath === '/party') renderParty();
     else if (currentPath === '/profile') renderProfile();
+    else if (/^\/year(\/\d{4})?\/?$/.test(currentPath)) renderYear(+currentPath.split('/')[2] || 0);
     else if (currentPath === '/settings') renderSettings();
     else if (currentPath === '/notifications') renderNotifications(true);
     else if (currentPath === '/reminders') renderReleaseReminders();

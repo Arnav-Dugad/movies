@@ -68,7 +68,7 @@ export function setTheme(choice, origin) {
     html.classList.add('theme-bloom');
     // Let white title logos turn to ink before the new page is captured, but
     // never hold the switch for more than a moment.
-    await Promise.race([tagAllLogos(), new Promise(resolve => setTimeout(resolve, 280))]);
+    await Promise.race([tagAllLogos(), new Promise(resolve => setTimeout(resolve, 160))]);
   });
   transition.ready.then(() => {
     const open = [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`];
@@ -101,9 +101,24 @@ function wipe(to, commit, { x, y, radius }) {
   }).catch(() => commit()).finally(() => disc.remove());
 }
 
+// The light palette is compiled from every stylesheet the first time it is
+// needed (js/theme.js). On a phone that compile is long enough to stall a
+// switch, so it is prepared ahead: in idle time a few seconds after load, or at
+// the latest when the menu or page that holds a theme control is touched.
+function warmLightTheme() {
+  try { window.CVTheme?.warm?.(); } catch (_) {}
+}
+
 export function initThemeToggle() {
   initLogoTone();
   syncThemeControls();
+  if (!document.getElementById('cvLightTheme')) {
+    const idle = window.requestIdleCallback ? fn => window.requestIdleCallback(fn, { timeout: 8000 }) : fn => setTimeout(fn, 400);
+    setTimeout(() => idle(warmLightTheme), 3000);
+    document.addEventListener('pointerdown', event => {
+      if (event.target.closest?.('.nav-avatar, .profile-dd, [data-action="toggle-theme"], [data-action="settings-theme"]')) warmLightTheme();
+    }, { capture: true, passive: true });
+  }
   registerActions({
     'toggle-theme': (el, event) => setTheme(effective() === 'light' ? 'dark' : 'light', originOf(el, event)),
     'settings-theme': el => setTheme(el.value, originOf(el)),

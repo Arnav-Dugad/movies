@@ -1,5 +1,6 @@
 // ===== SETTINGS PAGE (/settings) =====
 import { state } from './state.js';
+import { icon } from './icons.js';
 import { $, toast, esc } from './ui.js';
 import { registerActions } from './events.js';
 import { REGIONS, regionLabel } from './config.js';
@@ -38,6 +39,25 @@ const ICONS = {
 const toggle = (key, title, sub, checked) => `<label class="settings-switch-row"><span><strong>${title}</strong><small>${sub}</small></span><input type="checkbox" data-action="settings-toggle" data-pref="${key}" ${checked ? 'checked' : ''}><i></i></label>`;
 const select = (key, title, sub, options, value) => `<label class="settings-select-row"><span><strong>${title}</strong><small>${sub}</small></span><select class="watched-select" data-action="settings-pref" data-pref="${key}">${options.map(([v, label]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>`;
 
+// Glass effects as two live previews: each shows a small lit stage with a panel
+// over it, drawn the way that setting draws the site, so the choice is seen
+// before it is made. A radio group: arrow keys move between them.
+const GLASS_CHOICES = [
+  ['rich', 'Rich cinema glass', 'Lit stage, glass panels, moving sheen'],
+  ['quiet', 'Quiet and focused', 'Flat, solid surfaces, no motion'],
+];
+function glassPicker() {
+  return `<div class="settings-glass-row"><span><strong id="glassPickerLabel">Glass effects</strong><small>See each look before you choose it.</small></span>
+    <div class="glass-previews" role="radiogroup" aria-labelledby="glassPickerLabel">${GLASS_CHOICES.map(([value, label, note]) => {
+      const on = prefs.glass === value;
+      return `<button type="button" role="radio" aria-checked="${on}" tabindex="${on ? 0 : -1}" class="glass-preview ${value}${on ? ' on' : ''}" data-action="settings-glass" data-value="${value}">
+        <span class="gp-stage" aria-hidden="true"><i class="gp-light a"></i><i class="gp-light b"></i><i class="gp-light c"></i><span class="gp-panel"><i class="gp-sheen"></i><b></b><em></em><em></em><span class="gp-chips"><u></u><u></u></span></span></span>
+        <span class="gp-copy"><strong>${label}</strong><small>${note}</small></span>
+        <span class="gp-check" aria-hidden="true">${icon('check')}</span>
+      </button>`;
+    }).join('')}</div></div>`;
+}
+
 // Every part of a title's page, grouped, each with its own switch.
 function detailPartsPanel() {
   const hidden = new Set(prefs.detailHidden || []);
@@ -70,7 +90,8 @@ export function renderSettings() {
           ${select('density', 'Content density', 'Choose roomy cards or fit more on screen.', [['comfortable', 'Comfortable'], ['compact', 'Compact']], prefs.density)}
           <label class="settings-select-row"><span><strong>Theme</strong><small>Cinema dark, paper light, or follow your device. Also in the profile menu.</small></span><select class="watched-select" data-action="settings-theme" data-pref="theme">${[['dark', 'Dark'], ['light', 'Light'], ['system', 'Match device']].map(([v, label]) => `<option value="${v}" ${v === prefs.theme ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
           ${select('textSize', 'Text size', 'Increase interface text without zooming the page.', [['standard', 'Standard'], ['large', 'Large']], prefs.textSize)}
-          ${select('glass', 'Glass effects', 'Control glow and translucent surface intensity.', [['rich', 'Rich cinema glass'], ['quiet', 'Quiet and focused']], prefs.glass)}
+          ${glassPicker()}
+          ${toggle('lightDrift', 'Moving lights', 'The background lights drift toward where you tap and the way you scroll.', prefs.lightDrift)}
           ${toggle('castMilestones', 'Cast milestones', 'Celebrate when an episode takes you past 10, 20, 30 hours and more with an actor.', prefs.castMilestones)}
           ${toggle('ambientColour', 'Title colour', 'Tint each title page’s glow, buttons and progress bars with a colour from its poster.', prefs.ambientColour)}
           ${toggle('highContrast', 'High-contrast type', 'Brighten supporting text and borders for easier reading.', prefs.highContrast)}
@@ -144,6 +165,16 @@ function clearSearchHistory() {
 }
 
 export function initSettings() {
+  // The glass previews are a radio group: arrow keys move the choice.
+  document.addEventListener('keydown', event => {
+    const current = event.target.closest?.('.glass-preview');
+    if (!current || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+    const options = [...current.parentElement.querySelectorAll('.glass-preview')];
+    const index = options.indexOf(current);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (index + (['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 1) + options.length) % options.length;
+    event.preventDefault();
+    options[next].click();
+  });
   registerActions({
     'settings-region': el => { state.region = el.value; try { localStorage.setItem('cv_region', state.region); } catch (_) {} queueCloudSettings(); document.dispatchEvent(new Event('cv:region')); toast('Streaming region updated', 'success'); },
     'settings-toggle': el => {
@@ -183,6 +214,15 @@ export function initSettings() {
       toast(el.dataset.show === '1' ? `${group.title}: all shown` : `${group.title}: all hidden`, 'info');
     },
     'settings-detail-reset': () => { updatePref('detailHidden', []); renderSettings(); toast('Every detail-page part is shown again', 'success'); },
+    'settings-glass': el => {
+      el.focus();
+      const value = el.dataset.value === 'quiet' ? 'quiet' : 'rich';
+      if (prefs.glass !== value) updatePref('glass', value);
+      document.querySelectorAll('.glass-preview').forEach(button => {
+        const on = button.dataset.value === value;
+        button.classList.toggle('on', on); button.setAttribute('aria-checked', String(on)); button.tabIndex = on ? 0 : -1;
+      });
+    },
     'settings-pref': el => { updatePref(el.dataset.pref, el.value); toast('Preference saved', 'success'); },
     'clear-search-history': () => { clearSearchHistory(); toast('Search history cleared', 'info'); },
     'clear-recent-history': () => { state.recentlyViewed = []; try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {} toast('Recently viewed cleared', 'info'); },

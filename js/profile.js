@@ -145,7 +145,7 @@ function completedShelf() {
       <div class="finale-shelf-actions"><button type="button" class="finale-shelf-btn" data-action="series-finale" data-tid="${show.id}">${icon('sparkles')}Finale card</button><button type="button" class="finale-flip-btn" data-action="finale-flip" aria-pressed="false" aria-label="${esc(`Show the figures for ${show.title}`)}" data-tip="Your run in numbers">${icon('rotate')}</button></div>
     </article>`;
   }).join('');
-  const years = finishYears(shows).slice(0, 3).map(year => `<button type="button" class="finale-year-btn" data-action="series-year" data-year="${year}">${icon('calendar')}${year} in series</button>`).join('');
+  const years = finishYears(shows.filter(show => !keyIsMature(`tv_${show.id}`))).slice(0, 3).map(year => `<button type="button" class="finale-year-btn" data-action="series-year" data-year="${year}">${icon('calendar')}${year} in series</button>`).join('');
   return `<section class="profile-panel profile-finales"><div class="profile-panel-head"><div><span>Every episode watched</span><h2>Completed series</h2></div><div class="finale-head-tools">${years}<b>${shows.length}</b></div></div>
     ${shows.length ? `<div class="finale-shelf">${cards}</div>` : '<p class="finale-shelf-empty">Finish a series and it lands here, with a finale card of your whole run.</p>'}
   </section>`;
@@ -155,7 +155,7 @@ function completedShelf() {
 function clubsPanel() {
   return `<section class="profile-panel profile-clubs"><div class="profile-panel-head"><div><span>${prefs.shareMilestones === false ? 'Private' : 'Visible to friends'}</span><h2>Hours clubs</h2></div><b id="profileClubCount">…</b></div>
     <div id="profileClubs" class="club-grid"><div class="insight-loading"><i></i><span>Counting time with the cast…</span></div></div>
-    <p class="club-removed" id="profileClubsRemoved" hidden></p>
+    <div class="club-removed" id="profileClubsRemoved" hidden></div>
     <p class="club-note">From the episodes you have ticked and TMDB episode credits. Badges start at 10 hours. Remove anyone and the next person takes their place.</p>
   </section>`;
 }
@@ -166,14 +166,19 @@ async function paintClubs({ fetch = true } = {}) {
   const hidden = prefs.hiddenClubs || [];
   const badges = clubBadges(result?.people || [], 12, { hidden });
   const count = $('profileClubCount'); if (count) count.textContent = String(badges.length);
-  // Removed people who are in a club, so the panel can say who and offer them back.
-  const inClubs = new Map(clubBadges(result?.people || [], Infinity).map(badge => [badge.id, badge.name]));
-  const removed = hidden.filter(id => inClubs.has(id));
-  const names = inClubs;
+  // Everyone removed who is in a club, each with their face and their own
+  // Restore, most time first; "Restore all" when there is more than one.
+  const hiddenSet = new Set(hidden);
+  const removed = clubBadges(result?.people || [], Infinity).filter(badge => hiddenSet.has(badge.id));
   const foot = $('profileClubsRemoved');
   if (foot) {
     foot.hidden = !removed.length;
-    foot.innerHTML = removed.length ? `<span>${removed.length === 1 ? `${esc(names.get(removed[0]))} is` : `${removed.length} people are`} removed from your clubs.</span><button type="button" data-action="club-restore-all">Restore ${removed.length === 1 ? '' : 'all'}</button>` : '';
+    foot.innerHTML = removed.length ? `<div class="club-removed-head"><span>Removed from your clubs</span>${removed.length > 1 ? '<button type="button" class="club-restore-all" data-action="club-restore-all">Restore all</button>' : ''}</div>
+      <ul class="club-removed-list">${removed.map(badge => `<li>
+        <span class="club-removed-face">${badge.profile ? `<img src="${IMG}w185${badge.profile}" alt="" loading="lazy" data-ph="${PH}">` : icon('person')}</span>
+        <span class="club-removed-name"><b>${esc(badge.name)}</b><small>${badge.club}h club · ${badge.hours}h</small></span>
+        <button type="button" data-action="club-restore" data-id="${badge.id}" data-name="${esc(badge.name)}" aria-label="${esc(`Restore ${badge.name} to your hours clubs`)}">Restore</button>
+      </li>`).join('')}</ul>` : '';
   }
   if (!badges.length) { host.innerHTML = `<p class="finale-shelf-empty">${removed.length ? 'Everyone in your clubs is removed. Restore them below.' : 'Watch ten hours of episodes with someone in the cast and your first badge appears here.'}</p>`; return; }
   const fresh = takeNewBadges(badges);
@@ -256,7 +261,7 @@ export function renderProfile() {
   const tastePass = code ? `<section class="profile-taste-pass"><div><span>Cineprint chemistry</span><h2>Taste Match QR</h2><p>A friend scans once to see your shared genres and instant compatibility score.</p><button data-action="copy-taste-link" data-code="${esc(code)}">Copy Taste Match link</button></div><div class="profile-qr taste">${tasteMatchQrSvg(code)}<span>Scan to compare</span></div></section>` : '';
 
   const snapshot = `
-    <section class="profile-panel profile-cineprint"><div class="profile-panel-head"><div><span>Live collection intelligence</span><h2>Your Cineprint</h2></div><div class="finale-head-tools">${filmYears(state.watched, { exclude: keyIsMature }).slice(0, 3).map(year => `<button type="button" class="finale-year-btn films" data-action="films-year" data-year="${year}">${icon('film')}${year} in films</button>`).join('')}<button data-action="show-page" data-page="stats">Open full stats ${icon('arrowRight', { cls: 'cv-arrow' })}</button></div></div>
+    <section class="profile-panel profile-cineprint"><div class="profile-panel-head"><div><span>Live collection intelligence</span><h2>Your Cineprint</h2></div><div class="finale-head-tools">${filmYears(state.watched, { exclude: keyIsMature }).slice(0, 3).map(year => `<button type="button" class="finale-year-btn films" data-action="films-year" data-year="${year}">${icon('film')}${year} in films</button>`).join('')}<button class="finale-year-btn year" data-action="show-page" data-page="year">${icon('calendar')}Your year</button><button data-action="show-page" data-page="stats">Open full stats ${icon('arrowRight', { cls: 'cv-arrow' })}</button></div></div>
       <div class="profile-stats">
         ${[[PROFILE_ICONS.watched, c.watchedTotal, 'Watched', 'watched'], [PROFILE_ICONS.clock, c.hours, 'Hours', 'stats'], [PROFILE_ICONS.star, c.ratedTotal, 'Rated', 'stats'], [PROFILE_ICONS.saved, state.watchlist.length, 'Saved', 'watchlist']]
           .map(([icon, value, label, page]) => `<button class="profile-stat" data-action="show-page" data-page="${page}"><div class="ps-ico">${icon}</div><div><div class="ps-num">${value}</div><div class="ps-lbl">${label}</div></div></button>`).join('')}
@@ -300,7 +305,7 @@ export function renderProfile() {
 }
 
 export function initProfile() {
-  initSeriesYear(() => completedSeries());
+  initSeriesYear(() => completedSeries().filter(show => !keyIsMature(`tv_${show.id}`)));
   initFilmsYear({ exclude: keyIsMature });
   registerActions({
     // Remove someone from Hours clubs: the badge leaves, the next person with the
@@ -316,6 +321,12 @@ export function initProfile() {
       if (!badge || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { commit(); return; }
       badge.classList.add('club-leaving');
       setTimeout(commit, 260);
+    },
+    'club-restore': el => {
+      const id = +el.dataset.id; if (!id) return;
+      updatePref('hiddenClubs', (prefs.hiddenClubs || []).filter(value => value !== id));
+      paintClubs({ fetch: false }).catch(() => {});
+      toast(`${el.dataset.name || 'They'} ${el.dataset.name ? 'is' : 'are'} back in your hours clubs`, 'success');
     },
     'club-restore-all': () => {
       updatePref('hiddenClubs', []);

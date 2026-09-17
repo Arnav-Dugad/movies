@@ -4,11 +4,13 @@
 // are added only when TVmaze has an airstamp, and streaming uses flatrate only.
 // Departure warnings are diffs between two CineVerse scans of the same region —
 // no service publishes a leave date, so we never pretend to know one.
+// The monthly recap is derived on the device (js/monthly-recap.js).
 import { tmdb, pool } from './api.js';
 import { icon } from './icons.js';
 import { state } from './state.js';
 import { IMG, PH, providerUrl, regionLabel } from './config.js';
 import { $, esc, debounce, toast } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
 import { db, firebase } from './firebase.js';
@@ -19,6 +21,9 @@ import {
 import { recordProviderBatch, getProviderChanges, getDepartureRisks } from './provider-history.js';
 import { providerIntelHTML, mountProviderIntel, setProviderChartRange, toggleProviderChartTable } from './provider-charts.js';
 import { enableDesktopAlerts, disableDesktopAlerts, deliverDesktopAlerts, pushSupported, pushPermission } from './notification-push.js';
+import { monthRecap, recapEvent } from './monthly-recap.js';
+import { completedSeries } from './profile.js';
+import { keyIsMature } from './recommend.js';
 
 const CACHE_TTL = 3 * 60 * 60 * 1000;
 const DAY = 86400000;
@@ -58,6 +63,8 @@ function eventTime(event) {
   return Number.isFinite(ms) ? ms : Number.MAX_SAFE_INTEGER;
 }
 
+const formatMinutes = minutes => (minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ''}` : `${minutes}m`);
+
 const flatrate = result => (result?.flatrate || [])
   .filter(provider => provider.logo_path)
   .filter((provider, index, list) => list.findIndex(other => other.provider_id === provider.provider_id) === index)
@@ -70,6 +77,7 @@ const flatrate = result => (result?.flatrate || [])
 const BUCKETS = [
   ['urgent', 'Needs attention', 'Time-critical — act on these first'],
   ['today', 'Today', 'Landing in the next few hours'],
+  ['recap', 'Your monthly recap', 'Last month’s films and finished series'],
   ['week', 'This week', 'Within the next seven days'],
   ['later', 'Coming later', 'Further out on your calendar'],
   ['recent', 'Recently detected', 'Availability changes found by the last scans'],
@@ -90,7 +98,10 @@ function decorate(event) {
   const ageDays = Math.max(0, Math.round((now - at) / DAY));
   let bucket = 'recent', priority = 20;
 
-  if (event.category === 'departures') {
+  if (event.category === 'recap') {
+    // Prominent on the 1st, then it settles while it waits for the month to end.
+    bucket = 'recap'; priority = Math.max(24, 64 - ageDays * 3);
+  } else if (event.category === 'departures') {
     priority = { departed: 96, shrinking: 82, 'last-copy': 64 }[event.level] || 55;
     if (event.saved && !event.watched) priority += 6;
     if (event.watched) priority -= 26;
@@ -116,8 +127,17 @@ function decorate(event) {
   };
 }
 
+// The recap is never taken from a cache: it is re-derived every time the inbox
+// is scored, so it appears at midnight on the 1st and always matches your history.
+function recapEvents() {
+  if (!state.user) return [];
+  const event = recapEvent(monthRecap({ watched: state.watched, ratings: state.ratings, finished: completedSeries(), exclude: keyIsMature }));
+  return event ? [event] : [];
+}
+
 function dedupeSort(items) {
-  return [...new Map(items.filter(Boolean).map(item => [item.key, item])).values()]
+  const live = [...items.filter(item => item && item.category !== 'recap'), ...recapEvents()];
+  return [...new Map(live.map(item => [item.key, item])).values()]
     .map(decorate)
     .sort((a, b) => b.priority - a.priority || a.at - b.at || a.title.localeCompare(b.title));
 }
@@ -380,6 +400,13 @@ function providerStrip(event) {
 }
 
 function timeBlock(event) {
+  if (event.category === 'recap') {
+    const figures = [[event.recap.films, event.recap.films === 1 ? 'film' : 'films'], [event.recap.series, 'series finished']].filter(([value]) => value);
+    if (event.recap.minutes) figures.push([formatMinutes(event.recap.minutes), 'of films']);
+    return `<div class="notification-time recap"><span>${esc(event.recap.month)} in numbers</span>
+      <div class="notification-recap-figures">${figures.map(([value, label]) => `<b>${esc(String(value))}<small>${esc(label)}</small></b>`).join('')}</div>
+      <small>Arrived ${esc(relativeLabel(event.at))}</small></div>`;
+  }
   if (event.category === 'episodes') {
     return `<div class="notification-time${event.airstamp ? ' exact' : ''}">
       <span>${event.airstamp ? 'Exact local time' : 'Release date'}</span><strong>${esc(dateLabel(event))}</strong>
@@ -397,20 +424,30 @@ function timeBlock(event) {
   return `<div class="notification-time"><span>${label}</span><strong>${esc(dateLabel(event))}</strong><small>${esc(relativeLabel(event.at))}</small>${event.countdown ? `<b class="notification-countdown" data-countdown="${event.at}">${esc(countdownText(event.at))}</b>` : ''}</div>`;
 }
 
+const eventPath = event => event.path || `/${event.mediaType}/${event.id}`;
+
+// A recap shows up to four posters fanned out, or the calendar art when none have one.
+function recapArt(event) {
+  const posters = event.posters || [];
+  if (!posters.length) return `<span class="notification-recap-empty">${illustration('calendar')}</span>`;
+  return posters.map((poster, index) => `<img src="${IMG}w342${poster}" alt="" loading="lazy" data-ph="${PH}" style="--i:${index};--n:${posters.length}">`).join('');
+}
+
 function card(event) {
   const isUnread = unread(event);
   const image = event.poster ? `${IMG}${event.posterKind === 'still' ? 'w500' : 'w342'}${event.poster}` : PH;
+  const path = eventPath(event), recap = event.category === 'recap';
   const watchLink = event.category === 'departures' && visibleProviders(event)[0];
   return `<article class="notification-card${isUnread ? ' unread' : ''}${event.urgent ? ' urgent' : ''}${event.category === 'departures' ? ` departure level-${esc(event.level)}` : ''}" data-notification-key="${esc(event.key)}" data-priority="${event.priority}">
     ${event.category === 'departures' ? `<div class="departure-ribbon"><i aria-hidden="true">!</i>${esc(event.levelLabel)}</div>` : ''}
-    <a class="notification-art${event.posterKind === 'still' ? ' landscape' : ''}" href="/${event.mediaType}/${event.id}" data-action="open-notification" data-key="${esc(event.key)}" data-id="${event.id}" data-type="${event.mediaType}"><img src="${image}" alt="${esc(event.title)}" loading="lazy" data-ph="${PH}"><i></i></a>
+    <a class="notification-art${event.posterKind === 'still' ? ' landscape' : ''}${recap ? ' recap-fan' : ''}" href="${esc(path)}" data-action="open-notification" data-key="${esc(event.key)}" data-path="${esc(path)}" aria-label="${esc(event.title)}">${recap ? recapArt(event) : `<img src="${image}" alt="${esc(event.title)}" loading="lazy" data-ph="${PH}">`}<i></i></a>
     <div class="notification-copy">
       <div class="notification-meta"><span class="category-${esc(event.category)}">${esc(event.category)}</span><b>${esc(event.source)}</b>${event.urgent ? '<u>Priority</u>' : ''}${isUnread ? '<em>New</em>' : ''}</div>
       <h3>${esc(event.title)}</h3><h4>${esc(event.headline)}</h4><p>${esc(event.detail)}</p>
       ${event.category === 'departures' && !event.watched ? '<p class="departure-nudge">Still unwatched in your list — worth prioritising.</p>' : ''}
       ${providerStrip(event)}${timeBlock(event)}
       <div class="notification-actions">
-        <a href="/${event.mediaType}/${event.id}" data-action="open-notification" data-key="${esc(event.key)}" data-id="${event.id}" data-type="${event.mediaType}">Open title</a>
+        <a href="${esc(path)}" data-action="open-notification" data-key="${esc(event.key)}" data-path="${esc(path)}">${recap ? 'Open your year' : 'Open title'}</a>
         ${watchLink ? `<a class="watch-now" href="${esc(providerUrl(watchLink.name, event.title, event.regionLink))}" target="_blank" rel="noopener">Watch on ${esc(watchLink.name)}</a>` : ''}
         ${isUnread ? `<button data-action="read-notification" data-key="${esc(event.key)}">Mark read</button>` : '<span>Read</span>'}
         <button class="ghost" data-action="snooze-notification" data-key="${esc(event.key)}" title="Hide for 24 hours">Snooze</button>
@@ -435,7 +472,7 @@ function visibleEvents() {
 function emptyState() {
   const filtered = events.filter(eventVisible).length;
   const hidden = snoozedCount();
-  return `<div class="notification-empty"><i>${icon('checkCircle')}</i><h2>All quiet here</h2>
+  return `<div class="notification-empty"><span class="notification-empty-art">${illustration('tv')}</span><h2>All quiet here</h2>
     <p>${filtered ? 'No notifications match this view.' : events.length ? 'Everything here is currently muted, snoozed, or dismissed.' : 'Watch a TV show or save a movie to start your personal feed.'}</p>
     <div class="notification-empty-actions">
       ${filtered ? '<button class="btn-glass" data-action="notification-reset-view">Clear filters</button>' : ''}
@@ -462,8 +499,9 @@ function resultsHTML(list) {
 function compactCard(event, index) {
   const image = event.poster ? `${IMG}${event.posterKind === 'still' ? 'w300' : 'w185'}${event.poster}` : PH;
   const provider = visibleProviders(event)[0];
-  return `<a class="notification-drop-item${unread(event) ? ' unread' : ''}${event.urgent ? ' urgent' : ''}" href="/${event.mediaType}/${event.id}" role="option" data-drop-index="${index}" data-action="open-notification" data-key="${esc(event.key)}" data-id="${event.id}" data-type="${event.mediaType}">
-    <img src="${image}" alt="" loading="lazy">
+  const path = eventPath(event);
+  return `<a class="notification-drop-item${unread(event) ? ' unread' : ''}${event.urgent ? ' urgent' : ''}${event.category === 'recap' ? ' recap' : ''}" href="${esc(path)}" role="option" data-drop-index="${index}" data-action="open-notification" data-key="${esc(event.key)}" data-path="${esc(path)}">
+    ${event.poster || event.category !== 'recap' ? `<img src="${image}" alt="" loading="lazy">` : `<b class="drop-art">${illustration('calendar')}</b>`}
     <span><em>${esc(event.category)}</em><strong>${esc(event.title)}</strong><small>${esc(event.headline)} · ${esc(event.countdown ? countdownText(event.at) : relativeLabel(event.at))}</small></span>
     ${provider ? `<img class="drop-provider" src="${IMG}w92${provider.logo}" alt="${esc(provider.name)}">` : '<i class="drop-dot" aria-hidden="true"></i>'}
   </a>`;
@@ -539,6 +577,7 @@ function preferenceHTML() {
       ${category('streaming', 'Streaming arrivals', 'Subscription arrivals only—never rent or buy')}
       ${category('departures', 'Departure warnings', 'When a saved title starts leaving subscription services')}
       ${category('providerChanges', 'Provider change log', 'Every add and drop CineVerse detects')}
+      ${category('recaps', 'Monthly recap', 'On the 1st: last month’s films and the series you finished')}
     </div>
     <div class="notification-pref-section">
       <h3>Delivery</h3><p>Alerts stay on this device. CineVerse has no notification server and never emails you.</p>
@@ -580,7 +619,7 @@ function heroHTML(allowed) {
   return `<section class="notifications-hero">
     <div>
       <span>Personal premiere desk</span><h1>Notifications</h1>
-      <p>Upcoming episodes from watched shows, saved releases, subscription arrivals, and early warning when a title starts leaving streaming—without rental noise.</p>
+      <p>Upcoming episodes from watched shows, saved releases, subscription arrivals, early warning when a title starts leaving streaming, and a recap of your month on the 1st—without rental noise.</p>
       <div class="notification-hero-meta">
         <b>${unreadCount} unread</b>
         ${urgent.length ? `<u>${urgent.length} need${urgent.length === 1 ? 's' : ''} attention</u>` : ''}
@@ -603,7 +642,7 @@ function renderInbox() {
   const allowed = events.filter(eventVisible), list = visibleEvents(), unreadCount = allowed.filter(unread).length;
   const count = category => allowed.filter(event => event.category === category).length;
   const tabs = [['all', 'All', allowed.length], ['episodes', 'Episodes', count('episodes')], ['releases', 'Releases', count('releases')],
-    ['streaming', 'Streaming', count('streaming')], ['departures', 'Departures', count('departures')], ['provider', 'History', count('provider')]];
+    ['streaming', 'Streaming', count('streaming')], ['departures', 'Departures', count('departures')], ['recap', 'Recaps', count('recap')], ['provider', 'History', count('provider')]];
 
   host.innerHTML = `${heroHTML(allowed)}
     <section class="notification-toolbar">
@@ -685,7 +724,7 @@ export function initNotifications() {
       await renderNotifications(true);
       toast('Notifications refreshed', 'success');
     },
-    'open-notification': element => { mark([element.dataset.key]); document.dispatchEvent(new CustomEvent('cv:go', { detail: `/${element.dataset.type}/${element.dataset.id}` })); },
+    'open-notification': element => { mark([element.dataset.key]); closeNotificationDropdown(); document.dispatchEvent(new CustomEvent('cv:go', { detail: element.dataset.path })); },
     'provider-chart-range': element => { setProviderChartRange(element.dataset.range); renderInbox(); },
     'provider-chart-table': () => { toggleProviderChartTable(); renderInbox(); },
   });
