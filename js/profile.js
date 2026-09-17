@@ -12,13 +12,15 @@ import { saveProfile } from './auth.js';
 import { friendQrSvg, tasteMatchQrSvg, tasteMatchUrl } from './qrcode.js';
 import { renderRecommendationInsights } from './recommend.js';
 import { tmdb } from './api.js';
-import { prefs } from './prefs.js';
+import { prefs, updatePref } from './prefs.js';
 import { showProgress } from './episodes.js';
 import { computeCastHours, clubBadges, clubGaugeHTML, takeNewBadges } from './cast-hours.js';
 import { seriesRecap } from './series-finale.js';
 import { formatDuration } from './season-recap.js';
 import { paceLabel } from './episodes.js';
 import { finishYears, initSeriesYear } from './series-year.js';
+import { filmYears, initFilmsYear } from './films-year.js';
+import { keyIsMature } from './recommend.js';
 
 let editing = false;
 let draftAvatar = undefined;   // undefined = untouched; null = cleared to initial
@@ -153,24 +155,38 @@ function completedShelf() {
 function clubsPanel() {
   return `<section class="profile-panel profile-clubs"><div class="profile-panel-head"><div><span>${prefs.shareMilestones === false ? 'Private' : 'Visible to friends'}</span><h2>Hours clubs</h2></div><b id="profileClubCount">…</b></div>
     <div id="profileClubs" class="club-grid"><div class="insight-loading"><i></i><span>Counting time with the cast…</span></div></div>
-    <p class="club-note">From the episodes you have ticked and TMDB episode credits. Badges start at 10 hours.</p>
+    <p class="club-removed" id="profileClubsRemoved" hidden></p>
+    <p class="club-note">From the episodes you have ticked and TMDB episode credits. Badges start at 10 hours. Remove anyone and the next person takes their place.</p>
   </section>`;
 }
 
-async function paintClubs() {
-  const result = await computeCastHours({ fetch: true }).catch(() => null);
+async function paintClubs({ fetch = true } = {}) {
+  const result = await computeCastHours({ fetch }).catch(() => null);
   const host = $('profileClubs'); if (!host) return;
-  const badges = clubBadges(result?.people || [], 12);
+  const hidden = prefs.hiddenClubs || [];
+  const badges = clubBadges(result?.people || [], 12, { hidden });
   const count = $('profileClubCount'); if (count) count.textContent = String(badges.length);
-  if (!badges.length) { host.innerHTML = '<p class="finale-shelf-empty">Watch ten hours of episodes with someone in the cast and your first badge appears here.</p>'; return; }
+  // Removed people who are in a club, so the panel can say who and offer them back.
+  const inClubs = new Map(clubBadges(result?.people || [], Infinity).map(badge => [badge.id, badge.name]));
+  const removed = hidden.filter(id => inClubs.has(id));
+  const names = inClubs;
+  const foot = $('profileClubsRemoved');
+  if (foot) {
+    foot.hidden = !removed.length;
+    foot.innerHTML = removed.length ? `<span>${removed.length === 1 ? `${esc(names.get(removed[0]))} is` : `${removed.length} people are`} removed from your clubs.</span><button type="button" data-action="club-restore-all">Restore ${removed.length === 1 ? '' : 'all'}</button>` : '';
+  }
+  if (!badges.length) { host.innerHTML = `<p class="finale-shelf-empty">${removed.length ? 'Everyone in your clubs is removed. Restore them below.' : 'Watch ten hours of episodes with someone in the cast and your first badge appears here.'}</p>`; return; }
   const fresh = takeNewBadges(badges);
   let stagger = 0;
-  host.innerHTML = badges.map(badge => `<a class="club-badge" href="/person/${badge.id}" data-action="open-person" data-id="${badge.id}" aria-label="${esc(`${badge.name}: ${badge.club} hours club, ${badge.hours} hours watched`)}">
-      ${clubGaugeHTML(badge, fresh.has(`${badge.id}:${badge.club}`) ? { delay: 120 + (stagger++) * 90 } : { animate: false })}
-      <strong>${esc(badge.name)}</strong>
-      <small>${badge.club}h club · ${badge.hours}h</small>
-      ${badge.next ? `<span class="club-next" aria-hidden="true"><i style="width:${Math.round(badge.progress * 100)}%"></i></span><em>${Math.round(badge.progress * 100)}% to ${badge.next}h</em>` : '<em>Top club</em>'}
-    </a>`).join('');
+  host.innerHTML = badges.map(badge => `<article class="club-badge" data-club-id="${badge.id}">
+      <a class="club-badge-link" href="/person/${badge.id}" data-action="open-person" data-id="${badge.id}" aria-label="${esc(`${badge.name}: ${badge.club} hours club, ${badge.hours} hours watched`)}">
+        ${clubGaugeHTML(badge, fresh.has(`${badge.id}:${badge.club}`) ? { delay: 120 + (stagger++) * 90 } : { animate: false })}
+        <strong>${esc(badge.name)}</strong>
+        <small>${badge.club}h club · ${badge.hours}h</small>
+        ${badge.next ? `<span class="club-next" aria-hidden="true"><i style="width:${Math.round(badge.progress * 100)}%"></i></span><em>${Math.round(badge.progress * 100)}% to ${badge.next}h</em>` : '<em>Top club</em>'}
+      </a>
+      <button type="button" class="club-remove" data-action="club-remove" data-id="${badge.id}" data-name="${esc(badge.name)}" aria-label="${esc(`Remove ${badge.name} from your hours clubs`)}" data-tip="Remove from clubs">${icon('close')}</button>
+    </article>`).join('');
 }
 
 export function renderProfile() {
@@ -240,7 +256,7 @@ export function renderProfile() {
   const tastePass = code ? `<section class="profile-taste-pass"><div><span>Cineprint chemistry</span><h2>Taste Match QR</h2><p>A friend scans once to see your shared genres and instant compatibility score.</p><button data-action="copy-taste-link" data-code="${esc(code)}">Copy Taste Match link</button></div><div class="profile-qr taste">${tasteMatchQrSvg(code)}<span>Scan to compare</span></div></section>` : '';
 
   const snapshot = `
-    <section class="profile-panel profile-cineprint"><div class="profile-panel-head"><div><span>Live collection intelligence</span><h2>Your Cineprint</h2></div><button data-action="show-page" data-page="stats">Open full stats ${icon('arrowRight', { cls: 'cv-arrow' })}</button></div>
+    <section class="profile-panel profile-cineprint"><div class="profile-panel-head"><div><span>Live collection intelligence</span><h2>Your Cineprint</h2></div><div class="finale-head-tools">${filmYears(state.watched, { exclude: keyIsMature }).slice(0, 3).map(year => `<button type="button" class="finale-year-btn films" data-action="films-year" data-year="${year}">${icon('film')}${year} in films</button>`).join('')}<button data-action="show-page" data-page="stats">Open full stats ${icon('arrowRight', { cls: 'cv-arrow' })}</button></div></div>
       <div class="profile-stats">
         ${[[PROFILE_ICONS.watched, c.watchedTotal, 'Watched', 'watched'], [PROFILE_ICONS.clock, c.hours, 'Hours', 'stats'], [PROFILE_ICONS.star, c.ratedTotal, 'Rated', 'stats'], [PROFILE_ICONS.saved, state.watchlist.length, 'Saved', 'watchlist']]
           .map(([icon, value, label, page]) => `<button class="profile-stat" data-action="show-page" data-page="${page}"><div class="ps-ico">${icon}</div><div><div class="ps-num">${value}</div><div class="ps-lbl">${label}</div></div></button>`).join('')}
@@ -285,7 +301,27 @@ export function renderProfile() {
 
 export function initProfile() {
   initSeriesYear(() => completedSeries());
+  initFilmsYear({ exclude: keyIsMature });
   registerActions({
+    // Remove someone from Hours clubs: the badge leaves, the next person with the
+    // most time moves up, and friends' view follows (js/social.js).
+    'club-remove': el => {
+      const id = +el.dataset.id; if (!id) return;
+      const badge = el.closest('.club-badge');
+      const commit = () => {
+        updatePref('hiddenClubs', [...(prefs.hiddenClubs || []), id]);
+        paintClubs({ fetch: false }).catch(() => {});
+        toast(`${el.dataset.name || 'They'} removed from your hours clubs`, 'info');
+      };
+      if (!badge || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { commit(); return; }
+      badge.classList.add('club-leaving');
+      setTimeout(commit, 260);
+    },
+    'club-restore-all': () => {
+      updatePref('hiddenClubs', []);
+      paintClubs({ fetch: false }).catch(() => {});
+      toast('Everyone is back in your hours clubs', 'success');
+    },
     // Touch and keyboard: flip a shelf card to its figures and back.
     'finale-flip': el => {
       const card = el.closest('.finale-shelf-card'); if (!card) return;

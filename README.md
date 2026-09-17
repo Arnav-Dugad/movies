@@ -423,6 +423,41 @@ an open title page changes the instant a switch is flipped. Hiding is presentati
 only: nothing is fetched differently and switching a part back on loses nothing.
 The choice syncs with your other preferences.
 
+## Cinema glass
+
+With **Settings → Glass effects** on *Rich cinema glass* (the default), the site
+sits on a softly lit stage (red, violet, cyan and a little amber, deeply
+blurred), and its panels are glass over it: their surfaces let that light
+through, in both themes. *Quiet and focused* turns it off.
+
+The panels are styled in dozens of rules across the stylesheets, and the light
+theme is compiled from those rules at runtime, so glass is compiled the same way
+(`js/glass.js`):
+
+- It reads every rule and copies its background declarations into one stylesheet
+  after all the others, in the same order and inside the same `@media` and
+  `@supports` blocks.
+- Only rules whose subject is a panel change, and only their near-opaque
+  **neutral** surface colours, which turn translucent. Accents, tints and images
+  stay exactly as designed.
+- Copying every background declaration, not just the panels', is what keeps it
+  correct. A panel-only copy would come later than, and so outrank, any
+  equally specific rule that also paints that panel (a "danger" variant, a hover
+  state).
+- It rebuilds when the theme or the setting changes, from whichever palette is
+  active: about 10ms, and about 90KB in dark.
+- A test page-walk compares every element's background with glass on and off
+  across fifteen pages in both themes. The only differences allowed are
+  transparency on panel surfaces.
+
+## Scroll hints
+
+On touch screens and narrow windows, every horizontal row fades on the edge that
+has more to show: the right edge at the start, both edges in the middle, the
+left at the end, none when everything fits (`js/scroll-hints.js`). The fade
+widths are registered CSS properties, so it eases between states. Desktop rows
+keep their arrows and no fade.
+
 ## Posters
 
 **Settings → Poster controls → Hide titles under posters** removes the title,
@@ -724,6 +759,13 @@ the taste profile, so no new security rule was needed.
 - A friend's badges are read at most once every ten minutes.
 - **Settings → Share hours clubs** stops sharing and deletes the document.
 
+Anyone can be **removed** from your clubs with the × on their badge (always
+visible on touch). The next person with the most time moves up into the twelve
+shown, and the panel names who is removed with a **Restore** button. The choice
+is saved with your preferences and syncs across devices. A removed person also
+leaves what friends see, the cast-list chips on title pages, and milestone
+toasts.
+
 ### Watch Diary
 
 Daily and monthly viewing, drawn from data the library already holds, so it
@@ -801,6 +843,24 @@ years with finishes (`js/series-year.js`). It shows:
 
 A series belongs to the year its last episode was marked. Like the finale card,
 it assembles itself in the share studio and shares its final frame.
+
+**Year in films.** Your Cineprint panel offers the same kind of card for films,
+built from your watched history (`js/films-year.js`):
+
+- how many films you watched that year, and how many viewings with rewatches;
+- the hours, from each film's runtime times its viewings that year (it says
+  "from known runtimes" when some films have none);
+- your top-rated film, your favourite genre, and the film you rewatched most (or
+  the director you watched most);
+- a wall of the year's films, highest rated first, and a bar for each month of
+  viewings.
+
+Each dated viewing counts in its own year, so a favourite first seen in 2024 and
+rewatched in 2026 counts once in each. Adult titles never appear.
+
+Both cards share one drawing module (`js/year-card.js`). Month bars rise one
+after another, and the busiest month (every month tied for it) rises in gold
+with a soft glow that grows with the bar.
 
 ### Viewing patterns
 
@@ -934,14 +994,14 @@ letters.
 
 ```
 cd tests
-npm run test:logic    # 920+ assertions, no dependencies and no Java
+npm run test:logic    # 960+ assertions, no dependencies and no Java
 npm run coverage      # proves the rules suite is complete
 npm install && npm run test:rules   # rules + two-device sync (needs a JDK)
 npm run test:browser  # real clicks, reloads, account switches and offline retry
 ```
 
 All of it runs on every push — `.github/workflows/tests.yml` — alongside a parse
-check (`tests/parse.mjs`) and an import-resolution check over all 96 modules.
+check (`tests/parse.mjs`) and an import-resolution check over all 100 modules.
 There is no build step to catch a syntax error or a renamed export before
 Cloudflare would. The parse check reads each file as the ES module the browser
 loads: `node --check` passed a module with a template placeholder left in a plain
@@ -959,8 +1019,9 @@ transition geometry, completionist, cast milestones, series finale and season
 heatmap (`premium-batch.test.mjs`), and hours clubs, person-to-person links, heatmap
 standouts, insights and watch order, the finale build-up and the Completed series
 shelf (`social-heatmap.test.mjs`), and the year-in-series card, shelf flip figures,
-odometer numbers and first-sight badges (`year-shelf.test.mjs`). It needs
-nothing installed.
+odometer numbers and first-sight badges (`year-shelf.test.mjs`), and cinema glass,
+the year-in-films card, the shared year-card pieces, scroll hints and removing
+people from Hours clubs (`glass-years.test.mjs`). It needs nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.

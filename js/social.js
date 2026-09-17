@@ -229,7 +229,7 @@ export async function publishClubs() {
   // season's credits yet (or whose episode progress has not loaded) would
   // otherwise overwrite the real badges with fewer, or none.
   if (!state.user || !result.needed || result.known !== result.needed) return;
-  const badges = clubBadges(result.people, 12).map(badge => ({ id: badge.id, name: badge.name, profile: badge.profile, club: badge.club, hours: Math.floor(badge.hours / 10) * 10 }));
+  const badges = clubBadges(result.people, 12, { hidden: prefs.hiddenClubs }).map(badge => ({ id: badge.id, name: badge.name, profile: badge.profile, club: badge.club, hours: Math.floor(badge.hours / 10) * 10 }));
   const signature = JSON.stringify(badges);
   try { if (localStorage.getItem(clubsKey()) === signature) return; } catch (_) {}
   try {
@@ -276,11 +276,14 @@ export function initSocial() {
   const republishClubs = debounce(() => publishClubs(), 4000);
   document.addEventListener('cv:cast-hours', () => { if (state.user) republishClubs(); });
   document.addEventListener('cv:mature-verdicts', () => { if (state.user) republishClubs(); });
-  let sharingClubs = prefs.shareMilestones !== false;
+  // Republished when sharing is switched, or when someone is removed from (or
+  // restored to) the clubs. Other preference changes leave it alone.
+  const clubsSignature = () => `${prefs.shareMilestones !== false}|${(prefs.hiddenClubs || []).join(',')}`;
+  let clubsState = clubsSignature();
   document.addEventListener('cv:prefs', () => {
-    const now = prefs.shareMilestones !== false;
-    if (now === sharingClubs) return;
-    sharingClubs = now;
+    const now = clubsSignature();
+    if (now === clubsState) return;
+    clubsState = now;
     if (state.user) publishClubs();
   });
   // Republished the moment anything changes what friends may see: a title is

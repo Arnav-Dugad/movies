@@ -37,6 +37,9 @@ export const DEFAULT_PREFS = Object.freeze({
   matureInRecs: false,
   // Detail-page parts the viewer switched off (js/detail-parts.js). Empty = all shown.
   detailHidden: [],
+  // People removed from Hours clubs (TMDB person ids). The next person with the
+  // most time takes their place; restoring brings them back.
+  hiddenClubs: [],
 });
 
 export let prefs = { ...DEFAULT_PREFS };
@@ -55,6 +58,12 @@ const allowed = {
   textSize: new Set(['standard', 'large']),
 };
 
+/** Pure: unique positive whole person ids, at most 300, in the order given. */
+export function cleanPersonIds(value) {
+  const ids = (Array.isArray(value) ? value : []).map(Number).filter(id => Number.isInteger(id) && id > 0);
+  return [...new Set(ids)].slice(-300);
+}
+
 function sanitize(raw = {}) {
   const next = { ...DEFAULT_PREFS };
   Object.keys(allowed).forEach(key => { if (allowed[key].has(raw[key])) next[key] = raw[key]; });
@@ -62,6 +71,7 @@ function sanitize(raw = {}) {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
   next.detailHidden = cleanDetailHidden(raw.detailHidden);
+  next.hiddenClubs = cleanPersonIds(raw.hiddenClubs);
   return next;
 }
 

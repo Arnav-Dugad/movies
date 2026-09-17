@@ -167,3 +167,15 @@
 :root[data-theme="light"] .friend-club.club-50 { --club: #b7791f; } :root[data-theme="light"] .friend-club.club-100 { --club: #0e7490; }
 :root[data-theme="light"] .friend-club.club-250 { --club: #7c3aed; } :root[data-theme="light"] .friend-club.club-500 { --club: #e11d48; }
 :root[data-theme="light"] .friend-club.club-1000 { --club: #c026d3; }
+
+/* The glass stage on paper: the same four lights, pastel and quieter. */
+:root[data-theme="light"]:not([data-glass="quiet"]) .aurora {
+  background:
+    radial-gradient(42vmax 34vmax at 16% 10%, rgba(229, 9, 20, .08), transparent 70%),
+    radial-gradient(46vmax 36vmax at 88% 18%, rgba(124, 58, 237, .08), transparent 70%),
+    radial-gradient(52vmax 40vmax at 72% 90%, rgba(14, 165, 233, .08), transparent 70%),
+    radial-gradient(38vmax 30vmax at 10% 80%, rgba(217, 119, 6, .06), transparent 70%);
+}
+:root[data-theme="light"] .club-remove { background: rgba(255, 255, 255, .9); color: #3a3a44; }
+:root[data-theme="light"] .club-remove:hover { background: #c81e1e; color: #fff; }
+:root[data-theme="light"] .finale-year-btn.films { color: #0e7490; border-color: rgba(14, 116, 144, .35); }

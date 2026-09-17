@@ -1335,3 +1335,57 @@ html[data-backdrop-art="hide"] .detail-back { background: none !important; }
    finish date, so the buttons line up across the row. */
 .finale-shelf-card { flex: 0 0 160px; min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .finale-shelf-card > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== Cinema glass: the stage =====
+   With Glass effects on "Rich cinema glass" (the default) the whole site sits on
+   a softly lit stage: four broad lights (red, violet, cyan and a little amber)
+   under the two drifting glows, all deeply blurred. Panels are glass over it:
+   js/glass.js turns their neutral surface colours translucent so this light
+   reads through them. "Quiet and focused" keeps the flat stage. */
+html:not([data-glass="quiet"]) .aurora {
+  opacity: 1;
+  background:
+    radial-gradient(42vmax 34vmax at 16% 10%, rgba(229, 9, 20, .24), transparent 70%),
+    radial-gradient(46vmax 36vmax at 88% 18%, rgba(124, 58, 237, .22), transparent 70%),
+    radial-gradient(52vmax 40vmax at 72% 90%, rgba(14, 165, 233, .16), transparent 70%),
+    radial-gradient(38vmax 30vmax at 10% 80%, rgba(251, 191, 36, .08), transparent 70%);
+}
+html:not([data-glass="quiet"]) .aurora::before, html:not([data-glass="quiet"]) .aurora::after { opacity: .5; }
+html:not([data-glass="quiet"]) body::before { opacity: .022; }
+
+/* ===== Scroll hints (js/scroll-hints.js) =====
+   On touch screens and narrow windows a horizontal row fades on the edge that
+   has more to show. The fade widths are registered properties, so moving from
+   "start" to "middle" to "end" eases instead of jumping. */
+@property --fade-l { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --fade-r { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@media (hover: none), (max-width: 768px) {
+  [data-scroll-fade] {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+            mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+    transition: --fade-l .25s var(--ease-out), --fade-r .25s var(--ease-out);
+  }
+  [data-scroll-fade="start"] { --fade-r: 48px; }
+  [data-scroll-fade="middle"] { --fade-l: 36px; --fade-r: 48px; }
+  [data-scroll-fade="end"] { --fade-l: 36px; }
+}
+
+/* ===== Hours clubs: remove and restore ===== */
+.club-badge { position: relative; }
+.club-badge-link { display: grid; justify-items: center; gap: 4px; width: 100%; min-width: 0; color: inherit; text-align: center; border-radius: 12px; }
+.club-badge-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.club-remove { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--glass-border); border-radius: 50%; background: rgba(8, 8, 14, .72); color: var(--text2); opacity: 0; transform: scale(.85); transition: opacity .2s, transform .2s, background .2s, color .2s; }
+.club-badge:hover .club-remove, .club-badge:focus-within .club-remove { opacity: 1; transform: none; }
+.club-remove:hover, .club-remove:focus-visible { background: var(--red); border-color: transparent; color: #fff; }
+.club-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.club-remove .cv-icon { width: 14px; height: 14px; }
+@media (hover: none) { .club-remove { opacity: 1; transform: none; } }
+.club-badge.club-leaving { animation: cv-club-leave .26s ease forwards; pointer-events: none; }
+@keyframes cv-club-leave { to { opacity: 0; transform: scale(.88); } }
+.club-removed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 12px; color: var(--text3); font-size: .8rem; }
+.club-removed button { padding: 5px 12px; border: 1px solid var(--glass-border); border-radius: 999px; color: var(--text); font-size: .76rem; font-weight: 700; transition: background .2s, border-color .2s; }
+.club-removed button:hover { border-color: rgba(34, 211, 238, .4); background: rgba(34, 211, 238, .08); }
+.finale-year-btn.films { border-color: rgba(34, 211, 238, .32); color: #67e8f9; }
+.finale-year-btn.films:hover { background: rgba(34, 211, 238, .1); }
+.profile-cineprint .profile-panel-head { flex-wrap: wrap; gap: 10px; }
+@media (prefers-reduced-motion: reduce) { .club-badge.club-leaving { animation: none; } [data-scroll-fade] { transition: none; } }

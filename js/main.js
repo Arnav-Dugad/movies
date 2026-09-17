@@ -4,6 +4,8 @@ import { state } from './state.js';
 import { initDelegation } from './events.js';
 import { initImageFallback, initCardSync } from './cards.js';
 import { loadPrefs } from './prefs.js';
+import { initGlass } from './glass.js';
+import { initScrollHints } from './scroll-hints.js';
 import { initAuth } from './auth.js';
 import { initWatchlist, toggleWatched } from './watchlist.js';
 import { onShowComplete, backfillLegacyShows, fetchHistoricalShowMeta, pendingLegacyShows, initEpisodeRefresh } from './episodes.js';
@@ -64,6 +66,10 @@ function hideLoader() { window.__cvBooted = true; const l = $('loader'); if (l) 
 
 async function init() {
   loadPrefs();
+  // After the stored glass setting and theme are on <html>: the glass copies are
+  // built from the active palette (js/glass.js).
+  initGlass();
+  initScrollHints();
 
   // Wire delegation + all action handlers before any content renders.
   initDelegation();

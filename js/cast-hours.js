@@ -118,9 +118,10 @@ export const clubFor = minutes => [...CLUBS].reverse().find(hours => minutes >= 
  * Pure: badge rows for everyone in at least the first club, most time first.
  * `progress` is the share of the way from this club to the next (1 at the top).
  */
-export function clubBadges(people, limit = 12) {
+export function clubBadges(people, limit = 12, { hidden = [] } = {}) {
+  const skip = new Set((hidden || []).map(Number));
   return (people || [])
-    .filter(row => row && row.name && clubFor(row.minutes))
+    .filter(row => row && row.name && clubFor(row.minutes) && !skip.has(+row.id))
     .sort((a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name))
     .slice(0, limit)
     .map(row => {
@@ -174,7 +175,8 @@ export async function markCastClubs(host) {
   const items = [...host.querySelectorAll('.cast-item[data-id]')];
   if (!items.length) return;
   const result = await computeCastHours({ fetch: false });
-  const clubs = new Map(result.people.map(row => [+row.id, { club: clubFor(row.minutes), hours: Math.floor(row.minutes / 60) }]).filter(([, value]) => value.club));
+  const hidden = new Set(prefs.hiddenClubs || []);
+  const clubs = new Map(result.people.filter(row => !hidden.has(+row.id)).map(row => [+row.id, { club: clubFor(row.minutes), hours: Math.floor(row.minutes / 60) }]).filter(([, value]) => value.club));
   for (const item of items) {
     const found = clubs.get(+item.dataset.id);
     if (!found || !item.isConnected || item.querySelector('.cast-club')) continue;
@@ -330,7 +332,10 @@ export async function checkCastMilestones() {
     // Only more viewing earns a milestone: a refreshed runtime or an un-tick never does.
     if (complete && before?.complete && watchedEpisodeCount() > +(before.episodes || 0) && prefs.castMilestones !== false) {
       let best = null;
+      const hidden = new Set(prefs.hiddenClubs || []);
       for (const row of result.people.slice(0, 80)) {
+        // Someone you removed from your hours clubs is not celebrated either.
+        if (hidden.has(+row.id)) continue;
         const previous = before.top[row.id];
         if (previous === undefined) continue;
         const hours = crossedMilestone(previous, row.minutes);
