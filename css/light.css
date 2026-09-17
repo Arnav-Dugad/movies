@@ -117,7 +117,6 @@
 :root[data-theme="light"] .completion-gap b { color: #a16207; }
 :root[data-theme="light"] .completion-roles { background: rgba(20, 20, 30, .04); }
 :root[data-theme="light"] .person-completion { background: radial-gradient(circle at 92% 0%, rgba(217, 119, 6, .08), transparent 40%), rgba(20, 20, 30, .02); }
-:root[data-theme="light"] .cast-milestones { background: radial-gradient(circle at 8% 0%, rgba(8, 145, 178, .08), transparent 32%), var(--surface, #fff); }
 :root[data-theme="light"] .cast-headline .cv-icon { color: #0e7490; }
 :root[data-theme="light"] .cast-band { background: rgba(20, 20, 30, .08); }
 :root[data-theme="light"] .person-cast-hours .cv-icon { color: #0e7490; }
@@ -263,3 +262,9 @@
 :root[data-theme="light"] .settings-jump-tip { background: rgba(246, 243, 237, .96); box-shadow: 0 16px 34px rgba(45, 36, 22, .16); }
 :root[data-theme="light"] .settings-jump-tip-art { background: rgba(20, 20, 30, .04); }
 :root[data-theme="light"] .settings-jump-tip em { background: rgba(217, 119, 6, .12); color: #b45309; }
+
+/* Clean & minimal (css/minimal.css): the light copies of its quiet kickers and
+   neutral pills, over the tinted light rules above. */
+:root[data-theme="light"] .year-eyebrow, :root[data-theme="light"] .diary-otd-head .diary-kicker { color: var(--text3); }
+:root[data-theme="light"] .finale-year-btn, :root[data-theme="light"] .finale-year-btn.films, :root[data-theme="light"] .finale-year-btn.year { color: var(--text2); border-color: var(--glass-border); }
+:root[data-theme="light"] .settings-head-art { background: rgba(20, 20, 30, .035); }

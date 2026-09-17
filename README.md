@@ -321,6 +321,30 @@ each page's controls to and from the query string:
 Movies and TV also gained a request guard: a slow response for an older filter can
 no longer land after a newer one and paint results for choices no longer selected.
 
+### Filters fold away
+
+Every filter bar starts folded to a single **Filters** button, so a page opens on
+its titles rather than on a wall of dropdowns. `js/filter-fold.js` covers Movies,
+TV, My Lists, Watched (including its *More filters* panel), Releases, Discover's
+Studio, search, notifications, Box Office, Franchises, studio and network pages,
+person pages and After Dark.
+
+- What you reach for every time stays out: search boxes, Watched's *Surprise me*,
+  release preferences, Discover's *Show my matches*, the notification actions, the
+  franchise watch-order switch and a person's credit count.
+- The button counts the filters that are set and, while folded, names them
+  ("Filters 2 · Animation · Top rated"), so a link that arrives with filters in its
+  URL still says what is applied. A sort away from its default counts too.
+- A bar you open stays open for the rest of the visit, including after the page
+  redraws it. Opening it lets the controls fall into place one after another, the
+  slider knobs on the button trade places and the count bumps when it changes.
+- The bars are drawn by many modules, several of them on every repaint, so nothing
+  changes at the source: a registry names each bar and what stays visible, and a
+  mutation pass enhances a bar whenever it, or its button, is new. What counts as
+  set compares each control with its markup default; a bar rebuilt from state,
+  whose `selected` attributes follow the current value, compares with its first
+  option instead.
+
 ## Hover previews
 
 Every rail opens the same 409px panel (the size the Top 10 cards always had), after
@@ -431,6 +455,28 @@ each element with `data-dp="<key>"`. Hidden parts become one generated rule, so
 an open title page changes the instant a switch is flipped. Hiding is presentation
 only: nothing is fetched differently and switching a part back on loses nothing.
 The choice syncs with your other preferences.
+
+## Clean and minimal
+
+`css/minimal.css` loads after every other sheet except the light theme's hand-tuned
+layer, and quiets the site without removing a feature or an animation:
+
+- **Kickers**, the small capitals above a heading, are one muted ink everywhere
+  instead of a different colour per panel.
+- **Heroes** on Stats, Settings, Profile, Notifications, Releases, Discover, Box
+  Office, Franchises and Your Year share one neutral surface with a single faint
+  accent in a corner (sky blue on Box Office, gold on Franchises, red elsewhere).
+- **Panels** on Stats, Profile, Settings and Discover's Studio share one flat
+  surface. The tinted glows each panel painted in its own colour and the large
+  drop shadows are gone; a hairline border separates them.
+- **Tiles** lose their corner glows. Profile's stat icons and numbers are plain
+  ink, and the header links beside Your Cineprint are neutral pills.
+- **Home** section icons and recommendation-rail glyphs sit on the heading without
+  a box.
+
+Its selectors repeat a class (`.stats-panel.stats-panel`) to outrank the
+single-class variant rules they replace without ids, so the glass layer still
+finds every panel and the light compile pairs each rule with its own light copy.
 
 ## Cinema glass
 
@@ -817,6 +863,20 @@ After four seconds, the home, Movies and TV heroes collapse to the title logo
 alone. Badge, meta, genres, description and buttons fold away. Hovering, focusing
 or tapping the hero brings them back, and the timer restarts when you leave.
 Reduced motion keeps everything visible.
+
+### Home entrances
+
+- Section headings wipe in from the left as their row arrives, their icon (or the
+  poster or face beside a recommendation rail) pops in and See All slides in with
+  a small nudge of its arrow.
+- Each poster eases back from a slight zoom while it fades up.
+- The hero's caption (badge, title, meta, genres, description, buttons) rises
+  again, in order, every time a slide becomes the active one, not only on the
+  first.
+- Continue Watching's progress bars fill once the row is in view, one card after
+  another.
+
+Reduced motion, from the system or from Settings, turns all of them off.
 
 ## Mobile navigation
 
@@ -1317,7 +1377,9 @@ recap, moving lights, the illustrations, year comparisons and highlights, and th
 diary's streaks, weekdays, month totals and On this day, streak milestones, gear
 geometry, the tearing ticket, the radar's arrival parts and Settings section resets
 (`year-page.test.mjs`), which also covers the globe's turn, Recently changed,
-setting values in words, the radar's category blips and unread counts. It needs
+setting values in words, the radar's category blips and unread counts, and the
+folded filter bars: what counts as a set filter, the button's summary and a
+registry that still matches the markup (`filter-fold.test.mjs`). It needs
 nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails

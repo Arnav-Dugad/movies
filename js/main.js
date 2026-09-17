@@ -8,6 +8,7 @@ import { initGlass } from './glass.js';
 import { initScrollHints } from './scroll-hints.js';
 import { initStage } from './stage.js';
 import { initIllustrations } from './illustrations.js';
+import { initFilterFold } from './filter-fold.js';
 import { initAuth } from './auth.js';
 import { initWatchlist, toggleWatched } from './watchlist.js';
 import { onShowComplete, backfillLegacyShows, fetchHistoricalShowMeta, pendingLegacyShows, initEpisodeRefresh } from './episodes.js';
@@ -173,6 +174,7 @@ async function init() {
   // Load initial content; hide loader once hero + home settle (max 4s fallback).
   const ready = Promise.allSettled([initHero(), initHome()]);
   initFilters();
+  initFilterFold();
   const timeout = new Promise(r => setTimeout(r, 4000));
   await Promise.race([ready, timeout]);
   hideLoader();
