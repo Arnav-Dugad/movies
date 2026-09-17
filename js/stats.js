@@ -599,7 +599,7 @@ function tvTrackerPanel() {
   const tv = episodeStats({ months: 12 });
   if (!tv.shows) {
     return `<section class="stats-panel tv-tracker"><div class="stats-section-head"><div><span>Episode intelligence</span><h2>TV Tracker</h2><p>Tick episodes on any show and this panel fills in — completion, pace, and your longest sitting.</p></div></div>
-      <div class="tv-empty"><i>${icon('grid')}</i><div><strong>No episode history yet</strong><p>Open a show and use <b>Mark season watched</b>, <b>Up to here</b>, or <b>I have seen it all</b>. Shows you marked watched before episode tracking existed are filled in automatically.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
+      <div class="tv-empty">${illustration('tv', { cls: 'tv-empty-art' })}<div><strong>No episode history yet</strong><p>Open a show and use <b>Mark season watched</b>, <b>Up to here</b>, or <b>I have seen it all</b>. Shows you marked watched before episode tracking existed are filled in automatically.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
   }
 
   const hours = Math.round(tv.minutes / 60);
@@ -830,7 +830,7 @@ function completionCard(item) {
 }
 
 function completionBody(payload, role = completionRole) {
-  if (!payload?.items?.length) return `<div class="insight-loading"><i></i><span>Checking every ${role === 'actor' ? 'role' : 'directing credit'}…</span></div>`;
+  if (!payload?.items?.length) return `<div class="insight-loading">${illustration('hourglass', { cls: 'loading-art' })}<span>Checking every ${role === 'actor' ? 'role' : 'directing credit'}…</span></div>`;
   return `<div class="loyalty-grid">${payload.items.map(completionCard).join('')}</div><p class="loyalty-note">${esc(payload.filterSummary || '')}</p>`;
 }
 
@@ -887,7 +887,7 @@ export function rankSmartWatchCandidates(candidates = [], options = {}) {
 
 // ===== CAST MILESTONES =====
 function castPanel() {
-  return `<section class="stats-panel cast-milestones"><div class="stats-section-head"><div><span>Time with the cast</span><h2>Cast Milestones</h2><p>Hours with the people in the episodes you have watched.</p></div></div><div id="castHoursBody"><div class="insight-loading"><i></i><span>Reading episode credits…</span></div></div><p class="loyalty-note">Counted from TMDB episode credits: a season's billed cast for every episode of that season you watched, guest stars for their own episodes. TMDB does not list which regulars sit out an episode, so theirs can run slightly high.</p></section>`;
+  return `<section class="stats-panel cast-milestones"><div class="stats-section-head"><div><span>Time with the cast</span><h2>Cast Milestones</h2><p>Hours with the people in the episodes you have watched.</p></div></div><div id="castHoursBody"><div class="insight-loading">${illustration('hourglass', { cls: 'loading-art' })}<span>Reading episode credits…</span></div></div><p class="loyalty-note">Counted from TMDB episode credits: a season's billed cast for every episode of that season you watched, guest stars for their own episodes. TMDB does not list which regulars sit out an episode, so theirs can run slightly high.</p></section>`;
 }
 
 const countOf = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -1068,7 +1068,7 @@ function rewatchPanel() {
 
   if (!summary.extraPlays) {
     return `<section class="stats-panel rewatch-panel">${head}
-      <div class="tv-empty"><i>${icon('rotate')}</i><div><strong>Nothing logged twice yet</strong><p>Open something you have seen before and use <b>Log a rewatch</b> under the watched tick. The count, the dates, and the time it added all land here.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
+      <div class="tv-empty">${illustration('projector', { cls: 'tv-empty-art' })}<div><strong>Nothing logged twice yet</strong><p>Open something you have seen before and use <b>Log a rewatch</b> under the watched tick. The count, the dates, and the time it added all land here.</p></div><button class="btn-glass" data-action="show-page" data-page="watched">Open Watched</button></div></section>`;
   }
 
   const hours = Math.round(summary.extraMinutes / 60);
@@ -1102,7 +1102,7 @@ function rewatchPanel() {
 function franchisePanel() {
   return `<section class="stats-panel franchise-panel">
     <div class="stats-section-head"><div><span>Collection completion</span><h2>Franchises</h2><p>How far through each film series you are. Measured against released entries only &mdash; an announced sequel cannot count against you.</p></div><button class="btn-glass" data-action="show-page" data-page="franchises">Open Franchises</button></div>
-    <div id="franchiseBody"><div class="network-empty">Working out where you stand&hellip;</div></div>
+    <div id="franchiseBody"><div class="network-empty">${illustration('hourglass', { cls: 'loading-art' })}Working out where you stand&hellip;</div></div>
     <div id="tvFamilyBody"></div>
   </section>`;
 }

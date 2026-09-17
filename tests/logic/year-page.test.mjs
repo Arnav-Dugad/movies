@@ -124,4 +124,42 @@ check('minutes fall on their weekday, Monday first', week[1].minutes === 120 && 
 const totals = diary.monthTotals(diaryDays, '2026-09');
 check('a month totals its viewing and finds its biggest day', totals.minutes === 310 && totals.items === 5 && totals.active === 3 && totals.film === 120 && totals.tv === 190 && totals.busiest.key === day(9, 5));
 
+// ---------- watch diary: on this day ----------
+const today = new Date(2026, 8, 17, 10).getTime();
+const memoryEvents = [
+  { kind: 'movie', key: 'movie_1', id: 1, type: 'movie', title: 'Last Year', poster: '/a.jpg', at: new Date(2025, 8, 17, 21).getTime(), bulk: false },
+  { kind: 'movie', key: 'movie_1', id: 1, type: 'movie', title: 'Last Year', poster: '/a.jpg', at: new Date(2025, 8, 17, 23).getTime(), bulk: false },
+  { kind: 'episode', key: 'tv_2', id: 2, type: 'tv', title: 'A Show', poster: '', season: 2, episode: 4, at: new Date(2023, 8, 17, 20).getTime(), bulk: false },
+  { kind: 'episode', key: 'tv_3', id: 3, type: 'tv', title: 'Binge', poster: '', season: 1, episode: 1, at: new Date(2023, 8, 17, 19).getTime(), bulk: false },
+  { kind: 'episode', key: 'tv_3', id: 3, type: 'tv', title: 'Binge', poster: '', season: 1, episode: 2, at: new Date(2023, 8, 17, 20).getTime(), bulk: false },
+  { kind: 'episode', key: 'tv_4', id: 4, type: 'tv', title: 'Bulk', poster: '', season: 1, episode: 1, at: new Date(2024, 8, 17, 20).getTime(), bulk: true },
+  { kind: 'movie', key: 'movie_5', id: 5, type: 'movie', title: 'Other Day', poster: '', at: new Date(2024, 8, 16, 20).getTime(), bulk: false },
+  { kind: 'movie', key: 'movie_6', id: 6, type: 'movie', title: 'Today', poster: '', at: new Date(2026, 8, 17, 8).getTime(), bulk: false },
+];
+const memories = diary.onThisDay(memoryEvents, today);
+check('on this day lists earlier years only, newest first', memories.map(m => `${m.year}:${m.yearsAgo}`).join(',') === '2025:1,2023:3', JSON.stringify(memories.map(m => m.year)));
+check('a title appears once a year with its viewings or episodes', memories[0].items.length === 1 && memories[0].items[0].viewings === 2 && memories[1].items.find(i => i.key === 'tv_3').episodes === 2 && memories[1].items.find(i => i.key === 'tv_2').last.episode === 4);
+check('bulk marks and other dates are not memories', !memories.some(m => m.items.some(i => ['tv_4', 'movie_5', 'movie_6'].includes(i.key))));
+check('an empty history has no memories', diary.onThisDay([], today).length === 0);
+
+// ---------- streak milestones ----------
+const streakMod = await import(SRC + 'streak-milestones.js');
+check('a milestone is announced on the day it is reached', streakMod.streakMilestoneToday({ current: 7, todayActive: true, start: '2026-09-11' }, []) === 7 && streakMod.streakMilestoneToday({ current: 30, todayActive: true, start: '2026-08-19' }, []) === 30 && streakMod.streakMilestoneToday({ current: 100, todayActive: true, start: 'x' }) === 100);
+check('never twice for the same streak, never for a length in between', streakMod.streakMilestoneToday({ current: 7, todayActive: true, start: '2026-09-11' }, ['2026-09-11:7']) === null && streakMod.streakMilestoneToday({ current: 8, todayActive: true, start: '2026-09-10' }, []) === null && streakMod.streakMilestoneToday({ current: 45, todayActive: true, start: 'y' }, []) === null);
+check('a streak that has not reached today is not celebrated', streakMod.streakMilestoneToday({ current: 7, todayActive: false, start: '2026-09-10' }, []) === null);
+check('a new streak can earn a milestone again', streakMod.streakMilestoneToday({ current: 7, todayActive: true, start: '2026-10-01' }, ['2026-09-11:7']) === 7);
+const run = new Map(Array.from({ length: 7 }, (_, i) => { const key = `2026-09-${String(11 + i).padStart(2, '0')}`; return [key, { key, items: 1, minutes: 60 }]; }));
+const found = streakMod.currentStreak(run, new Date(2026, 8, 17, 22).getTime());
+check('the current streak knows the day it began', found.current === 7 && found.todayActive && found.start === '2026-09-11', JSON.stringify(found));
+const yesterday = streakMod.currentStreak(run, new Date(2026, 8, 18, 9).getTime());
+check('a streak waiting for today starts from yesterday', yesterday.current === 7 && !yesterday.todayActive && yesterday.start === '2026-09-11');
+
+// ---------- illustrations: gears and the tearing ticket ----------
+const gear = art.gearPath(100, 100, 40, 30, 8);
+const points = gear.slice(1, -2).split(' L').map(p => p.split(' ').map(Number));
+check('a gear has four points per tooth, between its two radii', points.length === 32 && points.every(([x, y]) => { const r = Math.hypot(x - 100, y - 100); return r > 29.8 && r < 40.2; }));
+const ticket = art.illustration('ticket');
+check('the ticket is drawn in two halves that share one torn edge', (ticket.match(/class="art-tear-main"/g) || []).length === 1 && (ticket.match(/class="art-tear-stub"/g) || []).length === 1 && (ticket.match(/L150 40 L147 48/g) || []).length === 2);
+check('the third set of scenes is there', ['gears', 'radar', 'upload', 'lock', 'rocket', 'hourglass', 'coins', 'spotlight'].every(name => art.ILLUSTRATIONS.includes(name)));
+
 summary();

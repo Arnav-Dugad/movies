@@ -13,6 +13,19 @@
 
 let serial = 0;
 
+/** Pure: a toothed gear outline centred at (cx, cy), for the gears scene. */
+export function gearPath(cx, cy, outer, inner, teeth) {
+  const step = Math.PI * 2 / teeth;
+  const points = [];
+  for (let tooth = 0; tooth < teeth; tooth++) {
+    const at = tooth * step;
+    for (const [radius, angle] of [[inner, at], [outer, at + step * 0.12], [outer, at + step * 0.42], [inner, at + step * 0.54]]) {
+      points.push(`${(cx + radius * Math.cos(angle)).toFixed(1)} ${(cy + radius * Math.sin(angle)).toFixed(1)}`);
+    }
+  }
+  return `M${points.join(' L')} Z`;
+}
+
 const SCENES = {
   // A projector throwing a flickering beam, both reels turning, dust in the light.
   projector: id => `
@@ -190,8 +203,21 @@ const SCENES = {
       <path class="t2" d="M204 26 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/>
       <path class="t3" d="M120 150 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z"/>
     </g>`,
-  // An admission ticket floating on a tilt, a light sweeping across it.
-  ticket: id => `
+  // An admission ticket floating on a tilt, a light sweeping across it. It is
+  // drawn twice, clipped either side of a ragged line down its perforation, so a
+  // tap on Sign in can tear the stub away (initIllustrations, .torn).
+  ticket: id => {
+    const shape = 'M62 50 H178 a12 12 0 0 1 12 12 V78 a12 12 0 0 0 0 24 V118 a12 12 0 0 1 -12 12 H62 a12 12 0 0 1 -12 -12 V102 a12 12 0 0 0 0 -24 V62 a12 12 0 0 1 12 -12 Z';
+    const tear = 'L150 40 L147 48 L153 56 L147 64 L153 72 L147 80 L153 88 L147 96 L153 104 L147 112 L153 120 L147 128 L150 140';
+    const face = `
+          <path d="${shape}" fill="url(#${id}-paper)"/>
+          <rect x="58" y="58" width="124" height="64" rx="8" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1.5" stroke-dasharray="2 4"/>
+          <path d="M150 56 V124" stroke="rgba(255,255,255,.55)" stroke-width="2" stroke-dasharray="3 5"/>
+          <text x="102" y="87" text-anchor="middle" font-size="15" font-weight="800" letter-spacing="3" fill="#fff" font-family="system-ui, sans-serif">ADMIT</text>
+          <text x="102" y="106" text-anchor="middle" font-size="15" font-weight="800" letter-spacing="3" fill="#fff" font-family="system-ui, sans-serif">ONE</text>
+          <path class="art-star-spin" d="M170 80 l2.6 5.4 5.9 .9 -4.3 4.1 1 5.9 -5.2 -2.8 -5.2 2.8 1 -5.9 -4.3 -4.1 5.9 -.9z" fill="#fde68a" style="transform-origin:170px 89px"/>
+          <g clip-path="url(#${id}-clip)"><g class="art-shine"><rect x="-10" y="30" width="46" height="120" fill="url(#${id}-shine)" transform="skewX(-18)"/></g></g>`;
+    return `
     <defs>
       <linearGradient id="${id}-paper" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0" stop-color="#ff3b47"/><stop offset=".55" stop-color="#c8102e"/><stop offset="1" stop-color="#6d28d9"/>
@@ -199,25 +225,26 @@ const SCENES = {
       <linearGradient id="${id}-shine" x1="0" y1="0" x2="1" y2="0">
         <stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
       </linearGradient>
-      <clipPath id="${id}-clip"><path d="M62 50 H178 a12 12 0 0 1 12 12 V78 a12 12 0 0 0 0 24 V118 a12 12 0 0 1 -12 12 H62 a12 12 0 0 1 -12 -12 V102 a12 12 0 0 0 0 -24 V62 a12 12 0 0 1 12 -12 Z"/></clipPath>
+      <clipPath id="${id}-clip"><path d="${shape}"/></clipPath>
+      <clipPath id="${id}-main"><path d="M0 0 H150 ${tear} V180 H0 Z"/></clipPath>
+      <clipPath id="${id}-stub"><path d="M240 0 H150 ${tear} V180 H240 Z"/></clipPath>
     </defs>
     <ellipse class="art-shadow" cx="120" cy="160" rx="66" ry="7"/>
     <g class="art-float a">
       <g transform="rotate(-8 120 90)">
-        <path d="M62 50 H178 a12 12 0 0 1 12 12 V78 a12 12 0 0 0 0 24 V118 a12 12 0 0 1 -12 12 H62 a12 12 0 0 1 -12 -12 V102 a12 12 0 0 0 0 -24 V62 a12 12 0 0 1 12 -12 Z" fill="url(#${id}-paper)"/>
-        <rect x="58" y="58" width="124" height="64" rx="8" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1.5" stroke-dasharray="2 4"/>
-        <path d="M150 56 V124" stroke="rgba(255,255,255,.55)" stroke-width="2" stroke-dasharray="3 5"/>
-        <text x="102" y="87" text-anchor="middle" font-size="15" font-weight="800" letter-spacing="3" fill="#fff" font-family="system-ui, sans-serif">ADMIT</text>
-        <text x="102" y="106" text-anchor="middle" font-size="15" font-weight="800" letter-spacing="3" fill="#fff" font-family="system-ui, sans-serif">ONE</text>
-        <path class="art-star-spin" d="M170 80 l2.6 5.4 5.9 .9 -4.3 4.1 1 5.9 -5.2 -2.8 -5.2 2.8 1 -5.9 -4.3 -4.1 5.9 -.9z" fill="#fde68a" style="transform-origin:170px 89px"/>
-        <g clip-path="url(#${id}-clip)"><g class="art-shine"><rect x="-10" y="30" width="46" height="120" fill="url(#${id}-shine)" transform="skewX(-18)"/></g></g>
+        <g class="art-tear-main" clip-path="url(#${id}-main)">${face}</g>
+        <g class="art-tear-stub" clip-path="url(#${id}-stub)">${face}</g>
+        <g class="art-tear-bits" fill="#fecaca">
+          <path class="bit1" d="M149 70 l4 2 -3 3 z"/><path class="bit2" d="M151 92 l-4 3 4 2 z"/><path class="bit3" d="M148 112 l5 1 -2 4 z"/>
+        </g>
       </g>
     </g>
     <g class="art-twinkle" fill="#fde68a">
       <path class="t1" d="M40 40 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
       <path class="t2" d="M206 34 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/>
       <path class="t3" d="M212 140 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z"/>
-    </g>`,
+    </g>`;
+  },
 
   // A magnifying glass sweeping along a strip of film, a question drifting above.
   search: id => `
@@ -390,6 +417,153 @@ const SCENES = {
     <g class="art-zap" fill="#fbbf24" style="transform-origin:130px 90px">
       <path d="M131 70 L122 90 H131 L125 110 L140 86 H131 L137 70 Z"/>
     </g>`,
+
+  // Two gears meshing: the big one turns, the small one answers at its own speed.
+  gears: id => `
+    <defs>
+      <linearGradient id="${id}-steel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e5e7eb"/><stop offset=".45" stop-color="#9ca3af"/><stop offset="1" stop-color="#374151"/></linearGradient>
+      <linearGradient id="${id}-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset=".5" stop-color="#f59e0b"/><stop offset="1" stop-color="#92400e"/></linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="112" cy="164" rx="76" ry="7"/>
+    <g class="art-gear-big" style="transform-origin:96px 96px">
+      <path d="${gearPath(96, 96, 46, 37, 12)} M114 96 a18 18 0 1 0 -36 0 a18 18 0 1 0 36 0 Z" fill="url(#${id}-steel)" fill-rule="evenodd"/>
+      ${[0, 60, 120, 180, 240, 300].map(a => `<circle cx="${(96 + 27 * Math.cos(a * Math.PI / 180)).toFixed(1)}" cy="${(96 + 27 * Math.sin(a * Math.PI / 180)).toFixed(1)}" r="3.4" fill="#1f2937"/>`).join('')}
+      <circle cx="96" cy="96" r="9" fill="#e50914"/><circle cx="96" cy="96" r="3.5" fill="#fff" opacity=".8"/>
+    </g>
+    <g class="art-gear-small" style="transform-origin:154px 50px">
+      <path d="${gearPath(154, 50, 30, 23, 8)} M164 50 a10 10 0 1 0 -20 0 a10 10 0 1 0 20 0 Z" fill="url(#${id}-gold)" fill-rule="evenodd"/>
+      <circle cx="154" cy="50" r="5" fill="#7c3aed"/>
+    </g>
+    <g class="art-gear-tiny" style="transform-origin:170px 118px">
+      <path d="${gearPath(170, 118, 20, 15, 7)} M176 118 a6 6 0 1 0 -12 0 a6 6 0 1 0 12 0 Z" fill="url(#${id}-steel)" fill-rule="evenodd" opacity=".85"/>
+    </g>
+    <g class="art-twinkle" fill="#fde68a">
+      <path class="t1" d="M200 24 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/>
+      <path class="t2" d="M36 40 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
+    </g>`,
+
+  // A radar screen: a sweep turns and each blip flares as the beam passes it.
+  radar: id => `
+    <defs>
+      <radialGradient id="${id}-screen" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#0f2e2e"/><stop offset="1" stop-color="#07131a"/></radialGradient>
+      <linearGradient id="${id}-rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6b7280"/><stop offset="1" stop-color="#1f2937"/></linearGradient>
+    </defs>
+    <circle cx="120" cy="90" r="78" fill="url(#${id}-screen)" stroke="url(#${id}-rim)" stroke-width="6"/>
+    <g fill="none" stroke="#22d3ee" stroke-opacity=".22" stroke-width="1.4">
+      <circle cx="120" cy="90" r="24"/><circle cx="120" cy="90" r="48"/><circle cx="120" cy="90" r="70"/>
+      <path d="M50 90 H190 M120 20 V160"/>
+    </g>
+    <g class="art-radar-sweep" style="transform-origin:120px 90px">
+      <path d="M120 90 L190 90 A70 70 0 0 0 169.5 40.5 Z" fill="#22d3ee" opacity=".16"/>
+      <path d="M120 90 L190 90 A70 70 0 0 0 184.7 63.2 Z" fill="#22d3ee" opacity=".2"/>
+      <path d="M120 90 L190 90" stroke="#67e8f9" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+    ${[[150, 70, 'b1'], [95, 120, 'b2'], [140, 125, 'b3'], [80, 65, 'b4']].map(([x, y, cls]) => `<circle class="art-blip ${cls}" cx="${x}" cy="${y}" r="4.5" fill="${cls === 'b1' ? '#f43f5e' : '#34d399'}" style="transform-origin:${x}px ${y}px"/>`).join('')}
+    <circle cx="120" cy="90" r="4" fill="#67e8f9"/>`,
+
+  // A file rising into a cloud, its progress bar filling beneath.
+  upload: id => `
+    <defs>
+      <linearGradient id="${id}-cloud" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#6d28d9"/></linearGradient>
+      <linearGradient id="${id}-sheet" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f8fafc"/><stop offset="1" stop-color="#cbd5e1"/></linearGradient>
+      <linearGradient id="${id}-bar" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e50914"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+    </defs>
+    <g class="art-float a">
+      <path d="M84 62 a22 22 0 0 1 8 -42 a30 30 0 0 1 56 6 a20 20 0 0 1 8 36 Z" fill="url(#${id}-cloud)"/>
+      <path d="M96 30 q10 -10 24 -6" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <g class="art-arrow-up">
+      <path d="M120 58 V92" stroke="#fbbf24" stroke-width="5" stroke-linecap="round"/>
+      <path d="M108 70 L120 56 L132 70" fill="none" stroke="#fbbf24" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g class="art-float b">
+      <path d="M92 96 H136 L152 112 V160 H92 Z" fill="url(#${id}-sheet)"/>
+      <path d="M136 96 V112 H152" fill="#94a3b8"/>
+      ${[0, 1, 2, 3].map(i => `<rect x="100" y="${118 + i * 9}" width="${[44, 34, 40, 28][i]}" height="4" rx="2" fill="#64748b" opacity=".55"/>`).join('')}
+      <text x="112" y="112" font-size="9" font-weight="800" fill="#e50914" font-family="system-ui, sans-serif">CSV</text>
+    </g>
+    <rect x="70" y="168" width="100" height="6" rx="3" fill="var(--art-edge)"/>
+    <rect class="art-progress" x="70" y="168" width="100" height="6" rx="3" fill="url(#${id}-bar)" style="transform-origin:70px 171px"/>`,
+
+  // A padlock whose shackle lifts and closes as its PIN dots light in turn.
+  lock: id => `
+    <defs>
+      <linearGradient id="${id}-body" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset=".5" stop-color="#f59e0b"/><stop offset="1" stop-color="#92400e"/></linearGradient>
+      <radialGradient id="${id}-glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fbbf24" stop-opacity=".45"/><stop offset="1" stop-color="#fbbf24" stop-opacity="0"/></radialGradient>
+    </defs>
+    <ellipse class="art-glow" cx="120" cy="96" rx="80" ry="60" fill="url(#${id}-glow)"/>
+    <ellipse class="art-shadow" cx="120" cy="160" rx="54" ry="6"/>
+    <path class="art-shackle" d="M96 76 V56 a24 24 0 0 1 48 0 V76" fill="none" stroke="#9ca3af" stroke-width="11" stroke-linecap="round"/>
+    <rect x="80" y="72" width="80" height="68" rx="16" fill="url(#${id}-body)"/>
+    <rect x="86" y="78" width="68" height="8" rx="4" fill="#fff" opacity=".3"/>
+    <circle cx="120" cy="102" r="9" fill="#451a03"/><path d="M116 106 h8 l-2 16 h-4 z" fill="#451a03"/>
+    ${[0, 1, 2, 3].map(i => `<circle class="art-pin p${i}" cx="${96 + i * 16}" cy="158" r="4.5" fill="#fbbf24"/>`).join('')}`,
+
+  // A rocket climbing through streaking stars, its flame flickering.
+  rocket: id => `
+    <defs>
+      <linearGradient id="${id}-hull" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cbd5e1"/><stop offset=".5" stop-color="#f8fafc"/><stop offset="1" stop-color="#94a3b8"/></linearGradient>
+      <linearGradient id="${id}-flame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffbeb"/><stop offset=".3" stop-color="#fbbf24"/><stop offset=".75" stop-color="#f97316"/><stop offset="1" stop-color="#e50914" stop-opacity=".15"/></linearGradient>
+    </defs>
+    ${[[40, 20, 's1'], [70, 60, 's2'], [196, 30, 's3'], [176, 110, 's1'], [30, 120, 's2'], [214, 76, 's3']].map(([x, y, cls]) => `<path class="art-streak ${cls}" d="M${x} ${y} v18" stroke="#fde68a" stroke-width="2" stroke-linecap="round" opacity=".7"/>`).join('')}
+    <g class="art-rocket">
+      <g transform="rotate(28 120 90)">
+        <path class="art-flame" d="M106 126 Q120 186 134 126 Z" fill="url(#${id}-flame)" style="transform-origin:120px 128px"/>
+        <path d="M120 22 C 140 40, 144 80, 138 122 H102 C 96 80, 100 40, 120 22 Z" fill="url(#${id}-hull)"/>
+        <path d="M102 98 L84 128 L102 122 Z" fill="#e50914"/><path d="M138 98 L156 128 L138 122 Z" fill="#e50914"/>
+        <path d="M120 22 C 130 30, 135 40, 137 50 H103 C 105 40, 110 30, 120 22 Z" fill="#e50914"/>
+        <circle cx="120" cy="74" r="11" fill="#1e293b" stroke="#94a3b8" stroke-width="3"/>
+        <circle cx="116" cy="70" r="3.5" fill="#7dd3fc" opacity=".8"/>
+        <rect x="112" y="118" width="16" height="10" rx="2" fill="#475569"/>
+      </g>
+    </g>
+    ${[[78, 160, 'p1'], [100, 168, 'p2'], [60, 150, 'p3']].map(([x, y, cls]) => `<circle class="art-puff ${cls}" cx="${x}" cy="${y}" r="12" fill="#f1f5f9" opacity=".5" style="transform-origin:${x}px ${y}px"/>`).join('')}`,
+
+  // An hourglass draining, then turning over to begin again.
+  hourglass: id => `
+    <defs>
+      <linearGradient id="${id}-wood" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b45309"/><stop offset="1" stop-color="#78350f"/></linearGradient>
+      <linearGradient id="${id}-sand" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="166" rx="50" ry="6"/>
+    <g class="art-hourglass" style="transform-origin:120px 90px">
+      <path d="M92 32 H148 C148 64, 126 78, 124 90 C126 102, 148 116, 148 148 H92 C92 116, 114 102, 116 90 C114 78, 92 64, 92 32 Z" fill="rgba(186,230,253,.12)" stroke="rgba(186,230,253,.45)" stroke-width="2"/>
+      <path class="art-sand-top" d="M98 44 H142 C140 62, 124 76, 120 86 C116 76, 100 62, 98 44 Z" fill="url(#${id}-sand)" style="transform-origin:120px 86px"/>
+      <path class="art-sand-bottom" d="M98 136 H142 C140 118, 124 104, 120 94 C116 104, 100 118, 98 136 Z" fill="url(#${id}-sand)" style="transform-origin:120px 136px"/>
+      <path class="art-stream" d="M120 88 V134" stroke="#fbbf24" stroke-width="2" stroke-dasharray="3 4"/>
+      <rect x="80" y="22" width="80" height="12" rx="5" fill="url(#${id}-wood)"/>
+      <rect x="80" y="146" width="80" height="12" rx="5" fill="url(#${id}-wood)"/>
+      <path d="M86 34 V146 M154 34 V146" stroke="#92400e" stroke-width="4" stroke-linecap="round"/>
+    </g>`,
+
+  // Gold coins dropping onto a stack beside a rising line.
+  coins: id => `
+    <defs>
+      <linearGradient id="${id}-coin" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b45309"/><stop offset=".5" stop-color="#fbbf24"/><stop offset="1" stop-color="#b45309"/></linearGradient>
+      <linearGradient id="${id}-top" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fef3c7"/><stop offset="1" stop-color="#f59e0b"/></linearGradient>
+    </defs>
+    <ellipse class="art-shadow" cx="120" cy="164" rx="80" ry="7"/>
+    <path class="art-line" d="M40 140 L78 116 L108 124 L150 84 L196 52" fill="none" stroke="#34d399" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" pathLength="100" stroke-dasharray="100"/>
+    <path d="M186 50 L198 50 L198 62" fill="none" stroke="#34d399" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" class="art-ping" style="transform-origin:196px 52px"/>
+    ${[0, 1, 2, 3, 4].map(i => `<g class="art-coin c${i}"><rect x="96" y="${140 - i * 12}" width="48" height="12" fill="url(#${id}-coin)"/><ellipse cx="120" cy="${152 - i * 12}" rx="24" ry="7" fill="#92400e"/><ellipse cx="120" cy="${140 - i * 12}" rx="24" ry="7" fill="url(#${id}-top)"/>${i === 4 ? `<text x="120" y="${144 - i * 12}" text-anchor="middle" font-size="10" font-weight="900" fill="#92400e" font-family="system-ui, sans-serif">$</text>` : ''}</g>`).join('')}
+    <g class="art-twinkle" fill="#fde68a"><path class="t1" d="M162 100 l2.4 6 6 2.4 -6 2.4 -2.4 6 -2.4 -6 -6 -2.4 6 -2.4z"/><path class="t2" d="M76 70 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/></g>`,
+
+  // A stage between swaying curtains, two spotlights crossing on a star.
+  spotlight: id => `
+    <defs>
+      <linearGradient id="${id}-curtain" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7f1d1d"/><stop offset=".5" stop-color="#dc2626"/><stop offset="1" stop-color="#7f1d1d"/></linearGradient>
+      <linearGradient id="${id}-beam" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef3c7" stop-opacity=".55"/><stop offset="1" stop-color="#fef3c7" stop-opacity="0"/></linearGradient>
+      <radialGradient id="${id}-floor" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fde68a" stop-opacity=".45"/><stop offset="1" stop-color="#fde68a" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect x="20" y="146" width="200" height="14" rx="4" fill="#3f2a1d"/>
+    <ellipse class="art-glow" cx="120" cy="146" rx="64" ry="14" fill="url(#${id}-floor)"/>
+    <path class="art-beam-l" d="M44 14 L100 146 H140 Z" fill="url(#${id}-beam)" style="transform-origin:44px 14px"/>
+    <path class="art-beam-r" d="M196 14 L140 146 H100 Z" fill="url(#${id}-beam)" style="transform-origin:196px 14px"/>
+    <path class="art-star-spin" d="M120 104 l6 12.2 13.4 1.9 -9.7 9.5 2.3 13.4 -12 -6.3 -12 6.3 2.3 -13.4 -9.7 -9.5 13.4 -1.9z" fill="#fbbf24" style="transform-origin:120px 124px"/>
+    <path class="art-curtain-l" d="M8 8 H64 C58 50, 70 96, 50 150 H8 Z" fill="url(#${id}-curtain)" style="transform-origin:8px 8px"/>
+    <path class="art-curtain-r" d="M232 8 H176 C182 50, 170 96, 190 150 H232 Z" fill="url(#${id}-curtain)" style="transform-origin:232px 8px"/>
+    <rect x="4" y="2" width="232" height="14" rx="4" fill="#991b1b"/>
+    ${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<circle cx="${24 + i * 27}" cy="16" r="5" fill="#b91c1c"/>`).join('')}`,
 };
 
 export const ILLUSTRATIONS = Object.keys(SCENES);
@@ -400,4 +574,31 @@ export function illustration(name, { label = '', cls = '' } = {}) {
   const id = `cvart${++serial}`;
   const a11y = label ? `role="img" aria-label="${String(label).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch])}"` : 'aria-hidden="true" focusable="false"';
   return `<svg class="cv-art cv-art-${scene}${cls ? ` ${cls}` : ''}" viewBox="0 0 240 180" ${a11y}>${SCENES[scene](id)}</svg>`;
+}
+
+const motionReduced = () => {
+  const root = document.documentElement;
+  return root.dataset.motion === 'reduced' || (root.dataset.motion !== 'full' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+};
+
+/**
+ * A tap on Sign in beside a ticket tears the stub off along its perforation
+ * first; the sign-in dialog opens once the tear has played, and the ticket mends
+ * itself a moment later. Reduced motion opens the dialog straight away.
+ */
+export function initIllustrations() {
+  if (typeof window === 'undefined') return;
+  window.addEventListener('click', event => {
+    const button = event.target.closest?.('[data-action="open-auth"]');
+    if (!button) return;
+    if (button.dataset.tearing === 'go') { delete button.dataset.tearing; return; }
+    let ticket = null;
+    for (let node = button.parentElement, depth = 0; node && depth < 3 && !ticket; node = node.parentElement, depth++) ticket = node.querySelector('.cv-art-ticket');
+    if (!ticket || ticket.classList.contains('torn') || motionReduced()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    ticket.classList.add('torn');
+    setTimeout(() => { button.dataset.tearing = 'go'; button.click(); }, 460);
+    setTimeout(() => ticket.classList.remove('torn'), 2400);
+  }, true);
 }

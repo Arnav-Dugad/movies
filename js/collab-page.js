@@ -60,6 +60,7 @@ function paint() {
       : latestItems.length
         ? `<div class="collab-grid">${latestItems.map(item => itemHTML(item, true)).join('')}</div>`
         : `<div class="collab-empty">
+            ${illustration('spotlight', { cls: 'empty-art' })}
             <h2>Nothing on it yet</h2>
             <p>Add a title from any poster's <b>+</b> menu, or from the buttons on a film or show page. Whatever either of you adds appears here for both.</p>
           </div>`;

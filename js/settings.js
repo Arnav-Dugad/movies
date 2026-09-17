@@ -37,8 +37,101 @@ const ICONS = {
   shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 20 7v5c0 5-3 8-8 10-5-2-8-5-8-10V7l8-4Z"/><path d="m9 12 2 2 4-4"/></svg>',
 };
 
-const toggle = (key, title, sub, checked) => `<label class="settings-switch-row"><span><strong>${title}</strong><small>${sub}</small></span><input type="checkbox" data-action="settings-toggle" data-pref="${key}" ${checked ? 'checked' : ''}><i></i></label>`;
-const select = (key, title, sub, options, value) => `<label class="settings-select-row"><span><strong>${title}</strong><small>${sub}</small></span><select class="watched-select" data-action="settings-pref" data-pref="${key}">${options.map(([v, label]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>`;
+// ---------- live previews ----------
+// A switch that changes how something looks carries a small drawing of that
+// thing, which follows the switch: turn it on and the drawing shows the effect.
+// Pure CSS (css/refinements.css, "Settings previews"), keyed by .is-on on the row.
+const THUMBS = {
+  lightDrift: '<i class="st-light a"></i><i class="st-light b"></i>',
+  castMilestones: '<i class="st-toast"><b></b><em></em></i>',
+  streakMilestones: '<i class="st-toast flame"><b></b><em></em></i>',
+  ambientColour: '<i class="st-glow"></i><i class="st-poster"></i><i class="st-bar"></i>',
+  highContrast: '<i class="st-line one"></i><i class="st-line two"></i><i class="st-line three"></i>',
+  compactNav: '<i class="st-nav"><b></b><b></b><b></b></i><i class="st-body"></i>',
+  hidePosterCaptions: '<i class="st-poster small"></i><i class="st-caption"></i><i class="st-caption short"></i>',
+  cleanHomePosters: '<i class="st-poster wide"><b class="st-badge l"></b><b class="st-badge r"></b><b class="st-badge btn"></b></i>',
+  posterPreview: '<i class="st-expand"></i>',
+  autoplay: '<i class="st-hero"><b></b><b></b><b></b><b></b></i>',
+  backdropArt: '<i class="st-hero art"></i>',
+  posterTilt: '<i class="st-poster tilt"></i>',
+  haptics: '<i class="st-phone"></i><i class="st-buzz l"></i><i class="st-buzz r"></i>',
+  showRatings: '<i class="st-poster wide"><b class="st-star"></b></i>',
+  showWatched: '<i class="st-poster wide"><b class="st-tick"></b></i>',
+  spoilerShield: '<i class="st-line one"></i><i class="st-line two blur"></i><i class="st-line three blur"></i>',
+};
+const toggle = (key, title, sub, checked) => `<label class="settings-switch-row${THUMBS[key] ? ' has-thumb' : ''}${checked ? ' is-on' : ''}">${THUMBS[key] ? `<span class="sp-thumb sp-${key}" aria-hidden="true">${THUMBS[key]}</span>` : ''}<span><strong>${title}</strong><small>${sub}</small></span><input type="checkbox" data-action="settings-toggle" data-pref="${key}" ${checked ? 'checked' : ''}><i></i></label>`;
+
+// A choice between looks is a row of previews, like Glass effects: each draws
+// the site the way that choice would. A radio group: arrow keys move the choice.
+// `action` is what a pick does (the theme animates its own switch).
+function previewPicker(key, title, sub, choices, value, action = 'settings-choice') {
+  return `<div class="settings-glass-row"><span><strong id="pp-${key}-label">${title}</strong><small>${sub}</small></span>
+    <div class="glass-previews pp-group${choices.length > 2 ? ' three' : ''}" role="radiogroup" aria-labelledby="pp-${key}-label" data-pref="${key}">${choices.map(([choice, label, note, stage]) => {
+      const on = value === choice;
+      return `<button type="button" role="radio" aria-checked="${on}" tabindex="${on ? 0 : -1}" class="glass-preview pp-choice${on ? ' on' : ''}" data-action="${action}" data-pref="${key}" data-value="${choice}" value="${choice}">
+        <span class="gp-stage pp-stage pp-${key}-${choice}" aria-hidden="true">${stage}</span>
+        <span class="gp-copy"><strong>${label}</strong><small>${note}</small></span>
+        <span class="gp-check" aria-hidden="true">${icon('check')}</span>
+      </button>`;
+    }).join('')}</div></div>`;
+}
+
+const page = (tone) => `<span class="pp-page ${tone}"><i class="pp-nav"><b></b><b></b><b></b></i><i class="pp-hero"></i><span class="pp-row"><u></u><u></u><u></u></span></span>`;
+const THEME_CHOICES = [
+  ['dark', 'Dark', 'Cinema black, lit posters', page('pp-dark')],
+  ['light', 'Light', 'Warm paper, deep ink', page('pp-light')],
+  ['system', 'Match device', 'Follows your system', `${page('pp-dark')}${page('pp-light pp-half')}`],
+];
+const DENSITY_CHOICES = [
+  ['comfortable', 'Comfortable', 'Bigger posters, more air', '<span class="pp-grid roomy"><u></u><u></u><u></u></span>'],
+  ['compact', 'Compact', 'More titles on screen', '<span class="pp-grid tight"><u></u><u></u><u></u><u></u><u></u></span>'],
+];
+const TEXT_CHOICES = [
+  ['standard', 'Standard', 'The default reading size', '<span class="pp-type"><b>Aa</b><i></i><i class="short"></i></span>'],
+  ['large', 'Large', 'Larger interface text', '<span class="pp-type large"><b>Aa</b><i></i><i class="short"></i></span>'],
+];
+const MOTION_CHOICES = [
+  ['system', 'Use system setting', 'Follows your device', '<span class="pp-motion calm"><u></u></span>'],
+  ['full', 'Full cinematic motion', 'Every transition plays', '<span class="pp-motion full"><u></u><i></i><i></i></span>'],
+  ['reduced', 'Reduced motion', 'Still, instant changes', '<span class="pp-motion still"><u></u></span>'],
+];
+
+// Poster controls: one poster drawn with every badge the switches below allow.
+function posterPreview() {
+  return `<div class="poster-preview" id="posterPreview" aria-hidden="true">
+    <span class="pv-card">
+      <span class="pv-art"><i class="pv-sky"></i><i class="pv-moon"></i><i class="pv-hills"></i>
+        <b class="pv-provider"><i></i><i></i></b><b class="pv-match">94% match</b><b class="pv-myrating">★ 9</b><b class="pv-tick">${icon('check')}</b>
+        <b class="pv-rating">★ 8.4</b><b class="pv-dismiss">${icon('close')}</b><b class="pv-rate">★</b><b class="pv-list">+</b>
+      </span>
+      <span class="pv-caption"><b>Midnight Premiere</b><small>2026 · Movie</small></span>
+    </span>
+    <p>Every change below shows here first.</p>
+  </div>`;
+}
+const POSTER_KEYS = ['hidePosterCaptions', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton'];
+function syncPosterPreview() {
+  const preview = document.getElementById('posterPreview');
+  if (!preview) return;
+  POSTER_KEYS.forEach(key => preview.classList.toggle(`pv-${key}`, !!prefs[key]));
+}
+
+/** Keep every preview group and switch drawing in step with the saved preferences. */
+function syncPreviews() {
+  document.querySelectorAll('.pp-group[data-pref]').forEach(group => {
+    const value = group.dataset.pref === 'theme' ? prefs.theme : prefs[group.dataset.pref];
+    group.querySelectorAll('.pp-choice').forEach(button => {
+      const on = button.dataset.value === value;
+      button.classList.toggle('on', on); button.setAttribute('aria-checked', String(on)); button.tabIndex = on ? 0 : -1;
+    });
+  });
+  document.querySelectorAll('.settings-switch-row input[data-pref]').forEach(input => {
+    const on = !!prefs[input.dataset.pref];
+    if (input.checked !== on) input.checked = on;
+    input.closest('.settings-switch-row')?.classList.toggle('is-on', on);
+  });
+  syncPosterPreview();
+}
 
 // Glass effects as two live previews: each shows a small lit stage with a panel
 // over it, drawn the way that setting draws the site, so the choice is seen
@@ -49,7 +142,7 @@ const GLASS_CHOICES = [
 ];
 function glassPicker() {
   return `<div class="settings-glass-row"><span><strong id="glassPickerLabel">Glass effects</strong><small>See each look before you choose it.</small></span>
-    <div class="glass-previews" role="radiogroup" aria-labelledby="glassPickerLabel">${GLASS_CHOICES.map(([value, label, note]) => {
+    <div class="glass-previews" role="radiogroup" aria-labelledby="glassPickerLabel" data-group="glass">${GLASS_CHOICES.map(([value, label, note]) => {
       const on = prefs.glass === value;
       return `<button type="button" role="radio" aria-checked="${on}" tabindex="${on ? 0 : -1}" class="glass-preview ${value}${on ? ' on' : ''}" data-action="settings-glass" data-value="${value}">
         <span class="gp-stage" aria-hidden="true"><i class="gp-light a"></i><i class="gp-light b"></i><i class="gp-light c"></i><span class="gp-panel"><i class="gp-sheen"></i><b></b><em></em><em></em><span class="gp-chips"><u></u><u></u></span></span></span>
@@ -84,21 +177,23 @@ export function renderSettings() {
   const regionOpts = [...REGIONS].sort((a, b) => a[1].localeCompare(b[1]))
     .map(([code]) => `<option value="${code}" ${code === state.region ? 'selected' : ''}>${esc(regionLabel(code))}</option>`).join('');
   ct.innerHTML = `<div class="settings-shell">
-    <section class="settings-premium-hero"><div><span>Experience control</span><h2>Make the universe yours.</h2><p>Fine-tune the look, motion, discovery signals and privacy of CineVerse. Changes apply instantly and sync efficiently to your account.</p></div><b>${ICONS.palette}</b></section>
+    <section class="settings-premium-hero"><div><span>Experience control</span><h2>Make the universe yours.</h2><p>Fine-tune the look, motion, discovery signals and privacy of CineVerse. Changes apply instantly and sync efficiently to your account.</p></div><b class="settings-hero-art">${illustration('gears')}</b></section>
     <div class="settings-layout">
       <main>
         <section class="settings-panel"><div class="settings-panel-head">${ICONS.palette}<div><span>Appearance</span><h2>Cinematic interface</h2></div></div>
-          ${select('density', 'Content density', 'Choose roomy cards or fit more on screen.', [['comfortable', 'Comfortable'], ['compact', 'Compact']], prefs.density)}
-          <label class="settings-select-row"><span><strong>Theme</strong><small>Cinema dark, paper light, or follow your device. Also in the profile menu.</small></span><select class="watched-select" data-action="settings-theme" data-pref="theme">${[['dark', 'Dark'], ['light', 'Light'], ['system', 'Match device']].map(([v, label]) => `<option value="${v}" ${v === prefs.theme ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
-          ${select('textSize', 'Text size', 'Increase interface text without zooming the page.', [['standard', 'Standard'], ['large', 'Large']], prefs.textSize)}
+          ${previewPicker('theme', 'Theme', 'Cinema dark, paper light, or follow your device. Also in the profile menu.', THEME_CHOICES, prefs.theme, 'settings-theme')}
+          ${previewPicker('density', 'Content density', 'Choose roomy cards or fit more on screen.', DENSITY_CHOICES, prefs.density)}
+          ${previewPicker('textSize', 'Text size', 'Increase interface text without zooming the page.', TEXT_CHOICES, prefs.textSize)}
           ${glassPicker()}
           ${toggle('lightDrift', 'Moving lights', 'The background lights drift toward where you tap and the way you scroll.', prefs.lightDrift)}
           ${toggle('castMilestones', 'Cast milestones', 'Celebrate when an episode takes you past 10, 20, 30 hours and more with an actor.', prefs.castMilestones)}
+          ${toggle('streakMilestones', 'Streak milestones', 'Celebrate 7, 30 and 100 days in a row with something watched, on the day you reach them.', prefs.streakMilestones)}
           ${toggle('ambientColour', 'Title colour', 'Tint each title page’s glow, buttons and progress bars with a colour from its poster.', prefs.ambientColour)}
           ${toggle('highContrast', 'High-contrast type', 'Brighten supporting text and borders for easier reading.', prefs.highContrast)}
           ${toggle('compactNav', 'Compact navigation', 'Use a tighter desktop navigation bar with more breathing room below.', prefs.compactNav)}
         </section>
         <section class="settings-panel poster-controls"><div class="settings-panel-head">${ICONS.palette}<div><span>Every poster</span><h2>Poster controls</h2></div></div>
+          ${posterPreview()}
           ${toggle('hidePosterCaptions', 'Hide titles under posters', 'Remove the name, year, and movie or TV label beneath every poster across CineVerse, for a pure artwork wall.', prefs.hidePosterCaptions)}
           ${toggle('cleanHomePosters', 'Clean posters', 'Hide every badge and action from poster artwork, everywhere in CineVerse.', prefs.cleanHomePosters)}
           ${toggle('posterCommunityRating', 'Community rating', 'Show the TMDB score on homepage posters.', prefs.posterCommunityRating)}
@@ -112,7 +207,7 @@ export function renderSettings() {
           ${toggle('posterPreview', 'Hover previews', 'Expand a poster into a muted landscape trailer when the pointer rests on it. Desktop only.', prefs.posterPreview)}
         </section>
         <section class="settings-panel"><div class="settings-panel-head">${ICONS.motion}<div><span>Motion & playback</span><h2>Atmosphere</h2></div></div>
-          ${select('motion', 'Interface motion', 'Respect your system, force full motion, or reduce it.', [['system', 'Use system setting'], ['full', 'Full cinematic motion'], ['reduced', 'Reduced motion']], prefs.motion)}
+          ${previewPicker('motion', 'Interface motion', 'Respect your system, force full motion, or reduce it.', MOTION_CHOICES, prefs.motion)}
           ${toggle('autoplay', 'Ambient hero previews', 'Play muted trailer backgrounds where available.', prefs.autoplay)}
           ${toggle('backdropArt', 'Decorative backdrop art', 'Show cinematic artwork behind heroes and profile identity.', prefs.backdropArt)}
           ${toggle('posterTilt', 'Poster depth effect', 'Let posters respond with a subtle premium hover tilt.', prefs.posterTilt)}
@@ -158,6 +253,7 @@ export function renderSettings() {
       </aside>
     </div>
   </div>`;
+  syncPosterPreview();
 }
 
 function clearSearchHistory() {
@@ -180,6 +276,7 @@ export function initSettings() {
     'settings-region': el => { state.region = el.value; try { localStorage.setItem('cv_region', state.region); } catch (_) {} queueCloudSettings(); document.dispatchEvent(new Event('cv:region')); toast('Streaming region updated', 'success'); },
     'settings-toggle': el => {
       const key = el.dataset.pref;
+      el.closest('.settings-switch-row')?.classList.toggle('is-on', !!el.checked);
       updatePref(key, !!el.checked);
       if (key === 'rememberSearch' && !el.checked) clearSearchHistory();
       // The panel itself changes shape (the blur option only exists while mature
@@ -219,12 +316,20 @@ export function initSettings() {
       el.focus();
       const value = el.dataset.value === 'quiet' ? 'quiet' : 'rich';
       if (prefs.glass !== value) updatePref('glass', value);
-      document.querySelectorAll('.glass-preview').forEach(button => {
+      el.parentElement.querySelectorAll('.glass-preview').forEach(button => {
         const on = button.dataset.value === value;
         button.classList.toggle('on', on); button.setAttribute('aria-checked', String(on)); button.tabIndex = on ? 0 : -1;
       });
     },
     'settings-pref': el => { updatePref(el.dataset.pref, el.value); toast('Preference saved', 'success'); },
+    'settings-choice': el => {
+      el.focus();
+      const key = el.dataset.pref, value = el.dataset.value;
+      if (prefs[key] === value) return;
+      updatePref(key, value);
+      syncPreviews();
+      toast('Preference saved', 'success');
+    },
     'clear-search-history': () => { clearSearchHistory(); toast('Search history cleared', 'info'); },
     'clear-recent-history': () => { state.recentlyViewed = []; try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {} toast('Recently viewed cleared', 'info'); },
     'reset-experience': () => { resetPrefs(); document.dispatchEvent(new Event('cv:privacy')); renderSettings(); toast('Experience settings reset', 'success'); },
@@ -277,5 +382,10 @@ export function initSettings() {
       }
     },
   });
-  document.addEventListener('cv:prefs', event => { if (!event.detail?.cloud) queueCloudSettings(); });
+  document.addEventListener('cv:prefs', event => {
+    if (!event.detail?.cloud) queueCloudSettings();
+    // A preference changed anywhere (the profile menu's theme switch, another
+    // device) moves the matching preview on an open Settings page.
+    if (location.pathname === '/settings') syncPreviews();
+  });
 }

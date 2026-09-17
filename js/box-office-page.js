@@ -105,7 +105,7 @@ function freshness(timestamp) {
 const freshnessChip = timestamp => timestamp ? `<time class="bo-freshness" title="Updated ${esc(new Date(timestamp).toLocaleString())}">${esc(freshness(timestamp))}</time>` : '';
 
 function shell(body) {
-  return `<section class="bo-page-hero"><div><span>Worldwide revenue</span><h1>Box Office</h1></div><div class="bo-page-orbit" aria-hidden="true"><b>$</b><i></i></div></section>
+  return `<section class="bo-page-hero"><div><span>Worldwide revenue</span><h1>Box Office</h1></div><div class="bo-page-orbit has-art" aria-hidden="true">${illustration('coins', { cls: 'bo-orbit-art' })}<i></i></div></section>
     <nav class="bo-view-tabs" aria-label="Box-office rankings">${tab('movies', 'Movies')}${tab('franchises', 'Franchises')}${tab('directors', 'Directors')}</nav>${tools()}${body}`;
 }
 

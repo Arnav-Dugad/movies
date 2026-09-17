@@ -7,6 +7,7 @@ import { loadPrefs } from './prefs.js';
 import { initGlass } from './glass.js';
 import { initScrollHints } from './scroll-hints.js';
 import { initStage } from './stage.js';
+import { initIllustrations } from './illustrations.js';
 import { initAuth } from './auth.js';
 import { initWatchlist, toggleWatched } from './watchlist.js';
 import { onShowComplete, backfillLegacyShows, fetchHistoricalShowMeta, pendingLegacyShows, initEpisodeRefresh } from './episodes.js';
@@ -61,6 +62,7 @@ import { initHaptics } from './haptics.js';
 import { initThemeToggle } from './theme-toggle.js';
 import { initSeasonRecap } from './season-recap.js';
 import { initCastMilestones } from './cast-hours.js';
+import { initStreakMilestones } from './streak-milestones.js';
 import { initSeriesFinale } from './series-finale.js';
 import { initReturningRail } from './returning.js';
 
@@ -73,12 +75,14 @@ async function init() {
   initGlass();
   initScrollHints();
   initStage();
+  initIllustrations();
 
   // Wire delegation + all action handlers before any content renders.
   initDelegation();
   initThemeToggle();
   initSeasonRecap();
   initCastMilestones();
+  initStreakMilestones();
   initSeriesFinale();
   initReturningRail();
   initImageFallback();

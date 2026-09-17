@@ -11,7 +11,9 @@
 //     view, with every show you watched ranked by time and the episode span;
 //   - a YEAR STRIP of hours per month, split into films and TV, each month
 //     headed by its most-watched poster; picking a month opens it in the calendar;
-//   - YOUR WEEK: minutes by weekday for the month in view, with your streaks.
+//   - YOUR WEEK: minutes by weekday for the month in view, with your streaks
+//     (the Streak tile shimmers once when today has just extended the run);
+//   - ON THIS DAY: what you watched on today's date in earlier years.
 //
 // The month in view compares itself with the month before, marks its biggest
 // day, and can be moved through by keyboard (arrow keys move a day or a week,
@@ -186,7 +188,7 @@ export const formatMinutes = minutes => {
 };
 
 const noonOf = key => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d, 12); };
-const shiftDay = (key, by) => { const date = noonOf(key); date.setDate(date.getDate() + by); return dayKey(date.getTime()); };
+export const shiftDay = (key, by) => { const date = noonOf(key); date.setDate(date.getDate() + by); return dayKey(date.getTime()); };
 
 /** Pure: the longest run of consecutive day keys (sorted or not). */
 export function longestRun(keys) {
@@ -212,6 +214,32 @@ export function diaryStreaks(days, now = Date.now(), monthValue = '') {
   let current = 0;
   while (set.has(cursor)) { current++; cursor = shiftDay(cursor, -1); }
   return { current, longest: longestRun(active), month: monthValue ? longestRun(active.filter(key => key.startsWith(monthValue))) : 0 };
+}
+
+/**
+ * Pure: what you watched on today's month and day in earlier years, newest year
+ * first. Viewing only: bulk marks are bookkeeping, not a memory of that day.
+ * Each title appears once per year, with how many episodes or viewings it had.
+ */
+export function onThisDay(events, now = Date.now()) {
+  const today = new Date(now);
+  const byYear = new Map();
+  for (const event of events || []) {
+    if (event.bulk) continue;
+    const at = new Date(event.at);
+    if (at.getMonth() !== today.getMonth() || at.getDate() !== today.getDate() || at.getFullYear() >= today.getFullYear()) continue;
+    const year = at.getFullYear();
+    if (!byYear.has(year)) byYear.set(year, new Map());
+    const group = byYear.get(year);
+    const held = group.get(event.key) || { key: event.key, id: event.id, type: event.type, title: event.title, poster: event.poster, episodes: 0, viewings: 0, last: null, at: event.at };
+    if (event.kind === 'episode') { held.episodes++; held.last = { season: event.season, episode: event.episode }; } else held.viewings++;
+    held.at = Math.min(held.at, event.at);
+    group.set(event.key, held);
+  }
+  return [...byYear.entries()].sort((a, b) => b[0] - a[0]).map(([year, group]) => ({
+    year, yearsAgo: today.getFullYear() - year,
+    items: [...group.values()].sort((a, b) => a.at - b.at),
+  }));
 }
 
 /** Pure: minutes and items by weekday (Monday first) for one month. */
@@ -240,7 +268,13 @@ export function monthTotals(days, monthValue) {
 const topTitles = titles => [...titles.values()].sort((a, b) => b.minutes - a.minutes || b.count - a.count);
 
 // ---------- view state ----------
-const view = { month: '', day: '', slide: '' };
+const view = { month: '', day: '', slide: '', tvOpen: '' };
+// The streak step waiting to shimmer; remembered once the tile has been seen,
+// so the same step never shimmers again.
+const shimmer = { mark: '', key: '' };
+function rememberShimmer() {
+  try { if (shimmer.mark) localStorage.setItem(shimmer.key, shimmer.mark); } catch (_) {}
+}
 
 function model() {
   const events = diaryEvents({ watched: state.watched, episodeProgress: state.episodeProgress });
@@ -287,7 +321,12 @@ function calendarHTML(days, monthValue, selected) {
   }
   return `<div class="diary-weekdays" aria-hidden="true">${WEEKDAYS.map(name => `<span>${esc(name)}</span>`).join('')}</div>
     <div class="diary-grid${view.slide ? ` slide-${view.slide}` : ''}" role="group" aria-label="${esc(`${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}. Arrow keys move between days, Page Up and Page Down between months.`)}">${cells.join('')}</div>
-    <div class="diary-legend" aria-hidden="true"><span>Less</span>${[0, 1, 2, 3, 4].map(step => `<i class="s${step}"></i>`).join('')}<span>More</span><small>shaded by minutes watched</small></div>`;
+    <div class="diary-legend" aria-hidden="true"><span>Less</span>${[0, 1, 2, 3, 4].map(step => `<i class="s${step}"></i>`).join('')}<span>More</span><small>shaded by minutes watched</small></div>
+    <div class="diary-keys" aria-hidden="true">
+      <span><i class="diary-key-star">${icon('starSolid')}</i>Biggest day</span>
+      <span><i class="diary-key-dot"></i>Marked in bulk only</span>
+      <span><i class="diary-key-today"></i>Today</span>
+    </div>`;
 }
 
 const timeOf = at => new Date(at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -357,6 +396,15 @@ const WEEKDAY_LONG = [1, 2, 3, 4, 5, 6, 0].map(index => new Date(2024, 0, 7 + in
 function weekHTML(days, monthValue, monthName) {
   const week = diaryWeekdays(days, monthValue);
   const streaks = diaryStreaks(days, Date.now(), monthValue);
+  // The Streak tile shimmers once when today's viewing has just made the run
+  // longer: remembered per device as "today:length", so it plays once a step.
+  const today = dayKey(Date.now());
+  // It stays pending across redraws until the tile has actually been on screen.
+  let grew = false;
+  if (streaks.current && days.get(today)?.items) {
+    const mark = `${today}:${streaks.current}`, key = `cv_streak_seen_v1_${state.user?.uid || 'guest'}`;
+    try { if (localStorage.getItem(key) !== mark) { grew = true; shimmer.mark = mark; shimmer.key = key; } } catch (_) {}
+  }
   const byMinutes = week.some(slot => slot.minutes);
   const value = slot => (byMinutes ? slot.minutes : slot.items);
   const top = Math.max(0, ...week.map(value));
@@ -370,7 +418,7 @@ function weekHTML(days, monthValue, monthName) {
     <div class="diary-week-head"><span class="diary-kicker">Your week</span><p>${peak ? `Most on <b>${esc(WEEKDAY_LONG[peak.index])}s</b> in ${esc(monthName.split(' ')[0])}` : `Nothing watched in ${esc(monthName)} yet`}</p></div>
     <ol class="diary-week-bars" aria-label="${esc(`Viewing by weekday in ${monthName}`)}">${bars}</ol>
     <div class="diary-streaks">
-      <div class="${streaks.current ? 'live' : ''}"><span>Streak</span><strong>${streaks.current}<small> day${streaks.current === 1 ? '' : 's'}</small></strong></div>
+      <div class="${streaks.current ? 'live' : ''}${grew ? ' grew' : ''}"><span>Streak</span><strong>${streaks.current}<small> day${streaks.current === 1 ? '' : 's'}</small></strong></div>
       <div><span>Month best</span><strong>${streaks.month}<small> day${streaks.month === 1 ? '' : 's'}</small></strong></div>
       <div><span>Best ever</span><strong>${streaks.longest}<small> day${streaks.longest === 1 ? '' : 's'}</small></strong></div>
     </div>
@@ -386,10 +434,13 @@ function tvHTML(days, monthValue, monthName) {
   // Bars measure episodes, the one unit every show has; time is the figure beside
   // them, and a show with no reported runtime shows a dash rather than a guess.
   const top = Math.max(1, ...tv.shows.map(show => show.episodes));
-  const rows = tv.shows.map(show => {
+  // More than six shows fold behind "Show all", remembered for the month in view.
+  const fold = tv.shows.length > 6;
+  const open = fold && view.tvOpen === monthValue;
+  const rows = tv.shows.map((show, index) => {
     const share = Math.max(4, Math.round(show.episodes / top * 100));
     const detail = `${show.span} · ${show.episodes} episode${show.episodes === 1 ? '' : 's'} · ${show.days} day${show.days === 1 ? '' : 's'}`;
-    return `<li>
+    return `<li${index >= 6 ? ' class="extra"' : ''}>
       <img src="${show.poster ? `${IMG}w92${show.poster}` : PH}" alt="" loading="lazy">
       <div>
         <a href="/tv/${show.id}" data-action="open-detail" data-id="${show.id}" data-type="tv">${esc(show.title)}</a>
@@ -408,12 +459,30 @@ function tvHTML(days, monthValue, monthName) {
       <div><span>Days with TV</span><strong>${tv.activeDays}</strong></div>
       <div><span>Binge days</span><strong>${tv.bingeDays}</strong><small>${BINGE_EPISODES}+ episodes</small></div>
     </div>
-    <ol class="diary-tv-shows" aria-label="${esc(`Shows watched in ${monthName}, most episodes first`)}">${rows}</ol>
+    <ol class="diary-tv-shows${fold && !open ? ' collapsed' : ''}" id="diaryTvShows" aria-label="${esc(`Shows watched in ${monthName}, most episodes first`)}">${rows}</ol>
+    ${fold ? `<button type="button" class="diary-tv-more" data-action="diary-tv-more" aria-expanded="${open}" aria-controls="diaryTvShows" data-more="${esc(`Show all ${tv.shows.length} shows`)}"><span>${open ? 'Show fewer' : esc(`Show all ${tv.shows.length} shows`)}</span>${icon('chevronDown')}</button>` : ''}
   </div>`;
 }
 
+function onThisDayHTML(events) {
+  const memories = onThisDay(events);
+  if (!memories.length) return '';
+  const heading = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+  const years = memories.map((memory, index) => `<li class="diary-otd-year" style="--i:${index}">
+      <div class="diary-otd-when"><b>${memory.yearsAgo === 1 ? '1 year ago' : `${memory.yearsAgo} years ago`}</b><small>${memory.year}</small></div>
+      <ul>${memory.items.slice(0, 6).map(item => {
+        const note = item.episodes === 1 && item.last ? `S${item.last.season} E${item.last.episode}` : item.episodes ? `${item.episodes} episodes` : item.viewings > 1 ? `${item.viewings} viewings` : 'Film';
+        return `<li><a href="/${item.type}/${item.id}" data-action="open-detail" data-id="${item.id}" data-type="${item.type}" aria-label="${esc(`${item.title}, ${note}, ${memory.year}`)}"><img src="${item.poster ? `${IMG}w185${item.poster}` : PH}" alt="" loading="lazy"><span><b>${esc(item.title)}</b><small>${esc(note)}</small></span></a></li>`;
+      }).join('')}${memory.items.length > 6 ? `<li class="diary-otd-more">+${memory.items.length - 6}</li>` : ''}</ul>
+    </li>`).join('');
+  return `<section class="diary-otd" aria-label="${esc(`On this day, ${heading}, in earlier years`)}">
+    <div class="diary-otd-head"><span class="diary-kicker">On this day</span><h4>${esc(heading)}</h4></div>
+    <ol class="diary-otd-years">${years}</ol>
+  </section>`;
+}
+
 function bodyHTML() {
-  const { days } = model();
+  const { days, events } = model();
   const current = monthKey(Date.now());
   if (!view.month) view.month = current;
   // Default day: the latest day with anything on it in the shown month.
@@ -448,6 +517,7 @@ function bodyHTML() {
           : '<div><span>Biggest day</span><strong>—</strong></div>'}
       </div>
     </div>
+    ${onThisDayHTML(events)}
     <div class="diary-layout">
       <div class="diary-calendar">${calendarHTML(days, view.month, view.day)}</div>
       <div class="diary-side">
@@ -460,8 +530,21 @@ function bodyHTML() {
 }
 
 // The 12-month strip scrolls sideways on a phone: keep the month in view on screen.
+// A Streak tile that grew today shimmers once it is actually on screen.
+let shimmerWatch = null;
 function settle() {
   requestAnimationFrame(() => {
+    document.querySelectorAll('.diary-streaks .grew:not(.shine)').forEach(tile => {
+      if (!('IntersectionObserver' in window)) { tile.classList.add('shine'); rememberShimmer(); return; }
+      shimmerWatch ||= new IntersectionObserver(entries => entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        shimmerWatch.unobserve(entry.target);
+        if (!entry.target.isConnected) return;
+        entry.target.classList.add('shine');
+        rememberShimmer();
+      }), { threshold: 0.6 });
+      shimmerWatch.observe(tile);
+    });
     document.querySelectorAll('.diary-year').forEach(strip => {
       const active = strip.querySelector('.diary-month.active');
       if (!active || strip.scrollWidth <= strip.clientWidth + 1) return;
@@ -517,6 +600,16 @@ export function initDiary() {
     'diary-month': el => goMonth(shiftMonth(view.month || monthKey(Date.now()), +el.dataset.dir || 0)),
     'diary-month-pick': el => goMonth(el.dataset.month),
     'diary-today': () => goMonth(monthKey(Date.now()), { day: dayKey(Date.now()) }),
+    'diary-tv-more': el => {
+      const list = $('diaryTvShows');
+      if (!list) return;
+      const open = list.classList.contains('collapsed');
+      list.classList.toggle('collapsed', !open);
+      view.tvOpen = open ? view.month : '';
+      el.setAttribute('aria-expanded', String(open));
+      el.querySelector('span').textContent = open ? 'Show fewer' : el.dataset.more;
+      if (!open) list.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    },
   });
 
   // Keyboard: the calendar is one tab stop; arrows move a day or a week,

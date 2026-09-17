@@ -449,6 +449,35 @@ Settings shows both choices as **live previews**: a tiny lit stage with a panel
 over it, the rich one drifting and catching its sheen, the quiet one flat. They
 form a radio group, so the arrow keys move the choice.
 
+### Settings you can see
+
+The glass picker is no longer the only preview in Settings (`js/settings.js`):
+
+- **Theme, Content density, Text size and Interface motion** are rows of live
+  previews too: a miniature page in cinema dark, in paper light, and split
+  diagonally for Match device; three roomy posters against five compact ones; a
+  standard and a large "Aa"; and a poster that floats, swoops with a motion trail,
+  or holds still. Each row is a radio group. Picking a theme plays the same circular
+  switch as the profile menu.
+- **Switches that change a look carry a drawing** that follows the switch: the
+  lights drift for Moving lights, a toast slides up for Cast and Streak milestones,
+  a poster glows in its colour for Title colour, lines brighten for High-contrast
+  type, the navigation bar shrinks for Compact navigation, captions vanish for Hide
+  titles, badges fall away for Clean posters, a poster opens into a landscape
+  trailer for Hover previews, an equaliser plays for Ambient hero previews, a poster
+  tilts for Poster depth, a phone buzzes for Haptics, and lines blur for Spoiler
+  shield. The drawing is CSS keyed to the switch's state, so it changes the instant
+  the switch does.
+- **Poster controls starts with one live poster** carrying every badge the
+  switches allow: the streaming logo, match badge, your rating and the watched tick
+  stacked the way real posters stack them, the community rating, Not interested,
+  quick rating and Add to list. Turn a switch off and that badge leaves, with the
+  ones below moving up; Clean posters empties it and Hide titles drops the caption.
+- A preference changed anywhere else while Settings is open (the profile menu's
+  theme switch, another device) moves the matching preview.
+- The theme previews keep their own palettes in either theme: they are redeclared
+  in `css/light.css`, so the light compiler never turns the dark preview light.
+
 How it works (`js/glass.js`): the panels are styled in hundreds of rules, and
 the light theme is compiled from those same rules, so glass edits the matching
 rules **in place** through the CSSOM instead of adding a stylesheet:
@@ -609,8 +638,8 @@ Lists saved with an emoji icon still show the matching drawn icon.
 
 ## Illustrations
 
-Fifteen animated scenes drawn as inline SVG (`js/illustrations.js`) stand in
-wherever a page has nothing else to show:
+Twenty-three animated scenes drawn as inline SVG (`js/illustrations.js`) stand in
+wherever a page has nothing else to show, and in a few places that deserve one:
 
 | Scene | Where |
 |---|---|
@@ -625,6 +654,21 @@ wherever a page has nothing else to show:
 | Compass hunting for north | Discover's surprise pick when none is found |
 | Popcorn, projector, retro TV, clapperboard | Empty lists, empty watched history, empty inbox, Your Year's empty cards |
 | Desk calendar, reel-and-TV orbit | The monthly recap, the Your Year hero |
+| Meshing gears | The Settings hero |
+| Radar sweep with blips that flare as the beam passes | The notification centre's hero and its loading screen |
+| Coins dropping onto a stack beside a rising line | The Box Office hero |
+| A CSV rising into a cloud with a filling progress bar | The import dialog's drop zone |
+| Padlock whose shackle lifts as its PIN dots light | The PIN dialog for private lists |
+| Compass, rocket launching through streaking stars | Onboarding: the region step and the last step |
+| Hourglass that drains and turns over | Loading: Hours clubs, Cast milestones, director and actor completion, franchises |
+| Stage with swaying curtains and crossing spotlights | A shared list with nothing on it yet |
+| Retro TV, projector | Stats' empty TV Tracker and Rewatches panels |
+
+**The ticket tears.** On a sign-in prompt, tapping **Sign in** tears the ticket's stub
+away along its perforation (with a few paper flecks) before the sign-in dialog
+opens, and the ticket mends itself a moment later. The ticket is drawn twice,
+clipped either side of one ragged line down the perforation, so the halves meet
+exactly until they part. Reduced motion opens the dialog straight away.
 
 They animate with CSS (transforms and opacity, plus a few dashed strokes that march
 or draw), stay sharp at any size, cost no requests, and give every copy its own
@@ -828,6 +872,15 @@ every watched season is known and more episodes have been watched, so a refreshe
 runtime or an un-tick never triggers one. **Settings → Cast milestones** turns the
 toast off.
 
+**Streak milestones** use the same toast, with a flame in the gauge: 7, 30 and 100
+days in a row with something watched (`js/streak-milestones.js`). A milestone
+belongs to the day it is reached: it is announced only when your streak, counted the
+Watch Diary's way (viewing only, never bulk marks), is exactly that long and includes
+today, and only once per streak on a device. So a streak that passed 30 weeks ago
+never announces 30, a second episode that evening does not repeat it, and a new
+streak can earn each one again. It is checked after your own ticks and watched
+marks, not after a sync. **Settings → Streak milestones** turns it off.
+
 **Hours clubs** are the badges: 10, 25, 50, 100, 250, 500 and 1,000 hours with one
 person. Your profile shows them as rings with progress to the next club. The
 first time a badge appears on a device its ring fills like a gauge and the club
@@ -887,6 +940,17 @@ needs no request:
   screen, swipe the calendar sideways to change month. **This month** jumps back.
   The calendar slides in the direction you moved, and bars grow only when the
   month changes, not on every day you pick.
+- **On this day.** A row above the calendar shows what you watched on today's date
+  in earlier years, newest first ("1 year ago · 2025"), each title once with its
+  episode ("S2 E4"), episode count or viewings. Bulk marks are not memories. With
+  nothing from earlier years it stays out of the way.
+- **A legend for the marks:** the star is your biggest day, the dot a day with only
+  bulk marks, the ring today.
+- **The TV list folds** after six shows behind **Show all N shows**, remembered for
+  the month in view.
+- **The Streak tile shimmers** once when today's viewing has made your streak longer.
+  It waits until the tile is actually on screen, and remembers each step of the
+  streak so the same step never shimmers twice.
 
 Films count each play (a rewatch is its own day). Episodes come from the
 per-episode log, read with one rule shared with the binge forecast
@@ -991,6 +1055,18 @@ on the page, the film card or the series card.
 - **Cards** play once per visit. A data refresh redraws them finished instead of
   replaying, and a **Replay** button on each card plays it again.
 - The month bars take arrow keys, Home and End.
+- **Month recap** fans out the month's three standouts (best-rated films first,
+  then finished series) beside its heading.
+- **Year chips** are one sideways row that scrolls with a fade on the edge that has
+  more, on phones and on desktop, where a mouse wheel moves it sideways. The year
+  shown is scrolled into view.
+- **Genre bars re-sort** when you switch years: each bar starts where its genre
+  stood, and as wide as it was, in the year you came from, then glides to its new
+  place and width; genres new to the year fade in.
+
+**Watch Party** celebrates the first pick the matcher finds for an account: the party
+scene pops up over the result and throws confetti. Once only, and never under
+reduced motion.
 
 ### Viewing patterns
 
@@ -1153,7 +1229,8 @@ odometer numbers and first-sight badges (`year-shelf.test.mjs`), and cinema glas
 the year-in-films card, the shared year-card pieces, scroll hints and removing
 people from Hours clubs (`glass-years.test.mjs`), and Your Year, the monthly
 recap, moving lights, the illustrations, year comparisons and highlights, and the
-diary's streaks, weekdays and month totals (`year-page.test.mjs`). It needs
+diary's streaks, weekdays, month totals and On this day, streak milestones, gear
+geometry and the tearing ticket (`year-page.test.mjs`). It needs
 nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails

@@ -628,7 +628,7 @@ function heroHTML(allowed) {
       </div>
       ${next ? `<div class="notification-next"><span>Next up</span><strong>${esc(next.title)}</strong><em>${esc(next.headline)}</em><b data-countdown="${next.at}">${esc(countdownText(next.at))}</b></div>` : ''}
     </div>
-    <div class="notification-radar" aria-hidden="true"><i></i><b>${allowed.length}</b><span>live signals</span></div>
+    <div class="notification-radar has-art" aria-hidden="true">${illustration('radar', { cls: 'radar-art' })}<b>${allowed.length}</b><span>live signals</span></div>
   </section>`;
 }
 
@@ -678,7 +678,7 @@ export async function renderNotifications(force = false) {
   if (cached?.events) { events = dedupeSort(cached.events); paintBell(); }
   if (!state.user) return renderInbox();
   if (!events.length || force || !cached || cached.signature !== sourceSignature() || Date.now() - cached.at >= CACHE_TTL) {
-    host.innerHTML = '<div class="notification-loading"><span>Scanning your universe</span><div></div><div></div><div></div></div>';
+    host.innerHTML = `<div class="notification-loading"><span class="notification-loading-art">${illustration('radar')}</span><span>Scanning your universe</span><div></div><div></div><div></div></div>`;
     await buildNotifications(force);
   }
   renderInbox();

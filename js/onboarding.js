@@ -15,6 +15,7 @@
 import { db, firebase } from './firebase.js';
 import { state } from './state.js';
 import { $, esc, toast, trapFocus, lockScroll, unlockScroll } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { REGIONS, mGenreList, regionLabel } from './config.js';
 
@@ -125,6 +126,7 @@ function regionStep() {
   const options = REGIONS.map(([code]) =>
     `<option value="${code}"${code === flow.region ? ' selected' : ''}>${esc(regionLabel(code))}</option>`).join('');
   return `
+    ${illustration('compass', { cls: 'ob-art' })}
     <h2>Where do you watch?</h2>
     <p class="ob-lede">This sets which country's streaming catalogue CineVerse checks. Every "available on" answer, every departure warning, and the provider stats all follow it.</p>
     <label class="ob-field"><span>Streaming region</span>
@@ -169,6 +171,7 @@ function finishStep() {
         <small>Browse and search freely. Your picks are remembered on this device until you sign up.</small>
       </button>`;
   return `
+    ${illustration('rocket', { cls: 'ob-art' })}
     <h2>${state.user ? "You're set up" : "Ready when you are"}</h2>
     <p class="ob-lede">${lede}</p>
     <div class="ob-paths">${paths}</div>`;

@@ -473,7 +473,7 @@ function showSkeleton() { $('searchEmpty').style.display = 'none'; $('searchErro
 function showError() {
   $('searchGrid').innerHTML = ''; $('searchResultsHead').innerHTML = ''; $('searchEmpty').style.display = 'none'; $('searchMoreWrap').style.display = 'none';
   const e = $('searchError');
-  e.innerHTML = `<div class="search-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg><h3>Something went wrong</h3><p>Couldn't reach the movie database.</p><button class="btn-primary" data-action="search-retry">Try again</button></div>`;
+  e.innerHTML = `<div class="search-state">${illustration('unplugged', { cls: 'empty-art' })}<h3>Something went wrong</h3><p>Couldn't reach the movie database.</p><button class="btn-primary" data-action="search-retry">Try again</button></div>`;
   e.style.display = 'block';
 }
 function showEmpty(q) {

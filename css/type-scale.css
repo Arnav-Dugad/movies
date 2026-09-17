@@ -249,6 +249,14 @@
   #statsContent .diary-streaks strong { font-size: .95rem; }
 }
 
+#statsContent .diary-keys { font-size: 0.831rem; }
+#statsContent .diary-otd-head h4 { font-size: 1.05rem; }
+#statsContent .diary-otd-when b { font-size: 0.856rem; }
+#statsContent .diary-otd-when small { font-size: 0.831rem; }
+#statsContent .diary-otd-year ul b { font-size: 0.839rem; }
+#statsContent .diary-otd-year ul small { font-size: 0.813rem; }
+#statsContent .diary-otd-more { font-size: 0.839rem; }
+#statsContent .diary-tv-more { font-size: 0.856rem; }
 #statsContent .tv-pacing { font-size: .95rem; }
 #statsContent .challenge-name .challenge-icon { font-size: 1.1em; }
 #statsContent .completion-roles button { font-size: 0.831rem; }
@@ -306,3 +314,13 @@
 #settingsContent .settings-glass-row > span small { font-size: 0.848rem; }
 #settingsContent .gp-copy strong { font-size: 0.873rem; }
 #settingsContent .gp-copy small { font-size: 0.831rem; }
+#settingsContent .pp-type b { font-size: 24px; }
+#settingsContent .pp-type.large b { font-size: 36px; }
+#settingsContent .poster-preview p { font-size: 0.865rem; }
+#settingsContent .pv-match { font-size: 0.753rem; }
+#settingsContent .pv-myrating { font-size: 0.762rem; }
+#settingsContent .pv-rating { font-size: 0.762rem; }
+#settingsContent .pv-rate { font-size: 0.822rem; }
+#settingsContent .pv-list { font-size: .9rem; }
+#settingsContent .pv-caption b { font-size: 0.856rem; }
+#settingsContent .pv-caption small { font-size: 0.813rem; }

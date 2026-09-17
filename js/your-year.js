@@ -37,6 +37,7 @@ let openArts = [];
 let focusMonth = -1;     // 0–11 while a month is open
 const countedYears = new Set();   // totals already counted up this visit
 const drawnCards = new Set();     // cards already animated this visit (redrawn still)
+let genreMemory = null;           // { year, rows: Map(name → { top, width }) } from the last render with genres
 
 /** Completed shelf rows that may appear on a shared card. */
 export const shareableSeries = (rows = completedSeries()) => rows.filter(show => !keyIsMature(`tv_${show.id}`));
@@ -210,7 +211,7 @@ function highlightsHTML(moments, genres, year) {
   const momentList = moments.map((moment, index) => `<li style="--i:${index}"><a href="/${moment.kind}/${moment.id}" data-action="open-detail" data-id="${moment.id}" data-type="${moment.kind}">
       <img src="${moment.poster ? `${IMG}w185${moment.poster}` : PH}" alt="" loading="lazy" data-ph="${PH}">
       <span><em>${esc(moment.label)}</em><b>${esc(moment.title)}</b><small>${esc(moment.note)}</small></span></a></li>`).join('');
-  const genreList = genres.map((genre, index) => `<li style="--i:${index}"><span>${esc(genre.name)}</span><i aria-hidden="true"><b style="--w:${Math.round(genre.share * 100)}%"></b></i><strong>${genre.count}</strong></li>`).join('');
+  const genreList = genres.map((genre, index) => `<li style="--i:${index}" data-genre="${esc(genre.name)}"><span>${esc(genre.name)}</span><i aria-hidden="true"><b style="--w:${Math.round(genre.share * 100)}%"></b></i><strong>${genre.count}</strong></li>`).join('');
   return `<section class="year-highlights${genres.length ? '' : ' solo'}">
     <div class="year-moments">
       <header><span>Highlights</span><h2>${year} in moments</h2></header>
@@ -221,6 +222,59 @@ function highlightsHTML(moments, genres, year) {
       <ol class="year-genre-list" aria-label="Films watched per genre">${genreList}</ol>
     </div>` : ''}
   </section>`;
+}
+
+// Switching years re-sorts the genre bars instead of redrawing them: each bar
+// starts where its genre stood (and as wide as it was) in the year you came from,
+// then glides to its new place; genres new to this year fade in.
+function resortGenres(list, year) {
+  if (!list) return;
+  const rows = [...list.children];
+  const first = rows[0]?.offsetTop || 0;
+  const measured = new Map(rows.map(li => [li.dataset.genre, { top: li.offsetTop - first, width: li.querySelector('b')?.style.getPropertyValue('--w') || '0%' }]));
+  const previous = genreMemory;
+  genreMemory = { year, rows: measured };
+  if (!previous || previous.year === year || reducedMotion()) return;
+  list.classList.add('resorting');
+  rows.forEach(li => {
+    const before = previous.rows.get(li.dataset.genre), bar = li.querySelector('b');
+    if (before) {
+      li.style.transform = `translateY(${before.top - measured.get(li.dataset.genre).top}px)`;
+      if (bar) bar.style.width = before.width;
+    } else {
+      li.style.opacity = '0';
+      li.style.transform = 'translateX(-14px)';
+    }
+  });
+  void list.offsetHeight;
+  requestAnimationFrame(() => {
+    rows.forEach((li, index) => {
+      li.style.transition = `transform .75s var(--ease-out) ${index * 40}ms, opacity .5s ease ${index * 40}ms`;
+      li.style.transform = '';
+      li.style.opacity = '';
+      const bar = li.querySelector('b');
+      if (bar) { bar.style.transition = `width .8s var(--ease-out) ${index * 40 + 80}ms`; bar.style.width = ''; }
+    });
+    setTimeout(() => {
+      if (!list.isConnected) return;
+      rows.forEach(li => { li.style.transition = ''; const bar = li.querySelector('b'); if (bar) bar.style.transition = ''; });
+      list.classList.remove('resorting');
+    }, 1200);
+  });
+}
+
+// Many years are one sideways row: the year shown is scrolled into view, and a
+// mouse wheel moves the row sideways.
+function settleChips(chips) {
+  if (!chips) return;
+  const on = chips.querySelector('.on');
+  if (on && chips.scrollWidth > chips.clientWidth) chips.scrollLeft = Math.max(0, on.offsetLeft - (chips.clientWidth - on.offsetWidth) / 2);
+  chips.addEventListener('wheel', event => {
+    if (chips.scrollWidth <= chips.clientWidth + 1 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+    const before = chips.scrollLeft;
+    chips.scrollLeft += event.deltaY;
+    if (chips.scrollLeft !== before) event.preventDefault();
+  }, { passive: false });
 }
 
 function reducedMotion() {
@@ -294,8 +348,11 @@ function monthHTML(year, month, { films, series }) {
         <img src="${item.poster ? `${IMG}w185${item.poster}` : PH}" alt="" loading="lazy" data-ph="${PH}">
         <b>${esc(item.title)}</b><small>${esc(item.note)}</small></a></li>`).join('')}</ul>`
     : `<p class="year-month-none">Nothing watched or finished in ${MONTHS[month]}.</p>`;
+  // The header fans out the month's three standouts: best-rated films first, then finished series.
+  const fan = [...films].sort((a, b) => b.rating - a.rating || b.plays - a.plays).concat(series).filter(item => item.poster).slice(0, 3);
+  const fanHTML = fan.length ? `<span class="year-month-fan" aria-hidden="true" style="--n:${fan.length}">${fan.map((item, index) => `<img src="${IMG}w185${item.poster}" alt="" style="--i:${index}">`).join('')}</span>` : '';
   return `<section class="year-month" aria-labelledby="yearMonthHead">
-    <header><div><span>Month recap</span><h2 id="yearMonthHead">${MONTHS[month]} ${year}</h2></div>
+    <header>${fanHTML}<div><span>Month recap</span><h2 id="yearMonthHead">${MONTHS[month]} ${year}</h2></div>
     <p>${plural(films.length, 'film')} · ${series.length} finished series</p>
     <button type="button" class="year-month-close" data-action="year-month" data-month="0" aria-label="Close ${MONTHS[month]}">${icon('close')}</button></header>
     ${body}
@@ -384,6 +441,8 @@ export function renderYear(requested = 0, query = new URLSearchParams(location.s
   </div>`;
   if (run !== generation) return;
   if (counting) countUp(host.querySelector('.year-total'));
+  resortGenres(host.querySelector('.year-genre-list'), year);
+  settleChips(host.querySelector('.year-chips'));
   const sides = host.querySelectorAll('.year-side');
   if (films.count) mountArt(sides[0], () => filmsCardArt(films), `films:${year}:${films.count}:${films.plays}:${films.minutes}`);
   if (series.count) mountArt(sides[1], () => seriesCardArt(series), `series:${year}:${series.count}:${series.episodes}`);

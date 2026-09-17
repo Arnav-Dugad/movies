@@ -176,6 +176,28 @@ async function compute() {
     </div>
     <div class="d-sec-title" style="margin-top:28px">More perfect for your group</div>
     <div class="party-grid">${ranked.slice(1).map(c => buildCard(c, c.__type, { badge: matchBadge(c.__score, topScore) })).join('')}</div>`;
+  celebrateFirstPick(res.querySelector('.party-hero'));
+}
+
+// The first time the matcher finds a pick on this account, the party scene pops
+// up over the result and throws confetti. Once only; never under reduced motion.
+const CONFETTI = ['#fbbf24', '#22d3ee', '#f43f5e', '#a78bfa', '#34d399', '#fb923c'];
+function celebrateFirstPick(hero) {
+  if (!hero || !state.user) return;
+  const key = `cv_party_celebrated_v1_${state.user.uid}`;
+  try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (_) { return; }
+  const root = document.documentElement;
+  if (root.dataset.motion === 'reduced' || (root.dataset.motion !== 'full' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)) return;
+  const burst = document.createElement('div');
+  burst.className = 'party-celebrate';
+  burst.setAttribute('aria-hidden', 'true');
+  const pieces = Array.from({ length: 42 }, (_, index) => {
+    const angle = (-165 + Math.random() * 150) * Math.PI / 180, reach = 90 + Math.random() * 190;
+    return `<i style="--x:${Math.round(Math.cos(angle) * reach)}px;--y:${Math.round(Math.sin(angle) * reach)}px;--r:${Math.round(Math.random() * 720 - 360)}deg;--d:${Math.round(Math.random() * 260)}ms;--c:${CONFETTI[index % CONFETTI.length]};--w:${5 + Math.round(Math.random() * 4)}px"></i>`;
+  }).join('');
+  burst.innerHTML = `<span class="party-celebrate-art">${illustration('party')}</span><span class="party-celebrate-origin">${pieces}</span>`;
+  hero.appendChild(burst);
+  setTimeout(() => burst.remove(), 3600);
 }
 
 export function initParty() {

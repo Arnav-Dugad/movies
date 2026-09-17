@@ -12,6 +12,7 @@ import { tmdb, pool } from './api.js';
 import { state } from './state.js';
 import { db, firebase } from './firebase.js';
 import { $, esc, toast, trapFocus, lockScroll, unlockScroll } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { loadWatchlist, loadWatched } from './watchlist.js';
 import { loadRatings } from './ratings.js';
@@ -244,7 +245,7 @@ function paint() {
         <div><strong>Trakt</strong><small>Any CSV export with a <code>tmdb_id</code>, <code>imdb_id</code>, or title column.</small></div>
         <div><strong>IMDb</strong><small>Your Ratings → Export. The <code>Const</code> column matches exactly.</small></div>
       </div>
-      <button class="import-drop" data-action="import-pick" id="importDrop"><b>Choose a CSV file</b><span>or drop it here · up to ${MAX_ROWS.toLocaleString()} rows</span></button>
+      <button class="import-drop" data-action="import-pick" id="importDrop">${illustration('upload', { cls: 'import-art' })}<b>Choose a CSV file</b><span>or drop it here · up to ${MAX_ROWS.toLocaleString()} rows</span></button>
       <p class="import-note">Ratings are converted to CineVerse's 1–10 scale. Five-star exports are doubled; the detected scale is shown before anything is written.</p>`;
     return;
   }

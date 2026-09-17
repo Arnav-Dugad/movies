@@ -12,6 +12,7 @@
 import { state } from './state.js';
 import { icon } from './icons.js';
 import { $, esc, toast, trapFocus, lockScroll, unlockScroll } from './ui.js';
+import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
 import { listById, saveListLock, unshareList } from './lists.js';
 
@@ -139,7 +140,7 @@ function paintModal() {
   const digits = modal.value.length;
   const dots = Array.from({ length: MAX_LENGTH }, (_, index) => `<i class="${index < digits ? 'on' : ''}${index === MIN_LENGTH - 1 ? ' gate' : ''}"></i>`).join('');
   const label = STEP_LABEL[modal.step] || 'PIN';
-  body.innerHTML = `<div class="pin-head"><span>${esc(copy.eyebrow)}</span><h2>${esc(copy.title)}</h2><p>${esc(list ? list.name : 'List')} &middot; ${esc(label)}</p></div>
+  body.innerHTML = `<div class="pin-head">${illustration('lock', { cls: 'pin-art' })}<span>${esc(copy.eyebrow)}</span><h2>${esc(copy.title)}</h2><p>${esc(list ? list.name : 'List')} &middot; ${esc(label)}</p></div>
     <div class="pin-dots" role="status" aria-label="${digits} of ${MAX_LENGTH} digits entered">${dots}</div>
     ${modal.error ? `<p class="pin-error" role="alert">${esc(modal.error)}</p>` : `<p class="pin-hint">${esc(copy.hint)}</p>`}
     <div class="pin-pad">${KEYS.map(keyButton).join('')}</div>
