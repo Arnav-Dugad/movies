@@ -12,6 +12,7 @@
 // A drag is a pointer gesture, so it cannot be the only way to express an order:
 // the same grip is focusable and moves the card with the arrow keys.
 import { moveContinue, moveContinueTo } from './continue-prefs.js';
+import { haptic } from './haptics.js';
 
 const EDGE = 72;            // auto-scroll zone at each end of the rail
 const EDGE_SPEED = 14;      // px per frame at the very edge
@@ -85,7 +86,10 @@ function move(pointerX) {
   if (!session) return;
   session.lastX = pointerX;
   session.dx = pointerX - session.originX;
-  session.to = targetIndex(session.items, session.from, pointerX);
+  const to = targetIndex(session.items, session.from, pointerX);
+  // A detent each time the card would land somewhere new.
+  if (to !== session.to) haptic('detent');
+  session.to = to;
   paint(session);
 }
 
@@ -99,6 +103,7 @@ function finish(commit) {
   session = null;
   try { held.card.releasePointerCapture?.(held.pointerId); } catch (_) {}
   if (!commit || from === to) return;
+  haptic('drop');
   // One state change, one repaint, at the end of the gesture.
   moveContinueTo(items[from].key, to, items.map(item => item.key));
 }
@@ -118,6 +123,7 @@ function begin(event, card) {
   card.classList.add('continue-dragging');
   items.forEach((item, index) => { if (index !== from) item.card.classList.add('continue-shifting'); });
   try { card.setPointerCapture(event.pointerId); } catch (_) {}
+  haptic('pin');
   paint(session);
 }
 

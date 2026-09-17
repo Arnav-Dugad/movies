@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { esc, $ } from './ui.js';
 import { illustration } from './illustrations.js';
 import { registerActions } from './events.js';
+import { haptic } from './haptics.js';
 import { buildCard, skelCards } from './cards.js';
 import { social, getFriendTaste } from './social.js';
 import { buildTasteProfile, profileFromShared, blendProfiles, fetchCandidates, rankAndDedupe, matchBadge, scoreRange, diversify, tag } from './recommend.js';
@@ -186,6 +187,7 @@ function celebrateFirstPick(hero) {
   if (!hero || !state.user) return;
   const key = `cv_party_celebrated_v1_${state.user.uid}`;
   try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (_) { return; }
+  haptic('celebrate');
   const root = document.documentElement;
   if (root.dataset.motion === 'reduced' || (root.dataset.motion !== 'full' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)) return;
   const burst = document.createElement('div');

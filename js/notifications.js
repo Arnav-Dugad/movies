@@ -12,6 +12,7 @@ import { IMG, PH, providerUrl, regionLabel } from './config.js';
 import { $, esc, debounce, toast } from './ui.js';
 import { illustration, radarBlips, RADAR_SWEEP_MS } from './illustrations.js';
 import { registerActions } from './events.js';
+import { haptic } from './haptics.js';
 import { exactEpisodeTime, localEpisodeTime, localTimeZone } from './episode-times.js';
 import { db, firebase } from './firebase.js';
 import {
@@ -180,6 +181,8 @@ function pulseRadar() {
     if (fresh) blip.style.setProperty('--k', `${(order++) * 320}ms`);
   });
   pendingCategories.clear();
+  // Felt only where it can be seen: the inbox is open, not a hidden page.
+  if (!document.hidden && box.getClientRects().length) haptic('notify');
   radar.classList.remove('arrive'); box.classList.remove('arrived');
   void radar.getBoundingClientRect();
   radar.classList.add('arrive'); box.classList.add('arrived');
@@ -195,6 +198,7 @@ function pulseRadar() {
 function deliverMail() {
   const mailbox = document.querySelector('#notificationDropdown .drop-head-art .cv-art-mailbox');
   if (!mailbox) return;
+  if (!document.hidden) haptic('notify');
   mailbox.classList.remove('delivered');
   void mailbox.getBoundingClientRect();
   mailbox.classList.add('delivered');

@@ -1,0 +1,158 @@
+/* ============================================================
+   FEEL
+   How things respond to you: posters that lean with a scroll, the ticket stub
+   that flies to your library, Continue Watching cards that lift toward the
+   pointer, and the page scenes kept on small screens.
+   ============================================================ */
+
+/* ---------- Rows lean with scroll speed (js/scroll-feel.js) ---------- */
+.row.is-leaning > .card > .card-img,
+.row.is-leaning > .continue-card > .continue-art-shell {
+  transform: perspective(900px) rotateY(var(--row-tilt, 0deg));
+  transition: transform .45s cubic-bezier(.2, .8, .2, 1);
+}
+
+/* ---------- Ticket stub (js/ticket-stub.js) ---------- */
+.ticket-stub {
+  position: fixed;
+  z-index: 9990;
+  width: 64px;
+  height: 36px;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .45));
+  will-change: transform, opacity;
+}
+.ticket-stub svg { display: block; width: 100%; height: 100%; }
+.ticket-stub-plus {
+  position: fixed;
+  z-index: 9991;
+  color: #ff4a55;
+  font-family: var(--font);
+  font-size: .82rem;
+  font-weight: 800;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+  pointer-events: none;
+  animation: cv-stub-plus .9s var(--ease-out) forwards;
+}
+@keyframes cv-stub-plus {
+  0% { opacity: 0; transform: translate(-50%, -60%); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -190%); }
+}
+.stub-landed { animation: cv-stub-land .6s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes cv-stub-land {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- Continue Watching: the next episode's still ---------- */
+.continue-art > img.continue-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transform: scale(1.08);
+  pointer-events: none;
+  transition: opacity .55s var(--ease-out), transform 1.4s var(--ease-out);
+}
+.continue-still-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(8, 8, 12, .62);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity .35s var(--ease-out), transform .35s var(--ease-out);
+}
+/* A phone has no hover, so the still simply takes the card's place, as before. */
+@media (hover: none), (pointer: coarse) {
+  .continue-art > img.continue-still.is-loaded { opacity: 1; transform: none; }
+}
+
+/* ---------- Continue Watching: lift in 3D (js/continue-lift.js) ---------- */
+@media (hover: hover) and (pointer: fine) {
+  .continue-minimal .continue-card { perspective: 900px; }
+  .continue-minimal .continue-art {
+    transition: transform .6s var(--ease-out), box-shadow .5s var(--ease-out);
+  }
+  .continue-minimal .continue-art::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    background: radial-gradient(circle at var(--lift-gx, 50%) var(--lift-gy, 0%), rgba(255, 255, 255, .2), transparent 58%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .4s var(--ease-out);
+  }
+  .continue-minimal .continue-card:hover .continue-art {
+    transform: rotateX(var(--lift-rx, 0deg)) rotateY(var(--lift-ry, 0deg)) translateZ(16px);
+    box-shadow: 0 28px 50px rgba(0, 0, 0, .55), 0 8px 18px rgba(0, 0, 0, .35);
+    transition-duration: .22s, .5s;
+  }
+  .continue-minimal .continue-card:hover .continue-art::after { opacity: 1; }
+  .continue-card.has-still:is(:hover, :focus-within) .continue-art > img.continue-still.is-loaded { opacity: 1; transform: none; }
+  .continue-card.has-still:is(:hover, :focus-within) .continue-art > img:not(.continue-still) { transform: scale(1.1); }
+  .continue-card.has-still:is(:hover, :focus-within) .continue-still-tag { opacity: 1; transform: none; }
+  .continue-section.editing .continue-art,
+  .continue-row.continue-reordering .continue-art { transform: none !important; }
+}
+
+/* ---------- Page scenes stay on small screens ---------- */
+@media (max-width: 980px) {
+  .bo-page-hero.bo-page-hero { gap: 16px; }
+  .bo-page-orbit.bo-page-orbit.has-art { display: grid; flex: 0 0 92px; width: 92px; height: 92px; }
+  .bo-page-orbit.has-art > .bo-orbit-art.bo-orbit-art { width: 124px; }
+  .bo-page-orbit.has-art::before { inset: -12px; }
+  .bo-page-orbit.has-art::after { inset: 14px; }
+  .bo-page-orbit.has-art > i { inset: -22px; }
+}
+@media (max-width: 700px) {
+  .notifications-hero.notifications-hero { flex-direction: column; align-items: flex-start; gap: 16px; }
+  .notification-radar.notification-radar { display: grid; order: -1; width: 112px; height: 112px; box-shadow: 0 0 0 12px rgba(139, 92, 246, .025); }
+  .notification-radar > .radar-art.radar-art { width: 150px; }
+  .notification-radar.notification-radar > b { margin-top: -12px; font-size: 1.45rem; }
+  .notification-radar.notification-radar > span { margin-top: 27px; }
+  .notification-radar.notification-radar > i { top: 30px; right: 17px; }
+}
+@media (max-width: 430px) {
+  .settings-premium-hero.settings-premium-hero { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .settings-premium-hero > b.settings-hero-art.settings-hero-art { display: grid; order: -1; width: 108px; flex: 0 0 auto; }
+}
+
+/* ---------- Sticky bars close the gap under the navigation (js/sticky-bars.js) ---------- */
+:is(.stats-index, .settings-toolbar, .discover-jumpbar, .notification-toolbar, .bo-page-tools, .fp-toolbar).is-stuck::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: var(--shelf-h, 10px);
+  background: #0a0a10;
+  pointer-events: none;
+}
+
+/* ---------- Rating stars follow a finger (js/ratings.js) ---------- */
+.rate-stars { touch-action: none; }
+
+/* ---------- Reduced motion ---------- */
+html[data-motion="reduced"] :is(.row.is-leaning > .card > .card-img, .row.is-leaning > .continue-card > .continue-art-shell, .continue-minimal .continue-card:hover .continue-art) { transform: none !important; }
+html[data-motion="reduced"] :is(.stub-landed, .ticket-stub-plus) { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) :is(.row.is-leaning > .card > .card-img, .row.is-leaning > .continue-card > .continue-art-shell, .continue-minimal .continue-card:hover .continue-art) { transform: none !important; }
+  html:not([data-motion="full"]) :is(.stub-landed, .ticket-stub-plus) { animation: none !important; }
+}

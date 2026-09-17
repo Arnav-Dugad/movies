@@ -232,7 +232,38 @@ async function hydrateContinueStills(queue, from = 0, count = 8) {
     if (label && episode.name) label.textContent = `${episodeLabel(row.entry, row.next, { compact: true })} · ${episode.name}`;
     if (episode.still_path) {
       const image = card.querySelector('.continue-art img');
-      if (image) image.src = `${IMG}w500${episode.still_path}`;
+      if (!image) return;
+      const still = `${IMG}w500${episode.still_path}`;
+      // A card without the show's own backdrop simply shows the still. One with
+      // it keeps the backdrop and layers the still over it: on a phone it is
+      // shown straight away, with a mouse it crossfades in as the card lifts
+      // (css/feel.css). A backdrop that failed to load (the fallback swapped in
+      // the placeholder) gives its place to the still, now or when it fails.
+      const useStill = () => {
+        card.querySelectorAll('.continue-still, .continue-still-tag').forEach(node => node.remove());
+        card.classList.remove('has-still');
+        image.dataset.ph = PH;
+        image.src = still;
+      };
+      const failed = image.src === PH || (image.complete && image.naturalWidth === 0);
+      if (!row.entry.backdrop || failed) { useStill(); return; }
+      card.querySelectorAll('.continue-still, .continue-still-tag').forEach(node => node.remove());
+      // Runs after the fallback (a capturing listener on the document) has set
+      // the placeholder, and replaces it.
+      image.addEventListener('error', useStill, { once: true });
+      const layer = document.createElement('img');
+      layer.className = 'continue-still';
+      layer.alt = '';
+      layer.decoding = 'async';
+      layer.addEventListener('load', () => layer.classList.add('is-loaded'), { once: true });
+      layer.src = still;
+      image.after(layer);
+      const tag = document.createElement('span');
+      tag.className = 'continue-still-tag';
+      tag.setAttribute('aria-hidden', 'true');
+      tag.textContent = 'Next episode';
+      layer.after(tag);
+      card.classList.add('has-still');
     }
   }, 3);
 }

@@ -48,6 +48,49 @@
   letter-spacing: .12em;
   font-weight: 700;
 }
+/* ...and the rest of the site's kickers. `html body` lifts each above the rule
+   it quiets without changing what it matches. Status badges, the Danger zone
+   and labels printed over artwork keep their colour. */
+html body .stats-guest>span,
+html body .release-pref-head span,
+html body .wl-cover-copy>span,
+html body .scan-head span,
+html body .profile-recent-empty>span,
+html body .party-hero-tag,
+html body .rec-controlbar>div span,
+html body .rec-audit-head>div>span,
+html body .wl-collab-head span,
+html body .list-shared-head,
+html body .duplicate-head span,
+html body .taste-match-copy>span,
+html body .profile-taste-pass>div:first-child>span,
+html body .profile-showcase-editor>div:first-child>span,
+html body .profile-about>div>span,
+html body .profile-intelligence-head>span,
+html body .profile-privacy-grid article>span,
+html body .profile-rec-map span,
+html body .profile-rec-empty>span,
+html body .awards-toggle-copy small,
+html body .discover-result-head span,
+html body .discover-mood-result-head span,
+html body .discover-surprise-copy>span,
+html body .discover-surprise-card section>span,
+html body .spoiler-share-head>span,
+html body .notification-trust span,
+html body .notification-drop-head>span,
+html body .notification-pref-head span,
+html body .provider-history-head span,
+html body .notification-next>span,
+html body .pi-head>div>span,
+html body .detail-accordion-copy small,
+html body .tag-taste-lead>span,
+html body .pin-head>span,
+html body .show-progress-copy>span,
+html body .person-section-head>div>span,
+html body .import-head>span,
+html body .ad-browser-head span {
+  color: var(--text3);
+}
 /* A kicker's own status dot or icon keeps its colour. */
 .profile-eyebrow.profile-eyebrow > :is(i, b, svg) { opacity: .9; }
 

@@ -6,6 +6,7 @@ import { IMG, genreMap, pickLogo } from './config.js';
 import { state } from './state.js';
 import { esc, $, prefersReducedMotion, isTouch } from './ui.js';
 import { registerActions } from './events.js';
+import { haptic } from './haptics.js';
 import { mountAmbientVideo, ambientOK } from './video-bg.js';
 
 const HERO_INTERVAL_MS = 30000;
@@ -200,7 +201,7 @@ export function initHeroInteractions() {
     host.addEventListener('touchstart', event => { startX = event.touches[0].clientX; startY = event.touches[0].clientY; }, { passive: true });
     host.addEventListener('touchend', event => {
       const dx = startX - event.changedTouches[0].clientX, dy = startY - event.changedTouches[0].clientY;
-      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) && model.items.length) goHero(model.index + (dx > 0 ? 1 : -1), key);
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) && model.items.length) { haptic('swipe'); goHero(model.index + (dx > 0 ? 1 : -1), key); }
     }, { passive: true });
     if (!isTouch()) {
       host.addEventListener('mouseenter', () => pauseHero(key));

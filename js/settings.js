@@ -574,7 +574,7 @@ export function renderSettings() {
           ${previewPicker('motion', 'Interface motion', 'Respect your system, force full motion, or reduce it.', MOTION_CHOICES, prefs.motion)}
           ${toggle('autoplay', 'Ambient hero previews', 'Play muted trailer backgrounds where available.', prefs.autoplay)}
           ${toggle('backdropArt', 'Decorative backdrop art', 'Show cinematic artwork behind heroes and profile identity.', prefs.backdropArt)}
-          ${toggle('posterTilt', 'Poster depth effect', 'Let posters respond with a subtle premium hover tilt.', prefs.posterTilt)}
+          ${toggle('posterTilt', 'Poster depth effect', 'Let posters tilt as you hover over them and lean as rows scroll.', prefs.posterTilt)}
           ${toggle('haptics', 'Mobile haptics', 'Use subtle touch feedback for navigation, choices, and completed actions.', prefs.haptics)}
         </section>
         <section class="settings-panel" id="settings-discovery" data-section-panel="discovery">${panelHead('discovery')}

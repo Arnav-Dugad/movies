@@ -1,6 +1,7 @@
 // ===== WATCHLIST + WATCHED =====
 import { auth, db, firebase } from './firebase.js';
 import { haptic } from './haptics.js';
+import { flyTicket, launchRect } from './ticket-stub.js';
 import { icon, listIcon } from './icons.js';
 import { illustration } from './illustrations.js';
 import { state } from './state.js';
@@ -468,7 +469,11 @@ export function initWatchlist() {
       const id = +el.dataset.id, type = el.dataset.type;
       // Fired inside the press (iOS needs the gesture); a signed-out press opens
       // sign-in instead, so it gets no tick.
-      if (state.user) haptic(state.watched[`${type}_${id}`] ? 'untick' : 'tick');
+      const wasWatched = !!state.watched[`${type}_${id}`];
+      if (state.user) haptic(wasWatched ? 'untick' : 'tick');
+      // Like the tick, the stub answers the press rather than the server, which
+      // can take a moment to confirm the save.
+      if (state.user && !wasWatched) flyTicket(launchRect(el));
       await toggleWatched(id, type, el.dataset.title || '', {
         poster: el.dataset.poster || '', year: el.dataset.year || '', genres, keywords,
         runtime: +el.dataset.runtime || 0, language: el.dataset.language || '',

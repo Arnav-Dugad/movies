@@ -268,3 +268,8 @@
 :root[data-theme="light"] .year-eyebrow, :root[data-theme="light"] .diary-otd-head .diary-kicker { color: var(--text3); }
 :root[data-theme="light"] .finale-year-btn, :root[data-theme="light"] .finale-year-btn.films, :root[data-theme="light"] .finale-year-btn.year { color: var(--text2); border-color: var(--glass-border); }
 :root[data-theme="light"] .settings-head-art { background: rgba(20, 20, 30, .035); }
+
+/* Feel (css/feel.css): the light that follows the pointer across a lifted
+   Continue Watching card, and the tag on its episode still, sit on artwork. */
+:root[data-theme="light"] .continue-minimal .continue-art::after { background: radial-gradient(circle at var(--lift-gx, 50%) var(--lift-gy, 0%), rgba(255, 255, 255, .24), transparent 58%); }
+:root[data-theme="light"] .continue-still-tag { background: rgba(8, 8, 12, .62); color: #fff; }

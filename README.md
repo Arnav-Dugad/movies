@@ -473,6 +473,10 @@ layer, and quiets the site without removing a feature or an animation:
   ink, and the header links beside Your Cineprint are neutral pills.
 - **Home** section icons and recommendation-rail glyphs sit on the heading without
   a box.
+- **Everywhere else** the same goes for the kickers on My Lists, Profile's
+  panels, Discover's results and Surprise, notifications and their preferences,
+  title-page sections, people, import, PIN and share dialogs. Status badges, the
+  Danger zone and labels printed over artwork keep their colour.
 
 Its selectors repeat a class (`.stats-panel.stats-panel`) to outrank the
 single-class variant rules they replace without ids, so the glass layer still
@@ -808,11 +812,67 @@ composed frame.
 
 ## Haptics
 
-With **Haptics** on, ticking an episode, marking a season or "up to here",
-marking watched from a card, and pinning or hiding in Continue Watching give a
-light tap on phones. The buzz follows the outcome (a refused tick gives none).
-iPhones, which have no Vibration API, get the system's selection tap through a
-hidden native switch.
+With **Settings → Mobile haptics** on, a phone answers you with a small
+vocabulary of buzzes (`js/haptics.js`). Each has a weight, so the "saved" that
+follows a press in the same instant replaces the press's tap instead of being
+swallowed by it.
+
+| Buzz | When |
+|---|---|
+| Detent (the lightest) | each poster that passes as you swipe a row; each section heading that passes the middle of the screen as you scroll; each star as you slide a finger along the rating stars; each place a dragged Continue Watching card would land |
+| Edge | swiping into either end of a row; scrolling to the very top or bottom of a page |
+| Tap | any other button or link |
+| Select | navigation, tabs, filters and sorts, switches and chips, the Filters button, choosing a star |
+| Tick / untick | an episode, a season, "up to here", marking a title watched (from the outcome: a refused tick gives none) |
+| Pin | pinning or hiding in Continue Watching; picking a card up to reorder it |
+| Drop | letting a reordered card go somewhere new |
+| Swipe | swiping the hero to the next slide |
+| Land | the ticket stub arriving in My List |
+| Notify | new notifications arriving while the inbox or the popover is open |
+| Success | saving, sharing, copying, exporting, importing, restoring, rating, marking all read, a finished season, a success message |
+| Warning | deleting, removing, clearing, resetting, dismissing, dropping, leaving, signing out, an error message |
+| Celebrate | badges, a rating's confetti, cast and streak milestones, a finished series, the Watch Party's first pick |
+
+- Actions are matched by whole words, so *Discover presets* select rather than
+  warn, and the Watched page's filters select rather than succeed.
+- Scroll detents only follow a finger that moved. A row scrolled by its arrows or
+  the keyboard, and the smooth scroll a tap starts (Back to top, a jump link),
+  stay silent; a flick keeps its detents while it coasts.
+- A success message right after a press that already buzzed stays quiet.
+- iPhones, which have no Vibration API, get the system's selection tap through a
+  hidden native switch. That only works inside a press, so scroll detents and
+  late messages are felt on Android only.
+
+## Feel
+
+`css/feel.css` with `js/scroll-feel.js`, `js/ticket-stub.js`, `js/continue-lift.js`
+and `js/sticky-bars.js`:
+
+- **Posters lean with the scroll.** Scroll a row sideways and its posters (and
+  Continue Watching cards) lean against the motion, further the faster you go (up
+  to 9°), then settle upright once the row stops. The lean is eased so one uneven
+  frame does not jerk it, and the wait before settling stretches when frames are
+  arriving slowly, so a busy phone does not flicker. It follows **Poster depth
+  effect** in Settings and never runs under reduced motion.
+- **A ticket stub for every title you watch.** Marking a title watched (from a
+  title page or a hover preview) tears a small red ticket stub off its
+  poster and sends it along an arc into My List, in the bar at the bottom of a
+  phone or across the top of a desktop (your avatar otherwise). The tab bounces,
+  a "+1" rises from it and a phone gives a light landing tap. Like the tick, it
+  answers the press rather than waiting for the server to confirm the save.
+- **Continue Watching lifts.** With a mouse, a card's artwork lifts toward you
+  and leans after the pointer, a soft light follows the pointer across it, and a
+  show's card crossfades from the show's artwork to the still of the episode you
+  are about to watch, tagged *Next episode*. On a phone the still simply takes the
+  card's place, as before. A show without artwork of its own, or whose artwork
+  fails to load, shows the still.
+- **Scenes on small screens.** Box Office's coins, the notification radar and
+  Settings' gears used to be hidden on phones. The coins now sit beside the Box
+  Office title, and the radar and the gears sit above their page's title.
+- **Sticky bars close the gap.** Stats' section index, the Settings toolbar,
+  Discover's jump bar, the notification toolbar and the Box Office and Franchises
+  toolbars stick a few pixels under the navigation, and the page used to show
+  through those pixels as it scrolled. While a bar is stuck, a shelf fills the gap.
 
 ## Season heatmap
 
@@ -1379,8 +1439,11 @@ geometry, the tearing ticket, the radar's arrival parts and Settings section res
 (`year-page.test.mjs`), which also covers the globe's turn, Recently changed,
 setting values in words, the radar's category blips and unread counts, and the
 folded filter bars: what counts as a set filter, the button's summary and a
-registry that still matches the markup (`filter-fold.test.mjs`). It needs
-nothing installed.
+registry that still matches the markup (`filter-fold.test.mjs`), and how the site
+feels: every action's haptic signature and weight, the lean and its settling,
+row detents and edges, headings crossing the middle, the ticket stub's arc, the
+Continue Watching lift and the sticky bars (`feel.test.mjs`). It needs nothing
+installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.

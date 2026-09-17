@@ -6,6 +6,7 @@ import { toast, $, trapFocus, lockScroll, unlockScroll } from './ui.js';
 import { registerActions } from './events.js';
 import { confettiBurst } from './effects.js';
 import { refreshCardMarks } from './cards.js';
+import { haptic } from './haptics.js';
 
 let rateTarget = null;
 let releaseFocus = null;
@@ -137,6 +138,26 @@ export function initRatings() {
     if (st) paint(+st.dataset.score);
   });
   stars.addEventListener('pointerleave', () => { if (rateTarget) paint(rateTarget.score || 0); });
+
+  // Touch: slide a finger along the stars to choose, with a detent on each star.
+  // Releasing the capture a touch takes on its first star lets the lift land on
+  // the star under the finger, so the tap that follows keeps the scrubbed score.
+  let scrubbing = false;
+  stars.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch' || !rateTarget) return;
+    scrubbing = true;
+    try { e.target.releasePointerCapture?.(e.pointerId); } catch (_) {}
+  });
+  stars.addEventListener('pointermove', e => {
+    if (!scrubbing || e.pointerType !== 'touch' || !rateTarget) return;
+    const st = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.rate-star');
+    if (!st || !stars.contains(st)) return;
+    const score = +st.dataset.score;
+    if (score !== rateTarget.score) { setScore(score); haptic('detent'); }
+  });
+  const endScrub = () => { scrubbing = false; };
+  stars.addEventListener('pointerup', endScrub);
+  stars.addEventListener('pointercancel', endScrub);
 
   // Keyboard. This listener sits on #rateStars while the action delegation lives
   // on document, so it runs FIRST (bubble order: inner -> outer). Enter therefore

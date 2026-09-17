@@ -1,5 +1,6 @@
 // ===== PREMIUM ANIMATIONS & EFFECTS =====
 import { prefersReducedMotion, isTouch } from './ui.js';
+import { haptic } from './haptics.js';
 
 const motionOK = () => !prefersReducedMotion();
 const pointerFine = () => !isTouch();
@@ -93,6 +94,8 @@ export function observeCountUps(root = document) {
 
 // ----- Confetti -----
 export function confettiBurst(count = 90) {
+  // Felt even when it cannot be seen: reduced motion skips the confetti, not the moment.
+  haptic('celebrate');
   if (!motionOK()) return;
   let zone = document.getElementById('confettiZone');
   if (!zone) { zone = document.createElement('div'); zone.id = 'confettiZone'; zone.className = 'confetti-zone'; document.body.appendChild(zone); }
