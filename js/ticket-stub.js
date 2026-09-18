@@ -79,6 +79,35 @@ export function flyTicket(from) {
   return true;
 }
 
+/**
+ * The stub leaves again: from the library tab back to where the poster was,
+ * for an undo. The same arc, walked backwards.
+ */
+export function flyTicketBack(to) {
+  if (!to || document.hidden || prefersReducedMotion()) return false;
+  const target = TARGETS.map(selector => document.querySelector(selector)).find(visible);
+  const from = target && visible(target);
+  if (!from) return false;
+  const start = { x: from.left + from.width / 2, y: from.top + from.height / 2 };
+  const end = { x: to.left + to.width / 2, y: to.top + Math.min(to.height / 2, 120) };
+  const stub = document.createElement('div');
+  stub.className = 'ticket-stub';
+  stub.setAttribute('aria-hidden', 'true');
+  stub.innerHTML = stubSVG(`cvStub${++stubId}`);
+  stub.style.left = `${Math.round(start.x - 32)}px`;
+  stub.style.top = `${Math.round(start.y - 18)}px`;
+  document.body.appendChild(stub);
+  const animation = stub.animate(stubKeyframes(start, end, { lift: 70 }), { duration: 820, easing: 'cubic-bezier(.4, 0, .3, 1)', fill: 'forwards' });
+  const clear = () => stub.remove();
+  animation.onfinish = clear;
+  animation.oncancel = clear;
+  target.classList.remove('stub-landed');
+  void target.getBoundingClientRect();
+  target.classList.add('stub-landed');
+  setTimeout(() => target.classList.remove('stub-landed'), 700);
+  return true;
+}
+
 function land(target) {
   if (!target?.isConnected) return;
   haptic('land');

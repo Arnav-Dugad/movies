@@ -1041,6 +1041,18 @@ export async function renderRecommendationInsights() {
   } catch (error) { console.warn('recommendation explanation', error); }
 }
 
+/**
+ * Turn the rotation on once and rebuild the rails: a deliberate "show me
+ * something else", used by the pull-to-refresh gesture on Home.
+ */
+export async function refreshRecommendations() {
+  const feedback = feedbackState();
+  feedback.rotation = (Math.max(0, Math.floor(+(feedback.rotation || 0))) + 1) % 100000;
+  feedback.lastRotatedAt = Date.now();
+  persistFeedback();
+  await renderRecommendations();
+}
+
 export function initRecommendations() {
   registerActions({
     'dismiss-recommendation': (element, event) => dismissRecommendation(element, event),

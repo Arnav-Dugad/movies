@@ -52,8 +52,9 @@ const msOf = value => {
 export function diaryEvents({ watched = {}, episodeProgress = {} } = {}) {
   const events = [];
   const logged = new Set();
-  for (const entry of Object.values(episodeProgress || {})) {
-    const id = +entry?.tmdbId;
+  for (const [key, entry] of Object.entries(episodeProgress || {})) {
+    // The key ("tv_95396") is the fallback for a document written without an id.
+    const id = +entry?.tmdbId || +String(key).split('_').at(-1) || 0;
     if (!id) continue;
     const log = viewingLog(entry);
     if (log.length) logged.add(`tv_${id}`);

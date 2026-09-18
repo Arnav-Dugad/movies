@@ -20,7 +20,13 @@ state.watched = {};
 const rows = (entry) => ep.viewingLog(entry).map(row => `${row.season}.${row.episode}:${row.viewing ? 'v' : 'b'}`).join(' ');
 const batch = (episodes, at, season = 1) => episodes.map(e => [season, e, at, 1]);
 check('single ticks are viewing', rows({ episodeRuntime: 50, log: [[1, 1, noon(3), 0], [1, 2, noon(2), 0]] }) === '1.1:v 1.2:v');
-check('the first batch is the catch-up, even when small', rows({ episodeRuntime: 50, log: batch([1, 2], noon(9)) }) === '1.1:b 1.2:b');
+check('a first batch the size of an evening is viewing', rows({ episodeRuntime: 50, log: batch([1, 2], noon(9)) }) === '1.1:v 1.2:v');
+check('a first batch bigger than an evening is the catch-up', rows({ episodeRuntime: 50, log: batch([1, 2, 3, 4], noon(9)) }) === '1.1:b 1.2:b 1.3:b 1.4:b');
+check('without a runtime, three episodes is the most a first batch holds', rows({ log: batch([1, 2, 3], noon(9)) }) === '1.1:v 1.2:v 1.3:v' && rows({ log: batch([1, 2, 3, 4], noon(9)) }) === '1.1:b 1.2:b 1.3:b 1.4:b');
+check('a show whose document lost its id still reaches the diary', (() => {
+  const events = diary.diaryEvents({ watched: {}, episodeProgress: { tv_4242: { title: 'No id', episodeRuntime: 40, log: [[1, 1, noon(1), 0]] } } });
+  return events.length === 1 && events[0].id === 4242;
+})());
 check('a later sitting-sized batch is viewing ("Up to here" after an evening)', rows({ episodeRuntime: 50, log: [...batch([1, 2], noon(9)), ...batch([3, 4, 5], noon(2))] }).endsWith('1.3:v 1.4:v 1.5:v'));
 check('a later batch longer than six hours is bookkeeping', rows({ episodeRuntime: 50, log: [...batch([1], noon(9)), ...batch([2, 3, 4, 5, 6, 7, 8, 9], noon(2))] }).endsWith('1.9:b'));
 check('without a runtime, six episodes is the most one sitting holds', rows({ log: [...batch([1], noon(9)), ...batch([2, 3, 4, 5, 6, 7], noon(2))] }).endsWith('1.7:v') && rows({ log: [...batch([1], noon(9)), ...batch([2, 3, 4, 5, 6, 7, 8], noon(2))] }).endsWith('1.8:b'));
@@ -34,7 +40,7 @@ const show = (id, log, extra = {}) => {
   return { tmdbId: id, title: `Show ${id}`, episodeRuntime: 45, structure: { 1: 10 }, aired: { season: 1, episode: 10 }, seasons, log, lastWatched: last ? { season: last[0], episode: last[1], at: last[2] } : null, ...extra };
 };
 // Tracked only with bulk presses: the case that used to get no forecast at all.
-state.episodeProgress = { tv_1: show(1, [...batch([1, 2, 3], noon(14)), ...batch([4, 5], noon(6)), ...batch([6, 7], noon(2))]) };
+state.episodeProgress = { tv_1: show(1, [...batch([1, 2, 3, 4, 5], noon(14)), ...batch([6, 7], noon(6)), ...batch([8, 9], noon(2))]) };
 let status = ep.forecastStatus(1, { now: NOW });
 check('a show tracked with "Up to here" presses now gets a forecast', status?.kind === 'forecast', JSON.stringify(status));
 check('its pace counts the sitting batches, not the catch-up', status?.kind === 'forecast' && Math.abs(status.forecast.pace - 4 / ((NOW - noon(6)) / DAY)) < 1e-9, JSON.stringify(status));
@@ -92,8 +98,8 @@ check('each month splits minutes into films and TV', months.reduce((sum, m) => s
 check('episode spans read naturally', diary.episodeSpan({ season: 2, episode: 5 }, { season: 2, episode: 5 }) === 'S2 E5' && diary.episodeSpan({ season: 2, episode: 1 }, { season: 2, episode: 5 }) === 'S2 E1–E5' && diary.episodeSpan(null, null) === '');
 
 // Diary events read the same viewing rule as the forecast.
-const fromLog = diary.diaryEvents({ episodeProgress: { tv_1: show(1, [...batch([1, 2, 3], noon(14)), ...batch([4, 5], noon(6))]) } });
-check('Diary counts a sitting batch as viewing and the catch-up as marked', fromLog.filter(e => !e.bulk).length === 2 && fromLog.filter(e => e.bulk).length === 3);
+const fromLog = diary.diaryEvents({ episodeProgress: { tv_1: show(1, [...batch([1, 2, 3, 4, 5], noon(14)), ...batch([6, 7], noon(6))]) } });
+check('Diary counts a sitting batch as viewing and a catch-up bigger than an evening as marked', fromLog.filter(e => !e.bulk).length === 2 && fromLog.filter(e => e.bulk).length === 5);
 
 // ---------- mood of recent episodes ----------
 const labels = moods => moods.map(m => m.label);

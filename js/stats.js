@@ -21,7 +21,7 @@ import { pacingInsight } from './pacing.js';
 import { prefs, updatePref } from './prefs.js';
 import { rewatchSummary, rewatchesSince, playCount } from './rewatch.js';
 import { franchiseSummary, tvFamilySummary } from './franchise.js';
-import { diaryPanel, diarySummary, initDiary } from './diary.js';
+import { diaryPanel, diarySummary, initDiary, diaryEvents, diaryDays } from './diary.js';
 import { loadCompletion, completionHeadline, MIN_VOTES } from './completionist.js';
 import { computeCastHours, milestoneBand, hoursLabel } from './cast-hours.js';
 
@@ -241,14 +241,24 @@ export function computeStats(scope) {
   const genreRows = sorted(genres), decadeRows = sorted(decades), languageRows = sorted(languages);
   const themeRows = sorted(themes, 18);
 
-  const activity = new Map(), months = new Map();
+  const months = new Map();
   const weekdays = Array(7).fill(0);
   watched.forEach(row => {
     if (!row.watchedAt) return;
-    bump(activity, dayKey(row.watchedAt));
     bump(months, monthKey(row.watchedAt));
     weekdays[row.watchedAt.getDay()]++;
   });
+  // Days you actually watched something — every film play and every episode
+  // ticked, the same ledger the Watch Diary shows. Counting the days a whole
+  // TITLE was marked watched instead said "1-day streak" to someone who had
+  // watched an episode every night for a week, because a series in progress is
+  // marked once, at the end, or never.
+  const activity = new Map();
+  for (const event of diaryEvents(state)) {
+    if (event.bulk) continue;
+    if (scope !== 'all' && event.type !== scope) continue;
+    bump(activity, dayKey(new Date(event.at)));
+  }
   const dateKeys = [...activity.keys()];
   const streak = streaks(dateKeys);
   const now = new Date();
@@ -278,7 +288,16 @@ export function computeStats(scope) {
   const movieRuntimes = watched.filter(row => row.type === 'movie').map(row => +row.runtime).filter(value => value > 0 && value < 1000);
   const episodeRuntimes = watched.filter(row => row.type === 'tv').map(episodeUnitRuntime).filter(value => value > 0 && value < 1000);
   const enriched = rows.filter(row => row.runtime > 0 && row.language && row.year && row.genres?.length);
-  const totalMinutes = runtimes.reduce((sum, value) => sum + value, 0);
+  // Shows tracked episode by episode but never marked watched as a whole are not
+  // in `watched` at all, so their episodes used to add nothing to the total.
+  const watchedKeys = new Set(watched.map(row => `${row.type}_${row.id}`));
+  const trackedMinutes = scope === 'movie' ? 0 : Object.entries(state.episodeProgress || {}).reduce((sum, [key, entry]) => {
+    const id = +entry?.tmdbId || +String(key).split('_').at(-1) || 0;
+    if (!id || watchedKeys.has(`tv_${id}`)) return sum;
+    const perEpisode = +entry?.episodeRuntime || 0;
+    return sum + (perEpisode > 0 ? showProgress(id).watched * perEpisode : 0);
+  }, 0);
+  const totalMinutes = runtimes.reduce((sum, value) => sum + value, 0) + trackedMinutes;
   const years = rows.map(row => +(row.year || 0)).filter(year => year > 1800 && year < 2200).sort((a, b) => a - b);
   const movieDirectorMap = new Map(), actorMap = new Map();
   watched.forEach(row => {

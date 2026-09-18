@@ -90,6 +90,29 @@ check('tv scope keeps only the show', tvScope.watched.length === 1 && tvScope.sh
 check('tv scope minutes come from the ledger', tvScope.totalMinutes === 13 * 45, String(tvScope.totalMinutes));
 check('tv scope ratings are scoped too', tvScope.totalRated === 0, String(tvScope.totalRated));
 
+// ---------- a show tracked episode by episode, never marked watched ----------
+// Nothing about it is in `watched`, so it used to add no time at all, and the
+// nights spent on it did not count toward a streak.
+state.watched = {
+  movie_1: { tmdbId: 1, type: 'movie', title: 'A', year: '2019', genres: [28], language: 'en', runtime: 90, watchedAt: secs(dayAgo(9)) },
+};
+state.watchlist = []; state.ratings = {};
+state.episodeProgress = {
+  tv_7: ep.sanitizeEntry({
+    tmdbId: 7, title: 'In progress', episodeRuntime: 50, structure: { 1: 10 }, seasons: { 1: [1, 2, 3, 4] },
+    log: [[1, 1, dayAgo(3), 0], [1, 2, dayAgo(2), 0], [1, 3, dayAgo(1), 0], [1, 4, dayAgo(0), 0]],
+  }),
+};
+const tracked = stats.computeStats('all');
+check('episodes of a show in progress count toward watch time', tracked.totalMinutes === 90 + 4 * 50, String(tracked.totalMinutes));
+check('...and toward the streak, night after night', tracked.currentStreak === 4 && tracked.longestStreak === 4, `${tracked.currentStreak}/${tracked.longestStreak}`);
+check('the film that started it is still counted once', tracked.watched.length === 1, String(tracked.watched.length));
+// Marking the show watched as well must not count its episodes twice.
+state.watched.tv_7 = { tmdbId: 7, type: 'tv', title: 'In progress', episodeRuntime: 50, runtime: 500, watchedAt: secs(dayAgo(0)) };
+const alsoMarked = stats.computeStats('all');
+check('marking the same show watched does not double its time', alsoMarked.totalMinutes === 90 + 4 * 50, String(alsoMarked.totalMinutes));
+delete state.watched.tv_7;
+
 // ---------- empty collection ----------
 state.watched = {}; state.watchlist = []; state.ratings = {}; state.episodeProgress = {};
 const empty = stats.computeStats('all');

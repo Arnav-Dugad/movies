@@ -145,6 +145,54 @@ html body .ad-browser-head span {
 .fp-toolbar.fp-toolbar { box-shadow: 0 8px 22px rgba(0, 0, 0, .16); }
 .browse-page .browse-filters.browse-filters { box-shadow: none; }
 
+/* ---------- Stats, quieted ---------- */
+/* Fifteen blocks, each with a display-sized title and a paragraph, read as a
+   wall. The titles come down to the size of a heading, the paragraph moves into
+   the (?) card beside it (js/stats-help.js), and the figure tiles tighten. */
+#statsContent .stats-section-head h2 { font-size: clamp(1.25rem, 2vw, 1.5rem); letter-spacing: -.01em; }
+#statsContent .stats-section-head { margin-bottom: 18px; }
+.stats-help-line { display: flex; align-items: center; gap: 9px; }
+.stats-help {
+  width: 21px;
+  height: 21px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--glass-border);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .04);
+  color: var(--text3);
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .22s var(--ease-out), border-color .22s var(--ease-out), background .22s var(--ease-out), transform .22s var(--ease-out);
+}
+.stats-help:hover, .stats-help[aria-expanded="true"] { color: var(--text); border-color: rgba(255, 255, 255, .22); background: rgba(255, 255, 255, .08); transform: scale(1.08); }
+.stats-help:focus-visible { outline: 2px solid var(--red2); outline-offset: 2px; }
+.stats-help-pop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 62ch;
+  margin-top: 12px;
+  padding: 12px 15px;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .03);
+  animation: cv-help-in .3s var(--ease-out) both;
+}
+.stats-help-pop[hidden] { display: none; }
+.stats-help-pop > p { margin: 0; }
+.stats-help-art { width: 84px; flex: none; display: block; }
+.stats-help-art svg { width: 100%; height: auto; }
+@keyframes cv-help-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@media (max-width: 560px) { .stats-help-art { width: 64px; } .stats-help-pop { gap: 10px; padding: 10px 12px; } }
+
+/* Figure tiles: the same quiet card everywhere, a little tighter. */
+#statsContent :is(.stat-block, .activity-highlights > div, .diary-figures > div) { padding: 12px 13px; border-radius: 14px; background: rgba(255, 255, 255, .022); }
+#statsContent .stats-panel { padding: clamp(17px, 2.4vw, 24px); }
+
 /* ---------- Home ---------- */
 .section-title.section-title .section-icon {
   width: 1.2em;

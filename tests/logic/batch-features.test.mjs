@@ -34,7 +34,7 @@ check('the finish date is that many days out', forecast && forecast.finishAt ===
 check('the sentence names pace, remainder and a date', /pace of 3 episodes a week, you'll finish the 6 left in \d+ days — around /.test(ep.forecastSentence(forecast)), ep.forecastSentence(forecast));
 check('the short form reads as a date', /^Done ~/.test(ep.forecastSentence(forecast, { short: true })));
 
-state.episodeProgress = { tv_7: show([[1, 1, noon(3), 1], [1, 2, noon(3), 1], [1, 3, noon(3), 1]]) };
+state.episodeProgress = { tv_7: show([[1, 1, noon(3), 1], [1, 2, noon(3), 1], [1, 3, noon(3), 1], [1, 4, noon(3), 1], [1, 5, noon(3), 1]]) };
 check('a lone catch-up batch gives no pace, so no forecast', ep.bingeForecast(7, { now: NOW }) === null);
 state.episodeProgress = { tv_7: show([[1, 1, noon(90), 0], [1, 2, noon(80), 0]]) };
 check('a show untouched for two months gets no forecast', ep.bingeForecast(7, { now: NOW }) === null);
@@ -52,7 +52,8 @@ const events = diary.diaryEvents({
     tv_9: { tmdbId: 9, type: 'tv', title: 'Marked series', watchedAt: { seconds: Math.floor(noon(1) / 1000) } },
     tv_7: { tmdbId: 7, type: 'tv', title: 'Logged series', watchedAt: { seconds: Math.floor(noon(1) / 1000) } },
   },
-  episodeProgress: { tv_7: show([[1, 1, noon(1), 0], [1, 2, noon(1), 1]]) },
+  // Yesterday: a catch-up of five swept in at once, plus one episode ticked on its own.
+  episodeProgress: { tv_7: show([[1, 1, noon(1), 1], [1, 2, noon(1), 1], [1, 3, noon(1), 1], [1, 4, noon(1), 1], [1, 5, noon(1), 1], [1, 6, noon(1), 0]]) },
 });
 check('every play of a film is its own event', events.filter(e => e.key === 'movie_1').length === 2);
 check('a second play is flagged as a rewatch', events.filter(e => e.key === 'movie_1')[1].rewatch === true);
@@ -66,7 +67,7 @@ const days = diary.diaryDays(events);
 const yesterday = days.get(diary.dayKey(noon(1)));
 check('a day totals only real viewing minutes', yesterday.minutes === 120 + 90 + 40, String(yesterday.minutes));
 check('a day counts films and episodes apart', yesterday.films === 2 && yesterday.episodes === 1);
-check('bulk marks are counted separately', yesterday.marked === 2 && yesterday.items === 3);
+check('bulk marks are counted separately', yesterday.marked === 6 && yesterday.items === 3, `marked=${yesterday.marked} items=${yesterday.items}`);
 const months = diary.diaryMonths(days, { months: 12, now: NOW });
 check('the year strip has twelve gapless months ending now', months.length === 12 && months.at(-1).key === diary.monthKey(NOW));
 check('month totals add up the days', months.reduce((sum, m) => sum + m.minutes, 0) === [...days.values()].reduce((sum, d) => sum + d.minutes, 0));

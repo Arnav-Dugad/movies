@@ -225,12 +225,22 @@ export function sanitizeEntry(value) {
   };
 }
 
+// A document's key already holds the show's id ("tv_95396"). A document written
+// without `tmdbId` — an old one, or a partial merge from another device — used
+// to load with id 0, and everything that reads the library by id (the Watch
+// Diary, the hours clubs) silently dropped that show. The key decides.
+export function withShowId(key, entry) {
+  if (!entry) return entry;
+  if (!entry.tmdbId) entry.tmdbId = +String(key).split('_').at(-1) || 0;
+  return entry;
+}
+
 // ---------- load / persist ----------
 export function hydrateEpisodeProgressFromCache() {
   try {
     const raw = JSON.parse(localStorage.getItem(cacheKey()) || '{}');
     const out = {};
-    for (const [key, value] of Object.entries(raw)) { const entry = sanitizeEntry(value); if (entry) out[key] = entry; }
+    for (const [key, value] of Object.entries(raw)) { const entry = withShowId(key, sanitizeEntry(value)); if (entry) out[key] = entry; }
     state.episodeProgress = out;
   } catch (_) { state.episodeProgress = {}; }
 }
@@ -252,7 +262,7 @@ export async function loadEpisodeProgress() {
     const server = {}, migrations = new Set();
     snap.docs.forEach(doc => {
       const raw = doc.data();
-      const entry = sanitizeEntry(raw);
+      const entry = withShowId(doc.id, sanitizeEntry(raw));
       if (entry) server[doc.id] = entry;
       if (entry && +raw?.episodeModelV < EPISODE_MODEL_V) migrations.add(doc.id);
     });
@@ -437,8 +447,8 @@ async function writeMerged(key, entry, uid) {
   const ref = col(uid).doc(key);
   await db.runTransaction(async transaction => {
     const snapshot = await transaction.get(ref);
-    const server = snapshot.exists ? sanitizeEntry(snapshot.data()) : null;
-    const merged = mergeEntries(server, entry) || entry;
+    const server = snapshot.exists ? withShowId(key, sanitizeEntry(snapshot.data())) : null;
+    const merged = withShowId(key, mergeEntries(server, entry) || entry);
     // `log` is flattened to strings on the way out — Firestore rejects a document
     // containing an array of arrays outright, which used to fail the whole write.
     transaction.set(ref, { ...merged, log: encodeLog(merged.log), serverUpdatedAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -471,7 +481,7 @@ function startEpisodeProgressRealtime(uid) {
   progressUnsubscribe = col(uid).onSnapshot(snapshot => {
     if (state.user?.uid !== uid) return;
     const server = {};
-    snapshot.docs.forEach(doc => { const entry = sanitizeEntry(doc.data()); if (entry) server[doc.id] = entry; });
+    snapshot.docs.forEach(doc => { const entry = withShowId(doc.id, sanitizeEntry(doc.data())); if (entry) server[doc.id] = entry; });
     const local = state.episodeProgress || {}, merged = {};
     for (const key of new Set([...Object.keys(server), ...Object.keys(local)])) {
       const entry = mergeEntries(server[key], local[key]);
@@ -891,14 +901,19 @@ export function nextUp(id) {
 // after an evening of three episodes, or a position set to where you stopped, is
 // real viewing — and people who track that way got no forecast and an empty
 // diary. So a bulk batch (rows sharing one stamp) counts as viewing when it is
-// the size of a plausible sitting — at most six hours of the show's runtime, or
-// six episodes when the runtime is unknown — and is not the show's FIRST batch,
-// which is the catch-up everyone does when they start tracking a show part-way.
-// Whole seasons, whole shows and back-filled history stay bookkeeping.
+// the size of a plausible sitting: at most six hours of the show's runtime, or
+// six episodes when the runtime is unknown.
+//
+// The show's FIRST batch is the catch-up everyone does when they start tracking
+// a show part-way, so it is held to a stricter size: an evening (three episodes,
+// or three hours of the show). Marking the three episodes you have just watched
+// on a show you have never tracked is viewing; sweeping in a back catalogue is
+// not. Whole seasons, whole shows and back-filled history stay bookkeeping.
 //
 // The personal-best binge record still counts single ticks only (see
 // episodeStats): a record you can set by pressing one button is worth nothing.
 const SITTING_MINUTES = 360, SITTING_EPISODES = 6;
+const EVENING_MINUTES = 180, EVENING_EPISODES = 3;
 
 /** Log rows as objects, each marked `viewing` (watched then) or not (bookkeeping). */
 export function viewingLog(entry) {
@@ -913,8 +928,11 @@ export function viewingLog(entry) {
   return rows.map(row => {
     if (!row.bulk) return { ...row, viewing: true };
     const size = batchSize.get(row.at) || 1;
-    const sitting = runtime > 0 ? size * runtime <= SITTING_MINUTES : size <= SITTING_EPISODES;
-    return { ...row, viewing: sitting && row.at !== firstAt };
+    const first = row.at === firstAt;
+    const limitMinutes = first ? EVENING_MINUTES : SITTING_MINUTES;
+    const limitEpisodes = first ? EVENING_EPISODES : SITTING_EPISODES;
+    const sitting = runtime > 0 ? size * runtime <= limitMinutes : size <= limitEpisodes;
+    return { ...row, viewing: sitting };
   });
 }
 

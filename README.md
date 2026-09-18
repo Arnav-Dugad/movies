@@ -873,6 +873,30 @@ and `js/sticky-bars.js`:
   Discover's jump bar, the notification toolbar and the Box Office and Franchises
   toolbars stick a few pixels under the navigation, and the page used to show
   through those pixels as it scrolled. While a bar is stuck, a shelf fills the gap.
+- **Pick for me.** Press and hold any row of posters (`js/pick-for-me.js`): the
+  posters flash past in one frame, slow down and settle on one title with a thump
+  you can feel, and the card offers **Open** or **Spin again**. A hold is half a
+  second and has to stay still, so scrolling a row and tapping a poster are
+  untouched, and a row with fewer than three titles offers nothing.
+- **Swipe a Continue Watching card.** On a touch screen, flick a card's artwork up
+  to mark its next episode watched, or down to hide the show from the rail
+  (`js/continue-swipe.js`). The card follows your finger, names what it is about
+  to do, resists past the line and springs back if you let go short of it. Only
+  the artwork takes the gesture, so the page still scrolls everywhere else, and
+  the rail in edit mode still belongs to drag-to-reorder.
+- **Pull to refresh Home.** At the very top of Home, drag down (`js/pull-refresh.js`):
+  an arc stretches, clicks when it is far enough, and on release spins while the
+  recommendations are rebuilt on a fresh rotation.
+- **Undo a watched mark.** Marking a title watched offers **Undo** for seven
+  seconds (`js/watched-undo.js`). Taking it back unmarks the title and the ticket
+  stub flies back OUT of My List, to where the poster was.
+- **Watched today.** The My List tab carries a small count of what you have
+  watched today — films and episodes, from the diary's own ledger — which bumps as
+  each stub lands and clears itself at midnight (`js/watched-today.js`).
+- **Shake to reshuffle.** On Discover, shake the phone and **Surprise me** spins
+  again (`js/shake.js`): three jolts inside a second, then a two-and-a-half second
+  cooldown so one shake is one pick. iOS asks for motion permission the first time
+  Surprise me is pressed.
 
 ## Season heatmap
 
@@ -1017,6 +1041,24 @@ snapshot, an append-only change log, and one catalog sample per day.
 
 ## Stats
 
+The page carries fifteen blocks of figures, so the words that explain them are
+kept out of the way: each heading has a **(?)** that opens a card with the block's
+own animated scene beside its one-line explanation (`js/stats-help.js`), and the
+headings themselves are heading-sized rather than display-sized. Everything the
+page measured before, it still measures.
+
+**Two figures were wrong, and are fixed:**
+
+- **Streaks counted the days a whole TITLE was marked watched.** A series in
+  progress is marked once, at the end, or never — so someone who had watched an
+  episode every night for a week was told their streak was one day. Streaks, the
+  52-week map and the peak day now read the same ledger as the Watch Diary: every
+  film play and every episode ticked.
+- **Watch time ignored shows tracked episode by episode.** A show you are part way
+  through is not in `watched` at all, so its episodes added nothing to the total.
+  They are counted now, and a show that is both tracked and marked watched is
+  still counted once.
+
 Sections are ordered by what answers "how am I doing" first — Activity Pulse,
 the Watch Diary, then the TV Tracker, then Rating & Library, then the deeper taste and collection
 analysis.
@@ -1087,7 +1129,10 @@ streak can earn each one again. It is checked after your own ticks and watched
 marks, not after a sync. **Settings → Streak milestones** turns it off.
 
 **Hours clubs** are the badges: 10, 25, 50, 100, 250, 500 and 1,000 hours with one
-person. Your profile shows them as rings with progress to the next club. The
+person. The hours are television: for every episode you have ticked, everyone in
+that season's regular cast and that episode's guests (the ten billed highest) is
+credited with the episode's own runtime, falling back to the show's. Films are
+not counted — a film has no per-episode ledger to count from. Your profile shows them as rings with progress to the next club. The
 first time a badge appears on a device its ring fills like a gauge and the club
 number rolls up like an odometer, each digit spinning a full turn before it
 settles. After that it rests, finished. The milestone toast always rolls. A
@@ -1161,10 +1206,17 @@ Films count each play (a rewatch is its own day). Episodes come from the
 per-episode log, read with one rule shared with the binge forecast
 (`viewingLog` in `js/episodes.js`): single ticks are viewing, and so is a batch
 the size of one sitting (at most six hours of the show, or six episodes when the
-runtime is unknown), such as **Up to here** after an evening. The show's first
-batch is the catch-up everyone does when they start tracking, and a whole season,
-a whole show or a back-filled history is bookkeeping: listed on its day as
-"marked", never shading a day or adding minutes. The personal-best binge record in
+runtime is unknown), such as **Up to here** after an evening. The show's first batch is
+held to a stricter size — an evening, three episodes or three hours — because the
+first thing most people do with a new show is sweep in what they watched before
+they started tracking; marking the three episodes you have just watched still
+counts. A whole season, a whole show or a back-filled history is bookkeeping:
+listed on its day as "marked", never shading a day or adding minutes.
+
+**A show whose document lost its id used to vanish from the diary** (and from the
+hours clubs, and from watch time): the id is written into every document, but one
+written by an old build, or merged from another device, could arrive without it.
+The document's key ("tv_95396") is now the fallback everywhere. The personal-best binge record in
 the TV Tracker still counts single ticks only.
 
 ### Season recap
@@ -1307,6 +1359,12 @@ have nothing to forecast.
 
 ## Top 10 This Week
 
+On Home the chart reads the way the streaming services draw theirs: a solid,
+light numeral with the poster leaning across it, packed so the row is numbers as
+much as artwork (`css/top10.css`). The first time the row is scrolled to, the
+cards fan out like a hand being spread — each one starting further back and more
+turned than the one before (`css/feel.css`).
+
 Two charts — films and series — each a countdown rather than a grid with numbers
 bolted on. The leader gets the space it earns (backdrop, poster, overview, and a
 trailer fetched after paint) and the other nine read downward as a chart.
@@ -1442,8 +1500,11 @@ folded filter bars: what counts as a set filter, the button's summary and a
 registry that still matches the markup (`filter-fold.test.mjs`), and how the site
 feels: every action's haptic signature and weight, the lean and its settling,
 row detents and edges, headings crossing the middle, the ticket stub's arc, the
-Continue Watching lift and the sticky bars (`feel.test.mjs`). It needs nothing
-installed.
+Continue Watching lift and the sticky bars (`feel.test.mjs`), and the gestures:
+the pick reel and how it slows, what a swipe on a Continue Watching card does and
+how far the card follows, the pull's resistance and arming point, the shake
+detector's three jolts and cooldown, the watched-today count and the Stats help
+scenes (`gestures.test.mjs`). It needs nothing installed.
 `episodes-integrity.test.mjs` is regression cover specifically: every block names
 the wrong behaviour it exists to prevent, so a change that reintroduces one fails
 with the reason attached rather than a bare assert.

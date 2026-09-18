@@ -6,11 +6,40 @@
    ============================================================ */
 
 /* ---------- Rows lean with scroll speed (js/scroll-feel.js) ---------- */
-.row.is-leaning > .card > .card-img,
-.row.is-leaning > .continue-card > .continue-art-shell {
+.row.is-leaning > .card > .card-img {
   transform: perspective(900px) rotateY(var(--row-tilt, 0deg));
   transition: transform .45s cubic-bezier(.2, .8, .2, 1);
 }
+/* A Continue Watching card can also be part-way through a vertical swipe. */
+.row.is-leaning > .continue-card > .continue-art-shell {
+  transform: perspective(900px) rotateY(var(--row-tilt, 0deg)) translateY(var(--swipe-y, 0px));
+  transition: transform .45s cubic-bezier(.2, .8, .2, 1);
+}
+
+/* ---------- Top 10 fans out like a hand of cards ---------- */
+/* Every card starts stacked on the first one, turned a little further the
+   further down the chart it is, and swings out into place. Once only: a row
+   gains .visible the first time it is scrolled to. */
+.reveal.visible .row > .card-t10 {
+  transform-origin: 14% 92%;
+  animation: cv-t10-fan .85s cubic-bezier(.2, .9, .25, 1) both;
+  animation-delay: calc(var(--fan, 0) * 60ms);
+}
+@keyframes cv-t10-fan {
+  from { opacity: 0; transform: translateX(calc(var(--fan, 0) * -62px)) rotate(calc(var(--fan, 0) * -1.5deg)) scale(.93); }
+  60% { opacity: 1; }
+  to { opacity: 1; transform: none; }
+}
+.reveal.visible .row > .card-t10:nth-child(1) { --fan: 0; }
+.reveal.visible .row > .card-t10:nth-child(2) { --fan: 1; }
+.reveal.visible .row > .card-t10:nth-child(3) { --fan: 2; }
+.reveal.visible .row > .card-t10:nth-child(4) { --fan: 3; }
+.reveal.visible .row > .card-t10:nth-child(5) { --fan: 4; }
+.reveal.visible .row > .card-t10:nth-child(6) { --fan: 5; }
+.reveal.visible .row > .card-t10:nth-child(7) { --fan: 6; }
+.reveal.visible .row > .card-t10:nth-child(8) { --fan: 7; }
+.reveal.visible .row > .card-t10:nth-child(9) { --fan: 8; }
+.reveal.visible .row > .card-t10:nth-child(10) { --fan: 9; }
 
 /* ---------- Ticket stub (js/ticket-stub.js) ---------- */
 .ticket-stub {
@@ -150,9 +179,174 @@
 .rate-stars { touch-action: none; }
 
 /* ---------- Reduced motion ---------- */
+html[data-motion="reduced"] .reveal.visible .row > .card-t10 { animation: none !important; }
 html[data-motion="reduced"] :is(.row.is-leaning > .card > .card-img, .row.is-leaning > .continue-card > .continue-art-shell, .continue-minimal .continue-card:hover .continue-art) { transform: none !important; }
 html[data-motion="reduced"] :is(.stub-landed, .ticket-stub-plus) { animation: none !important; }
 @media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) .reveal.visible .row > .card-t10 { animation: none !important; }
   html:not([data-motion="full"]) :is(.row.is-leaning > .card > .card-img, .row.is-leaning > .continue-card > .continue-art-shell, .continue-minimal .continue-card:hover .continue-art) { transform: none !important; }
   html:not([data-motion="full"]) :is(.stub-landed, .ticket-stub-plus) { animation: none !important; }
+}
+
+
+/* ============================================================
+   PICK FOR ME (js/pick-for-me.js)
+   ============================================================ */
+.row > .card { -webkit-touch-callout: none; }
+.pick-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 9995;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(4, 4, 8, .72);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  transition: opacity .26s var(--ease-out);
+}
+.pick-sheet.is-open { opacity: 1; }
+.pick-card {
+  width: min(340px, 92vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid var(--glass-border);
+  border-radius: 26px;
+  background: linear-gradient(180deg, #16161f, #0e0e15);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, .6);
+  text-align: center;
+  transform: scale(.94) translateY(12px);
+  transition: transform .3s var(--bounce, cubic-bezier(.34, 1.56, .64, 1));
+}
+.pick-sheet.is-open .pick-card { transform: none; }
+.pick-kicker { color: var(--text3); font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.pick-stage { width: 168px; aspect-ratio: 2 / 3; border-radius: 14px; overflow: hidden; background: var(--bg4); box-shadow: 0 18px 40px rgba(0, 0, 0, .5); perspective: 800px; }
+.pick-poster { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pick-poster.flip { animation: cv-pick-flip .16s var(--ease-out); }
+@keyframes cv-pick-flip { from { opacity: .35; transform: rotateY(28deg) scale(.96); } to { opacity: 1; transform: none; } }
+.pick-title { font-size: 1.02rem; font-weight: 750; line-height: 1.35; }
+.pick-card.landed .pick-stage { animation: cv-pick-land .5s var(--bounce, cubic-bezier(.34, 1.56, .64, 1)); }
+@keyframes cv-pick-land { 0% { transform: scale(1); } 40% { transform: scale(1.07); } 100% { transform: scale(1); } }
+.pick-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.pick-actions button:disabled { opacity: .45; }
+
+/* ============================================================
+   SWIPING A CONTINUE WATCHING CARD (js/continue-swipe.js)
+   ============================================================ */
+@media (hover: none), (pointer: coarse) {
+  .continue-card .continue-art-shell { touch-action: pan-x; }
+}
+.continue-card .continue-art-shell { transform: translateY(var(--swipe-y, 0px)); }
+.continue-card.is-swiping .continue-art-shell { transition: none; }
+.continue-card:not(.is-swiping) .continue-art-shell { transition: transform .34s var(--bounce, cubic-bezier(.34, 1.56, .64, 1)); }
+.continue-card .continue-art-shell::after {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 5;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(8, 8, 12, .8);
+  color: #fff;
+  font-size: .76rem;
+  font-weight: 750;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.9);
+  pointer-events: none;
+  transition: opacity .2s var(--ease-out), transform .2s var(--ease-out);
+}
+.continue-card[data-swipe="watch"] .continue-art-shell::after,
+.continue-card[data-swipe="hide"] .continue-art-shell::after { opacity: 1; transform: translate(-50%, -50%); }
+.continue-card[data-swipe="watch"] .continue-art-shell::after { content: "Mark next episode"; background: rgba(16, 185, 129, .92); color: #04120c; }
+.continue-card[data-swipe="hide"] .continue-art-shell::after { content: "Hide from the rail"; }
+
+/* ============================================================
+   PULL TO REFRESH (js/pull-refresh.js)
+   ============================================================ */
+.pull-refresh {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--nav-h) + 6px);
+  z-index: 60;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 10, 16, .9);
+  border: 1px solid var(--glass-border);
+  opacity: calc(var(--pull, 0) * 1.2);
+  transform: translate(-50%, calc(-14px + var(--pull, 0) * 30px)) scale(calc(.72 + var(--pull, 0) * .28));
+  pointer-events: none;
+  transition: opacity .25s var(--ease-out), transform .25s var(--ease-out);
+}
+.pull-refresh.is-pulling { transition: none; }
+.pull-ring, .pull-ring svg { width: 22px; height: 22px; display: block; }
+.pull-track { fill: none; stroke: rgba(255, 255, 255, .14); stroke-width: 3; }
+.pull-arc { fill: none; stroke: var(--red2); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: calc(1 - var(--pull, 0)); transform: rotate(-90deg); transform-origin: 50% 50%; }
+.pull-refresh.is-armed { border-color: rgba(229, 9, 20, .5); }
+.pull-refresh.is-busy { opacity: 1; transform: translate(-50%, 16px) scale(1); }
+.pull-refresh.is-busy .pull-ring { animation: cv-pull-spin .8s linear infinite; }
+.pull-refresh.is-busy .pull-arc { stroke-dashoffset: .72; }
+@keyframes cv-pull-spin { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   UNDO A WATCHED MARK (js/watched-undo.js)
+   ============================================================ */
+.watched-undo {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: rgba(14, 14, 20, .94);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .4);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity .26s var(--ease-out), transform .26s var(--ease-out);
+}
+.watched-undo.is-open { opacity: 1; transform: none; }
+.watched-undo-mark { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border-radius: 50%; background: rgba(16, 185, 129, .16); color: #34d399; }
+.watched-undo-mark svg { width: 14px; height: 14px; }
+.watched-undo-copy { display: flex; flex-direction: column; min-width: 0; }
+.watched-undo-copy b { font-size: .84rem; font-weight: 750; }
+.watched-undo-copy small { overflow: hidden; color: var(--text3); font-size: .74rem; text-overflow: ellipsis; white-space: nowrap; max-width: 24ch; }
+.watched-undo-btn { margin-left: auto; padding: 7px 13px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255, 255, 255, .05); color: var(--text); font-family: var(--font); font-size: .78rem; font-weight: 750; cursor: pointer; }
+.watched-undo-btn:hover { background: rgba(255, 255, 255, .1); }
+
+/* ============================================================
+   WATCHED TODAY (js/watched-today.js)
+   ============================================================ */
+.today-pip {
+  position: absolute;
+  top: 2px;
+  right: calc(50% - 22px);
+  min-width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: .58rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.nav-link .today-pip { position: static; margin-left: 6px; display: inline-grid; vertical-align: middle; }
+.today-pip.bump { animation: cv-stub-land .6s cubic-bezier(.34, 1.56, .64, 1); }
+
+/* Shake to reshuffle (js/shake.js) */
+.spin-btn.shaken { animation: cv-shake .6s var(--ease-out); }
+@keyframes cv-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-6px) rotate(-2deg); } 45% { transform: translateX(5px) rotate(1.6deg); } 70% { transform: translateX(-3px); } }
+
+html[data-motion="reduced"] :is(.pick-poster, .pick-card, .today-pip, .spin-btn, .pull-refresh .pull-ring) { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) :is(.pick-poster, .pick-card, .today-pip, .spin-btn, .pull-refresh .pull-ring) { animation: none !important; }
 }

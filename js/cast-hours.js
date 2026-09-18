@@ -238,9 +238,11 @@ const seasonKey = (showId, season) => `${+showId}_${+season}`;
 const fresh = record => record && (record.settled ? Date.now() - record.at < 180 * DAY : Date.now() - record.at < 3 * DAY);
 
 function trackedShows(keep = () => true) {
-  return Object.values(state.episodeProgress || {})
-    .filter(entry => entry && +entry.tmdbId && entry.seasons && Object.keys(entry.seasons).length && keep(+entry.tmdbId))
-    .map(entry => ({ id: +entry.tmdbId, title: entry.title || '', runtime: +entry.episodeRuntime || 0, seasons: entry.seasons }));
+  return Object.entries(state.episodeProgress || {})
+    // The key ("tv_95396") is the fallback for a document written without an id.
+    .map(([key, entry]) => ({ entry, id: +entry?.tmdbId || +String(key).split('_').at(-1) || 0 }))
+    .filter(({ entry, id }) => entry && id && entry.seasons && Object.keys(entry.seasons).length && keep(id))
+    .map(({ entry, id }) => ({ id, title: entry.title || '', runtime: +entry.episodeRuntime || 0, seasons: entry.seasons }));
 }
 
 let hydrated = null;

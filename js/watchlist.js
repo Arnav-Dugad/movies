@@ -2,6 +2,7 @@
 import { auth, db, firebase } from './firebase.js';
 import { haptic } from './haptics.js';
 import { flyTicket, launchRect } from './ticket-stub.js';
+import { offerWatchedUndo } from './watched-undo.js';
 import { icon, listIcon } from './icons.js';
 import { illustration } from './illustrations.js';
 import { state } from './state.js';
@@ -473,7 +474,8 @@ export function initWatchlist() {
       if (state.user) haptic(wasWatched ? 'untick' : 'tick');
       // Like the tick, the stub answers the press rather than the server, which
       // can take a moment to confirm the save.
-      if (state.user && !wasWatched) flyTicket(launchRect(el));
+      const from = state.user && !wasWatched ? launchRect(el) : null;
+      if (from) flyTicket(from);
       await toggleWatched(id, type, el.dataset.title || '', {
         poster: el.dataset.poster || '', year: el.dataset.year || '', genres, keywords,
         runtime: +el.dataset.runtime || 0, language: el.dataset.language || '',
@@ -483,6 +485,21 @@ export function initWatchlist() {
         collectionPoster: el.dataset.collectionPoster || '',
       });
       document.dispatchEvent(new CustomEvent('cv:watched-toggled', { detail: { id, type } }));
+      // The stub can be sent back: one undo, for a few seconds.
+      if (from && state.watched[`${type}_${id}`]) {
+        offerWatchedUndo({
+          title: el.dataset.title || '',
+          rect: from,
+          // Unmarking directly, not by pressing the button again: the card it sits
+          // on may have been redrawn, and a second press would send a new stub.
+          undo: async () => {
+            if (!state.watched[`${type}_${id}`]) return;
+            await toggleWatched(id, type, el.dataset.title || '');
+            document.dispatchEvent(new CustomEvent('cv:watched-toggled', { detail: { id, type } }));
+            if (el.isConnected) el.classList.toggle('active', !!state.watched[`${type}_${id}`]);
+          },
+        });
+      }
       // Sync the button from the actual result rather than toggling blind — on a
       // failed write, toggleWatched leaves state.watched unchanged, so this
       // correctly leaves the button as-is instead of flipping to a wrong state.
