@@ -1,0 +1,147 @@
+/* ============================================================
+   OUTSIDE SCORES
+   IMDb, the Tomatometer and Metacritic beside CineVerse's own score, and the
+   whole-series grid of episode ratings (js/scores.js, js/score-badges.js,
+   js/episode-grid.js).
+   ============================================================ */
+
+/* ---------- Badges on a title page ---------- */
+.score-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  animation: cv-score-in .45s var(--ease-out) both;
+  animation-delay: calc(var(--score-i, 0) * 70ms);
+}
+a.score-tag:hover { border-color: rgba(255, 255, 255, .28); }
+.score-mark { flex: none; font-size: .62rem; font-weight: 900; letter-spacing: .02em; }
+svg.score-mark { width: 14px; height: 14px; }
+.score-tag > span { font-variant-numeric: tabular-nums; font-weight: 750; }
+.score-tag.imdb { background: rgba(245, 197, 24, .12); border-color: rgba(245, 197, 24, .28); color: #f5c518; }
+.score-tag.rt.fresh { background: rgba(250, 50, 30, .12); border-color: rgba(250, 50, 30, .3); color: #ff6a55; }
+.score-tag.rt.rotten { background: rgba(120, 180, 90, .12); border-color: rgba(120, 180, 90, .3); color: #9cc46e; }
+.score-tag.mc.good { background: rgba(16, 185, 129, .12); border-color: rgba(16, 185, 129, .28); color: var(--green2); }
+.score-tag.mc.mixed { background: rgba(251, 191, 36, .12); border-color: rgba(251, 191, 36, .28); color: var(--gold); }
+.score-tag.mc.poor { background: rgba(229, 9, 20, .12); border-color: rgba(229, 9, 20, .3); color: #ff6b75; }
+@keyframes cv-score-in { from { opacity: 0; transform: translateY(-5px) scale(.94); } to { opacity: 1; transform: none; } }
+/* Scores off in Settings hides these too. */
+html[data-ratings="hide"] .detail-tags .score-tag { display: none !important; }
+
+/* ---------- "Episode ratings" button ---------- */
+.eg-open {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 10px 0 0;
+  padding: 13px 15px;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .025);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .25s var(--ease-out), background .25s var(--ease-out), transform .25s var(--ease-out);
+}
+.eg-open:hover { background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .18); transform: translateY(-1px); }
+.eg-open:focus-visible { outline: 2px solid var(--red2); outline-offset: 2px; }
+.eg-open-icon { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 11px; background: rgba(255, 255, 255, .05); color: var(--text2); }
+.eg-open-icon svg { width: 17px; height: 17px; }
+.eg-open-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.eg-open-copy strong { font-size: .92rem; font-weight: 700; }
+.eg-open-copy small { color: var(--text3); font-size: .76rem; }
+.eg-open-go { margin-left: auto; color: var(--text3); }
+.eg-open-go svg { width: 16px; height: 16px; }
+
+/* ---------- The grid ---------- */
+.eg-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 9994;
+  display: grid;
+  place-items: center;
+  padding: clamp(10px, 3vw, 28px);
+  background: rgba(4, 4, 8, .74);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  opacity: 0;
+  transition: opacity .24s var(--ease-out);
+}
+.eg-sheet.is-open { opacity: 1; }
+.eg-card {
+  width: min(880px, 100%);
+  max-height: min(88vh, 900px);
+  display: flex;
+  flex-direction: column;
+  padding: clamp(16px, 2.4vw, 24px);
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  background: linear-gradient(180deg, #15151d, #0d0d14);
+  box-shadow: 0 34px 90px rgba(0, 0, 0, .62);
+  transform: translateY(14px) scale(.98);
+  transition: transform .28s var(--ease-out);
+}
+.eg-sheet.is-open .eg-card { transform: none; }
+.eg-head { display: flex; align-items: flex-start; gap: 14px; }
+.eg-head h2 { font-family: var(--font-display); font-size: 1.4rem; line-height: 1.1; }
+.eg-head p { margin-top: 3px; color: var(--text3); font-size: .84rem; }
+.eg-close { width: 32px; height: 32px; margin-left: auto; flex: none; display: grid; place-items: center; border: 1px solid var(--glass-border); border-radius: 50%; background: rgba(255, 255, 255, .04); color: var(--text2); font-size: 1.15rem; line-height: 1; cursor: pointer; }
+.eg-close:hover { color: var(--text); background: rgba(255, 255, 255, .09); }
+.eg-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 0 12px; color: var(--text3); font-size: .74rem; }
+.eg-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.eg-legend i { width: 11px; height: 11px; border-radius: 3px; }
+.eg-scroll { overflow: auto; flex: 1; margin: 0 -4px; padding: 0 4px; }
+.eg-table { border-collapse: separate; border-spacing: 5px; width: 100%; }
+.eg-table th { color: var(--text3); font-size: .76rem; font-weight: 700; }
+.eg-table thead th { position: sticky; top: 0; z-index: 2; padding-bottom: 4px; background: linear-gradient(180deg, #14141c 70%, transparent); }
+.eg-table tbody th, .eg-table tfoot th { position: sticky; left: 0; z-index: 1; padding-right: 6px; text-align: right; background: linear-gradient(90deg, #14141c 70%, transparent); }
+/* The averages stay in view while the episodes scroll under them. */
+.eg-table tfoot th, .eg-table tfoot td { position: sticky; bottom: 0; z-index: 3; padding-top: 4px; background: linear-gradient(0deg, #14141c 68%, transparent); }
+.eg-table tfoot th { z-index: 4; color: var(--text2); }
+.eg-cell {
+  width: 100%;
+  min-width: 46px;
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  color: #071008;
+  font-family: var(--font);
+  font-size: .82rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: transform .18s var(--ease-out), box-shadow .18s var(--ease-out);
+}
+.eg-cell.empty { min-height: 0; background: none; cursor: default; }
+button.eg-cell:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 8px 18px rgba(0, 0, 0, .45); }
+button.eg-cell:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.eg-cell.is-avg { cursor: default; opacity: .92; }
+.eg-cell.is-best { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .85); }
+.eg-cell.seen::after { content: ''; position: absolute; }
+.eg-table td { position: relative; }
+.eg-cell.seen { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .45); }
+/* The bands: red through green, the same language as the season heatmap. */
+.band-great, .eg-cell.band-great { background: #15a34a; color: #f0fff6; }
+.band-good, .eg-cell.band-good { background: #3fbf63; }
+.band-fair, .eg-cell.band-fair { background: #c9a227; }
+.band-weak, .eg-cell.band-weak { background: #d97036; }
+.band-poor, .eg-cell.band-poor { background: #c0392b; color: #fff1ef; }
+.band-none, .eg-cell.band-none { background: rgba(255, 255, 255, .12); color: var(--text3); }
+.eg-note { margin-top: 12px; color: var(--text2); font-size: .82rem; }
+.eg-source, .eg-empty { margin-top: 6px; color: var(--text3); font-size: .74rem; }
+.eg-loading, .eg-empty { padding: 26px 4px; color: var(--text3); font-size: .86rem; text-align: center; }
+
+@media (max-width: 560px) {
+  .eg-card { width: 100%; padding: 14px; border-radius: 20px; }
+  .eg-cell { min-width: 38px; min-height: 30px; font-size: .74rem; }
+  .eg-table { border-spacing: 4px; }
+  .eg-head h2 { font-size: 1.15rem; }
+}
+
+html[data-motion="reduced"] .score-tag { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) .score-tag { animation: none !important; }
+}

@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { icon } from './icons.js';
 import { $, toast, esc } from './ui.js';
 import { illustration } from './illustrations.js';
+import { BACKDROPS, previewHTML } from './backdrops.js';
 import { registerActions } from './events.js';
 import { REGIONS, regionLabel } from './config.js';
 import { prefs, updatePref, resetPrefs, preferencePayload, DEFAULT_PREFS } from './prefs.js';
@@ -80,6 +81,7 @@ const THEME_CHOICES = [
   ['light', 'Light', 'Warm paper, deep ink', page('pp-light')],
   ['system', 'Match device', 'Follows your system', `${page('pp-dark')}${page('pp-light pp-half')}`],
 ];
+const BACKDROP_CHOICES = BACKDROPS.map(([key, label, note]) => [key, label, note, previewHTML(key)]);
 const DENSITY_CHOICES = [
   ['comfortable', 'Comfortable', 'Bigger posters, more air', '<span class="pp-grid roomy"><u></u><u></u><u></u></span>'],
   ['compact', 'Compact', 'More titles on screen', '<span class="pp-grid tight"><u></u><u></u><u></u><u></u><u></u></span>'],
@@ -119,7 +121,7 @@ function syncPosterPreview() {
 // jump bar, and (where it holds preferences) a Reset that returns just that
 // section to its defaults, with a count of what differs.
 const SECTIONS = [
-  { id: 'appearance', kicker: 'Appearance', title: 'Cinematic interface', chip: 'Look', icon: 'palette', scene: 'palette', blurb: 'Theme, density, text size, glass and the small celebrations.', keys: ['theme', 'density', 'textSize', 'glass', 'lightDrift', 'castMilestones', 'streakMilestones', 'ambientColour', 'highContrast', 'compactNav'] },
+  { id: 'appearance', kicker: 'Appearance', title: 'Cinematic interface', chip: 'Look', icon: 'palette', scene: 'palette', blurb: 'Theme, the moving backdrop, density, text size, glass and the small celebrations.', keys: ['theme', 'backdrop', 'density', 'textSize', 'glass', 'lightDrift', 'castMilestones', 'streakMilestones', 'ambientColour', 'highContrast', 'compactNav'] },
   { id: 'posters', kicker: 'Every poster', title: 'Poster controls', chip: 'Posters', icon: 'film', scene: 'posterstack', blurb: 'What sits on and under every poster across CineVerse.', keys: ['hidePosterCaptions', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview'] },
   { id: 'atmosphere', kicker: 'Motion & playback', title: 'Atmosphere', chip: 'Motion', icon: 'clapper', scene: 'projector', blurb: 'How much moves, plays and answers your touch.', keys: ['motion', 'autoplay', 'backdropArt', 'posterTilt', 'haptics'] },
   { id: 'discovery', kicker: 'Discovery', title: 'Signals and spoilers', chip: 'Discovery', icon: 'compass', scene: 'compass', blurb: 'Scores, watched marks and protection from spoilers.', keys: ['showRatings', 'showWatched', 'spoilerShield'] },
@@ -191,7 +193,7 @@ const PREF_LABELS = {
   theme: 'Theme', density: 'Content density', textSize: 'Text size', glass: 'Glass effects', motion: 'Interface motion',
   lightDrift: 'Moving lights', castMilestones: 'Cast milestones', streakMilestones: 'Streak milestones', ambientColour: 'Title colour', highContrast: 'High-contrast type', compactNav: 'Compact navigation',
   hidePosterCaptions: 'Hide titles under posters', cleanHomePosters: 'Clean posters', posterCommunityRating: 'Community rating', posterPersonalRating: 'Your rating', posterWatchedMark: 'Watched mark', posterListButton: 'Add to list', posterRateButton: 'Quick rating', posterMatchBadge: 'Match badge', posterProviderLogo: 'Streaming logo', posterDismissButton: 'Not interested', posterPreview: 'Hover previews',
-  autoplay: 'Ambient hero previews', backdropArt: 'Decorative backdrop art', posterTilt: 'Poster depth effect', haptics: 'Mobile haptics',
+  autoplay: 'Ambient hero previews', backdropArt: 'Decorative backdrop art', posterTilt: 'Poster depth effect', haptics: 'Mobile haptics', backdrop: 'Moving backdrop',
   showRatings: 'Community ratings', showWatched: 'Watched artwork marks', spoilerShield: 'Spoiler shield',
   mature: 'Show mature content', matureInRecs: 'Mature titles in recommendations', matureBlur: 'Blur mature artwork',
   detailBoxOfficeExpanded: 'Open Box Office', detailGalleryExpanded: 'Open Gallery', detailReviewsExpanded: 'Open Reviews',
@@ -200,7 +202,7 @@ const PREF_LABELS = {
 };
 /** Pure: a preference value in words. */
 export function prefValueLabel(key, value) {
-  const choices = { theme: THEME_CHOICES, density: DENSITY_CHOICES, textSize: TEXT_CHOICES, motion: MOTION_CHOICES, glass: GLASS_CHOICES }[key];
+  const choices = { theme: THEME_CHOICES, backdrop: BACKDROP_CHOICES, density: DENSITY_CHOICES, textSize: TEXT_CHOICES, motion: MOTION_CHOICES, glass: GLASS_CHOICES }[key];
   if (choices) return choices.find(([choice]) => choice === value)?.[1] || String(value);
   if (key === 'detailHidden') return Array.isArray(value) && value.length ? `${value.length} hidden` : 'All shown';
   return value ? 'On' : 'Off';
@@ -546,6 +548,7 @@ export function renderSettings() {
       <main>
         <section class="settings-panel" id="settings-appearance" data-section-panel="appearance">${panelHead('appearance')}
           ${previewPicker('theme', 'Theme', 'Cinema dark, paper light, or follow your device. Also in the profile menu.', THEME_CHOICES, prefs.theme, 'settings-theme')}
+          ${previewPicker('backdrop', 'Moving backdrop', 'The light behind every page. Each one drifts toward where you tap.', BACKDROP_CHOICES, prefs.backdrop)}
           ${previewPicker('density', 'Content density', 'Choose roomy cards or fit more on screen.', DENSITY_CHOICES, prefs.density)}
           ${previewPicker('textSize', 'Text size', 'Increase interface text without zooming the page.', TEXT_CHOICES, prefs.textSize)}
           ${glassPicker()}

@@ -482,6 +482,71 @@ Its selectors repeat a class (`.stats-panel.stats-panel`) to outrank the
 single-class variant rules they replace without ids, so the glass layer still
 finds every panel and the light compile pairs each rule with its own light copy.
 
+## Outside scores
+
+Beside CineVerse's own TMDB score, a title page shows **IMDb**, the
+**Tomatometer** and **Metacritic** (`js/scores.js`, `js/score-badges.js`). Both
+sources are free and need no key, no account and no server of ours:
+
+- **IMDb** comes from **Cinemeta** (`v3-cinemeta.strem.io`), the public catalogue
+  Stremio runs — one request per title, checked against IMDb itself (Inception
+  8.8, Breaking Bad 9.5).
+- **Rotten Tomatoes and Metacritic** come from **Wikidata**, where they are stored
+  as review scores with the reviewer named. The Tomatometer is the critics'
+  percentage; its 10-point average is shown in the badge's tooltip. Coverage is
+  good for films and thinner for television, and a title with neither simply
+  shows fewer badges.
+
+Both are cached on the device for a day (300 titles), fetched after the page has
+painted, and never block it: a source that is down costs nothing but its badge.
+**Settings → Show ratings** hides these along with the TMDB score.
+
+Cinemeta also publishes per-episode numbers, and they are **not** IMDb's —
+Ozymandias comes back 8.4 where IMDb says 9.9, and some shows come back unrated —
+so the episode grid below uses TMDB's ratings instead.
+
+## Episode ratings grid
+
+A series page offers **Episode ratings** under its seasons: the whole show as one
+grid (`js/episode-grid.js`), seasons across the top, episode numbers down the
+side, each cell in its band's colour — 9.0+, 8.0–8.9, 7.0–7.9, 6.0–6.9, below 6,
+not rated — with each season's average pinned along the bottom as the episodes
+scroll under it.
+
+- The ratings are TMDB's, the same ones on every episode card and in the season
+  heatmap, so the grid never disagrees with the page behind it.
+- Episodes you have watched are ringed; the highest-rated episode carries a white
+  outline; a line underneath names the strongest and weakest seasons.
+- Picking any cell closes the grid and opens that episode in the list behind.
+
+## Moving backdrops
+
+The light behind the site comes in six styles, chosen in **Settings → Appearance
+→ Moving backdrop** (`js/backdrops.js`, `css/backdrops.css`):
+
+| Style | What it does |
+|---|---|
+| **Aurora** | Two soft blooms, the CineVerse classic |
+| **Silk** | Wide bands of colour folding over each other, with a fine grain |
+| **Mesh** | Four lights breathing against each other |
+| **Nebula** | A deep cloud drifting behind a field of stars |
+| **Beams** | Projector light sweeping a dark room |
+| **Still** | The same light, holding its breath |
+
+- All six are drawn from the same four layers and animated **entirely in CSS**, so
+  switching costs one attribute and nothing runs per frame.
+- The pointer and scroll drift (`js/stage.js`) still leans whichever style is on,
+  reduced motion freezes them where they stand, and **Glass effects → Quiet**
+  dims them.
+- The picker shows each style **moving, in miniature**, before you choose.
+
+**The backdrop was never actually visible before.** It lives at `z-index: -2`
+inside `<body>`, and a negative descendant paints *behind* its ancestor's
+background box — so `body { background: var(--bg) }` covered it, including the
+original Aurora. The page colour now sits on `<html>` (which the browser also
+propagates to the canvas, so overscroll is unchanged) and `<body>` is
+transparent.
+
 ## Cinema glass
 
 With **Settings → Glass effects** on *Rich cinema glass* (the default), the site
@@ -1500,6 +1565,9 @@ folded filter bars: what counts as a set filter, the button's summary and a
 registry that still matches the markup (`filter-fold.test.mjs`), and how the site
 feels: every action's haptic signature and weight, the lean and its settling,
 row detents and edges, headings crossing the middle, the ticket stub's arc, the
+outside scores and the ratings grid: reading a rating, the Wikidata parse, which
+badges are drawn and how they are toned, the grid's columns, averages, best
+episode and sentence, and the backdrop styles (`scores.test.mjs`), and the
 Continue Watching lift and the sticky bars (`feel.test.mjs`), and the gestures:
 the pick reel and how it slows, what a swipe on a Continue Watching card does and
 how far the card follows, the pull's resistance and arming point, the shake

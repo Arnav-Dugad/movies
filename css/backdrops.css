@@ -1,0 +1,228 @@
+/* ============================================================
+   MOVING BACKDROPS
+   The light behind the whole site. Every style is drawn with the same four
+   layers (js/backdrops.js puts them inside .aurora) and moves with CSS only —
+   no per-frame JavaScript, nothing to schedule, nothing to drop frames.
+
+   The pointer/scroll drift (js/stage.js) still applies on top through
+   --drift-x/--drift-y, so a backdrop leans toward where you tap whichever
+   style is chosen.
+
+   Colours come from the palette, so the light theme's compiled copy turns each
+   one into its paper equivalent.
+   ============================================================ */
+
+/* The light lives at z-index -2 inside <body>. Painting order puts a negative
+   descendant BEHIND its ancestor's background box, and <body> carried the page
+   colour — so the backdrop (every style, including the original Aurora) was
+   painted over and never actually seen. The page colour moves to <html>, which
+   the browser also propagates to the canvas, and <body> becomes transparent. */
+html { background: var(--bg); }
+body { background: transparent; }
+
+.bd-layer {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* The classic: two soft blooms, as CineVerse has always had. The layers stay
+   empty and css/animations.css keeps drawing ::before and ::after. */
+html[data-backdrop="aurora"] .bd-layer { display: none; }
+
+/* ---------- Silk: wide bands of colour folding over each other ---------- */
+html[data-backdrop="silk"] .aurora::before,
+html[data-backdrop="silk"] .aurora::after,
+html[data-backdrop="mesh"] .aurora::before,
+html[data-backdrop="mesh"] .aurora::after,
+html[data-backdrop="nebula"] .aurora::before,
+html[data-backdrop="nebula"] .aurora::after,
+html[data-backdrop="beams"] .aurora::before,
+html[data-backdrop="beams"] .aurora::after,
+html[data-backdrop="still"] .aurora::before,
+html[data-backdrop="still"] .aurora::after { content: none; }
+
+html[data-backdrop="silk"] .aurora { opacity: .3; filter: saturate(125%); }
+html[data-backdrop="silk"] .bd-layer {
+  inset: -18%;
+  border-radius: 45%;
+  filter: blur(46px);
+  mix-blend-mode: screen;
+}
+html[data-backdrop="silk"] .bd-layer:nth-child(1) {
+  background: conic-gradient(from 0deg at 42% 58%, rgba(229, 9, 20, .92), rgba(12, 12, 20, 0) 30%, rgba(139, 92, 246, .8) 58%, rgba(12, 12, 20, 0) 84%, rgba(229, 9, 20, .92));
+  animation: bd-silk-a 34s linear infinite;
+}
+html[data-backdrop="silk"] .bd-layer:nth-child(2) {
+  background: conic-gradient(from 210deg at 62% 38%, rgba(6, 182, 212, .7), rgba(8, 8, 14, 0) 28%, rgba(229, 9, 20, .62) 62%, rgba(8, 8, 14, 0) 90%, rgba(6, 182, 212, .7));
+  animation: bd-silk-b 46s linear infinite;
+}
+html[data-backdrop="silk"] .bd-layer:nth-child(3) {
+  inset: -10%;
+  background: radial-gradient(60% 50% at 30% 30%, rgba(251, 191, 36, .42), transparent 70%),
+              radial-gradient(55% 45% at 75% 70%, rgba(139, 92, 246, .55), transparent 72%);
+  animation: bd-silk-c 28s ease-in-out infinite;
+}
+html[data-backdrop="silk"] .bd-layer:nth-child(4) {
+  inset: 0;
+  border-radius: 0;
+  filter: none;
+  mix-blend-mode: soft-light;
+  opacity: .5;
+  background-image: radial-gradient(rgba(255, 255, 255, .5) .5px, transparent .5px);
+  background-size: 3px 3px;
+  animation: bd-grain 7s steps(6) infinite;
+}
+@keyframes bd-silk-a {
+  0% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(0deg) scale(1.15); }
+  100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(360deg) scale(1.15); }
+}
+@keyframes bd-silk-b {
+  0% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(360deg) scale(1.3); }
+  100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(0deg) scale(1.3); }
+}
+@keyframes bd-silk-c {
+  0%, 100% { transform: translate3d(calc(var(--drift-x, 0px) - 4%), var(--drift-y, 0), 0) scale(1); }
+  50% { transform: translate3d(calc(var(--drift-x, 0px) + 6%), calc(var(--drift-y, 0px) + 4%), 0) scale(1.14); }
+}
+@keyframes bd-grain {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-2px, 1px); }
+  50% { transform: translate(1px, -2px); }
+  75% { transform: translate(2px, 2px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ---------- Mesh: four blooms breathing against each other ---------- */
+html[data-backdrop="mesh"] .aurora { opacity: .45; }
+html[data-backdrop="mesh"] .bd-layer {
+  width: 58vmax;
+  height: 58vmax;
+  filter: blur(64px);
+  opacity: .85;
+}
+html[data-backdrop="mesh"] .bd-layer:nth-child(1) { top: -14%; left: -10%; background: radial-gradient(circle, rgba(229, 9, 20, .72), transparent 62%); animation: bd-mesh-a 24s ease-in-out infinite; }
+html[data-backdrop="mesh"] .bd-layer:nth-child(2) { bottom: -18%; right: -12%; background: radial-gradient(circle, rgba(139, 92, 246, .68), transparent 62%); animation: bd-mesh-b 31s ease-in-out infinite; }
+html[data-backdrop="mesh"] .bd-layer:nth-child(3) { top: 22%; right: -16%; background: radial-gradient(circle, rgba(6, 182, 212, .5), transparent 62%); animation: bd-mesh-c 38s ease-in-out infinite; }
+html[data-backdrop="mesh"] .bd-layer:nth-child(4) { bottom: 8%; left: -14%; background: radial-gradient(circle, rgba(251, 191, 36, .38), transparent 62%); animation: bd-mesh-d 44s ease-in-out infinite; }
+@keyframes bd-mesh-a { 0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) scale(1); } 50% { transform: translate3d(calc(var(--drift-x, 0px) + 12%), calc(var(--drift-y, 0px) + 8%), 0) scale(1.18); } }
+@keyframes bd-mesh-b { 0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) scale(1.1); } 50% { transform: translate3d(calc(var(--drift-x, 0px) - 10%), calc(var(--drift-y, 0px) - 9%), 0) scale(.92); } }
+@keyframes bd-mesh-c { 0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) scale(.95); } 50% { transform: translate3d(calc(var(--drift-x, 0px) - 14%), calc(var(--drift-y, 0px) + 10%), 0) scale(1.12); } }
+@keyframes bd-mesh-d { 0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) scale(1.05); } 50% { transform: translate3d(calc(var(--drift-x, 0px) + 9%), calc(var(--drift-y, 0px) - 7%), 0) scale(.9); } }
+
+/* ---------- Nebula: deep cloud, slow parallax, a field of stars ---------- */
+html[data-backdrop="nebula"] .aurora { opacity: .4; }
+html[data-backdrop="nebula"] .bd-layer:nth-child(1) {
+  inset: -15%;
+  border-radius: 40%;
+  filter: blur(54px);
+  background: radial-gradient(45% 40% at 28% 32%, rgba(139, 92, 246, .85), transparent 70%),
+              radial-gradient(50% 45% at 72% 62%, rgba(6, 182, 212, .6), transparent 72%),
+              radial-gradient(40% 38% at 55% 20%, rgba(229, 9, 20, .55), transparent 70%);
+  animation: bd-neb-a 60s linear infinite;
+}
+html[data-backdrop="nebula"] .bd-layer:nth-child(2) {
+  inset: -8%;
+  border-radius: 40%;
+  filter: blur(44px);
+  opacity: .8;
+  background: radial-gradient(38% 34% at 70% 28%, rgba(236, 72, 153, .6), transparent 70%),
+              radial-gradient(42% 36% at 22% 74%, rgba(59, 130, 246, .55), transparent 72%);
+  animation: bd-neb-b 44s ease-in-out infinite;
+}
+html[data-backdrop="nebula"] .bd-layer:nth-child(3),
+html[data-backdrop="nebula"] .bd-layer:nth-child(4) {
+  inset: 0;
+  border-radius: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, .85) 1px, transparent 1.2px);
+  background-size: 140px 140px;
+  opacity: .32;
+  animation: bd-stars 9s ease-in-out infinite;
+}
+html[data-backdrop="nebula"] .bd-layer:nth-child(4) { background-size: 90px 90px; background-position: 40px 60px; opacity: .2; animation-duration: 13s; animation-delay: -4s; }
+@keyframes bd-neb-a {
+  0% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(0deg) scale(1.1); }
+  100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(360deg) scale(1.1); }
+}
+@keyframes bd-neb-b {
+  0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) scale(1); }
+  50% { transform: translate3d(calc(var(--drift-x, 0px) + 8%), calc(var(--drift-y, 0px) - 6%), 0) scale(1.15); }
+}
+@keyframes bd-stars { 0%, 100% { opacity: .14; } 50% { opacity: .36; } }
+
+/* ---------- Beams: projector light sweeping a dark room ---------- */
+html[data-backdrop="beams"] .aurora { opacity: .55; }
+html[data-backdrop="beams"] .bd-layer {
+  inset: -40% -20%;
+  border-radius: 0;
+  filter: blur(34px);
+  opacity: .85;
+  transform-origin: 50% 0;
+}
+html[data-backdrop="beams"] .bd-layer:nth-child(1) { background: linear-gradient(103deg, transparent 38%, rgba(229, 9, 20, .5) 50%, transparent 62%); animation: bd-beam-a 26s ease-in-out infinite; }
+html[data-backdrop="beams"] .bd-layer:nth-child(2) { background: linear-gradient(77deg, transparent 40%, rgba(139, 92, 246, .48) 52%, transparent 64%); animation: bd-beam-b 34s ease-in-out infinite; }
+html[data-backdrop="beams"] .bd-layer:nth-child(3) { background: linear-gradient(94deg, transparent 45%, rgba(255, 255, 255, .1) 51%, transparent 58%); animation: bd-beam-a 44s ease-in-out infinite reverse; }
+html[data-backdrop="beams"] .bd-layer:nth-child(4) { inset: auto -20% -30%; height: 60vmax; border-radius: 50%; background: radial-gradient(circle, rgba(6, 182, 212, .4), transparent 65%); filter: blur(70px); animation: bd-mesh-c 40s ease-in-out infinite; }
+@keyframes bd-beam-a {
+  0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(-7deg); }
+  50% { transform: translate3d(calc(var(--drift-x, 0px) + 5%), var(--drift-y, 0), 0) rotate(9deg); }
+}
+@keyframes bd-beam-b {
+  0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(8deg); }
+  50% { transform: translate3d(calc(var(--drift-x, 0px) - 6%), var(--drift-y, 0), 0) rotate(-6deg); }
+}
+
+/* ---------- Still: the same light, holding its breath ---------- */
+html[data-backdrop="still"] .aurora { opacity: .5; }
+html[data-backdrop="still"] .bd-layer { width: 60vmax; height: 60vmax; filter: blur(70px); opacity: .6; animation: none; }
+html[data-backdrop="still"] .bd-layer:nth-child(1) { top: -12%; left: -8%; background: radial-gradient(circle, rgba(229, 9, 20, .55), transparent 62%); }
+html[data-backdrop="still"] .bd-layer:nth-child(2) { bottom: -16%; right: -10%; background: radial-gradient(circle, rgba(139, 92, 246, .5), transparent 62%); }
+html[data-backdrop="still"] .bd-layer:nth-child(3), html[data-backdrop="still"] .bd-layer:nth-child(4) { display: none; }
+
+/* Reduced motion freezes every style where it stands; the colours stay. */
+html[data-motion="reduced"] .bd-layer { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) .bd-layer { animation: none !important; }
+}
+/* Quiet glass means a quiet room. */
+html[data-glass="quiet"] .bd-layer { animation: none !important; opacity: .28; }
+
+/* ---------- The pickers in Settings ---------- */
+.bd-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0a0a12;
+}
+.bd-preview .bd-layer { position: absolute; }
+/* The preview reuses each style's own layers, scaled into the swatch. */
+.bd-preview[data-style] { isolation: isolate; }
+.bd-preview[data-style="aurora"]::before,
+.bd-preview[data-style="aurora"]::after {
+  content: '';
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  border-radius: 50%;
+  filter: blur(14px);
+}
+.bd-preview[data-style="aurora"]::before { top: -30%; left: -30%; background: radial-gradient(circle, rgba(229, 9, 20, .8), transparent 60%); animation: bd-mesh-a 18s ease-in-out infinite; }
+.bd-preview[data-style="aurora"]::after { bottom: -30%; right: -30%; background: radial-gradient(circle, rgba(139, 92, 246, .45), transparent 60%); animation: bd-mesh-b 22s ease-in-out infinite; }
+.bd-preview[data-style="silk"] .bd-layer { inset: -40%; border-radius: 45%; filter: blur(12px); mix-blend-mode: screen; }
+.bd-preview[data-style="silk"] .bd-layer:nth-child(1) { background: conic-gradient(from 0deg at 42% 58%, rgba(229, 9, 20, .6), transparent 32%, rgba(139, 92, 246, .5) 58%, transparent 82%, rgba(229, 9, 20, .6)); animation: bd-silk-a 14s linear infinite; }
+.bd-preview[data-style="silk"] .bd-layer:nth-child(2) { background: conic-gradient(from 210deg at 62% 38%, rgba(6, 182, 212, .45), transparent 30%, rgba(229, 9, 20, .4) 62%, transparent 88%, rgba(6, 182, 212, .45)); animation: bd-silk-b 18s linear infinite; }
+.bd-preview[data-style="mesh"] .bd-layer { width: 90%; height: 90%; filter: blur(14px); opacity: .6; }
+.bd-preview[data-style="mesh"] .bd-layer:nth-child(1) { top: -20%; left: -20%; background: radial-gradient(circle, rgba(229, 9, 20, .8), transparent 62%); animation: bd-mesh-a 12s ease-in-out infinite; }
+.bd-preview[data-style="mesh"] .bd-layer:nth-child(2) { bottom: -20%; right: -20%; background: radial-gradient(circle, rgba(139, 92, 246, .5), transparent 62%); animation: bd-mesh-b 15s ease-in-out infinite; }
+.bd-preview[data-style="mesh"] .bd-layer:nth-child(3) { top: 10%; right: -25%; background: radial-gradient(circle, rgba(6, 182, 212, .4), transparent 62%); animation: bd-mesh-c 18s ease-in-out infinite; }
+.bd-preview[data-style="nebula"] .bd-layer:nth-child(1) { inset: -30%; border-radius: 40%; filter: blur(12px); background: radial-gradient(45% 40% at 28% 32%, rgba(139, 92, 246, .65), transparent 70%), radial-gradient(50% 45% at 72% 62%, rgba(6, 182, 212, .45), transparent 72%); animation: bd-neb-a 20s linear infinite; }
+.bd-preview[data-style="nebula"] .bd-layer:nth-child(2) { inset: 0; background-image: radial-gradient(rgba(255, 255, 255, .9) .8px, transparent 1px); background-size: 16px 16px; opacity: .4; animation: bd-stars 6s ease-in-out infinite; }
+.bd-preview[data-style="beams"] .bd-layer { inset: -40% -10%; filter: blur(8px); }
+.bd-preview[data-style="beams"] .bd-layer:nth-child(1) { background: linear-gradient(103deg, transparent 40%, rgba(229, 9, 20, .45) 50%, transparent 60%); animation: bd-beam-a 13s ease-in-out infinite; }
+.bd-preview[data-style="beams"] .bd-layer:nth-child(2) { background: linear-gradient(77deg, transparent 42%, rgba(139, 92, 246, .4) 52%, transparent 62%); animation: bd-beam-b 17s ease-in-out infinite; }
+.bd-preview[data-style="still"] .bd-layer { width: 90%; height: 90%; filter: blur(14px); opacity: .5; }
+.bd-preview[data-style="still"] .bd-layer:nth-child(1) { top: -20%; left: -20%; background: radial-gradient(circle, rgba(229, 9, 20, .8), transparent 62%); }
+.bd-preview[data-style="still"] .bd-layer:nth-child(2) { bottom: -20%; right: -20%; background: radial-gradient(circle, rgba(139, 92, 246, .45), transparent 62%); }

@@ -7,6 +7,7 @@ import { loadPrefs } from './prefs.js';
 import { initGlass } from './glass.js';
 import { initScrollHints } from './scroll-hints.js';
 import { initStage } from './stage.js';
+import { initBackdrops } from './backdrops.js';
 import { initIllustrations } from './illustrations.js';
 import { initFilterFold } from './filter-fold.js';
 import { initAuth } from './auth.js';
@@ -84,6 +85,7 @@ async function init() {
   // built from the active palette (js/glass.js).
   initGlass();
   initScrollHints();
+  initBackdrops();
   initStage();
   initIllustrations();
 

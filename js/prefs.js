@@ -13,6 +13,8 @@ export const DEFAULT_PREFS = Object.freeze({
   showRatings: true, showWatched: true, spoilerShield: false,
   rememberSearch: true, rememberViewed: true, discoverable: true, shareTaste: true,
   glass: 'rich', textSize: 'standard',
+  // The moving light behind the site (js/backdrops.js).
+  backdrop: 'aurora',
   backdropArt: true, posterTilt: true, highContrast: false, compactNav: false,
   haptics: true,
   cleanHomePosters: false, posterCommunityRating: true, posterPersonalRating: true,
@@ -61,6 +63,7 @@ const allowed = {
   motion: new Set(['system', 'full', 'reduced']),
   glass: new Set(['rich', 'quiet']),
   textSize: new Set(['standard', 'large']),
+  backdrop: new Set(['aurora', 'silk', 'mesh', 'nebula', 'beams', 'still']),
 };
 
 /** Pure: unique positive whole person ids, at most 300, in the order given. */
@@ -94,6 +97,7 @@ export function applyPrefs() {
   root.dataset.spoilers = prefs.spoilerShield ? 'shield' : 'show';
   root.dataset.glass = prefs.glass;
   root.dataset.textSize = prefs.textSize;
+  root.dataset.backdrop = prefs.backdrop;
   root.dataset.backdropArt = prefs.backdropArt ? 'show' : 'hide';
   root.dataset.posterTilt = prefs.posterTilt ? 'on' : 'off';
   root.dataset.cleanHomePosters = prefs.cleanHomePosters ? 'on' : 'off';

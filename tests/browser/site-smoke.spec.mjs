@@ -249,11 +249,15 @@ test('light theme paints before boot, toggles from the profile menu and syncs', 
   // Applied by the classic head script, before the app modules have run.
   expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('light');
   await page.waitForFunction(() => window.__cvBooted === true, null, { timeout: 12_000 });
+  // The page colour sits on <html>: a backdrop at z-index -2 inside <body> is
+  // painted behind <body>'s own background box, so <body> stays transparent for
+  // the moving light to be seen at all (css/backdrops.css).
   const paper = await page.evaluate(() => {
-    const [r, g, b] = getComputedStyle(document.body).backgroundColor.match(/\d+/g).map(Number);
+    const [r, g, b] = getComputedStyle(document.documentElement).backgroundColor.match(/\d+/g).map(Number);
     return (r + g + b) / 3;
   });
   expect(paper).toBeGreaterThan(210);
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
   expect(await page.evaluate(() => document.getElementById('cvLightTheme')?.textContent.length || 0)).toBeGreaterThan(50_000);
   expect(await page.evaluate(() => document.querySelector('meta[name="theme-color"]').content)).toBe('#e6e2da');
 
@@ -267,6 +271,6 @@ test('light theme paints before boot, toggles from the profile menu and syncs', 
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
   expect(await page.evaluate(() => document.getElementById('cvLightTheme').media)).toBe('not all');
   await expect.poll(() => page.evaluate(() => window.__cvWrites.some(value => value.experiencePrefs?.theme === 'dark'))).toBe(true);
-  const ink = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const ink = await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
   expect(ink).toBe('rgb(6, 6, 11)');
 });
