@@ -1,9 +1,10 @@
 // ===== SCORE BADGES ON A TITLE PAGE =====
 // IMDb, the Tomatometer and Metacritic, beside the TMDB score CineVerse already
-// shows. They arrive after the page has painted (js/scores.js), slide in, and
-// each one links out to where it came from. A title with no outside scores shows
-// nothing extra, and a reader who has turned scores off in Settings sees none of
-// it at all.
+// shows. They arrive after the page has painted (js/scores.js) and slide in.
+//
+// Each badge is a quiet pill: the source's own small mark, then the number in
+// the page's ink. The colour belongs to the mark, not the whole chip, so a row
+// of four scores reads as one row rather than four competing lozenges.
 import { scoresFor } from './scores.js';
 import { prefs } from './prefs.js';
 
@@ -11,28 +12,49 @@ import { prefs } from './prefs.js';
 export function badgesFor(scores = {}, { imdbId = '' } = {}) {
   const out = [];
   if (scores.imdb > 0) {
-    out.push({ key: 'imdb', label: 'IMDb', value: scores.imdb.toFixed(1), suffix: '', title: `IMDb rating ${scores.imdb.toFixed(1)} out of 10`, href: imdbId ? `https://www.imdb.com/title/${imdbId}/ratings/` : '' });
+    out.push({
+      key: 'imdb',
+      value: scores.imdb.toFixed(1),
+      title: `IMDb rating ${scores.imdb.toFixed(1)} out of 10`,
+      href: imdbId ? `https://www.imdb.com/title/${imdbId}/ratings/` : '',
+    });
   }
   if (scores.rt > 0) {
-    out.push({ key: scores.rt >= 60 ? 'rt fresh' : 'rt rotten', label: 'Tomatometer', value: String(scores.rt), suffix: '%', title: `Rotten Tomatoes: ${scores.rt}% of critics positive${scores.rtAverage ? ` (average ${scores.rtAverage}/10)` : ''}`, href: '' });
+    const fresh = scores.rt >= 60;
+    out.push({
+      key: 'rt',
+      tone: fresh ? 'fresh' : 'rotten',
+      value: `${scores.rt}%`,
+      title: `Rotten Tomatoes: ${scores.rt}% of critics positive${scores.rtAverage ? ` (average ${scores.rtAverage}/10)` : ''}`,
+      href: '',
+    });
   }
   if (scores.metacritic > 0) {
-    const tone = scores.metacritic >= 61 ? 'mc good' : scores.metacritic >= 40 ? 'mc mixed' : 'mc poor';
-    out.push({ key: tone, label: 'Metascore', value: String(scores.metacritic), suffix: '', title: `Metacritic: ${scores.metacritic} out of 100`, href: '' });
+    out.push({
+      key: 'mc',
+      tone: scores.metacritic >= 61 ? 'good' : scores.metacritic >= 40 ? 'mixed' : 'poor',
+      value: String(scores.metacritic),
+      title: `Metacritic: ${scores.metacritic} out of 100`,
+      href: '',
+    });
   }
   return out;
 }
 
+// The marks. Small, flat and drawn to the same 16px box so the row lines up.
+const TOMATO = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8.6 3.1c2.6 0 4.7 2 4.7 4.7 0 2.9-2.1 5.3-4.9 5.3S3.5 10.7 3.5 7.8c0-2.6 2.1-4.7 4.7-4.7z"/><path d="M8.9 3c.2-1.1 1-2 2-2.4-.1 1.1-.8 2.1-2 2.4z" class="rt-leaf"/></svg>';
+const SPLAT = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 2.4l1.5 1.3 1.9-.6-.2 2 1.7 1-1.3 1.5.6 1.9-2 .2-1 1.7-1.5-1.3-1.9.6.2-2-1.7-1 1.3-1.5-.6-1.9 2-.2z"/></svg>';
+
 const MARKS = {
-  imdb: '<b class="score-mark imdb">IMDb</b>',
-  rt: '<svg class="score-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4.2c3.9 0 7.3 2.9 7.3 6.9 0 4.6-3.3 8.7-7.3 8.7s-7.3-4.1-7.3-8.7c0-4 3.4-6.9 7.3-6.9z"/><path fill="currentColor" d="M12.4 4.4c.2-1 .9-1.9 1.9-2.4-.2 1-.9 1.9-1.9 2.4z"/></svg>',
-  mc: '<b class="score-mark mc">M</b>',
+  imdb: '<b class="score-mark score-imdb">IMDb</b>',
+  rt: mark => `<span class="score-mark score-rt ${mark}">${mark === 'fresh' ? TOMATO : SPLAT}</span>`,
+  mc: tone => `<b class="score-mark score-mc ${tone}"></b>`,
 };
 
 function badgeHTML(badge) {
-  const family = badge.key.split(' ')[0];
-  const inner = `${MARKS[family] || ''}<span>${badge.value}${badge.suffix}</span>`;
-  const attrs = `class="dtag score-tag ${badge.key}" title="${badge.title}" data-dp="scores"`;
+  const mark = badge.key === 'imdb' ? MARKS.imdb : MARKS[badge.key](badge.tone);
+  const inner = `${mark}<span class="score-value">${badge.value}</span>`;
+  const attrs = `class="score-tag score-${badge.key}${badge.tone ? ` is-${badge.tone}` : ''}" title="${badge.title}" data-dp="scores"`;
   return badge.href
     ? `<a ${attrs} href="${badge.href}" target="_blank" rel="noopener">${inner}</a>`
     : `<span ${attrs}>${inner}</span>`;

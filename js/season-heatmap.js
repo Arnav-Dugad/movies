@@ -45,6 +45,13 @@ export const DELTA_STEPS = [0.2, 0.5, 1];
 export const DELTA_BANDS = [0, 1, 2, 3, 4, 5, 6];
 const TRUSTED_VOTES = 5;
 const MODE_KEY = 'cv_heatmap_mode';
+// Colour by rating, colour by how an episode compares with its own season, or
+// print every rating in the square ("Numbers" — the whole show's episode
+// ratings, on the page rather than in a window of their own).
+export const MODES = [['rating', 'Rating'], ['standouts', 'Standouts'], ['numbers', 'Numbers']];
+export const MODE_NAMES = MODES.map(([value]) => value);
+/** Pure: a stored mode cleaned to one this build draws. */
+export const modeName = value => (MODE_NAMES.includes(String(value)) ? String(value) : 'rating');
 const LIT_KEY = 'cv_heatmap_lit_v1';
 
 /** Pure: the band index for a rating, or -1 when there is no community rating. */
@@ -207,16 +214,16 @@ export function heatmapHTML(tid, model, { mode = 'rating', light = false } = {})
       <div class="hm-cells" role="presentation">${row.cells.map((cell, index) => {
         const kind = cell.band >= 0 ? '' : cell.aired ? ' none' : ' unaired';
         const lit = cell.order >= 0 ? cell.order * step : unwatchedDelay;
-        return `<button type="button" role="gridcell" class="hm-cell${kind}${cell.watched ? ' watched' : ''}${model.best === cell ? ' best' : ''}" tabindex="${rowIndex === 0 && index === 0 ? 0 : -1}" data-b="${cell.band}" data-d="${cell.deltaBand}" data-sn="${cell.season}" data-en="${cell.episode}" data-r="${rowIndex}" data-c="${index}" style="--i:${index};--lit:${lit}ms" aria-label="${esc(cellLabel(cell))}">${TICK}</button>`;
+        return `<button type="button" role="gridcell" class="hm-cell${kind}${cell.watched ? ' watched' : ''}${model.best === cell ? ' best' : ''}" tabindex="${rowIndex === 0 && index === 0 ? 0 : -1}" data-b="${cell.band}" data-d="${cell.deltaBand}" data-sn="${cell.season}" data-en="${cell.episode}" data-r="${rowIndex}" data-c="${index}" style="--i:${index};--lit:${lit}ms" data-n="${cell.rating ? cell.rating.toFixed(1) : ''}" aria-label="${esc(cellLabel(cell))}">${TICK}</button>`;
       }).join('')}</div>
       <span class="hm-trend" aria-hidden="true">${sparkline(row, model.range)}<b>${row.mean ? row.mean.toFixed(1) : '–'}</b>${model.strongest === row && model.rows.length > 1 ? icon('trophy', { cls: 'hm-crown' }) : ''}</span>
     </div>`).join('');
-  const modes = [['rating', 'Rating'], ['standouts', 'Standouts']].map(([value, label]) => `<button type="button" class="${mode === value ? 'active' : ''}" data-hm-mode="${value}" aria-pressed="${mode === value}">${label}</button>`).join('');
+  const modes = MODES.map(([value, label]) => `<button type="button" class="${mode === value ? 'active' : ''}" data-hm-mode="${value}" aria-pressed="${mode === value}">${label}</button>`).join('');
   return `<div class="hm-toolbar"><div class="hm-modes" role="group" aria-label="Colour episodes by">${modes}</div>${legendHTML()}</div>
     <div class="hm-grid hm-mode-${mode}${model.maxEpisodes > 26 ? ' dense' : model.maxEpisodes <= 13 ? ' roomy' : ''}${light ? ' hm-lighting' : ' hm-enter'}" role="grid" aria-label="Episodes by season. Arrow keys move between episodes; Enter opens one.">${rows}</div>
     <div class="hm-readout" aria-live="polite">${readoutHTML(tid, null, model)}</div>
     ${insightsHTML(tid, model)}
-    <p class="hm-source">Ratings from TMDB; episodes with few votes can swing. Standouts compare each episode with its own season's average.</p>`;
+    <p class="hm-source">Ratings from TMDB; episodes with few votes can swing. Standouts compare each episode with its own season's average, and Numbers prints every rating with each season's average at the end of its row.</p>`;
 }
 
 /** The collapsible panel's shell (filled by mountHeatmap when opened). */
@@ -233,7 +240,7 @@ export function heatmapShell(tid, expanded) {
 }
 
 // ---------- behaviour ----------
-const readMode = () => { try { return localStorage.getItem(MODE_KEY) === 'standouts' ? 'standouts' : 'rating'; } catch (_) { return 'rating'; } };
+const readMode = () => { try { return modeName(localStorage.getItem(MODE_KEY)); } catch (_) { return 'rating'; } };
 function firstLight(tid) {
   try {
     const seen = JSON.parse(localStorage.getItem(LIT_KEY) || '[]');
@@ -316,12 +323,14 @@ function wire(body, onOpen) {
 }
 
 function setMode(body, mode) {
-  const value = mode === 'standouts' ? 'standouts' : 'rating';
+  const value = modeName(mode);
   try { localStorage.setItem(MODE_KEY, value); } catch (_) {}
   const grid = body.querySelector('.hm-grid');
   if (!grid) return;
-  grid.classList.remove('hm-mode-rating', 'hm-mode-standouts', 'hm-lighting', 'hm-enter');
+  grid.classList.remove('hm-mode-rating', 'hm-mode-standouts', 'hm-mode-numbers', 'hm-lighting', 'hm-enter');
   grid.classList.add(`hm-mode-${value}`);
+  // Numbers need room; the squares go back to fitting the width when it is off.
+  if (value === 'numbers') grid.style.removeProperty('--hm-fit'); else fitCells(body);
   body.querySelector('.hm-toolbar')?.setAttribute('data-mode', value);
   body.querySelectorAll('[data-hm-mode]').forEach(button => {
     const on = button.dataset.hmMode === value;
@@ -337,6 +346,8 @@ function fitCells(body) {
   const cells = grid?.querySelector('.hm-cells');
   const count = body._hm?.model.maxEpisodes || 0;
   if (!grid || !cells || !count) return;
+  // Numbers mode sizes its own squares around the text.
+  if (grid.classList.contains('hm-mode-numbers')) { grid.style.removeProperty('--hm-fit'); return; }
   grid.style.removeProperty('--hm-fit');
   const natural = parseFloat(getComputedStyle(grid).getPropertyValue('--hm-size')) || 22;
   const gap = parseFloat(getComputedStyle(cells).columnGap) || 3;

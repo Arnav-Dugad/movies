@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://image.tmdb.org">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..900;1,14..32,300..900&display=swap" rel="stylesheet">
 
 <!-- The stylesheets below are render-blocking, so nothing paints until they
      arrive — and on a slow connection the browser shows its own white ground
@@ -462,7 +462,7 @@ setTimeout(function () {
     <select id="wlMine" class="watched-select" data-action="wl-mine" aria-label="My rating"><option value="all">Any personal rating</option><option value="rated">Rated by me</option><option value="unrated">Not rated</option><option value="8">My 8+ titles</option><option value="6">My 6+ titles</option></select>
     <select id="wlAdded" class="watched-select" data-action="wl-added" aria-label="Date added"><option value="all">Added any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option><option value="unknown">Added date missing</option></select>
     <select id="wlMetadata" class="watched-select" data-action="wl-metadata" aria-label="Metadata quality"><option value="all">Any metadata quality</option><option value="complete">Complete metadata</option><option value="missing">Needs repair</option><option value="poster_missing">Poster missing</option><option value="runtime_missing">Runtime missing</option></select>
-    <select id="wlSort" class="watched-select" data-action="wl-sort" aria-label="Sort this list"><option value="recent">Recently added</option><option value="added_asc">Oldest added</option><option value="title_asc">Title A–Z</option><option value="title_desc">Title Z–A</option><option value="year_desc">Year (newest)</option><option value="year_asc">Year (oldest)</option><option value="rating_desc">Community rating (highest)</option><option value="rating_asc">Community rating (lowest)</option><option value="mine_desc">My rating (highest)</option><option value="mine_asc">My rating (lowest)</option><option value="runtime_desc">Runtime (longest)</option><option value="runtime_asc">Runtime (shortest)</option><option value="smart_desc">Smart blend</option></select>
+    <select id="wlSort" class="watched-select" data-action="wl-sort" aria-label="Sort this list"><option value="recent">Recently added</option><option value="added_asc">Oldest added</option><option value="title_asc">Title A–Z</option><option value="title_desc">Title Z–A</option><option value="year_desc">Year (newest)</option><option value="year_asc">Year (oldest)</option><option value="rating_desc">Community rating (highest)</option><option value="rating_asc">Community rating (lowest)</option><option value="mine_desc">My rating (highest)</option><option value="mine_asc">My rating (lowest)</option><option value="runtime_desc">Runtime (longest)</option><option value="runtime_asc">Runtime (shortest)</option><option value="imdb_desc">IMDb rating (highest)</option><option value="imdb_asc">IMDb rating (lowest)</option><option value="smart_desc">Smart blend</option></select>
     <button class="filter-reset" data-action="wl-reset-filters">Reset</button>
   </div>
   <div id="wlContent"></div>

@@ -2,6 +2,7 @@
 import { auth, db, firebase } from './firebase.js';
 import { haptic } from './haptics.js';
 import { flyTicket, launchRect } from './ticket-stub.js';
+import { cachedScoresFor, prefetchScores } from './scores.js';
 import { offerWatchedUndo } from './watched-undo.js';
 import { icon, listIcon } from './icons.js';
 import { illustration } from './illustrations.js';
@@ -251,6 +252,9 @@ function filteredListItems() {
     return !complete;
   });
   const smartScore = w => +(w.rating || 0) * .6 + +(state.ratings[itemKey(w)] || 0) * .4 + (state.watched[itemKey(w)] ? 0 : 1);
+  // IMDb comes from the outside-scores cache (js/scores.js). A title whose score
+  // has not arrived yet sorts last rather than pretending to be a zero.
+  const imdbScore = w => +(cachedScoresFor(+(w.tmdbId || 0), w.type === 'tv' ? 'tv' : 'movie')?.imdb || 0);
   const sorters = {
     recent: (a, b) => addedSeconds(b) - addedSeconds(a),
     added_asc: (a, b) => (addedSeconds(a) || Number.MAX_SAFE_INTEGER) - (addedSeconds(b) || Number.MAX_SAFE_INTEGER),
@@ -265,6 +269,8 @@ function filteredListItems() {
     runtime_desc: (a, b) => runtimeOf(b) - runtimeOf(a),
     runtime_asc: (a, b) => (runtimeOf(a) || Number.MAX_SAFE_INTEGER) - (runtimeOf(b) || Number.MAX_SAFE_INTEGER),
     smart_desc: (a, b) => smartScore(b) - smartScore(a),
+    imdb_desc: (a, b) => imdbScore(b) - imdbScore(a),
+    imdb_asc: (a, b) => (imdbScore(a) || 99) - (imdbScore(b) || 99),
   };
   return items.sort(sorters[wlSort] || sorters.recent);
 }
@@ -516,7 +522,21 @@ export function initWatchlist() {
     'wl-mine': (el) => { wlMine = el.value; renderWL(); },
     'wl-added': (el) => { wlAdded = el.value; renderWL(); },
     'wl-metadata': (el) => { wlMetadata = el.value; renderWL(); },
-    'wl-sort': (el) => { wlSort = el.value; renderWL(); },
+    'wl-sort': (el) => {
+      wlSort = el.value;
+      renderWL();
+      // Sorting by IMDb needs the scores: fetch the ones this device does not
+      // have yet, a few at a time, and redraw as they land.
+      if (wlSort.startsWith('imdb')) {
+        const list = state.watchlist.filter(item => +item.tmdbId);
+        toast('Fetching IMDb ratings…', 'info');
+        prefetchScores(list).then(done => {
+          if (!done) return;
+          renderWL();
+          toast(`${done} IMDb rating${done === 1 ? '' : 's'} added`, 'success');
+        });
+      }
+    },
     'wl-reset-filters': () => {
       wlQuery = ''; wlGenre = 'all'; wlStatus = 'all'; wlRating = 0; wlDecade = 'all'; wlSort = 'recent';
       wlLanguage = 'all'; wlCountry = 'all'; wlRuntime = 'all'; wlMine = 'all'; wlAdded = 'all'; wlMetadata = 'all';

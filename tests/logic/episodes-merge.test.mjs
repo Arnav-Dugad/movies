@@ -141,11 +141,22 @@ check('log rows from both devices are kept',
   ep.mergeEntries(phone, laptop).log.length === 4, ep.mergeEntries(phone, laptop).log.length);
 check('a duplicated log row is collapsed to one',
   ep.mergeEntries(phone, phone).log.length === 2, ep.mergeEntries(phone, phone).log.length);
-check('the earliest stamp survives deduplication', (() => {
+check('the most recent tick survives deduplication, so re-watching today reads as today', (() => {
   const early = { ...phone, log: [[1, 1, 1000, 0], [1, 2, 2000, 0]] };
   const late = { ...phone, log: [[1, 1, 9000, 0], [1, 2, 2000, 0]] };
   const out = ep.mergeEntries(early, late);
-  return out.log.find(row => row[1] === 1)[2] === 1000;
+  return out.log.find(row => row[1] === 1)[2] === 9000;
+})());
+check('a later bulk sweep never rewrites the day an episode was ticked', (() => {
+  const ticked = { ...phone, log: [[1, 1, 1000, 0]] };
+  const swept = { ...phone, log: [[1, 1, 9000, 1]] };
+  const out = ep.mergeEntries(ticked, swept).log.find(row => row[1] === 1);
+  return out[2] === 1000 && out[3] === 0;
+})());
+check('between two bulk sweeps the later one wins', (() => {
+  const first = { ...phone, log: [[1, 1, 1000, 1]] };
+  const second = { ...phone, log: [[1, 1, 9000, 1]] };
+  return ep.mergeEntries(first, second).log.find(row => row[1] === 1)[2] === 9000;
 })());
 
 // Rewatch counts only ever climb, so the higher number has seen more history.

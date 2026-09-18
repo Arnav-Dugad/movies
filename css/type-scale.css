@@ -348,3 +348,9 @@
 #settingsContent .settings-jump-tip b { font-size: .86rem; }
 #settingsContent .settings-jump-tip small { font-size: 0.831rem; }
 #settingsContent .settings-jump-tip em { font-size: 0.805rem; }
+#settingsContent .settings-key-row strong { font-size: .92rem; }
+#settingsContent .settings-key-row strong i { font-size: 0.831rem; }
+#settingsContent .settings-key-row small { font-size: 0.856rem; }
+#settingsContent .settings-key-field input { font-size: 0.873rem; }
+#settingsContent .settings-key-field button { font-size: 0.865rem; }
+#settingsContent .settings-key-link { font-size: 0.848rem; }

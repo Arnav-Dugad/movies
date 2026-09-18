@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { $, toast, esc } from './ui.js';
 import { illustration } from './illustrations.js';
 import { BACKDROPS, previewHTML } from './backdrops.js';
+import { cleanOmdbKey } from './scores.js';
 import { registerActions } from './events.js';
 import { REGIONS, regionLabel } from './config.js';
 import { prefs, updatePref, resetPrefs, preferencePayload, DEFAULT_PREFS } from './prefs.js';
@@ -124,7 +125,7 @@ const SECTIONS = [
   { id: 'appearance', kicker: 'Appearance', title: 'Cinematic interface', chip: 'Look', icon: 'palette', scene: 'palette', blurb: 'Theme, the moving backdrop, density, text size, glass and the small celebrations.', keys: ['theme', 'backdrop', 'density', 'textSize', 'glass', 'lightDrift', 'castMilestones', 'streakMilestones', 'ambientColour', 'highContrast', 'compactNav'] },
   { id: 'posters', kicker: 'Every poster', title: 'Poster controls', chip: 'Posters', icon: 'film', scene: 'posterstack', blurb: 'What sits on and under every poster across CineVerse.', keys: ['hidePosterCaptions', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview'] },
   { id: 'atmosphere', kicker: 'Motion & playback', title: 'Atmosphere', chip: 'Motion', icon: 'clapper', scene: 'projector', blurb: 'How much moves, plays and answers your touch.', keys: ['motion', 'autoplay', 'backdropArt', 'posterTilt', 'haptics'] },
-  { id: 'discovery', kicker: 'Discovery', title: 'Signals and spoilers', chip: 'Discovery', icon: 'compass', scene: 'compass', blurb: 'Scores, watched marks and protection from spoilers.', keys: ['showRatings', 'showWatched', 'spoilerShield'] },
+  { id: 'discovery', kicker: 'Discovery', title: 'Signals and spoilers', chip: 'Discovery', icon: 'compass', scene: 'compass', blurb: 'Scores, watched marks and protection from spoilers.', keys: ['showRatings', 'showWatched', 'spoilerShield', 'omdbKey'] },
   { id: 'maturity', kicker: 'Content', title: 'Maturity', chip: 'Maturity', icon: 'eye', scene: 'shield', blurb: 'Adult titles stay out of everything unless you let them in.', keys: ['mature', 'matureInRecs', 'matureBlur'] },
   { id: 'details', kicker: 'Detail pages', title: 'Section defaults', chip: 'Title pages', icon: 'layers', scene: 'layers', blurb: 'Which panels on a title page open by themselves.', keys: ['detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded'] },
   { id: 'parts', kicker: 'Detail pages', title: 'What appears', chip: 'Page parts', icon: 'grid', scene: 'layers', blurb: 'Switch off any part of a title page, down to a single fact.' },
@@ -193,7 +194,7 @@ const PREF_LABELS = {
   theme: 'Theme', density: 'Content density', textSize: 'Text size', glass: 'Glass effects', motion: 'Interface motion',
   lightDrift: 'Moving lights', castMilestones: 'Cast milestones', streakMilestones: 'Streak milestones', ambientColour: 'Title colour', highContrast: 'High-contrast type', compactNav: 'Compact navigation',
   hidePosterCaptions: 'Hide titles under posters', cleanHomePosters: 'Clean posters', posterCommunityRating: 'Community rating', posterPersonalRating: 'Your rating', posterWatchedMark: 'Watched mark', posterListButton: 'Add to list', posterRateButton: 'Quick rating', posterMatchBadge: 'Match badge', posterProviderLogo: 'Streaming logo', posterDismissButton: 'Not interested', posterPreview: 'Hover previews',
-  autoplay: 'Ambient hero previews', backdropArt: 'Decorative backdrop art', posterTilt: 'Poster depth effect', haptics: 'Mobile haptics', backdrop: 'Moving backdrop',
+  autoplay: 'Ambient hero previews', backdropArt: 'Decorative backdrop art', posterTilt: 'Poster depth effect', haptics: 'Mobile haptics', backdrop: 'Moving backdrop', omdbKey: 'OMDb key',
   showRatings: 'Community ratings', showWatched: 'Watched artwork marks', spoilerShield: 'Spoiler shield',
   mature: 'Show mature content', matureInRecs: 'Mature titles in recommendations', matureBlur: 'Blur mature artwork',
   detailBoxOfficeExpanded: 'Open Box Office', detailGalleryExpanded: 'Open Gallery', detailReviewsExpanded: 'Open Reviews',
@@ -205,6 +206,7 @@ export function prefValueLabel(key, value) {
   const choices = { theme: THEME_CHOICES, backdrop: BACKDROP_CHOICES, density: DENSITY_CHOICES, textSize: TEXT_CHOICES, motion: MOTION_CHOICES, glass: GLASS_CHOICES }[key];
   if (choices) return choices.find(([choice]) => choice === value)?.[1] || String(value);
   if (key === 'detailHidden') return Array.isArray(value) && value.length ? `${value.length} hidden` : 'All shown';
+  if (key === 'omdbKey') return value ? 'Set' : 'Not set';
   return value ? 'On' : 'Off';
 }
 const sectionOfKey = key => (key === 'detailHidden' ? 'parts' : SECTIONS.find(section => section.keys?.includes(key))?.id || 'appearance');
@@ -584,6 +586,14 @@ export function renderSettings() {
           ${toggle('showRatings', 'Community ratings', 'Show TMDB scores on posters and hero slides.', prefs.showRatings)}
           ${toggle('showWatched', 'Watched artwork marks', 'Show the green watched treatment on posters.', prefs.showWatched)}
           ${toggle('spoilerShield', 'Spoiler shield', 'Blur long summaries until you hover or focus them.', prefs.spoilerShield)}
+          <div class="settings-key-row">
+            <span><strong>OMDb key <i>optional</i></strong><small>IMDb, the Tomatometer and Metacritic are shown free without a key, but the last two are thin for television. A free OMDb key (1,000 titles a day) fills them in. It is stored with your settings and sent only to omdbapi.com.</small></span>
+            <label class="settings-key-field">
+              <input type="text" id="omdbKey" value="${esc(prefs.omdbKey || '')}" placeholder="Paste key" autocomplete="off" spellcheck="false" aria-label="OMDb key">
+              <button type="button" data-action="settings-omdb-save">Save</button>
+            </label>
+            <a class="settings-key-link" href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">Get a free key</a>
+          </div>
         </section>
         <section class="settings-panel settings-mature" id="settings-maturity" data-section-panel="maturity">${panelHead('maturity')}
           <details class="settings-mature-disclosure"${prefs.mature ? ' open' : ''}>
@@ -821,6 +831,15 @@ export function initSettings() {
       updatePref(key, value);
       syncPreviews();
       toast('Preference saved', 'success');
+    },
+    'settings-omdb-save': () => {
+      const field = document.getElementById('omdbKey');
+      const raw = (field?.value || '').trim();
+      const key = cleanOmdbKey(raw);
+      if (raw && !key) { toast('That does not look like an OMDb key', 'error'); field?.focus(); return; }
+      updatePref('omdbKey', key);
+      if (field) field.value = key;
+      toast(key ? 'OMDb key saved — Rotten Tomatoes and Metacritic will fill in' : 'OMDb key cleared', 'success');
     },
     'clear-search-history': () => { clearSearchHistory(); toast('Search history cleared', 'info'); },
     'clear-recent-history': () => { state.recentlyViewed = []; try { localStorage.removeItem(`cv_recent_${state.user?.uid || 'guest'}`); } catch (_) {} toast('Recently viewed cleared', 'info'); },

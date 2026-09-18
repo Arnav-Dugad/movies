@@ -3,7 +3,6 @@ import { tmdb, pool } from './api.js';
 import { markCastClubs } from './cast-hours.js';
 import { heatmapShell, mountHeatmap, refreshHeatmapTicks } from './season-heatmap.js';
 import { mountScoreBadges } from './score-badges.js';
-import { openEpisodeGrid, closeGrid } from './episode-grid.js';
 import { NAMES, captureArt, hintFrom, armSources, transitionSettled } from './transitions.js';
 import { applyAmbient, clearAmbient } from './ambient.js';
 import { haptic } from './haptics.js';
@@ -201,11 +200,7 @@ export async function openDetail(id, type) {
       seasHTML = `<div class="episode-browser">${showProgressPanel(id, det, progress, next)}
         <div class="d-sec-title">Seasons</div><div class="season-scroll">${seasonCards}</div>
         ${heatmapShell(id, !!prefs.detailHeatmapExpanded)}
-        ${vs.length ? `<button type="button" class="eg-open" data-action="episode-grid" data-tid="${id}" data-seasons="${esc(JSON.stringify(vs.map(s => s.season_number)))}" data-title="${safeTitle}">
-          <span class="eg-open-icon">${icon('grid')}</span>
-          <span class="eg-open-copy"><strong>Episode ratings</strong><small>Every season side by side, best and worst at a glance</small></span>
-          <span class="eg-open-go">${icon('chevronRight')}</span>
-        </button>` : ''}
+
         <div class="episode-browser-head"><div class="d-sec-title">Episodes</div><label class="episode-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input type="search" id="episodeSearch_${id}" placeholder="Search episodes" aria-label="Search episodes by title, number, or description"></label></div>
         <div class="season-tabs">${vs.map(s => `<div class="s-tab ${s.season_number === openSeason ? 'active' : ''}" role="button" tabindex="0" data-action="load-season" data-tid="${id}" data-sn="${s.season_number}">${esc(s.name)}</div>`).join('')}</div>
         <div class="ep-list" id="epList_${id}" role="region" aria-label="Episodes" tabindex="0"><div class="skel" style="height:80px;width:100%"></div></div></div>`;
@@ -1651,14 +1646,6 @@ export function initDetail() {
     },
     // A square opens its season in the list below and brings the episode into view.
     'heatmap-episode': el => openHeatmapEpisode(+el.dataset.tid, +el.dataset.sn, +el.dataset.en),
-    // The whole series' IMDb ratings as one grid.
-    'episode-grid': el => openEpisodeGrid(+el.dataset.tid, JSON.parse(el.dataset.seasons || '[]'), el.dataset.title || ''),
-    'episode-grid-close': () => closeGrid(),
-    'episode-grid-open': el => {
-      const tid = curDet?.id;
-      closeGrid();
-      if (tid) openHeatmapEpisode(+tid, +el.dataset.sn, +el.dataset.en);
-    },
     // ----- Episode tracking -----
     'ep-toggle': el => {
       const tid = +el.dataset.tid, sn = +el.dataset.sn, en = +el.dataset.en;

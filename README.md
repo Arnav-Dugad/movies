@@ -456,6 +456,15 @@ an open title page changes the instant a switch is flipped. Hiding is presentati
 only: nothing is fetched differently and switching a part back on loses nothing.
 The choice syncs with your other preferences.
 
+## One typeface
+
+The site used three faces — a geometric sans, a display serif and a monospace.
+It now uses one: the platform's own interface face where there is one (San
+Francisco on Apple devices), and **Inter**, its closest free twin, everywhere
+else. Weight, size and tracking carry the hierarchy the serif used to, big
+titles are tracked in tightly, and figures are tabular everywhere except running
+text, so every column of numbers still lines up without a second family.
+
 ## Clean and minimal
 
 `css/minimal.css` loads after every other sheet except the light theme's hand-tuned
@@ -494,8 +503,25 @@ sources are free and need no key, no account and no server of ours:
 - **Rotten Tomatoes and Metacritic** come from **Wikidata**, where they are stored
   as review scores with the reviewer named. The Tomatometer is the critics'
   percentage; its 10-point average is shown in the badge's tooltip. Coverage is
-  good for films and thinner for television, and a title with neither simply
-  shows fewer badges.
+  good for films and patchy for television — The Last of Us has both, Severance
+  has neither — and a title with neither simply shows fewer badges.
+- **An OMDb key fills the gaps**, television especially. Settings → Discovery →
+  **OMDb key** takes a free key (a thousand titles a day); with one, OMDb is
+  asked first and its Tomatometer and Metascore are used wherever it has them,
+  with the keyless pair behind it. With no key nothing changes and nothing is
+  sent anywhere. The key is stored with your settings and never shown in the
+  "recently changed" strip as anything but *Set* or *Not set*.
+
+Each badge is a quiet pill: the source's own mark in its own colour — the IMDb
+wordmark, a tomato or a splat, Metacritic's square — then the number in the
+page's ink, so a row of four scores reads as one row rather than four competing
+lozenges.
+
+**My List can sort by IMDb.** Choosing *IMDb rating* fetches what the device does
+not have (a small TMDB request for each title's IMDb id, then its scores, three
+at a time, up to 120 titles), keeps both in local storage for good, and redraws
+as they land. A title still waiting sorts last rather than pretending to be a
+zero.
 
 Both are cached on the device for a day (300 titles), fetched after the page has
 painted, and never block it: a source that is down costs nothing but its badge.
@@ -505,19 +531,15 @@ Cinemeta also publishes per-episode numbers, and they are **not** IMDb's —
 Ozymandias comes back 8.4 where IMDb says 9.9, and some shows come back unrated —
 so the episode grid below uses TMDB's ratings instead.
 
-## Episode ratings grid
+## Every episode's rating, on the page
 
-A series page offers **Episode ratings** under its seasons: the whole show as one
-grid (`js/episode-grid.js`), seasons across the top, episode numbers down the
-side, each cell in its band's colour — 9.0+, 8.0–8.9, 7.0–7.9, 6.0–6.9, below 6,
-not rated — with each season's average pinned along the bottom as the episodes
-scroll under it.
-
-- The ratings are TMDB's, the same ones on every episode card and in the season
-  heatmap, so the grid never disagrees with the page behind it.
-- Episodes you have watched are ringed; the highest-rated episode carries a white
-  outline; a line underneath names the strongest and weakest seasons.
-- Picking any cell closes the grid and opens that episode in the list behind.
+The season heatmap has a third view, **Numbers**, beside Rating and Standouts: the
+same grid with every episode's rating printed in its square, and each season's
+average where it has always been, at the end of its row. It is on the title page
+itself — no window opens — and everything the heatmap already does still works:
+the colours are the same rating scale, watched episodes keep their ring, the peak
+episode keeps its outline, pointing at a square still reads it out and opening one
+still jumps to it in the list below.
 
 ## Moving backdrops
 
@@ -539,6 +561,19 @@ The light behind the site comes in six styles, chosen in **Settings → Appearan
   reduced motion freezes them where they stand, and **Glass effects → Quiet**
   dims them.
 - The picker shows each style **moving, in miniature**, before you choose.
+
+**Where the page meets the light.** A hero is opaque and the page below it is
+not, so the backdrop used to begin at the hero's bottom edge as a hard line of
+colour. Three things fix it: the hero's artwork dissolves over its last stretch,
+so the light comes up through the picture rather than starting after it; the dark
+base under the hero's title stops short of the edge instead of painting the page
+colour over the light; and the light itself is masked — strongest in the middle
+of the screen, softer at every edge — so it never ends at a straight line either.
+
+**The pickers show each style moving.** The swatches in Settings carry their own
+copy of every style, so they had to be kept out of the page-level rules: with
+Aurora selected those rules hid every layer on the page, the swatches included,
+and the six previews went black.
 
 **The backdrop was never actually visible before.** It lives at `z-index: -2`
 inside `<body>`, and a negative descendant paints *behind* its ancestor's
@@ -1278,6 +1313,14 @@ they started tracking; marking the three episodes you have just watched still
 counts. A whole season, a whole show or a back-filled history is bookkeeping:
 listed on its day as "marked", never shading a day or adding minutes.
 
+**Marking an episode again now reads as today.** Where the same episode appeared
+twice — the copy on this device and the copy on the server, after an un-tick and
+a fresh tick — the EARLIEST stamp used to win, so an episode watched again today
+kept the day it was first marked and the diary showed nothing for today. The most
+recent deliberate mark wins now, with one exception that keeps history honest: a
+single tick always outranks a bulk row, so sweeping a season with **Mark season**
+never rewrites the day you actually sat and watched an episode.
+
 **A show whose document lost its id used to vanish from the diary** (and from the
 hours clubs, and from watch time): the id is written into every document, but one
 written by an old build, or merged from another device, could arrive without it.
@@ -1565,9 +1608,10 @@ folded filter bars: what counts as a set filter, the button's summary and a
 registry that still matches the markup (`filter-fold.test.mjs`), and how the site
 feels: every action's haptic signature and weight, the lean and its settling,
 row detents and edges, headings crossing the middle, the ticket stub's arc, the
-outside scores and the ratings grid: reading a rating, the Wikidata parse, which
-badges are drawn and how they are toned, the grid's columns, averages, best
-episode and sentence, and the backdrop styles (`scores.test.mjs`), and the
+outside scores: reading a rating, the Wikidata and OMDb parses, how a key fills
+gaps without overwriting what is known, which badges are drawn and how they are
+toned, the heatmap's three views and what Numbers puts in the markup, and the
+backdrop styles (`scores.test.mjs`), and the
 Continue Watching lift and the sticky bars (`feel.test.mjs`), and the gestures:
 the pick reel and how it slows, what a swipe on a Continue Watching card does and
 how far the card follows, the pull's resistance and arming point, the shake

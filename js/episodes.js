@@ -126,8 +126,18 @@ function cleanLog(value) {
   for (const row of rows) {
     const key = `${row[0]}_${row[1]}`;
     const held = byEpisode.get(key);
-    // Earliest stamp wins; a single tick outranks a bulk mark at the same moment.
-    if (!held || row[2] < held[2] || (row[2] === held[2] && !row[3])) byEpisode.set(key, row);
+    // The most recent deliberate mark wins. Keeping the EARLIEST stamp meant an
+    // episode you un-ticked and watched again today kept the old date: the write
+    // merges with the server copy, which still held the first row, and the Watch
+    // Diary went on showing it on the day it was first marked.
+    //
+    // A single tick still outranks a bulk row whatever the stamps say, so
+    // sweeping a season with "Mark season" never rewrites the day you actually
+    // sat and watched an episode.
+    const better = !held
+      || (!row[3] && held[3])
+      || (row[3] === held[3] && row[2] > held[2]);
+    if (better) byEpisode.set(key, row);
   }
   return [...byEpisode.values()].sort((a, b) => a[2] - b[2]).slice(-LOG_CAP);
 }

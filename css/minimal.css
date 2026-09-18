@@ -19,6 +19,18 @@
    each rule with its own copy.
    ============================================================ */
 
+/* ---------- One typeface ----------
+   The site used three faces (a geometric sans, a display serif, a monospace).
+   It now uses one: the platform's own UI face where there is one — San
+   Francisco on Apple devices — and Inter, its closest twin, everywhere else.
+   Weight, size and tracking carry the hierarchy the serif used to.
+   Figures line up like a monospace, because columns of numbers are everywhere
+   here; running text keeps its proportional figures. */
+body { font-variant-numeric: tabular-nums; letter-spacing: -.005em; }
+p, .hero-desc, .detail-overview, .settings-head-blurb, .eg-note, .hm-source, .stats-section-head p, .notification-trust p { font-variant-numeric: normal; }
+h1, h2, h3, h4 { letter-spacing: -.022em; }
+.hero-title, .detail-head h1, .stats-hero h1, .profile-premium-hero h1, .settings-premium-hero h2, .notifications-hero h1, .discover-premium-hero h1, .bo-page-hero h1, .year-hero h1 { letter-spacing: -.035em; }
+
 /* ---------- Kickers ---------- */
 .stats-eyebrow.stats-eyebrow,
 .release-eyebrow.release-eyebrow,

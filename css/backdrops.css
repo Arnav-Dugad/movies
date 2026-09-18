@@ -29,7 +29,7 @@ body { background: transparent; }
 
 /* The classic: two soft blooms, as CineVerse has always had. The layers stay
    empty and css/animations.css keeps drawing ::before and ::after. */
-html[data-backdrop="aurora"] .bd-layer { display: none; }
+html[data-backdrop="aurora"] .aurora .bd-layer { display: none; }
 
 /* ---------- Silk: wide bands of colour folding over each other ---------- */
 html[data-backdrop="silk"] .aurora::before,
@@ -44,27 +44,27 @@ html[data-backdrop="still"] .aurora::before,
 html[data-backdrop="still"] .aurora::after { content: none; }
 
 html[data-backdrop="silk"] .aurora { opacity: .3; filter: saturate(125%); }
-html[data-backdrop="silk"] .bd-layer {
+html[data-backdrop="silk"] .aurora .bd-layer {
   inset: -18%;
   border-radius: 45%;
   filter: blur(46px);
   mix-blend-mode: screen;
 }
-html[data-backdrop="silk"] .bd-layer:nth-child(1) {
+html[data-backdrop="silk"] .aurora .bd-layer:nth-child(1) {
   background: conic-gradient(from 0deg at 42% 58%, rgba(229, 9, 20, .92), rgba(12, 12, 20, 0) 30%, rgba(139, 92, 246, .8) 58%, rgba(12, 12, 20, 0) 84%, rgba(229, 9, 20, .92));
   animation: bd-silk-a 34s linear infinite;
 }
-html[data-backdrop="silk"] .bd-layer:nth-child(2) {
+html[data-backdrop="silk"] .aurora .bd-layer:nth-child(2) {
   background: conic-gradient(from 210deg at 62% 38%, rgba(6, 182, 212, .7), rgba(8, 8, 14, 0) 28%, rgba(229, 9, 20, .62) 62%, rgba(8, 8, 14, 0) 90%, rgba(6, 182, 212, .7));
   animation: bd-silk-b 46s linear infinite;
 }
-html[data-backdrop="silk"] .bd-layer:nth-child(3) {
+html[data-backdrop="silk"] .aurora .bd-layer:nth-child(3) {
   inset: -10%;
   background: radial-gradient(60% 50% at 30% 30%, rgba(251, 191, 36, .42), transparent 70%),
               radial-gradient(55% 45% at 75% 70%, rgba(139, 92, 246, .55), transparent 72%);
   animation: bd-silk-c 28s ease-in-out infinite;
 }
-html[data-backdrop="silk"] .bd-layer:nth-child(4) {
+html[data-backdrop="silk"] .aurora .bd-layer:nth-child(4) {
   inset: 0;
   border-radius: 0;
   filter: none;
@@ -96,16 +96,16 @@ html[data-backdrop="silk"] .bd-layer:nth-child(4) {
 
 /* ---------- Mesh: four blooms breathing against each other ---------- */
 html[data-backdrop="mesh"] .aurora { opacity: .45; }
-html[data-backdrop="mesh"] .bd-layer {
+html[data-backdrop="mesh"] .aurora .bd-layer {
   width: 58vmax;
   height: 58vmax;
   filter: blur(64px);
   opacity: .85;
 }
-html[data-backdrop="mesh"] .bd-layer:nth-child(1) { top: -14%; left: -10%; background: radial-gradient(circle, rgba(229, 9, 20, .72), transparent 62%); animation: bd-mesh-a 24s ease-in-out infinite; }
-html[data-backdrop="mesh"] .bd-layer:nth-child(2) { bottom: -18%; right: -12%; background: radial-gradient(circle, rgba(139, 92, 246, .68), transparent 62%); animation: bd-mesh-b 31s ease-in-out infinite; }
-html[data-backdrop="mesh"] .bd-layer:nth-child(3) { top: 22%; right: -16%; background: radial-gradient(circle, rgba(6, 182, 212, .5), transparent 62%); animation: bd-mesh-c 38s ease-in-out infinite; }
-html[data-backdrop="mesh"] .bd-layer:nth-child(4) { bottom: 8%; left: -14%; background: radial-gradient(circle, rgba(251, 191, 36, .38), transparent 62%); animation: bd-mesh-d 44s ease-in-out infinite; }
+html[data-backdrop="mesh"] .aurora .bd-layer:nth-child(1) { top: -14%; left: -10%; background: radial-gradient(circle, rgba(229, 9, 20, .72), transparent 62%); animation: bd-mesh-a 24s ease-in-out infinite; }
+html[data-backdrop="mesh"] .aurora .bd-layer:nth-child(2) { bottom: -18%; right: -12%; background: radial-gradient(circle, rgba(139, 92, 246, .68), transparent 62%); animation: bd-mesh-b 31s ease-in-out infinite; }
+html[data-backdrop="mesh"] .aurora .bd-layer:nth-child(3) { top: 22%; right: -16%; background: radial-gradient(circle, rgba(6, 182, 212, .5), transparent 62%); animation: bd-mesh-c 38s ease-in-out infinite; }
+html[data-backdrop="mesh"] .aurora .bd-layer:nth-child(4) { bottom: 8%; left: -14%; background: radial-gradient(circle, rgba(251, 191, 36, .38), transparent 62%); animation: bd-mesh-d 44s ease-in-out infinite; }
 @keyframes bd-mesh-a { 0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) scale(1); } 50% { transform: translate3d(calc(var(--drift-x, 0px) + 12%), calc(var(--drift-y, 0px) + 8%), 0) scale(1.18); } }
 @keyframes bd-mesh-b { 0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) scale(1.1); } 50% { transform: translate3d(calc(var(--drift-x, 0px) - 10%), calc(var(--drift-y, 0px) - 9%), 0) scale(.92); } }
 @keyframes bd-mesh-c { 0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) scale(.95); } 50% { transform: translate3d(calc(var(--drift-x, 0px) - 14%), calc(var(--drift-y, 0px) + 10%), 0) scale(1.12); } }
@@ -113,7 +113,7 @@ html[data-backdrop="mesh"] .bd-layer:nth-child(4) { bottom: 8%; left: -14%; back
 
 /* ---------- Nebula: deep cloud, slow parallax, a field of stars ---------- */
 html[data-backdrop="nebula"] .aurora { opacity: .4; }
-html[data-backdrop="nebula"] .bd-layer:nth-child(1) {
+html[data-backdrop="nebula"] .aurora .bd-layer:nth-child(1) {
   inset: -15%;
   border-radius: 40%;
   filter: blur(54px);
@@ -122,7 +122,7 @@ html[data-backdrop="nebula"] .bd-layer:nth-child(1) {
               radial-gradient(40% 38% at 55% 20%, rgba(229, 9, 20, .55), transparent 70%);
   animation: bd-neb-a 60s linear infinite;
 }
-html[data-backdrop="nebula"] .bd-layer:nth-child(2) {
+html[data-backdrop="nebula"] .aurora .bd-layer:nth-child(2) {
   inset: -8%;
   border-radius: 40%;
   filter: blur(44px);
@@ -131,8 +131,8 @@ html[data-backdrop="nebula"] .bd-layer:nth-child(2) {
               radial-gradient(42% 36% at 22% 74%, rgba(59, 130, 246, .55), transparent 72%);
   animation: bd-neb-b 44s ease-in-out infinite;
 }
-html[data-backdrop="nebula"] .bd-layer:nth-child(3),
-html[data-backdrop="nebula"] .bd-layer:nth-child(4) {
+html[data-backdrop="nebula"] .aurora .bd-layer:nth-child(3),
+html[data-backdrop="nebula"] .aurora .bd-layer:nth-child(4) {
   inset: 0;
   border-radius: 0;
   background-image: radial-gradient(rgba(255, 255, 255, .85) 1px, transparent 1.2px);
@@ -140,7 +140,7 @@ html[data-backdrop="nebula"] .bd-layer:nth-child(4) {
   opacity: .32;
   animation: bd-stars 9s ease-in-out infinite;
 }
-html[data-backdrop="nebula"] .bd-layer:nth-child(4) { background-size: 90px 90px; background-position: 40px 60px; opacity: .2; animation-duration: 13s; animation-delay: -4s; }
+html[data-backdrop="nebula"] .aurora .bd-layer:nth-child(4) { background-size: 90px 90px; background-position: 40px 60px; opacity: .2; animation-duration: 13s; animation-delay: -4s; }
 @keyframes bd-neb-a {
   0% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(0deg) scale(1.1); }
   100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(360deg) scale(1.1); }
@@ -153,17 +153,17 @@ html[data-backdrop="nebula"] .bd-layer:nth-child(4) { background-size: 90px 90px
 
 /* ---------- Beams: projector light sweeping a dark room ---------- */
 html[data-backdrop="beams"] .aurora { opacity: .55; }
-html[data-backdrop="beams"] .bd-layer {
+html[data-backdrop="beams"] .aurora .bd-layer {
   inset: -40% -20%;
   border-radius: 0;
   filter: blur(34px);
   opacity: .85;
   transform-origin: 50% 0;
 }
-html[data-backdrop="beams"] .bd-layer:nth-child(1) { background: linear-gradient(103deg, transparent 38%, rgba(229, 9, 20, .5) 50%, transparent 62%); animation: bd-beam-a 26s ease-in-out infinite; }
-html[data-backdrop="beams"] .bd-layer:nth-child(2) { background: linear-gradient(77deg, transparent 40%, rgba(139, 92, 246, .48) 52%, transparent 64%); animation: bd-beam-b 34s ease-in-out infinite; }
-html[data-backdrop="beams"] .bd-layer:nth-child(3) { background: linear-gradient(94deg, transparent 45%, rgba(255, 255, 255, .1) 51%, transparent 58%); animation: bd-beam-a 44s ease-in-out infinite reverse; }
-html[data-backdrop="beams"] .bd-layer:nth-child(4) { inset: auto -20% -30%; height: 60vmax; border-radius: 50%; background: radial-gradient(circle, rgba(6, 182, 212, .4), transparent 65%); filter: blur(70px); animation: bd-mesh-c 40s ease-in-out infinite; }
+html[data-backdrop="beams"] .aurora .bd-layer:nth-child(1) { background: linear-gradient(103deg, transparent 38%, rgba(229, 9, 20, .5) 50%, transparent 62%); animation: bd-beam-a 26s ease-in-out infinite; }
+html[data-backdrop="beams"] .aurora .bd-layer:nth-child(2) { background: linear-gradient(77deg, transparent 40%, rgba(139, 92, 246, .48) 52%, transparent 64%); animation: bd-beam-b 34s ease-in-out infinite; }
+html[data-backdrop="beams"] .aurora .bd-layer:nth-child(3) { background: linear-gradient(94deg, transparent 45%, rgba(255, 255, 255, .1) 51%, transparent 58%); animation: bd-beam-a 44s ease-in-out infinite reverse; }
+html[data-backdrop="beams"] .aurora .bd-layer:nth-child(4) { inset: auto -20% -30%; height: 60vmax; border-radius: 50%; background: radial-gradient(circle, rgba(6, 182, 212, .4), transparent 65%); filter: blur(70px); animation: bd-mesh-c 40s ease-in-out infinite; }
 @keyframes bd-beam-a {
   0%, 100% { transform: translate3d(var(--drift-x, 0), var(--drift-y, 0), 0) rotate(-7deg); }
   50% { transform: translate3d(calc(var(--drift-x, 0px) + 5%), var(--drift-y, 0), 0) rotate(9deg); }
@@ -175,10 +175,10 @@ html[data-backdrop="beams"] .bd-layer:nth-child(4) { inset: auto -20% -30%; heig
 
 /* ---------- Still: the same light, holding its breath ---------- */
 html[data-backdrop="still"] .aurora { opacity: .5; }
-html[data-backdrop="still"] .bd-layer { width: 60vmax; height: 60vmax; filter: blur(70px); opacity: .6; animation: none; }
-html[data-backdrop="still"] .bd-layer:nth-child(1) { top: -12%; left: -8%; background: radial-gradient(circle, rgba(229, 9, 20, .55), transparent 62%); }
-html[data-backdrop="still"] .bd-layer:nth-child(2) { bottom: -16%; right: -10%; background: radial-gradient(circle, rgba(139, 92, 246, .5), transparent 62%); }
-html[data-backdrop="still"] .bd-layer:nth-child(3), html[data-backdrop="still"] .bd-layer:nth-child(4) { display: none; }
+html[data-backdrop="still"] .aurora .bd-layer { width: 60vmax; height: 60vmax; filter: blur(70px); opacity: .6; animation: none; }
+html[data-backdrop="still"] .aurora .bd-layer:nth-child(1) { top: -12%; left: -8%; background: radial-gradient(circle, rgba(229, 9, 20, .55), transparent 62%); }
+html[data-backdrop="still"] .aurora .bd-layer:nth-child(2) { bottom: -16%; right: -10%; background: radial-gradient(circle, rgba(139, 92, 246, .5), transparent 62%); }
+html[data-backdrop="still"] .aurora .bd-layer:nth-child(3), html[data-backdrop="still"] .aurora .bd-layer:nth-child(4) { display: none; }
 
 /* Reduced motion freezes every style where it stands; the colours stay. */
 html[data-motion="reduced"] .bd-layer { animation: none !important; }
@@ -186,13 +186,13 @@ html[data-motion="reduced"] .bd-layer { animation: none !important; }
   html:not([data-motion="full"]) .bd-layer { animation: none !important; }
 }
 /* Quiet glass means a quiet room. */
-html[data-glass="quiet"] .bd-layer { animation: none !important; opacity: .28; }
+html[data-glass="quiet"] .aurora .bd-layer { animation: none !important; opacity: .28; }
 
 /* ---------- The pickers in Settings ---------- */
+/* The swatch fills the picker's stage, which is the element with a height. */
 .bd-preview {
-  position: relative;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   border-radius: 12px;
   background: #0a0a12;
@@ -226,3 +226,38 @@ html[data-glass="quiet"] .bd-layer { animation: none !important; opacity: .28; }
 .bd-preview[data-style="still"] .bd-layer { width: 90%; height: 90%; filter: blur(14px); opacity: .5; }
 .bd-preview[data-style="still"] .bd-layer:nth-child(1) { top: -20%; left: -20%; background: radial-gradient(circle, rgba(229, 9, 20, .8), transparent 62%); }
 .bd-preview[data-style="still"] .bd-layer:nth-child(2) { bottom: -20%; right: -20%; background: radial-gradient(circle, rgba(139, 92, 246, .45), transparent 62%); }
+
+
+/* ============================================================
+   WHERE THE PAGE MEETS THE LIGHT
+   A hero is opaque and the page below it is not, so the backdrop used to begin
+   at the hero's bottom edge as a hard line of colour. Three things fix it:
+
+   1. the hero's artwork dissolves over its last stretch, so the light comes up
+      through the picture rather than starting after it;
+   2. the dark base under the hero's text stops short of the edge, so it never
+      paints the page colour over the light;
+   3. the light itself is veiled — strongest in the middle of the screen, softer
+      at every edge — so it never ends at a straight line either.
+   ============================================================ */
+.aurora {
+  -webkit-mask-image: radial-gradient(130% 110% at 50% 42%, #000 38%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .18) 100%);
+  mask-image: radial-gradient(130% 110% at 50% 42%, #000 38%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .18) 100%);
+}
+
+.hero-slide > img,
+.hero-slide > .ambient-video,
+.detail-back > img,
+.detail-back > .ambient-video {
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, rgba(0, 0, 0, .55) 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 62%, rgba(0, 0, 0, .55) 86%, transparent 100%);
+}
+
+/* The base behind the hero's title keeps its weight but lets the last 90px go,
+   so the light continues under it instead of stopping. */
+.hero-vignette {
+  background:
+    linear-gradient(to right, rgba(6, 6, 11, .85) 0%, rgba(6, 6, 11, .3) 50%, rgba(6, 6, 11, .1) 100%),
+    linear-gradient(to top, transparent 0, rgba(6, 6, 11, .92) 90px, rgba(6, 6, 11, .72) 22%, transparent 46%),
+    linear-gradient(to bottom, rgba(6, 6, 11, .8) 0%, rgba(6, 6, 11, .25) 14%, transparent 26%);
+}

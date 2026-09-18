@@ -7,15 +7,25 @@
 //     against IMDb itself (Inception 8.8, Breaking Bad 9.5). Its per-episode
 //     numbers are NOT IMDb's — Ozymandias comes back 8.4 where IMDb says 9.9,
 //     and some shows come back unrated — so the episode grid uses TMDB's
-//     ratings instead (js/episode-grid.js).
+//     ratings instead (the season heatmap's Numbers view, js/season-heatmap.js).
 //   - Rotten Tomatoes and Metacritic come from Wikidata, where they are stored
 //     as review scores with the reviewer named. Coverage is good for films and
 //     thinner for television; a title without them simply shows fewer badges.
+//   - OMDb fills the gaps for anyone who wants it. It needs a key, but a free
+//     one covers a thousand titles a day, and it carries IMDb, the Tomatometer
+//     and Metacritic for television as well as film. Paste it into
+//     Settings → Discovery → OMDb key and it becomes the first source asked;
+//     with no key nothing changes and nothing is sent anywhere.
 //
 // Both are cached on the device for a day, so a title opened twice costs one
 // request, and neither is ever on the critical path: the page renders first and
 // the badges arrive when they arrive.
+import { prefs } from './prefs.js';
+import { tmdb } from './api.js';
+
 const CINEMETA = 'https://v3-cinemeta.strem.io/meta';
+const OMDB = 'https://www.omdbapi.com/';
+const ID_CACHE_KEY = 'cv_imdb_ids_v1';
 const WIKIDATA = 'https://query.wikidata.org/sparql';
 const CACHE_KEY = 'cv_scores_v1';
 const TTL = 24 * 60 * 60 * 1000;
@@ -64,6 +74,42 @@ export function parseWikidataScores(bindings = []) {
   return out;
 }
 
+/**
+ * Pure: OMDb's payload → the three scores. Its `Ratings` array names each
+ * source ("Internet Movie Database", "Rotten Tomatoes", "Metacritic").
+ */
+export function parseOmdb(data = {}) {
+  const out = { imdb: 0, rt: 0, rtAverage: 0, metacritic: 0 };
+  if (!data || data.Response === 'False') return out;
+  out.imdb = normaliseRating(data.imdbRating);
+  for (const row of Array.isArray(data.Ratings) ? data.Ratings : []) {
+    const source = String(row?.Source || '').toLowerCase();
+    const value = String(row?.Value || '');
+    if (source.includes('rotten')) {
+      const percent = /^(\d{1,3})%$/.exec(value.trim());
+      if (percent) out.rt = Math.min(100, +percent[1]);
+    } else if (source.includes('metacritic')) {
+      const score = /^(\d{1,3})\/100$/.exec(value.trim());
+      if (score) out.metacritic = Math.min(100, +score[1]);
+    }
+  }
+  const meta = /^(\d{1,3})$/.exec(String(data.Metascore || '').trim());
+  if (!out.metacritic && meta) out.metacritic = Math.min(100, +meta[1]);
+  return out;
+}
+
+/** Pure: which of two score sets to keep per field (a real number beats a zero). */
+export function mergeScores(primary = {}, fallback = {}) {
+  const pick = key => (+primary[key] > 0 ? +primary[key] : +fallback[key] || 0);
+  return { imdb: pick('imdb'), rt: pick('rt'), rtAverage: pick('rtAverage'), metacritic: pick('metacritic') };
+}
+
+/** Pure: a key that looks like an OMDb key (eight hex characters), trimmed. */
+export function cleanOmdbKey(value) {
+  const key = String(value || '').trim();
+  return /^[0-9a-zA-Z]{6,16}$/.test(key) ? key : '';
+}
+
 /** Pure: is a cached entry still worth using? */
 export const fresh = (entry, now = Date.now(), ttl = TTL) => !!entry && now - (+entry.at || 0) < ttl;
 
@@ -96,6 +142,11 @@ async function fromCinemeta(imdbId, type) {
   return { imdb: normaliseRating(meta.imdbRating) };
 }
 
+async function fromOmdb(imdbId, key) {
+  const data = await getJSON(`${OMDB}?i=${encodeURIComponent(imdbId)}&tomatoes=true&apikey=${encodeURIComponent(key)}`);
+  return parseOmdb(data);
+}
+
 async function fromWikidata(imdbId) {
   const query = `SELECT ?byLabel ?score WHERE { ?item wdt:P345 "${imdbId}". ?item p:P444 ?statement. ?statement ps:P444 ?score. ?statement pq:P447 ?by. SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }`;
   const data = await getJSON(`${WIKIDATA}?format=json&query=${encodeURIComponent(query)}`, { headers: { Accept: 'application/sparql-results+json' } });
@@ -117,11 +168,17 @@ export async function scoresFor(imdbId, type = 'movie') {
   if (inflight.has(key)) return inflight.get(key);
 
   const job = (async () => {
-    const [meta, wiki] = await Promise.all([
+    // Named apart from `key` above: shadowing the cache key filed every score
+    // under the OMDb key instead of the title.
+    const omdbKey = cleanOmdbKey(prefs.omdbKey);
+    const [meta, wiki, omdb] = await Promise.all([
       fromCinemeta(imdbId, type).catch(() => ({ imdb: 0 })),
       fromWikidata(imdbId).catch(() => ({ rt: 0, rtAverage: 0, metacritic: 0 })),
+      omdbKey ? fromOmdb(imdbId, omdbKey).catch(() => null) : Promise.resolve(null),
     ]);
-    const value = { imdb: meta.imdb, rt: wiki.rt, rtAverage: wiki.rtAverage, metacritic: wiki.metacritic };
+    // OMDb first where it answered, then the keyless pair — so a key fills the
+    // Tomatometer in for television without changing anything else.
+    const value = mergeScores(omdb || {}, { imdb: meta.imdb, rt: wiki.rt, rtAverage: wiki.rtAverage, metacritic: wiki.metacritic });
     const next = readCache();
     next[key] = { at: Date.now(), value };
     writeCache(next);
@@ -130,4 +187,71 @@ export async function scoresFor(imdbId, type = 'movie') {
 
   inflight.set(key, job);
   return job;
+}
+
+
+// ---------- knowing a title's IMDb id ----------
+// A saved title carries its TMDB id, not its IMDb one. TMDB hands the id over in
+// a small request per title, and the answer never changes, so it is kept for
+// good on the device.
+function readIds() {
+  try { return JSON.parse(localStorage.getItem(ID_CACHE_KEY) || '{}') || {}; } catch (_) { return {}; }
+}
+function writeIds(ids) {
+  try { localStorage.setItem(ID_CACHE_KEY, JSON.stringify(ids)); } catch (_) {}
+}
+
+/** The IMDb id for a TMDB title, from the device where it is already known. */
+export async function imdbIdFor(tmdbId, type = 'movie') {
+  const id = +tmdbId;
+  if (!id) return '';
+  const key = `${type}_${id}`;
+  const ids = readIds();
+  if (ids[key] !== undefined) return ids[key] || '';
+  try {
+    const data = await tmdb(`/${type === 'tv' ? 'tv' : 'movie'}/${id}/external_ids`);
+    const imdbId = /^tt\d+$/.test(String(data?.imdb_id || '')) ? data.imdb_id : '';
+    const next = readIds();
+    next[key] = imdbId;
+    writeIds(next);
+    return imdbId;
+  } catch (_) { return ''; }
+}
+
+/** Every score CineVerse holds for a title, by TMDB id, or null while unknown. */
+export function cachedScoresFor(tmdbId, type = 'movie') {
+  const imdbId = readIds()[`${type}_${+tmdbId}`];
+  if (!imdbId) return null;
+  const held = readCache()[`${imdbId}_${type}`];
+  return fresh(held) ? held.value : null;
+}
+
+let prefetching = false;
+/**
+ * Fill the cache for a list of saved titles, a few at a time, so My List can
+ * sort by IMDb without every card waiting on a request. Runs at most once at a
+ * time and stops as soon as the list it was given is done.
+ * @param {{ tmdbId: number, type: string }[]} items
+ * @param {(done: number, total: number) => void} [onProgress]
+ */
+export async function prefetchScores(items = [], onProgress) {
+  if (prefetching) return 0;
+  const wanted = items
+    .map(item => ({ id: +(item.tmdbId || item.id), type: item.type === 'tv' ? 'tv' : 'movie' }))
+    .filter(item => item.id && !cachedScoresFor(item.id, item.type))
+    .slice(0, 120);
+  if (!wanted.length) return 0;
+  prefetching = true;
+  let done = 0;
+  const worker = async () => {
+    while (wanted.length) {
+      const item = wanted.shift();
+      const imdbId = await imdbIdFor(item.id, item.type);
+      if (imdbId) await scoresFor(imdbId, item.type);
+      done++;
+      onProgress?.(done, done + wanted.length);
+    }
+  };
+  try { await Promise.all([worker(), worker(), worker()]); } finally { prefetching = false; }
+  return done;
 }

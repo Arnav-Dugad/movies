@@ -15,6 +15,9 @@ export const DEFAULT_PREFS = Object.freeze({
   glass: 'rich', textSize: 'standard',
   // The moving light behind the site (js/backdrops.js).
   backdrop: 'aurora',
+  // An optional free OMDb key: fills the Tomatometer and Metascore in where the
+  // keyless sources have nothing, television especially (js/scores.js).
+  omdbKey: '',
   backdropArt: true, posterTilt: true, highContrast: false, compactNav: false,
   haptics: true,
   cleanHomePosters: false, posterCommunityRating: true, posterPersonalRating: true,
@@ -78,6 +81,7 @@ function sanitize(raw = {}) {
   ['autoplay', 'showRatings', 'showWatched', 'spoilerShield', 'rememberSearch', 'rememberViewed', 'discoverable', 'shareTaste', 'backdropArt', 'posterTilt', 'highContrast', 'compactNav', 'haptics', 'cleanHomePosters', 'posterCommunityRating', 'posterPersonalRating', 'posterWatchedMark', 'posterListButton', 'posterRateButton', 'posterMatchBadge', 'posterProviderLogo', 'posterDismissButton', 'posterPreview', 'hidePosterCaptions', 'ambientColour', 'castMilestones', 'streakMilestones', 'shareMilestones', 'lightDrift', 'detailBoxOfficeExpanded', 'detailGalleryExpanded', 'detailReviewsExpanded', 'detailHeatmapExpanded', 'directorExcludeShorts', 'directorExcludeDocumentaries', 'directorExcludeUnreleased', 'mature', 'matureBlur', 'matureInRecs'].forEach(key => {
     if (typeof raw[key] === 'boolean') next[key] = raw[key];
   });
+  next.omdbKey = typeof raw.omdbKey === 'string' ? raw.omdbKey.trim().slice(0, 32) : '';
   next.detailHidden = cleanDetailHidden(raw.detailHidden);
   next.hiddenClubs = cleanPersonIds(raw.hiddenClubs);
   return next;
