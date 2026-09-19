@@ -456,6 +456,26 @@ an open title page changes the instant a switch is flipped. Hiding is presentati
 only: nothing is fetched differently and switching a part back on loses nothing.
 The choice syncs with your other preferences.
 
+**And in your order.** The same panel lists the fourteen blocks a title page is
+made of — overview, where to watch, the fact cards, episodes, cast, reviews and
+the rest — one row each, moved by dragging a row or with the arrows beside it.
+The arrows are the real control: they work from a keyboard, a screen reader
+announces them, and focus follows the row so a block can be walked up the list
+with one key. Dragging (`js/reorder.js`) is the shortcut a mouse or a thumb
+expects on top of them.
+
+The header never moves: the artwork, title, buttons and the countdown are the
+page's anchor. Everything below them is re-laid across the span it already
+occupied, so nothing else shifts. A block you switched off keeps its place in
+the list, greyed, so the order and what is shown never describe different pages,
+and a block this build added that your stored order never mentioned slots in
+where it ships rather than disappearing.
+
+`js/detail-parts.js` holds the list and the arithmetic (`cleanDetailOrder`,
+`moveDetailBlock`, `dropDetailBlock`, `applyDetailOrder`); an order that matches
+the shipped one is stored as no order at all, so Settings can say *As shipped*
+and a backup carries nothing it does not need.
+
 ## One typeface
 
 The site used three faces — a geometric sans, a display serif and a monospace.
@@ -505,6 +525,12 @@ sources are free and need no key, no account and no server of ours:
   percentage; its 10-point average is shown in the badge's tooltip. Coverage is
   good for films and patchy for television — The Last of Us has both, Severance
   has neither — and a title with neither simply shows fewer badges.
+- **Critics and audience, where a key returns both.** Asking OMDb with
+  `tomatoes=true` can also carry the audience meter, which no keyless source
+  publishes. When it is there the page shows two pills, never one number doing
+  both jobs: a tomato for the critics, a popcorn tub for the audience, tipped
+  over below 60% the way a tomato splats. Keys that are not allowed those fields
+  answer "N/A", and "N/A" is not a score, so nothing is shown.
 - **An OMDb key fills the gaps**, television especially. Settings → Discovery →
   **OMDb key** takes a free key (a thousand titles a day); with one, OMDb is
   asked first and its Tomatometer and Metascore are used wherever it has them,
@@ -513,15 +539,40 @@ sources are free and need no key, no account and no server of ours:
   "recently changed" strip as anything but *Set* or *Not set*.
 
 Each badge is a quiet pill: the source's own mark in its own colour — the IMDb
-wordmark, a tomato or a splat, Metacritic's square — then the number in the
-page's ink, so a row of four scores reads as one row rather than four competing
-lozenges.
+wordmark, a tomato or a splat, a popcorn tub, Metacritic's square — then the
+number in the page's ink, so a row of four scores reads as one row rather than
+four competing lozenges. The pill carries its source as `data-score`, never as a
+class: `.score-imdb` and its siblings are the MARK's rules — a 17px yellow
+wordmark, a 15px square — and putting those names on the pill as well collapsed
+it to the size of its own mark, with the number spilling out across the tag
+beside it.
 
-**My List can sort by IMDb.** Choosing *IMDb rating* fetches what the device does
-not have (a small TMDB request for each title's IMDb id, then its scores, three
-at a time, up to 120 titles), keeps both in local storage for good, and redraws
-as they land. A title still waiting sorts last rather than pretending to be a
-zero.
+**Three pages can sort by IMDb**: My List, Watched and search results. The
+numbers come from one shared cache, so a title fetched on one page is already
+sorted on the next, and `js/score-sort.js` is the one place that fills the gaps —
+a small TMDB request for each title's IMDb id, then its scores, three at a time,
+up to 120 titles, kept in local storage for good and redrawn as they land. A
+title still waiting sorts last rather than pretending to be a zero.
+
+**A key that stops working is said out loud, once.** OMDb answers 200 with
+`Response: "False"` for a key it will not serve, so the message is the only thing
+that tells a spent daily quota from a revoked key; `omdbVerdict` reads it, and a
+title OMDb simply does not have says nothing about the key. The first refusal
+raises one toast naming which of the two it was, the mark is kept on the device
+so no second title repeats it, and it clears itself the moment the key answers
+again — or when a new key is saved. Ratings fall back to the free sources
+meanwhile, so nothing disappears.
+
+**Other free sources, and why these two.** Everything else worth knowing about
+needs a key, a server of ours, or a licence: the OMDb key above is the one that
+pays off (a thousand titles a day, and the only free route to the audience
+meter); TMDB's own `/find` and `external_ids` give ids, never other sites'
+scores; Trakt and TVmaze are free but publish their own communities' ratings
+rather than IMDb's; IMDb's official datasets are a nightly 1 GB dump meant for a
+server, and its Developer API and the Rotten Tomatoes and Metacritic APIs are
+commercial. Scraping any of the three is against their terms and breaks the
+first time a page changes. Cinemeta and Wikidata are free, keyless, CORS-open and
+honest about what they have.
 
 Both are cached on the device for a day (300 titles), fetched after the page has
 painted, and never block it: a source that is down costs nothing but its badge.
@@ -533,13 +584,21 @@ so the episode grid below uses TMDB's ratings instead.
 
 ## Every episode's rating, on the page
 
-The season heatmap has a third view, **Numbers**, beside Rating and Standouts: the
-same grid with every episode's rating printed in its square, and each season's
-average where it has always been, at the end of its row. It is on the title page
-itself — no window opens — and everything the heatmap already does still works:
-the colours are the same rating scale, watched episodes keep their ring, the peak
-episode keeps its outline, pointing at a square still reads it out and opening one
-still jumps to it in the list below.
+**Numbers** sits beside Rating and Standouts in the season heatmap's toolbar, and
+it is a switch over whichever of them is showing rather than a view of its own —
+because a third view meant choosing between seeing the ratings and seeing the
+colours. Turn it on and the squares widen, the tick slides out of the way and
+every rating fades up in place; the colours underneath are still Rating's fixed
+bands or Standouts' comparison with each season's own average, and switching
+between those two with the numbers on keeps them on.
+
+It is one property to animate — `--hm-w` and `--hm-h`, which the cell already
+sizes itself from — so the whole grid eases between the two shapes on the
+compositor, the season averages never leave the end of their rows, and everything
+the heatmap already does still works: watched episodes keep their ring, the peak
+episode keeps its outline, pointing at a square still reads it out and opening
+one still jumps to it in the list below. The shrink-to-fit that squeezes a long
+season onto one line on a phone steps aside while the numbers need the room.
 
 ## Moving backdrops
 
@@ -563,12 +622,40 @@ The light behind the site comes in six styles, chosen in **Settings → Appearan
 - The picker shows each style **moving, in miniature**, before you choose.
 
 **Where the page meets the light.** A hero is opaque and the page below it is
-not, so the backdrop used to begin at the hero's bottom edge as a hard line of
-colour. Three things fix it: the hero's artwork dissolves over its last stretch,
-so the light comes up through the picture rather than starting after it; the dark
-base under the hero's title stops short of the edge instead of painting the page
-colour over the light; and the light itself is masked — strongest in the middle
-of the screen, softer at every edge — so it never ends at a straight line either.
+not, so the backdrop began at the hero's bottom edge as a hard line of colour —
+measured at 37 levels out of 255 across a single row of pixels, which is exactly
+as visible as it sounds. Four things fix it, and the same measurement now reads
+3 or 4 in either theme, on Home, Movies, TV Shows and a title page:
+
+1. **The artwork dissolves, over a long stretch.** The picture is already
+   halfway gone by the time the edge arrives, so there is no frame where a sharp
+   image sits directly on top of open light.
+2. **The dark base under the text stops before the edge.** Both the hero's
+   vignette and a title page's backdrop gradient used to end on the page colour
+   at full strength (`var(--bg) 0%`) — a straight, opaque line laid exactly
+   where the lit page begins. They peak where the title needs them and are gone
+   by the last 40px.
+3. **A title page is masked at the container, not at its picture.** While the
+   artwork loads, a low-resolution copy is painted as `.detail-back`'s own
+   background, and an element's background box is not touched by a mask on one
+   of its children — so the picture faded out and a hard-edged blurred rectangle
+   stayed behind it. Masking the container takes the background, the image, the
+   placeholder and the trailer together.
+4. **The hero's curve accounts for its zoom.** A mask is measured in the
+   element's own box, *before* its transform. The hero backdrop is always
+   mid-Ken-Burns (scale 1.04 → 1.14) and its trailer sits at 1.1, or 1.28 on
+   paper — which puts the bottom edge you actually see at 89–95% of the picture,
+   where a curve that reaches zero at 100% still has a quarter of the image
+   left. There are three curves (`--art-fade`, `--art-fade-scaled`,
+   `--art-fade-zoomed`), each finishing before its own zoom can reach.
+
+**The light is an ambience, not a wash.** The stage's four broad lights were
+strong enough to colour whole sections as you scrolled past them — a teal box
+here, a magenta one there — which was the other half of what read as a hard
+edge: dark artwork above, saturated colour below. They are a little over a third
+of their old strength now: still a lit room, no longer a coloured one. The
+tinted boxes behind Continue Watching (green) and Franchises (amber) went with
+them; a section is one neutral surface and one hairline, like every other panel.
 
 **The pickers show each style moving.** The swatches in Settings carry their own
 copy of every style, so they had to be kept out of the page-level rules: with
@@ -594,6 +681,31 @@ blurred) and its surfaces are glass over it, in both themes:
   sign-in and share dialogs) are frosted: translucent, with the page behind them
   blurred.
 - Accents, tints and images stay exactly as designed.
+
+**One recipe, one scale** (`css/apple.css`, the last sheet before the light
+theme is compiled). Roundness is a scale rather than a guess: four steps, each
+about 1.4x the last, chosen so a control inside a panel is always visibly
+rounder or flatter than the panel around it — `--radius-sm` for small things,
+`--radius` for controls, `--radius-lg` for cards and rows, `--radius-xl` for
+panels, `--radius-2xl` for dialogs and the big section surfaces, and anything
+that is a pill stays a pill. The corners shrink with the surface on a phone,
+because a full-width panel there is not the same shape as a 400px one on a
+desktop.
+
+Glass is one recipe too: a translucent surface, a 30px blur with saturation
+pushed to 185% so colour behind it stays colour, a hairline border, and a
+one-pixel highlight along the top edge — the light catching the lip of the
+material. `js/glass.js` sets the surface and the blur on every panel it knows;
+`css/apple.css` gives those panels the lip and gives the same blur to the
+frosted things that are not panels, which had been saying 8px, 12px and 16px and
+reading as three different materials. Geometry is never scoped to a glass mode:
+*Quiet and focused* keeps every corner and every lip, and `js/glass.js` stays
+the only thing that differs between the two, which is what the glass diff in
+`tests/` checks.
+
+Nothing here gains a colour. Panels lost their tints in `css/minimal.css`, the
+section boxes lost theirs with the moving backdrops above, and glass is neutral:
+the only colour on a surface is the light behind it.
 
 Settings shows both choices as **live previews**: a tiny lit stage with a panel
 over it, the rich one drifting and catching its sheen, the quiet one flat. They
@@ -1587,8 +1699,8 @@ string, which would have broken Discover.
 `tests/logic/` runs the real application modules against a small browser shim —
 list locking, the episode ledger, CSV import, every stats figure, rewatch
 counting, collection completion, the light-theme compiler (`theme.test.mjs`), and
-the binge forecast, Watch Diary, detail parts, preferences and logo tone
-(`batch-features.test.mjs`), and the viewing rule, forecast reasons, the Diary's TV
+the binge forecast, Watch Diary, detail parts and the order a title page reads
+in, preferences and logo tone (`batch-features.test.mjs`), and the viewing rule, forecast reasons, the Diary's TV
 month, episode moods and Up Next countdowns (`tv-intelligence.test.mjs`), and viewing
 patterns, season recaps, the season-complete signal, the returning rail and exact
 episode times (`season-intelligence.test.mjs`), and the icon set, poster colour,
@@ -1608,10 +1720,11 @@ folded filter bars: what counts as a set filter, the button's summary and a
 registry that still matches the markup (`filter-fold.test.mjs`), and how the site
 feels: every action's haptic signature and weight, the lean and its settling,
 row detents and edges, headings crossing the middle, the ticket stub's arc, the
-outside scores: reading a rating, the Wikidata and OMDb parses, how a key fills
-gaps without overwriting what is known, which badges are drawn and how they are
-toned, the heatmap's three views and what Numbers puts in the markup, and the
-backdrop styles (`scores.test.mjs`), and the
+outside scores: reading a rating, the Wikidata and OMDb parses, the critics' and
+the audience's meters, how a key fills gaps without overwriting what is known,
+telling a spent quota from a dead key, which badges are drawn and how they are
+toned, the heatmap's two colourings with the numbers switched over either, and
+the backdrop styles (`scores.test.mjs`), and the
 Continue Watching lift and the sticky bars (`feel.test.mjs`), and the gestures:
 the pick reel and how it slows, what a swipe on a Continue Watching card does and
 how far the card follows, the pull's resistance and arming point, the shake

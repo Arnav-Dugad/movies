@@ -13,6 +13,8 @@ import { cardArt, rateBtnHTML, myRatingHTML, WATCHED_BADGE_HTML } from './cards.
 import { ensureWatchedMeta } from './watched-meta.js';
 import { playCount, lastPlayMs } from './rewatch.js';
 import { matureStatus, pendingMature, checkingMature, resolveMature, adultFromGenre, realGenre, adultGenreOptionsHTML, onMatureToggle } from './mature-filter.js';
+import { cachedScoresFor } from './scores.js';
+import { fetchIMDbScores } from './score-sort.js';
 
 let adultWaiting = false;
 let watchedSort = 'recent', watchedGenre = 'all', watchedQuery = '';
@@ -96,8 +98,14 @@ export function applyWatchedFilters(source, filters = {}) {
     if (metadata === 'poster_missing') return !i.poster;
     return !complete;
   });
+  // IMDb comes from the outside-scores cache (js/scores.js), the same store My
+  // List sorts by, so a title fetched on one page is already sorted on the other.
+  // A score that has not arrived sorts last rather than pretending to be a zero.
+  const imdb = item => +(cachedScoresFor(+item.id, item.type === 'tv' ? 'tv' : 'movie')?.imdb || 0);
   const sorters = {
     recent: (a, b) => b.ts - a.ts,
+    imdb_desc: (a, b) => imdb(b) - imdb(a),
+    imdb_asc: (a, b) => (imdb(a) || 99) - (imdb(b) || 99),
     watched_asc: (a, b) => (a.ts || Number.MAX_SAFE_INTEGER) - (b.ts || Number.MAX_SAFE_INTEGER),
     title_asc: (a, b) => a.title.localeCompare(b.title),
     title_desc: (a, b) => b.title.localeCompare(a.title),
@@ -255,7 +263,11 @@ export function renderWatched() {
 export function initWatched() {
   registerActions({
     'watched-filter': (el) => setWatchedFilter(el.dataset.filter, el),
-    'watched-sort': (el) => { watchedSort = el.value; renderGrid(); },
+    'watched-sort': (el) => {
+      watchedSort = el.value;
+      renderGrid();
+      if (watchedSort.startsWith('imdb')) fetchIMDbScores(allItems(), renderGrid);
+    },
     'watched-genre': (el) => { watchedGenre = el.value; renderGrid(); },
     'watched-decade': (el) => { watchedDecade = el.value; renderGrid(); },
     'watched-language': (el) => { watchedLanguage = el.value; renderGrid(); },

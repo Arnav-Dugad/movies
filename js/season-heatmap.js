@@ -45,13 +45,20 @@ export const DELTA_STEPS = [0.2, 0.5, 1];
 export const DELTA_BANDS = [0, 1, 2, 3, 4, 5, 6];
 const TRUSTED_VOTES = 5;
 const MODE_KEY = 'cv_heatmap_mode';
-// Colour by rating, colour by how an episode compares with its own season, or
-// print every rating in the square ("Numbers" — the whole show's episode
-// ratings, on the page rather than in a window of their own).
-export const MODES = [['rating', 'Rating'], ['standouts', 'Standouts'], ['numbers', 'Numbers']];
+const NUMBERS_KEY = 'cv_heatmap_numbers';
+// Two colourings: by rating, or by how an episode compares with its own season.
+export const MODES = [['rating', 'Rating'], ['standouts', 'Standouts']];
 export const MODE_NAMES = MODES.map(([value]) => value);
-/** Pure: a stored mode cleaned to one this build draws. */
+/**
+ * Pure: a stored mode cleaned to one this build draws.
+ * "numbers" used to be a third mode of its own, which meant choosing between
+ * seeing the ratings and seeing the colours. It is a switch over either
+ * colouring now, so a grid stored in the old mode comes back as Rating — with
+ * the numbers on, which is what that mode was for.
+ */
 export const modeName = value => (MODE_NAMES.includes(String(value)) ? String(value) : 'rating');
+/** Pure: is the "show every rating" switch on? */
+export const numbersOn = value => value === true || value === 'true' || value === '1' || value === 'numbers';
 const LIT_KEY = 'cv_heatmap_lit_v1';
 
 /** Pure: the band index for a rating, or -1 when there is no community rating. */
@@ -204,7 +211,7 @@ function insightsHTML(tid, model) {
 }
 
 /** The whole panel body for a model. */
-export function heatmapHTML(tid, model, { mode = 'rating', light = false } = {}) {
+export function heatmapHTML(tid, model, { mode = 'rating', numbers = false, light = false } = {}) {
   if (!model.rows.length) return '<p class="hm-empty">No episode ratings to show yet.</p>';
   const watchedCount = Math.max(1, model.watched);
   const step = Math.max(14, Math.min(90, Math.round(2000 / watchedCount)));
@@ -219,11 +226,15 @@ export function heatmapHTML(tid, model, { mode = 'rating', light = false } = {})
       <span class="hm-trend" aria-hidden="true">${sparkline(row, model.range)}<b>${row.mean ? row.mean.toFixed(1) : '–'}</b>${model.strongest === row && model.rows.length > 1 ? icon('trophy', { cls: 'hm-crown' }) : ''}</span>
     </div>`).join('');
   const modes = MODES.map(([value, label]) => `<button type="button" class="${mode === value ? 'active' : ''}" data-hm-mode="${value}" aria-pressed="${mode === value}">${label}</button>`).join('');
-  return `<div class="hm-toolbar"><div class="hm-modes" role="group" aria-label="Colour episodes by">${modes}</div>${legendHTML()}</div>
-    <div class="hm-grid hm-mode-${mode}${model.maxEpisodes > 26 ? ' dense' : model.maxEpisodes <= 13 ? ' roomy' : ''}${light ? ' hm-lighting' : ' hm-enter'}" role="grid" aria-label="Episodes by season. Arrow keys move between episodes; Enter opens one.">${rows}</div>
+  // The numbers are a switch over whichever colouring is showing, not a third
+  // view: the squares grow and every rating fades up in place, so the colours
+  // you were reading never go away underneath them.
+  const numbersSwitch = `<button type="button" class="hm-numbers${numbers ? ' active' : ''}" data-hm-numbers aria-pressed="${numbers}" title="Print every episode's rating in its square"><i aria-hidden="true">8.4</i><span>Numbers</span></button>`;
+  return `<div class="hm-toolbar"><div class="hm-controls"><div class="hm-modes" role="group" aria-label="Colour episodes by">${modes}</div>${numbersSwitch}</div>${legendHTML()}</div>
+    <div class="hm-grid hm-mode-${mode}${numbers ? ' hm-showing-numbers' : ''}${model.maxEpisodes > 26 ? ' dense' : model.maxEpisodes <= 13 ? ' roomy' : ''}${light ? ' hm-lighting' : ' hm-enter'}" role="grid" aria-label="Episodes by season. Arrow keys move between episodes; Enter opens one.">${rows}</div>
     <div class="hm-readout" aria-live="polite">${readoutHTML(tid, null, model)}</div>
     ${insightsHTML(tid, model)}
-    <p class="hm-source">Ratings from TMDB; episodes with few votes can swing. Standouts compare each episode with its own season's average, and Numbers prints every rating with each season's average at the end of its row.</p>`;
+    <p class="hm-source">Ratings from TMDB; episodes with few votes can swing. Standouts compare each episode with its own season's average, and Numbers prints every rating in its square, beside the season averages at the end of each row.</p>`;
 }
 
 /** The collapsible panel's shell (filled by mountHeatmap when opened). */
@@ -241,6 +252,10 @@ export function heatmapShell(tid, expanded) {
 
 // ---------- behaviour ----------
 const readMode = () => { try { return modeName(localStorage.getItem(MODE_KEY)); } catch (_) { return 'rating'; } };
+// A grid left in the old "numbers" mode comes back with the switch on.
+const readNumbers = () => {
+  try { return numbersOn(localStorage.getItem(NUMBERS_KEY)) || numbersOn(localStorage.getItem(MODE_KEY)); } catch (_) { return false; }
+};
 function firstLight(tid) {
   try {
     const seen = JSON.parse(localStorage.getItem(LIT_KEY) || '[]');
@@ -304,6 +319,8 @@ function wire(body, onOpen) {
   body.addEventListener('click', event => {
     const modeButton = event.target.closest?.('[data-hm-mode]');
     if (modeButton) { setMode(body, modeButton.dataset.hmMode); return; }
+    const numbersButton = event.target.closest?.('[data-hm-numbers]');
+    if (numbersButton) { setNumbers(body, numbersButton.getAttribute('aria-pressed') !== 'true'); return; }
     const button = event.target.closest?.('.hm-cell');
     if (!button) return;
     const key = `${button.dataset.sn}-${button.dataset.en}`;
@@ -327,15 +344,32 @@ function setMode(body, mode) {
   try { localStorage.setItem(MODE_KEY, value); } catch (_) {}
   const grid = body.querySelector('.hm-grid');
   if (!grid) return;
-  grid.classList.remove('hm-mode-rating', 'hm-mode-standouts', 'hm-mode-numbers', 'hm-lighting', 'hm-enter');
+  grid.classList.remove('hm-mode-rating', 'hm-mode-standouts', 'hm-lighting', 'hm-enter');
   grid.classList.add(`hm-mode-${value}`);
-  // Numbers need room; the squares go back to fitting the width when it is off.
-  if (value === 'numbers') grid.style.removeProperty('--hm-fit'); else fitCells(body);
+  fitCells(body);
   body.querySelector('.hm-toolbar')?.setAttribute('data-mode', value);
   body.querySelectorAll('[data-hm-mode]').forEach(button => {
     const on = button.dataset.hmMode === value;
     button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on));
   });
+}
+
+/**
+ * Turn every episode's rating on or off over whatever colouring is showing.
+ * The squares grow and the numbers fade up (css/scores.css owns the easing), so
+ * the grid you were reading is the grid you keep.
+ */
+function setNumbers(body, on) {
+  try { localStorage.setItem(NUMBERS_KEY, on ? '1' : '0'); } catch (_) {}
+  const grid = body.querySelector('.hm-grid');
+  if (!grid) return;
+  grid.classList.remove('hm-lighting', 'hm-enter');
+  grid.classList.toggle('hm-showing-numbers', on);
+  // Numbers need room, so the shrink-to-fit that squeezes a long season onto one
+  // line on a phone steps aside while they are on.
+  fitCells(body);
+  const button = body.querySelector('[data-hm-numbers]');
+  if (button) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
 }
 
 // Squares shrink to fit a season on one line when the panel is narrow (a phone),
@@ -346,8 +380,8 @@ function fitCells(body) {
   const cells = grid?.querySelector('.hm-cells');
   const count = body._hm?.model.maxEpisodes || 0;
   if (!grid || !cells || !count) return;
-  // Numbers mode sizes its own squares around the text.
-  if (grid.classList.contains('hm-mode-numbers')) { grid.style.removeProperty('--hm-fit'); return; }
+  // With the numbers on, the squares are sized around the text instead.
+  if (grid.classList.contains('hm-showing-numbers')) { grid.style.removeProperty('--hm-fit'); return; }
   grid.style.removeProperty('--hm-fit');
   const natural = parseFloat(getComputedStyle(grid).getPropertyValue('--hm-size')) || 22;
   const gap = parseFloat(getComputedStyle(cells).columnGap) || 3;
@@ -389,8 +423,9 @@ export async function mountHeatmap(tid, seasonNumbers, { isWatched, watchedAt, o
   const model = heatmapModel(payloads.filter(Boolean), { isWatched, watchedAt });
   const light = model.watched > 0 && !reducedMotion() && firstLight(tid);
   const mode = readMode();
+  const showNumbers = readNumbers();
   live._hm = { tid, model, selected: '', isWatched, watchedAt };
-  live.innerHTML = heatmapHTML(tid, model, { mode, light });
+  live.innerHTML = heatmapHTML(tid, model, { mode, numbers: showNumbers, light });
   live.querySelector('.hm-toolbar')?.setAttribute('data-mode', mode);
   live.dataset.state = 'ready';
   wire(live, onOpen);

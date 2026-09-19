@@ -13,6 +13,8 @@ import { buildCard, personCard, skelCards } from './cards.js';
 import { registerActions } from './events.js';
 import { prefs, adultFlag } from './prefs.js';
 import { adultPass, matureStatus, pendingMature, checkingMature, resolveMature, adultFromGenre, realGenre, syncAdultGenreOptions, onMatureToggle } from './mature-filter.js';
+import { cachedScoresFor } from './scores.js';
+import { fetchIMDbScores } from './score-sort.js';
 
 // ---- module state ----
 let searchGen = 0;          // bumped on every submitted query/vibe; in-flight stragglers bail
@@ -380,6 +382,12 @@ function applyFilters(raw) {
   else if (f.sort === 'popularity') list.sort((a, b) => (b.r.popularity || 0) - (a.r.popularity || 0));
   else if (f.sort === 'title_asc') list.sort((a, b) => (a.r.title || a.r.name || '').localeCompare(b.r.title || b.r.name || ''));
   else if (f.sort === 'title_desc') list.sort((a, b) => (b.r.title || b.r.name || '').localeCompare(a.r.title || a.r.name || ''));
+  else if (f.sort === 'imdb' || f.sort === 'imdb_asc') {
+    // The IMDb score for a result this device has already looked up; anything
+    // still unknown sorts last either way rather than reading as a zero.
+    const imdb = x => +(cachedScoresFor(+x.r.id, x.t === 'tv' ? 'tv' : 'movie')?.imdb || 0);
+    list.sort(f.sort === 'imdb' ? (a, b) => imdb(b) - imdb(a) : (a, b) => (imdb(a) || 99) - (imdb(b) || 99));
+  }
   else if (mode === 'search' && q) {
     // relevance: exact/prefix title matches bubble up, otherwise keep TMDB order
     const score = x => { const title = (x.r.title || x.r.name || '').toLowerCase(); if (title === q) return 0; if (title.startsWith(q)) return 1; if (title.includes(q)) return 2; return 3; };
@@ -650,7 +658,14 @@ export function initSearch() {
 
   registerActions({
     'set-filter': (el) => setFilter(el.dataset.f),
-    'search-filter': () => renderResults(),
+    'search-filter': (el) => {
+      renderResults();
+      // Ordering by IMDb needs the scores: fetch the ones this device is missing
+      // for the results in hand, then draw them again in the right order.
+      if (el?.id === 'fltSort' && String(el.value).startsWith('imdb')) {
+        fetchIMDbScores(pool.filter(entry => entry.t === 'movie' || entry.t === 'tv').map(entry => ({ id: entry.r.id, type: entry.t })), renderResults);
+      }
+    },
     'search-reset': () => { ['fltGenre', 'fltDecade', 'fltRating', 'fltRatingMax', 'fltVotes', 'fltLanguage'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const collection = $('fltCollection'); if (collection) collection.value = 'all'; const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
     'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault(); input.focus(); },
     'load-more-search': () => loadMore(),

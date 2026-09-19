@@ -306,7 +306,11 @@
 /* Continue Watching gets one calm, edge-to-edge glass stage. Cards remain fast
    horizontal targets, while depth, motion and controls surface progressively. */
 .continue-section{position:relative;padding-block:36px;margin-top:10px;overflow:hidden}
-.continue-section::before{content:"";position:absolute;z-index:-1;inset:0 clamp(10px,3vw,38px);border:1px solid rgba(52,211,153,.08);border-radius:30px;background:radial-gradient(circle at 11% 0,rgba(16,185,129,.09),transparent 33%),linear-gradient(145deg,rgba(255,255,255,.025),rgba(255,255,255,.007));pointer-events:none}
+/* No colour of its own. The box used to carry a green wash and a green edge,
+   which is what made a section read as a tinted panel sliding past as you
+   scrolled; it is one neutral surface and one hairline now, the same as every
+   other panel on the site. */
+.continue-section::before{content:"";position:absolute;z-index:-1;inset:0 clamp(10px,3vw,38px);border:1px solid var(--glass-border);border-radius:28px;background:linear-gradient(145deg,rgba(255,255,255,.028),rgba(255,255,255,.01));pointer-events:none}
 .continue-row{gap:18px;scroll-padding-inline:clamp(16px,5vw,60px)}
 .continue-card{width:350px;flex-basis:350px;padding:8px;border:1px solid rgba(255,255,255,.075);border-radius:22px;background:rgba(11,12,18,.72);box-shadow:0 16px 44px rgba(0,0,0,.25);backdrop-filter:blur(22px);scroll-snap-align:start;transition:transform .45s cubic-bezier(.2,.8,.2,1),box-shadow .45s,border-color .3s}
 .continue-card:hover{transform:translateY(-7px) scale(1.012);border-color:rgba(52,211,153,.22);box-shadow:0 30px 74px rgba(0,0,0,.52)}

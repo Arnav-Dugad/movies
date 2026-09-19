@@ -1,0 +1,119 @@
+/* ============================================================
+   APPLE GLASS
+   The last layer before the light theme is compiled. One radius scale, one
+   glass recipe, one hairline — applied across the pieces the site is actually
+   built from, rather than a new look bolted on beside the old one.
+
+   Three rules run through everything below:
+
+   1. ROUNDNESS IS A SCALE, NOT A GUESS. Four steps, each roughly 1.4x the
+      last, chosen so a control inside a panel is always visibly rounder-or-
+      flatter than the panel around it. Small things get --radius-sm, controls
+      --radius, cards and rows --radius-lg, panels --radius-xl, and the few
+      full-height surfaces (modals, sheets, the big section boxes) --radius-2xl.
+      Anything that is a pill stays a pill.
+
+   2. GLASS IS ONE RECIPE. Translucent surface, a deep blur with the saturation
+      pushed up so colour behind it stays colour, a hairline border, and a
+      one-pixel highlight along the top edge — the light catching the lip of the
+      material. js/glass.js already turns panel surfaces translucent and blurs
+      them; this gives every one of them the same edge.
+
+   3. NOTHING GAINS A COLOUR. The tinted panels went in css/minimal.css and the
+      tinted section boxes went with this batch. Glass here is neutral: the only
+      colour on a surface is the light behind it.
+
+   Scoped to [data-glass="rich"] where it costs blur, so "Quiet and focused"
+   stays flat and cheap.
+   ============================================================ */
+
+:root {
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+  --radius-2xl: 34px;
+  /* The one blur, and the one hairline light along a surface's top edge. */
+  --glass-blur: blur(30px) saturate(185%);
+  --glass-lip: inset 0 1px 0 rgba(255, 255, 255, .07);
+  --glass-lip-strong: inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+
+/* ---------- Panels: every surface js/glass.js already knows ----------
+   The list is PANEL_CLASSES in js/glass.js. Giving them the lip here (rather
+   than in the rewrite) keeps that file about colour alone. */
+:is(.stats-panel, .stats-hero, .stats-achievements, .profile-panel, .profile-connect-card,
+    .profile-taste-pass, .settings-panel, .settings-premium-hero, .detail-accordion,
+    .release-hero, .release-card, .notifications-hero, .notification-card,
+    .discover-premium-hero, .discover-studio, .discover-surprise, .mood-card, .fp-hero,
+    .bo-page-hero, .challenge-card, .tv-card, .pi-card, .friend-code-card, .show-progress,
+    .ep-heatmap, .person-completion, .loyalty-card, .cast-row, .hm-readout-card, .ep-card,
+    .wl-cover, .watched-controls, .wl-controls, .bo-page-tools, .release-toolbar,
+    .taste-match-result, .fr-card, .awards-section, .year-hero, .year-total, .year-month,
+    .year-side, .year-moments, .year-genres) {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--glass-lip);
+}
+/* A small fact card is a control-sized surface, not a panel-sized one. */
+:is(.stat-card, .club-badge, .person-link, .bo-chart-row) { border-radius: var(--radius-lg); }
+
+/* ---------- Dialogs and sheets ---------- */
+:is(.auth-modal, .rate-modal, .pin-modal, .import-modal, .scan-modal, .spoiler-share-modal, .list-modal, .del-modal) {
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--glass-lip-strong), 0 40px 120px rgba(0, 0, 0, .55);
+}
+/* Not scoped to rich glass: the corner and the lip are geometry, not blur, so
+   "Quiet and focused" keeps them. js/glass.js is the only thing that should
+   differ between the two modes, and it only ever touches surface and blur. */
+:is(.profile-dd, .notification-drop) { border-radius: var(--radius-xl); }
+
+/* ---------- Artwork ----------
+   A poster is the roundest thing on the page after a pill, because it is the
+   biggest: the same 12px that suits a button looks square at 155px wide. */
+.card-img { border-radius: var(--radius-lg); }
+.card-w .card-img, .continue-art, .vid-thumb, .ep-still, .coll-banner, .hm-readout-still, .gal-item {
+  border-radius: var(--radius-lg);
+}
+.detail-poster { border-radius: var(--radius-xl); }
+.cast-pic, .card-wl, .card-rate, .card-dismiss { border-radius: 50%; }
+
+/* ---------- Controls ----------
+   Selects and text fields match the buttons beside them: same height, same
+   corner, same hairline. They were a mix of 8, 10 and 12px before. */
+:is(.watched-select, .search-select, .wl-select, .settings-select, .diary-select, select.cv-select) {
+  border-radius: var(--radius);
+}
+:is(.watched-search, .search-box, .episode-search, .wl-search, .settings-search) { border-radius: 999px; }
+:is(.watched-tool-btn, .filter-reset, .settings-jump button, .season-toolbar > button) { border-radius: 999px; }
+input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="number"], textarea {
+  border-radius: var(--radius);
+}
+textarea { border-radius: var(--radius-lg); }
+
+/* ---------- The one glass recipe ----------
+   js/glass.js sets the blur on panel rules it rewrites; these are the frosted
+   things that are not panels, so they said blur(8px) through blur(16px) and
+   read as three different materials. */
+html[data-glass="rich"] :is(.card-rating, .card-myrating, .card-badge, .card-wl, .card-rate, .card-dismiss, .toast, .hero-genre-tag, .hero-badge, .dtag, .t10-badge) {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* ---------- Section surfaces ----------
+   The big rounded boxes behind a home-page section (Continue Watching,
+   Franchises). Same corner as a dialog, because they are the same size. */
+:is(.continue-section::before, .franchise-section::before) { border-radius: var(--radius-2xl); }
+
+/* ---------- The edge of everything ----------
+   One hairline colour, one width. Panels that drew a 2px border, or a border in
+   their own accent, now differ from their neighbours only in what they hold. */
+:is(.settings-key-field input, .settings-key-field button, .order-row, .settings-order) {
+  border-color: var(--glass-border);
+}
+
+@media (max-width: 600px) {
+  /* Corners scale with the surface: a full-width panel on a phone is not the
+     same shape as a 400px one on a desktop. */
+  :root { --radius-xl: 22px; --radius-2xl: 26px; }
+  .card-img { border-radius: var(--radius); }
+}

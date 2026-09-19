@@ -75,11 +75,14 @@ export function parseWikidataScores(bindings = []) {
 }
 
 /**
- * Pure: OMDb's payload → the three scores. Its `Ratings` array names each
- * source ("Internet Movie Database", "Rotten Tomatoes", "Metacritic").
+ * Pure: OMDb's payload → every score it carries. Its `Ratings` array names each
+ * source ("Internet Movie Database", "Rotten Tomatoes", "Metacritic"); asking
+ * with `tomatoes=true` can also return the audience meter beside the critics'
+ * one, which is the only free source for the second half of the Tomatometer.
+ * Those fields come back "N/A" on some keys, and "N/A" is not a score.
  */
 export function parseOmdb(data = {}) {
-  const out = { imdb: 0, rt: 0, rtAverage: 0, metacritic: 0 };
+  const out = { imdb: 0, rt: 0, rtAverage: 0, rtAudience: 0, metacritic: 0 };
   if (!data || data.Response === 'False') return out;
   out.imdb = normaliseRating(data.imdbRating);
   for (const row of Array.isArray(data.Ratings) ? data.Ratings : []) {
@@ -95,13 +98,37 @@ export function parseOmdb(data = {}) {
   }
   const meta = /^(\d{1,3})$/.exec(String(data.Metascore || '').trim());
   if (!out.metacritic && meta) out.metacritic = Math.min(100, +meta[1]);
+  // The critics' and the audience's meters, where the key is allowed them.
+  const critics = /^(\d{1,3})%?$/.exec(String(data.tomatoMeter || '').trim());
+  if (!out.rt && critics) out.rt = Math.min(100, +critics[1]);
+  const audience = /^(\d{1,3})%?$/.exec(String(data.tomatoUserMeter || '').trim());
+  if (audience) out.rtAudience = Math.min(100, +audience[1]);
+  const average = /^([\d.]+)$/.exec(String(data.tomatoRating || '').trim());
+  if (!out.rtAverage && average) out.rtAverage = normaliseRating(average[1]);
   return out;
 }
 
 /** Pure: which of two score sets to keep per field (a real number beats a zero). */
 export function mergeScores(primary = {}, fallback = {}) {
   const pick = key => (+primary[key] > 0 ? +primary[key] : +fallback[key] || 0);
-  return { imdb: pick('imdb'), rt: pick('rt'), rtAverage: pick('rtAverage'), metacritic: pick('metacritic') };
+  return { imdb: pick('imdb'), rt: pick('rt'), rtAverage: pick('rtAverage'), rtAudience: pick('rtAudience'), metacritic: pick('metacritic') };
+}
+
+/**
+ * Pure: what an OMDb answer says about the key that asked for it.
+ * OMDb answers 200 with `Response: "False"` for a key it will not serve, so the
+ * message is the only thing that tells a spent quota from a dead key.
+ * @returns {'ok'|'quota'|'invalid'|'error'}
+ */
+export function omdbVerdict(data, status = 200) {
+  if (status === 401) return 'invalid';
+  if (!data || typeof data !== 'object') return 'error';
+  if (data.Response !== 'False') return 'ok';
+  const message = String(data.Error || '').toLowerCase();
+  if (message.includes('limit')) return 'quota';
+  if (message.includes('key')) return 'invalid';
+  // "Incorrect IMDb ID" and friends are about the title, not the key.
+  return 'ok';
 }
 
 /** Pure: a key that looks like an OMDb key (eight hex characters), trimmed. */
@@ -143,8 +170,45 @@ async function fromCinemeta(imdbId, type) {
 }
 
 async function fromOmdb(imdbId, key) {
-  const data = await getJSON(`${OMDB}?i=${encodeURIComponent(imdbId)}&tomatoes=true&apikey=${encodeURIComponent(key)}`);
+  const response = await fetch(`${OMDB}?i=${encodeURIComponent(imdbId)}&tomatoes=true&apikey=${encodeURIComponent(key)}`);
+  const data = await response.json().catch(() => null);
+  const verdict = omdbVerdict(data, response.status);
+  if (verdict !== 'ok') { noteOmdbTrouble(key, verdict); throw new Error(verdict); }
+  clearOmdbTrouble(key);
   return parseOmdb(data);
+}
+
+// ---------- a key that stops working ----------
+// A key is pasted once and then forgotten, so the site has to be the one that
+// notices when it stops being served — a spent daily quota or a revoked key.
+// Said once per key per verdict, never on every title: the mark is kept on the
+// device, and clears itself the moment the key answers again.
+const TROUBLE_KEY = 'cv_omdb_trouble_v1';
+const readTrouble = () => { try { return JSON.parse(localStorage.getItem(TROUBLE_KEY) || '{}') || {}; } catch (_) { return {}; } };
+
+/** Pure: what to say about a key that came back refused. */
+export function omdbTroubleMessage(verdict) {
+  if (verdict === 'quota') return 'Your OMDb key has used up today\u2019s requests. Ratings fall back to the free sources until it resets.';
+  if (verdict === 'invalid') return 'Your OMDb key was refused. Check it in Settings \u2192 Discovery, or clear it to use the free sources.';
+  return 'OMDb could not be reached. Ratings fall back to the free sources.';
+}
+
+function noteOmdbTrouble(key, verdict) {
+  const held = readTrouble();
+  if (held.key === key && held.verdict === verdict) return;
+  try { localStorage.setItem(TROUBLE_KEY, JSON.stringify({ key, verdict, at: Date.now() })); } catch (_) {}
+  document.dispatchEvent(new CustomEvent('cv:omdb-trouble', { detail: { verdict, message: omdbTroubleMessage(verdict) } }));
+}
+
+function clearOmdbTrouble(key) {
+  const held = readTrouble();
+  if (held.key !== key) return;
+  try { localStorage.removeItem(TROUBLE_KEY); } catch (_) {}
+}
+
+/** Forget a key's trouble, so a corrected key is watched again from scratch. */
+export function resetOmdbTrouble() {
+  try { localStorage.removeItem(TROUBLE_KEY); } catch (_) {}
 }
 
 async function fromWikidata(imdbId) {
@@ -159,7 +223,7 @@ async function fromWikidata(imdbId) {
  * @returns {Promise<{ imdb: number, rt: number, rtAverage: number, metacritic: number }>}
  */
 export async function scoresFor(imdbId, type = 'movie') {
-  const empty = { imdb: 0, rt: 0, rtAverage: 0, metacritic: 0 };
+  const empty = { imdb: 0, rt: 0, rtAverage: 0, rtAudience: 0, metacritic: 0 };
   if (!/^tt\d+$/.test(String(imdbId || ''))) return empty;
   const key = `${imdbId}_${type}`;
   const cache = readCache();

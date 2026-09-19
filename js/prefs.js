@@ -3,7 +3,7 @@
 // mirrors one compact snapshot to the user's existing Firestore profile document.
 import { state } from './state.js';
 import { REGIONS } from './config.js';
-import { cleanDetailHidden, detailHiddenCSS } from './detail-parts.js';
+import { cleanDetailHidden, detailHiddenCSS, cleanDetailOrder, isDefaultOrder } from './detail-parts.js';
 
 const KEY = 'cv_experience_v2';
 export const DEFAULT_PREFS = Object.freeze({
@@ -44,6 +44,8 @@ export const DEFAULT_PREFS = Object.freeze({
   matureInRecs: false,
   // Detail-page parts the viewer switched off (js/detail-parts.js). Empty = all shown.
   detailHidden: [],
+  // The order of a title page's blocks (js/detail-parts.js). Empty = as shipped.
+  detailOrder: [],
   // People removed from Hours clubs (TMDB person ids). The next person with the
   // most time takes their place; restoring brings them back.
   hiddenClubs: [],
@@ -83,6 +85,10 @@ function sanitize(raw = {}) {
   });
   next.omdbKey = typeof raw.omdbKey === 'string' ? raw.omdbKey.trim().slice(0, 32) : '';
   next.detailHidden = cleanDetailHidden(raw.detailHidden);
+  // Stored as it was chosen, but an order that matches the shipped one is kept
+  // empty, so "nothing changed here" stays readable in Settings and in backups.
+  const order = Array.isArray(raw.detailOrder) && raw.detailOrder.length ? cleanDetailOrder(raw.detailOrder) : [];
+  next.detailOrder = isDefaultOrder(order) ? [] : order;
   next.hiddenClubs = cleanPersonIds(raw.hiddenClubs);
   return next;
 }

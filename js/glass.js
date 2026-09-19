@@ -185,8 +185,10 @@ export function glassDeclarations(read, kind, alpha, tokens = {}) {
   // a surface to frost.
   if (!writes.length && (kind === 'overlay' || unset(read('background-image').value))) return null;
   if (kind === 'overlay') {
-    writes.push({ prop: 'backdrop-filter', value: 'blur(28px) saturate(160%)', priority: '' });
-    writes.push({ prop: '-webkit-backdrop-filter', value: 'blur(28px) saturate(160%)', priority: '' });
+    // One recipe for the whole site: css/apple.css names the same blur in
+    // --glass-blur for the frosted things that are not panels.
+    writes.push({ prop: 'backdrop-filter', value: 'blur(30px) saturate(185%)', priority: '' });
+    writes.push({ prop: '-webkit-backdrop-filter', value: 'blur(30px) saturate(185%)', priority: '' });
     return writes;
   }
   // The sheen goes only where this rule itself paints an image, so it never

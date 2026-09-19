@@ -1,0 +1,121 @@
+/* ============================================================
+   ARRANGING A TITLE PAGE
+   Settings → Detail pages → What appears. One row per block of a title page,
+   moved by dragging it or with the arrows beside it (js/reorder.js,
+   js/detail-parts.js).
+
+   Rows are one fixed height inside the list, because that is what makes the
+   drag honest: the gap that opens under a held row is exactly a row, so what
+   you see while you drag is where it will land.
+   ============================================================ */
+.settings-order {
+  margin: 4px 0 22px;
+  padding: 16px 16px 18px;
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, .02);
+}
+.settings-order-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.settings-order-head > div { display: grid; gap: 4px; }
+.settings-order-head b { font-size: .95rem; font-weight: 650; }
+.settings-order-head small { color: var(--text3); font-size: .8rem; line-height: 1.5; max-width: 60ch; }
+.settings-order-head button {
+  flex: none;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .05);
+  color: var(--text2);
+  font-family: var(--font);
+  font-size: .78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.settings-order-head button:hover { color: var(--text); background: rgba(255, 255, 255, .1); }
+
+.order-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; touch-action: pan-y; }
+.order-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 8px 0 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .035);
+  cursor: grab;
+  user-select: none;
+  transition: transform .26s var(--ease-out), background .2s var(--ease-out), border-color .2s var(--ease-out), box-shadow .22s var(--ease-out);
+}
+.order-row:hover { background: rgba(255, 255, 255, .06); }
+.order-grip { display: grid; gap: 3px; flex: none; padding: 2px 0; }
+.order-grip i { display: block; width: 14px; height: 1.5px; border-radius: 2px; background: var(--text3); }
+.order-index {
+  flex: none;
+  min-width: 22px;
+  color: var(--text3);
+  font-size: .74rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.order-name { flex: 1; min-width: 0; font-size: .88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.order-name em {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .07);
+  color: var(--text3);
+  font-size: .66rem;
+  font-style: normal;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+/* A block that is switched off keeps its place in the list, so the order and
+   what is shown never describe different pages. */
+.order-row.is-off .order-name { color: var(--text3); }
+.order-moves { display: inline-flex; gap: 4px; flex: none; }
+.order-moves button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: background .18s var(--ease-out), color .18s var(--ease-out), border-color .18s var(--ease-out);
+}
+.order-moves button svg { width: 16px; height: 16px; }
+.order-moves button:hover:not(:disabled) { color: var(--text); border-color: var(--glass-border); background: rgba(255, 255, 255, .08); }
+.order-moves button:disabled { opacity: .28; cursor: default; }
+.order-moves button:focus-visible { outline: 2px solid var(--red2); outline-offset: 1px; }
+
+/* ---------- while a row is held ---------- */
+.order-list.dragging { cursor: grabbing; }
+.order-list.dragging .order-row { cursor: grabbing; }
+/* The held row leaves the transition behind so it tracks the pointer exactly;
+   the rows it passes keep theirs, which is what makes the gap glide. */
+.order-row.lifted {
+  z-index: 2;
+  border-color: rgba(255, 255, 255, .22);
+  background: rgba(255, 255, 255, .1);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .45);
+  transition: background .2s var(--ease-out), box-shadow .2s var(--ease-out);
+}
+.order-row.lifted .order-grip i { background: var(--text); }
+
+@media (max-width: 600px) {
+  .settings-order { padding: 14px 12px 16px; border-radius: 18px; }
+  .settings-order-head { flex-direction: column; }
+  .order-row { gap: 9px; padding-left: 10px; }
+  .order-name { font-size: .84rem; }
+}
+
+html[data-motion="reduced"] .order-row { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) .order-row { transition: none !important; }
+}

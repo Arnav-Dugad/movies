@@ -20,6 +20,24 @@
 html { background: var(--bg); }
 body { background: transparent; }
 
+/* The curve every piece of full-bleed artwork dissolves along, in two forms.
+
+   A mask is measured in the element's own box, BEFORE its transform. The hero's
+   backdrop is always mid-zoom (Ken Burns runs it from scale(1.04) to 1.14, and
+   its trailer sits at 1.1), so the bottom edge you actually see is only about
+   95% of the way down the picture — where a curve that reaches zero at 100%
+   still has a quarter of the image left, and that quarter ended in a straight
+   line. The scaled form is finished by 93%, which is past the furthest any of
+   those zooms can push the edge, and is what the hero uses. */
+:root {
+  --art-fade: linear-gradient(to bottom, #000 0 46%, rgba(0, 0, 0, .94) 62%, rgba(0, 0, 0, .7) 76%, rgba(0, 0, 0, .34) 88%, rgba(0, 0, 0, .1) 96%, transparent 100%);
+  --art-fade-scaled: linear-gradient(to bottom, #000 0 40%, rgba(0, 0, 0, .94) 55%, rgba(0, 0, 0, .68) 70%, rgba(0, 0, 0, .32) 82%, rgba(0, 0, 0, .08) 89%, transparent 93%);
+  /* And one for the deepest zoom of all: on paper the hero's trailer is pushed
+     to 1.28 to crop the player's chrome out of frame, which puts its visible
+     bottom edge at 89% of the picture. */
+  --art-fade-zoomed: linear-gradient(to bottom, #000 0 36%, rgba(0, 0, 0, .94) 50%, rgba(0, 0, 0, .66) 64%, rgba(0, 0, 0, .3) 76%, rgba(0, 0, 0, .07) 83%, transparent 86%);
+}
+
 .bd-layer {
   position: absolute;
   border-radius: 50%;
@@ -241,23 +259,68 @@ html[data-glass="quiet"] .aurora .bd-layer { animation: none !important; opacity
       at every edge — so it never ends at a straight line either.
    ============================================================ */
 .aurora {
-  -webkit-mask-image: radial-gradient(130% 110% at 50% 42%, #000 38%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .18) 100%);
-  mask-image: radial-gradient(130% 110% at 50% 42%, #000 38%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .18) 100%);
+  -webkit-mask-image: radial-gradient(128% 112% at 50% 40%, #000 30%, rgba(0, 0, 0, .6) 66%, rgba(0, 0, 0, .16) 100%);
+  mask-image: radial-gradient(128% 112% at 50% 40%, #000 30%, rgba(0, 0, 0, .6) 66%, rgba(0, 0, 0, .16) 100%);
 }
 
+/* 1 — the artwork dissolves. A long fade, not a short one: the picture is
+   already halfway gone by the time the edge arrives, so there is no frame where
+   a sharp image sits directly on top of open light.
+
+   A title page's backdrop is masked at the CONTAINER, not at its <img>. While
+   the artwork loads, the low-resolution copy is painted as .detail-back's own
+   background (js/detail.js `underlay`), and an element's background box is not
+   touched by a mask on one of its children — so the picture faded out and a
+   hard-edged blurred rectangle stayed behind it, which is the line that was
+   still there under the trailer. Masking the container takes the background,
+   the image, the placeholder and the trailer together.
+
+   The hero is masked at its <img>, because .hero-slide also holds the title,
+   the buttons and the caption, and they are not artwork. */
+.detail-back {
+  -webkit-mask-image: var(--art-fade);
+  mask-image: var(--art-fade);
+}
 .hero-slide > img,
-.hero-slide > .ambient-video,
-.detail-back > img,
-.detail-back > .ambient-video {
-  -webkit-mask-image: linear-gradient(to bottom, #000 62%, rgba(0, 0, 0, .55) 86%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 62%, rgba(0, 0, 0, .55) 86%, transparent 100%);
+.hero-slide > .ambient-video {
+  -webkit-mask-image: var(--art-fade-scaled);
+  mask-image: var(--art-fade-scaled);
 }
 
-/* The base behind the hero's title keeps its weight but lets the last 90px go,
-   so the light continues under it instead of stopping. */
+/* 2 — the dark base under the text stops before the edge. It used to end on
+   the page colour at full strength (`var(--bg) 0%`), which is a straight,
+   opaque line laid exactly where the lit page begins: the thing that read as
+   the background "starting" halfway down the screen. It peaks where the title
+   needs it and is gone by the last 40px. */
 .hero-vignette {
   background:
     linear-gradient(to right, rgba(6, 6, 11, .85) 0%, rgba(6, 6, 11, .3) 50%, rgba(6, 6, 11, .1) 100%),
-    linear-gradient(to top, transparent 0, rgba(6, 6, 11, .92) 90px, rgba(6, 6, 11, .72) 22%, transparent 46%),
+    linear-gradient(to top, rgba(6, 6, 11, 0) 0, rgba(6, 6, 11, .28) 40px, rgba(6, 6, 11, .68) 110px, rgba(6, 6, 11, .8) 20%, rgba(6, 6, 11, .5) 34%, transparent 54%),
     linear-gradient(to bottom, rgba(6, 6, 11, .8) 0%, rgba(6, 6, 11, .25) 14%, transparent 26%);
 }
+
+/* 3 — the same seam under a title page's backdrop (and its trailer). The header
+   overlaps the artwork by 120px, so the dark it needs peaks there and releases
+   over the last stretch instead of ending on the page colour. */
+.detail-back-grad {
+  background:
+    linear-gradient(to bottom, rgba(6, 6, 11, .8) 0%, rgba(6, 6, 11, .2) 16%, transparent 28%),
+    linear-gradient(to top, rgba(6, 6, 11, 0) 0, rgba(6, 6, 11, .3) 46px, rgba(6, 6, 11, .72) 130px, rgba(6, 6, 11, .46) 42%, rgba(6, 6, 11, .14) 68%, transparent 88%),
+    linear-gradient(to right, rgba(6, 6, 11, .6), transparent 60%);
+}
+
+/* 4 — the light itself is an ambience, not a wash.
+   The stage's four broad lights were strong enough to colour whole sections as
+   you scrolled past them — a teal box here, a magenta one there — which is the
+   other half of what read as a hard edge: dark artwork above, saturated colour
+   below. They are a little over a third of their old strength now: still a lit
+   room, no longer a coloured one. */
+html:not([data-glass="quiet"]) .aurora {
+  background:
+    radial-gradient(42vmax 34vmax at 16% 10%, rgba(229, 9, 20, .1), transparent 70%),
+    radial-gradient(46vmax 36vmax at 88% 18%, rgba(124, 58, 237, .09), transparent 70%),
+    radial-gradient(52vmax 40vmax at 72% 90%, rgba(14, 165, 233, .06), transparent 70%),
+    radial-gradient(38vmax 30vmax at 10% 80%, rgba(251, 191, 36, .035), transparent 70%);
+}
+html:not([data-glass="quiet"]) .aurora::before,
+html:not([data-glass="quiet"]) .aurora::after { opacity: .3; }

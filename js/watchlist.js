@@ -2,7 +2,8 @@
 import { auth, db, firebase } from './firebase.js';
 import { haptic } from './haptics.js';
 import { flyTicket, launchRect } from './ticket-stub.js';
-import { cachedScoresFor, prefetchScores } from './scores.js';
+import { cachedScoresFor } from './scores.js';
+import { fetchIMDbScores } from './score-sort.js';
 import { offerWatchedUndo } from './watched-undo.js';
 import { icon, listIcon } from './icons.js';
 import { illustration } from './illustrations.js';
@@ -526,16 +527,8 @@ export function initWatchlist() {
       wlSort = el.value;
       renderWL();
       // Sorting by IMDb needs the scores: fetch the ones this device does not
-      // have yet, a few at a time, and redraw as they land.
-      if (wlSort.startsWith('imdb')) {
-        const list = state.watchlist.filter(item => +item.tmdbId);
-        toast('Fetching IMDb ratings…', 'info');
-        prefetchScores(list).then(done => {
-          if (!done) return;
-          renderWL();
-          toast(`${done} IMDb rating${done === 1 ? '' : 's'} added`, 'success');
-        });
-      }
+      // have yet, a few at a time, and redraw as they land (js/score-sort.js).
+      if (wlSort.startsWith('imdb')) fetchIMDbScores(state.watchlist, renderWL);
     },
     'wl-reset-filters': () => {
       wlQuery = ''; wlGenre = 'all'; wlStatus = 'all'; wlRating = 0; wlDecade = 'all'; wlSort = 'recent';

@@ -81,6 +81,37 @@ check('garbage is an empty list', parts.cleanDetailHidden('cast').length === 0 &
 check('nothing hidden, no stylesheet', parts.detailHiddenCSS([]) === '');
 check('hidden parts become one scoped rule', parts.detailHiddenCSS(['cast']) === '#detailContent [data-dp="cast"] { display: none !important; }');
 
+// ---------- the order of a title page ----------
+check('every block is named once', parts.DETAIL_BLOCK_KEYS.length === new Set(parts.DETAIL_BLOCK_KEYS).size
+  && parts.DETAIL_BLOCKS.every(([key, label]) => key && label));
+check('no stored order is the shipped one', parts.isDefaultOrder([]) && parts.isDefaultOrder(null)
+  && JSON.stringify(parts.cleanDetailOrder([])) === JSON.stringify(parts.DETAIL_BLOCK_KEYS));
+check('a stored order keeps what it names and appends the rest', (() => {
+  const order = parts.cleanDetailOrder(['cast', 'nonsense', 'cast', 'overview']);
+  return order[0] === 'cast' && order[1] === 'overview'
+    && order.length === parts.DETAIL_BLOCK_KEYS.length
+    && new Set(order).size === order.length;
+})());
+check('a block a stored order never heard of still appears', parts.cleanDetailOrder(['cast']).includes('reviews'));
+check('moving a block down swaps it with the one below', (() => {
+  const moved = parts.moveDetailBlock([], 'overview', 1);
+  const shipped = parts.DETAIL_BLOCK_KEYS;
+  return moved[0] === shipped[0] && moved[1] === shipped[2] && moved[2] === 'overview';
+})());
+check('a move off either end is no move', (() => {
+  const first = parts.DETAIL_BLOCK_KEYS[0], last = parts.DETAIL_BLOCK_KEYS.at(-1);
+  return parts.moveDetailBlock([], first, -1).join() === parts.DETAIL_BLOCK_KEYS.join()
+    && parts.moveDetailBlock([], last, 1).join() === parts.DETAIL_BLOCK_KEYS.join()
+    && parts.moveDetailBlock([], 'cast', 0).join() === parts.DETAIL_BLOCK_KEYS.join();
+})());
+check('a block dropped on another takes its place', (() => {
+  const dropped = parts.dropDetailBlock([], 'moreLikeThis', 'overview');
+  return dropped.indexOf('moreLikeThis') === dropped.indexOf('overview') - 1 && dropped.length === parts.DETAIL_BLOCK_KEYS.length;
+})());
+check('a block dropped on nothing goes last', parts.dropDetailBlock([], 'overview', null).at(-1) === 'overview');
+check('every block is a real part of the page', parts.DETAIL_BLOCK_KEYS.every(key => key === 'facts' || parts.DETAIL_PART_KEYS.has(key)));
+check('every block has a name for a settings row', parts.DETAIL_BLOCK_KEYS.every(key => parts.blockLabel(key).length > 3));
+
 // ---------- preferences ----------
 check('defaults: dark theme, captions shown, nothing hidden', prefsModule.DEFAULT_PREFS.theme === 'dark' && prefsModule.DEFAULT_PREFS.hidePosterCaptions === false && prefsModule.DEFAULT_PREFS.detailHidden.length === 0);
 localStorage.setItem('cv_experience_v2', JSON.stringify({ theme: 'light', hidePosterCaptions: true, detailHidden: ['cast', 'bogus'], _updatedAt: 5 }));
@@ -88,6 +119,19 @@ prefsModule.loadPrefs();
 check('a stored light theme loads', prefsModule.prefs.theme === 'light');
 check('caption hiding loads and reaches the root', prefsModule.prefs.hidePosterCaptions === true && document.documentElement.dataset.posterCaptions === 'hide');
 check('stored detail parts are cleaned on load', JSON.stringify(prefsModule.prefs.detailHidden) === '["cast"]');
+check('a page order is a stored preference, empty until it is changed', prefsModule.DEFAULT_PREFS.detailOrder.length === 0);
+check('an order that matches the shipped one is stored as no order at all', (() => {
+  localStorage.setItem('cv_experience_v2', JSON.stringify({ detailOrder: parts.DETAIL_BLOCK_KEYS, _updatedAt: 6 }));
+  prefsModule.loadPrefs();
+  const shippedIsNone = prefsModule.prefs.detailOrder.length === 0;
+  localStorage.setItem('cv_experience_v2', JSON.stringify({ detailOrder: ['cast', 'bogus'], _updatedAt: 7 }));
+  prefsModule.loadPrefs();
+  const kept = prefsModule.prefs.detailOrder[0] === 'cast' && !prefsModule.prefs.detailOrder.includes('bogus');
+  // Leave the store as the checks above it found it.
+  localStorage.setItem('cv_experience_v2', JSON.stringify({ theme: 'light', hidePosterCaptions: true, detailHidden: ['cast', 'bogus'], _updatedAt: 8 }));
+  prefsModule.loadPrefs();
+  return shippedIsNone && kept;
+})());
 localStorage.setItem('cv_experience_v2', JSON.stringify({ theme: 'neon', hidePosterCaptions: 'yes', _updatedAt: 6 }));
 prefsModule.loadPrefs();
 check('an unknown theme falls back to dark', prefsModule.prefs.theme === 'dark');

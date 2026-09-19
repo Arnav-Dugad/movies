@@ -30,8 +30,13 @@ a.score-tag:focus-visible { outline: 2px solid var(--red2); outline-offset: 2px;
 .score-value { font-variant-numeric: tabular-nums; font-weight: 650; letter-spacing: -.01em; }
 .score-mark { flex: none; display: grid; place-items: center; }
 
+/* Every rule below is a MARK rule, so each is scoped to .score-mark. The pill
+   carries its source as data-score, never as one of these class names: when it
+   carried both, .score-imdb's 17px yellow box applied to the whole tag and the
+   number spilled out over the tag beside it. */
+
 /* IMDb: the wordmark, small, on its yellow. */
-.score-imdb {
+.score-mark.score-imdb {
   height: 17px;
   padding: 0 5px;
   border-radius: 4px;
@@ -42,17 +47,24 @@ a.score-tag:focus-visible { outline: 2px solid var(--red2); outline-offset: 2px;
   letter-spacing: -.01em;
   line-height: 17px;
 }
-/* Rotten Tomatoes: the tomato when it is fresh, the splat when it is not. */
-.score-rt { width: 17px; height: 17px; }
-.score-rt svg { width: 15px; height: 15px; display: block; }
-.score-rt.fresh svg { fill: #fa320a; }
-.score-rt.fresh .rt-leaf { fill: #3fbf63; }
-.score-rt.rotten svg { fill: #7cb342; }
+/* Rotten Tomatoes, critics: the tomato when it is fresh, the splat when it is not. */
+.score-mark.score-rt { width: 17px; height: 17px; }
+.score-mark.score-rt svg { width: 15px; height: 15px; display: block; }
+.score-mark.score-rt.fresh svg { fill: #fa320a; }
+.score-mark.score-rt.fresh .rt-leaf { fill: #3fbf63; }
+.score-mark.score-rt.rotten svg { fill: #7cb342; }
+/* Rotten Tomatoes, audience: the popcorn tub, tipped over below 60%. */
+.score-mark.score-rtu { width: 17px; height: 17px; }
+.score-mark.score-rtu svg { width: 15px; height: 15px; display: block; }
+.score-mark.score-rtu.fresh svg { fill: #fa9d0a; }
+.score-mark.score-rtu.fresh .rt-puff { fill: #ffe0a3; }
+.score-mark.score-rtu.rotten svg { fill: #59a14f; }
+.score-mark.score-rtu.rotten .rt-puff { fill: #8fbf7a; }
 /* Metacritic: the square, coloured by its own bands. */
-.score-mc { width: 15px; height: 15px; border-radius: 4px; }
-.score-mc.good { background: #00ce7a; }
-.score-mc.mixed { background: #ffbd3f; }
-.score-mc.poor { background: #ff6874; }
+.score-mark.score-mc { width: 15px; height: 15px; border-radius: 4px; }
+.score-mark.score-mc.good { background: #00ce7a; }
+.score-mark.score-mc.mixed { background: #ffbd3f; }
+.score-mark.score-mc.poor { background: #ff6874; }
 @keyframes cv-score-in { from { opacity: 0; transform: translateY(-5px) scale(.94); } to { opacity: 1; transform: none; } }
 /* Scores off in Settings hides these too. */
 html[data-ratings="hide"] .detail-tags .score-tag { display: none !important; }
@@ -94,45 +106,97 @@ html[data-ratings="hide"] .detail-tags .score-tag { display: none !important; }
 .settings-key-link:hover { color: var(--text); }
 
 /* ============================================================
-   NUMBERS MODE ON THE SEASON HEATMAP
-   The same grid the panel already draws, with every rating printed in its
-   square: the whole show's episode ratings, on the page, beside the season
-   averages the panel has always shown at the end of each row.
+   EVERY RATING IN ITS SQUARE
+   Not a third view: a switch over whichever colouring is showing. The squares
+   widen, the tick slides out of the way and every rating fades up in place, so
+   the colours you were reading are still the colours underneath the numbers —
+   Rating's fixed bands or Standouts' comparison with each season's own average.
+
+   It is one property to animate: --hm-w and --hm-h, which the cell already
+   sizes itself from, so the whole grid eases between the two shapes on the
+   compositor and the season averages never leave the end of their rows.
    ============================================================ */
-.hm-mode-numbers .hm-cells { gap: 5px; }
-.hm-mode-numbers .hm-cell {
-  width: auto;
-  min-width: 44px;
-  height: 30px;
+.hm-grid { --hm-w: var(--hm-fit, var(--hm-size)); --hm-h: var(--hm-fit, var(--hm-size)); }
+.hm-grid.hm-showing-numbers { --hm-w: 44px; --hm-h: 30px; }
+.hm-grid.hm-grid .hm-cell {
+  width: var(--hm-w);
+  height: var(--hm-h);
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  color: #06120a;
+  transition: width .42s var(--ease-out), height .42s var(--ease-out), border-radius .42s var(--ease-out), transform .18s var(--ease-out), box-shadow .18s;
+}
+.hm-grid.hm-grid .hm-label { padding-top: calc(var(--hm-h) / 2 - 8px); min-height: var(--hm-h); }
+.hm-grid.hm-grid .hm-trend { min-height: var(--hm-h); }
+.hm-grid.hm-showing-numbers .hm-cells { gap: 5px; }
+.hm-grid.hm-showing-numbers .hm-cell { border-radius: 8px; }
+/* The number lives in ::after at all times so it has something to fade, and it
+   inherits the cell's ink — the same contrast rule the tick already uses. */
+.hm-cell::after {
+  content: attr(data-n);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
   font-family: var(--font);
   font-size: .78rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   letter-spacing: -.01em;
+  opacity: 0;
+  transform: scale(.82);
+  transition: opacity .26s var(--ease-out), transform .34s var(--ease-out);
+  pointer-events: none;
 }
-.hm-mode-numbers .hm-cell::after { content: attr(data-n); }
-.hm-mode-numbers .hm-cell.none::after, .hm-mode-numbers .hm-cell.unaired::after { content: '–'; color: var(--text3); }
-.hm-mode-numbers .hm-label { padding-top: 7px; }
-.hm-mode-numbers .hm-trend { min-height: 30px; }
-/* Numbers wear the rating colours, the same scale the Rating view uses. */
-.hm-mode-numbers .hm-cell[data-b="0"] { background: var(--hm-0); }
-.hm-mode-numbers .hm-cell[data-b="1"] { background: var(--hm-1); }
-.hm-mode-numbers .hm-cell[data-b="2"] { background: var(--hm-2); }
-.hm-mode-numbers .hm-cell[data-b="3"] { background: var(--hm-3); }
-.hm-mode-numbers .hm-cell[data-b="4"] { background: var(--hm-4); }
-.hm-mode-numbers .hm-cell[data-b="5"] { background: var(--hm-5); }
-.hm-mode-numbers .hm-cell[data-b="6"] { background: var(--hm-6); }
-/* The rating is the point of this view, so the tick steps aside and the ring
-   says "seen" instead. */
-.hm-mode-numbers .hm-tick { display: none; }
-.hm-mode-numbers .hm-cell.watched { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .6); }
-.hm-mode-numbers .hm-cell.best { box-shadow: inset 0 0 0 2px #fff; }
+.hm-grid.hm-showing-numbers .hm-cell::after { opacity: 1; transform: none; }
+.hm-grid.hm-showing-numbers .hm-cell.none::after, .hm-grid.hm-showing-numbers .hm-cell.unaired::after { content: '–'; color: var(--text3); }
+/* The tick and the number would sit on top of each other, so the tick fades out
+   as the numbers come in and a ring says "seen" in its place. */
+.hm-grid.hm-showing-numbers .hm-tick { opacity: 0; transition: opacity .2s var(--ease-out); }
+.hm-grid.hm-showing-numbers .hm-cell.watched { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .62); }
+.hm-grid.hm-showing-numbers .hm-cell.best { box-shadow: inset 0 0 0 2px #fff; }
+.hm-label, .hm-trend { transition: padding-top .42s var(--ease-out), min-height .42s var(--ease-out); }
+
+/* The switch itself, beside the two colourings. */
+.hm-controls { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hm-numbers {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px 0 7px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: rgba(6, 6, 11, .4);
+  color: var(--text3);
+  font-size: .76rem;
+  font-weight: 750;
+  cursor: pointer;
+  transition: color .2s, background .25s var(--ease-out), border-color .25s var(--ease-out);
+}
+.hm-numbers i {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 20px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .08);
+  font-size: .62rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  transition: background .25s var(--ease-out), color .25s var(--ease-out);
+}
+.hm-numbers:hover { color: var(--text); }
+.hm-numbers.active { color: var(--text); border-color: rgba(255, 255, 255, .22); background: rgba(255, 255, 255, .1); }
+.hm-numbers.active i { background: linear-gradient(135deg, var(--gold), #f59e0b); color: #111; }
+.hm-numbers:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 @media (max-width: 600px) {
-  .hm-mode-numbers .hm-cell { min-width: 38px; height: 27px; font-size: .72rem; }
+  .hm-grid.hm-showing-numbers { --hm-w: 38px; --hm-h: 27px; }
+  .hm-cell::after { font-size: .72rem; }
+}
+html[data-motion="reduced"] :is(.hm-cell, .hm-cell::after, .hm-label, .hm-trend) { transition: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="full"]) :is(.hm-cell, .hm-cell::after, .hm-label, .hm-trend) { transition: none !important; }
 }
 
 html[data-motion="reduced"] .score-tag { animation: none !important; }

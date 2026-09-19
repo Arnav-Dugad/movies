@@ -76,6 +76,7 @@ import { initCastMilestones } from './cast-hours.js';
 import { initStreakMilestones } from './streak-milestones.js';
 import { initSeriesFinale } from './series-finale.js';
 import { initReturningRail } from './returning.js';
+import { toast } from './ui.js';
 
 function hideLoader() { window.__cvBooted = true; const l = $('loader'); if (l) l.classList.add('hidden'); }
 
@@ -175,6 +176,10 @@ async function init() {
   // recentUnlocks) before the router's refresh renders stats, so a freshly-unlocked
   // badge paints with its pulse on the same tick.
   initBadges();
+  // An OMDb key is pasted once and then forgotten, so the site says it out loud
+  // the first time the key stops being served — a spent daily quota, or a key
+  // that was revoked. js/scores.js only raises this once per key per reason.
+  document.addEventListener('cv:omdb-trouble', event => toast(event.detail?.message || 'OMDb could not be reached.', 'error'));
   initRouter();
   cleanupServiceWorker();
 

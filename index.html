@@ -50,6 +50,8 @@
 <link rel="stylesheet" href="/css/feel.css">
 <link rel="stylesheet" href="/css/scores.css">
 <link rel="stylesheet" href="/css/backdrops.css">
+<link rel="stylesheet" href="/css/arrange.css">
+<link rel="stylesheet" href="/css/apple.css">
 <!-- Light theme: js/theme.js compiles a paper version of every sheet above (before
      first paint, only for light readers) and inserts it just before light.css,
      the hand-tuned layer that has the last word. -->
@@ -489,6 +491,7 @@ setTimeout(function () {
         <option value="title_asc">Title A–Z</option><option value="title_desc">Title Z–A</option>
         <option value="year_desc">Release year: newest</option><option value="year_asc">Release year: oldest</option>
         <option value="community_desc">Community rating: high</option><option value="community_asc">Community rating: low</option>
+        <option value="imdb_desc">IMDb rating: high</option><option value="imdb_asc">IMDb rating: low</option>
         <option value="user_desc">My rating: high</option><option value="user_asc">My rating: low</option>
         <option value="runtime_desc">Runtime: longest</option><option value="runtime_asc">Runtime: shortest</option>
         <option value="rating_gap_desc">Biggest rating disagreement</option><option value="theme_desc">Most story themes</option>
@@ -695,7 +698,7 @@ setTimeout(function () {
     <select class="search-select" id="fltLanguage" data-action="search-filter" aria-label="Original language"><option value="">Any language</option><option value="en">English</option><option value="hi">Hindi</option><option value="ko">Korean</option><option value="ja">Japanese</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="ta">Tamil</option><option value="te">Telugu</option></select>
     <select class="search-select" id="fltCollection" data-action="search-filter" aria-label="Collection status"><option value="all">Any collection status</option><option value="unwatched">Not watched</option><option value="watched">Watched</option><option value="saved">In my lists</option><option value="unsaved">Not in my lists</option><option value="rated">Rated by me</option></select>
     <select class="search-select" id="fltSort" data-action="search-filter" aria-label="Sort by">
-      <option value="relevance">Relevance</option><option value="rating">Top rated</option><option value="rating_asc">Lowest rated</option><option value="votes">Most voted</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="popularity">Most popular</option><option value="title_asc">Title A–Z</option><option value="title_desc">Title Z–A</option>
+      <option value="relevance">Relevance</option><option value="rating">Top rated</option><option value="rating_asc">Lowest rated</option><option value="votes">Most voted</option><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="popularity">Most popular</option><option value="imdb">IMDb rating (highest)</option><option value="imdb_asc">IMDb rating (lowest)</option><option value="title_asc">Title A–Z</option><option value="title_desc">Title Z–A</option>
     </select>
     <button class="filter-reset" id="fltReset" data-action="search-reset" aria-label="Reset filters"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 109-9 9 9 0 00-6.36 2.64L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
   </div>

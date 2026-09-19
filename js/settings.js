@@ -4,12 +4,13 @@ import { icon } from './icons.js';
 import { $, toast, esc } from './ui.js';
 import { illustration } from './illustrations.js';
 import { BACKDROPS, previewHTML } from './backdrops.js';
-import { cleanOmdbKey } from './scores.js';
+import { cleanOmdbKey, resetOmdbTrouble } from './scores.js';
 import { registerActions } from './events.js';
 import { REGIONS, regionLabel } from './config.js';
 import { prefs, updatePref, resetPrefs, preferencePayload, DEFAULT_PREFS } from './prefs.js';
 import { setTheme } from './theme-toggle.js';
-import { DETAIL_PART_GROUPS } from './detail-parts.js';
+import { DETAIL_PART_GROUPS, cleanDetailOrder, isDefaultOrder, moveDetailBlock, blockLabel } from './detail-parts.js';
+import { initReorder } from './reorder.js';
 import { db } from './firebase.js';
 import { clearLibraryCache, flushLibraryVersion, libraryCacheDisabled } from './library-cache.js';
 import { loadWatchlist, loadWatched } from './watchlist.js';
@@ -199,17 +200,18 @@ const PREF_LABELS = {
   mature: 'Show mature content', matureInRecs: 'Mature titles in recommendations', matureBlur: 'Blur mature artwork',
   detailBoxOfficeExpanded: 'Open Box Office', detailGalleryExpanded: 'Open Gallery', detailReviewsExpanded: 'Open Reviews',
   rememberSearch: 'Remember searches', rememberViewed: 'Remember recently viewed', discoverable: 'Find me by name', shareMilestones: 'Share hours clubs', shareTaste: 'Friend taste matching',
-  detailHidden: 'Title page parts',
+  detailHidden: 'Title page parts', detailOrder: 'Title page order',
 };
 /** Pure: a preference value in words. */
 export function prefValueLabel(key, value) {
   const choices = { theme: THEME_CHOICES, backdrop: BACKDROP_CHOICES, density: DENSITY_CHOICES, textSize: TEXT_CHOICES, motion: MOTION_CHOICES, glass: GLASS_CHOICES }[key];
   if (choices) return choices.find(([choice]) => choice === value)?.[1] || String(value);
   if (key === 'detailHidden') return Array.isArray(value) && value.length ? `${value.length} hidden` : 'All shown';
+  if (key === 'detailOrder') return Array.isArray(value) && value.length ? `${blockLabel(value[0])} first` : 'As shipped';
   if (key === 'omdbKey') return value ? 'Set' : 'Not set';
   return value ? 'On' : 'Off';
 }
-const sectionOfKey = key => (key === 'detailHidden' ? 'parts' : SECTIONS.find(section => section.keys?.includes(key))?.id || 'appearance');
+const sectionOfKey = key => (key === 'detailHidden' || key === 'detailOrder' ? 'parts' : SECTIONS.find(section => section.keys?.includes(key))?.id || 'appearance');
 
 // ---------- recently changed ----------
 // The last three changes made on this device, newest first, each with Show (scroll
@@ -518,6 +520,55 @@ function glassPicker() {
     }).join('')}</div></div>`;
 }
 
+// The order a title page reads in: one row per block, moved by hand or by the
+// arrows. A block switched off below is still listed, greyed, so the order and
+// what is shown never disagree about what exists.
+function detailOrderPanel() {
+  const order = cleanDetailOrder(prefs.detailOrder);
+  const hidden = new Set(prefs.detailHidden || []);
+  const rows = order.map((key, index) => {
+    const off = hidden.has(key) || (key === 'facts' && DETAIL_PART_GROUPS.find(group => group.id === 'facts').parts.every(([part]) => hidden.has(part)));
+    const name = esc(blockLabel(key));
+    return `<li class="order-row${off ? ' is-off' : ''}" data-key="${key}">
+      <span class="order-grip" aria-hidden="true"><i></i><i></i><i></i></span>
+      <b class="order-index" aria-hidden="true">${index + 1}</b>
+      <span class="order-name">${name}${off ? '<em>hidden</em>' : ''}</span>
+      <span class="order-moves">
+        <button type="button" data-action="settings-order-move" data-key="${key}" data-delta="-1" aria-label="Move ${name} up"${index === 0 ? ' disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg></button>
+        <button type="button" data-action="settings-order-move" data-key="${key}" data-delta="1" aria-label="Move ${name} down"${index === order.length - 1 ? ' disabled' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+      </span>
+    </li>`;
+  }).join('');
+  return `<div class="settings-order">
+    <div class="settings-order-head">
+      <div><b>The order a title page reads in</b><small>Drag a row, or use the arrows. The artwork, title and buttons stay at the top; everything below them is yours to arrange.</small></div>
+      ${isDefaultOrder(prefs.detailOrder) ? '' : '<button type="button" data-action="settings-order-reset">Reset order</button>'}
+    </div>
+    <ol class="order-list" id="detailOrderList">${rows}</ol>
+  </div>`;
+}
+
+/**
+ * Draw the order list again in place. Only this list changes, so the panel does
+ * not scroll out from under the row that was just moved, and the drag handler
+ * stays bound to the same <ol>.
+ */
+function redrawOrderList() {
+  const list = document.getElementById('detailOrderList');
+  if (!list) return;
+  const wrap = list.closest('.settings-order');
+  const fresh = document.createElement('div');
+  fresh.innerHTML = detailOrderPanel();
+  wrap.replaceWith(fresh.firstElementChild);
+  wireOrderList();
+}
+
+/** Bind dragging to the order list, once per drawn list. */
+function wireOrderList() {
+  const list = document.getElementById('detailOrderList');
+  if (list) initReorder(list, order => { updatePref('detailOrder', order); redrawOrderList(); });
+}
+
 // Every part of a title's page, grouped, each with its own switch.
 function detailPartsPanel() {
   const hidden = new Set(prefs.detailHidden || []);
@@ -529,7 +580,8 @@ function detailPartsPanel() {
     return `<div class="settings-parts-group"><div class="settings-parts-head"><b>${esc(group.title)}</b><button data-action="settings-detail-group" data-group="${group.id}" data-show="${allShown ? '0' : '1'}">${allShown ? 'Hide all' : 'Show all'}</button></div><div class="settings-parts-grid">${parts}</div></div>`;
   }).join('');
   return `<section class="settings-panel settings-detail-parts" id="settings-parts" data-section-panel="parts">${panelHead('parts')}
-    <div class="settings-parts-summary"><p>Switch off anything you never look at, down to a single fact. Hiding changes only what is shown — nothing about a title is lost.</p><span id="detailPartsCount">${shownCount} of ${total} shown</span>${hidden.size ? '<button data-action="settings-detail-reset">Show everything</button>' : ''}</div>
+    <div class="settings-parts-summary"><p>Switch off anything you never look at, down to a single fact, and put what is left in the order you read it. Both change only what is shown — nothing about a title is lost.</p><span id="detailPartsCount">${shownCount} of ${total} shown</span>${hidden.size ? '<button data-action="settings-detail-reset">Show everything</button>' : ''}</div>
+    ${detailOrderPanel()}
     ${groups}
   </section>`;
 }
@@ -632,6 +684,7 @@ export function renderSettings() {
     </div>
   </div>`;
   syncPreviews();
+  wireOrderList();
   applyCollapse();
   watchSections();
   // A redraw (a section reset, the mature switch) keeps an active search applied.
@@ -787,6 +840,14 @@ export function initSettings() {
       toast(el.dataset.show === '1' ? `${group.title}: all shown` : `${group.title}: all hidden`, 'info');
     },
     'settings-detail-reset': () => { updatePref('detailHidden', []); renderSettings(); toast('Every detail-page part is shown again', 'success'); },
+    'settings-order-move': el => {
+      const key = el.dataset.key;
+      updatePref('detailOrder', moveDetailBlock(prefs.detailOrder, key, +el.dataset.delta));
+      redrawOrderList();
+      // Focus follows the row, so a block can be walked up the list with one key.
+      document.querySelector(`[data-action="settings-order-move"][data-key="${key}"][data-delta="${el.dataset.delta}"]`)?.focus({ preventScroll: true });
+    },
+    'settings-order-reset': () => { updatePref('detailOrder', []); renderSettings(); toast('Title pages are back in their original order', 'success'); },
     'settings-glass': el => {
       el.focus();
       const value = el.dataset.value === 'quiet' ? 'quiet' : 'rich';
@@ -838,6 +899,9 @@ export function initSettings() {
       const key = cleanOmdbKey(raw);
       if (raw && !key) { toast('That does not look like an OMDb key', 'error'); field?.focus(); return; }
       updatePref('omdbKey', key);
+      // A key that was refused has been warned about once; a new one starts clean,
+      // so its first refusal is heard too.
+      resetOmdbTrouble();
       if (field) field.value = key;
       toast(key ? 'OMDb key saved — Rotten Tomatoes and Metacritic will fill in' : 'OMDb key cleared', 'success');
     },

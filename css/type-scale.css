@@ -354,3 +354,13 @@
 #settingsContent .settings-key-field input { font-size: 0.873rem; }
 #settingsContent .settings-key-field button { font-size: 0.865rem; }
 #settingsContent .settings-key-link { font-size: 0.848rem; }
+#settingsContent .settings-order-head b { font-size: .95rem; }
+#settingsContent .settings-order-head small { font-size: 0.856rem; }
+#settingsContent .settings-order-head button { font-size: 0.848rem; }
+#settingsContent .order-index { font-size: 0.831rem; }
+#settingsContent .order-name { font-size: .88rem; }
+#settingsContent .order-name em { font-size: 0.796rem; }
+
+@media (max-width: 600px) {
+  #settingsContent .order-name { font-size: 0.873rem; }
+}

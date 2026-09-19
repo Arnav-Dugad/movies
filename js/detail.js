@@ -21,6 +21,7 @@ import { syncShowStructure, showProgress, nextUp, seasonWatchedCount, isEpisodeW
   isDropped, setDropped, forecastStatus, forecastSentence, forecastNote, showEntry } from './episodes.js';
 import { showPacing, pacingSentence } from './pacing.js';
 import { prefs, updatePref } from './prefs.js';
+import { applyDetailOrder } from './detail-parts.js';
 import { playCount, playDates, logPlay, removeLastPlay, playLabel } from './rewatch.js';
 import { collectionParts, collectionProgress, progressLabel } from './franchise.js';
 import { boxOfficeAssumptions, formatIndianGross } from './box-office.js';
@@ -289,6 +290,8 @@ export async function openDetail(id, type) {
         ${kwHTML ? `<div data-dp="keywords" style="display:contents">${kwHTML}</div>` : ''}${vidsHTML ? `<div data-dp="videos" style="display:contents">${vidsHTML}</div>` : ''}${castHTML ? `<div data-dp="cast" style="display:contents">${castHTML}</div>` : ''}${crewHTML ? `<div data-dp="crew" style="display:contents">${crewHTML}</div>` : ''}${galHTML ? `<div data-dp="gallery" style="display:contents">${galHTML}</div>` : ''}${seasHTML ? `<div data-dp="episodes" style="display:contents">${seasHTML}</div>` : ''}${revsHTML ? `<div data-dp="reviews" style="display:contents">${revsHTML}</div>` : ''}${simHTML ? `<div data-dp="moreLikeThis" style="display:contents">${simHTML}</div>` : ''}
       </div>`;
 
+    // The viewer's own order for the blocks below the header (js/detail-parts.js).
+    applyDetailOrder(ct, prefs.detailOrder);
     ct.classList.toggle('no-detail-poster', !posterPath);
     if (hint) {
       // The rest of the header rises in under the artwork that just landed.
