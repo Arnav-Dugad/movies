@@ -28,6 +28,7 @@ let commandCtx = null;      // parsed natural-language discovery command
 let keywordCtx = null;      // exact TMDB keyword/tag match, e.g. "erotic thriller"
 let suggestItems = [], suggestIdx = -1;
 let adultWaitGen = -1;      // the search whose adult classification is being awaited
+let loadingMore = false;
 
 const IMGw = (size, path) => path ? `${IMG}${size}${path}` : PH;
 
@@ -79,8 +80,14 @@ export function parseSearchCommand(query, nowYear = new Date().getFullYear()) {
   else if (/\bthis year\b/.test(lower)) { filters.yearMin = filters.yearMax = nowYear; add('year', `${nowYear}`); }
   else if (/\blast year\b/.test(lower)) { filters.yearMin = filters.yearMax = nowYear - 1; add('year', `${nowYear - 1}`); }
   else if (/\bupcoming|coming soon|not yet released\b/.test(lower)) { filters.releaseWindow = 'upcoming'; add('release', 'Upcoming'); }
-  if ((hit = lower.match(/\b(?:rated|rating|score|above|over|at least)\s*(?:above|over|at least)?\s*(\d(?:\.\d)?)\s*(?:\+|\/10)?/))) { filters.rating = Math.min(10, +hit[1]); add('rating', `${filters.rating}+ rating`); }
-  if ((hit = lower.match(/\b(?:rated|rating|score)\s*(?:under|below|less than)\s*(\d(?:\.\d)?)\b/))) { filters.rating = 0; filters.ratingMax = Math.min(10, +hit[1]); add('rating', `Under ${filters.ratingMax} rating`); }
+  for (const rating of lower.matchAll(/\b(?:rated|rating|score|above|over|at least)\s*(?:above|over|at least)?\s*(\d[\d,]*(?:\.\d+)?)/g)) {
+    // "Over 2 hours" and "at least 1000 votes" are not rating requests.
+    const suffix = lower.slice(rating.index + rating[0].length);
+    const value = +rating[1].replaceAll(',', '');
+    if (value > 10 || /^\s*(?:minutes?|mins?|hours?|hrs?|votes?)\b/.test(suffix)) continue;
+    filters.rating = value; add('rating', `${filters.rating}+ rating`); break;
+  }
+  if ((hit = lower.match(/\b(?:rated|rating|score)\s*(?:under|below|less than)\s*(\d+(?:\.\d+)?)\b/))) { filters.rating = 0; filters.ratingMax = Math.min(10, +hit[1]); add('rating', `Under ${filters.ratingMax} rating`); }
   if ((hit = lower.match(/\b(?:at least|over|more than)\s+([\d,]+)\s+votes?\b/))) { filters.minVotes = Math.max(1, +hit[1].replaceAll(',', '')); add('votes', `${filters.minVotes.toLocaleString()}+ votes`); }
   const runtimeRange = lower.match(/\b(?:between|from)\s+(\d{1,3})\s*(minutes?|mins?|hours?|hrs?)\s+(?:and|to)\s+(\d{1,3})\s*(minutes?|mins?|hours?|hrs?)\b/);
   if (runtimeRange) {
@@ -162,15 +169,14 @@ function resolveType(r) {
 function itemYear(r) { return parseInt((r.release_date || r.first_air_date || '').slice(0, 4)) || 0; }
 function keyOf(r, t) { return `${t}_${r.id}`; }
 
-// XSS-safe highlight: escape first, then wrap the first case-insensitive query match.
+// XSS-safe highlight: match raw text, then escape each segment separately.
 function highlight(text, q) {
-  const safe = esc(text || '');
+  const value = String(text || '');
   const nq = (q || '').trim();
-  if (!nq) return safe;
-  try {
-    const rx = new RegExp('(' + nq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'i');
-    return safe.replace(rx, '<mark class="sx-hi">$1</mark>');
-  } catch (e) { return safe; }
+  const index = nq ? value.toLowerCase().indexOf(nq.toLowerCase()) : -1;
+  if (index < 0) return esc(value);
+  // Match before escaping, so a query containing & cannot split an HTML entity.
+  return esc(value.slice(0, index)) + '<mark class="sx-hi">' + esc(value.slice(index, index + nq.length)) + '</mark>' + esc(value.slice(index + nq.length));
 }
 
 // Several modes fan out to more than one endpoint and merge the answers. They
@@ -232,6 +238,7 @@ async function fetchPage(pageNum) {
 
 // ================= entry points =================
 export function openSearch(initialQuery = '', { forceTag = false } = {}) {
+  closeSearch();
   document.title = 'Search — CineVerse';
   pool = []; page = 0; suggestItems = []; suggestIdx = -1; commandCtx = null; keywordCtx = null; paintCommandHint(null);
   populateGenreFilter();
@@ -252,7 +259,24 @@ export function openSearch(initialQuery = '', { forceTag = false } = {}) {
     toggleClear();
     showDefault();
   }
-  setTimeout(() => input.focus(), 150);
+  const generation = searchGen;
+  setTimeout(() => { if (generation === searchGen && /^\/search\/?$/.test(location.pathname)) input.focus(); }, 150);
+}
+
+export function closeSearch() {
+  searchGen++;
+  loadingMore = false;
+  closeSuggest();
+  suggestItems = [];
+}
+
+function clearSearch() {
+  closeSearch();
+  pool = []; page = totalPages = totalResults = 0;
+  curQuery = ''; mode = 'search'; commandCtx = keywordCtx = vibeCtx = null;
+  $('searchIn').value = '';
+  toggleClear(); paintCommandHint(null); showDefault();
+  if (/^\/search\/?$/.test(location.pathname)) history.replaceState(history.state, '', location.pathname);
 }
 
 // Submitted search (router deep-load, history/trend chip, Enter, "see all") — shows
@@ -263,30 +287,33 @@ export async function doSearch(q, { forceTag = false } = {}) {
   const explicitTag = explicitTagQuery(q);
   const command = explicitTag ? { isCommand: false } : parseSearchCommand(q);
   const request = ++searchGen;
+  pool = []; page = totalPages = totalResults = 0; loadingMore = false;
   mode = command.isCommand ? 'command' : 'search'; commandCtx = command.isCommand ? command : null; keywordCtx = null;
   paintCommandHint(commandCtx);
-  showResults(); showSkeleton(); closeSuggest();
+  showResults(); showSkeleton(); closeSuggest(); suggestItems = [];
+  const query = new URLSearchParams({ q });
+  if (forceTag || explicitTag) query.set('tag', '1');
+  try { history.replaceState(history.state, '', location.pathname + '?' + query); } catch (e) {}
   if (!command.isCommand) {
-    keywordCtx = await resolveKeyword(explicitTag || q, forceTag || !!explicitTag);
+    const keyword = await resolveKeyword(explicitTag || q, forceTag || !!explicitTag);
     if (request !== searchGen) return;
+    keywordCtx = keyword;
     if (keywordCtx) { keywordCtx.query = explicitTag || q; mode = 'tag'; paintKeywordHint(keywordCtx); }
   }
-  try { history.replaceState(history.state, '', location.pathname + '?q=' + encodeURIComponent(q)); } catch (e) {}
   await runInitial(request);
 }
 
 // Live typing — ONLY the typeahead dropdown (over the default view). The results grid
 // is populated on submit (Enter / "see all" / suggestion pick), so it can't cover the
 // filter bar.
-async function liveSuggest(q) {
+async function liveSuggest(q, g = ++suggestGen) {
+  if (g !== suggestGen || !/^\/search\/?$/.test(location.pathname)) return;
   const command = parseSearchCommand(q);
   paintCommandHint(command);
   if (command.isCommand) { closeSuggest(); return; }
-  curQuery = q; mode = 'search';
-  const g = ++suggestGen;
   try {
     const d = await tmdb(`/search/${state.searchFilt}`, { query: q, page: 1, include_adult: adultFlag() });
-    if (g !== suggestGen) return;
+    if (g !== suggestGen || $('searchIn').value.trim() !== q) return;
     renderSuggest(d.results || [], q);
   } catch (e) { if (g === suggestGen) closeSuggest(); }
 }
@@ -295,12 +322,14 @@ async function runInitial(existingGeneration = null) {
   showResults();
   showSkeleton();
   const g = existingGeneration || ++searchGen;
+  pool = []; totalPages = totalResults = 0; loadingMore = false;
   page = 1;
   try {
     const d = await fetchPage(1);
     if (g !== searchGen) return;
     pool = d.results; totalPages = d.total_pages; totalResults = d.total_results ?? pool.length;
     renderResults();
+    hydrateIMDb();
   } catch (e) {
     if (g !== searchGen) return;
     console.error('search failed', e); showError();
@@ -308,7 +337,8 @@ async function runInitial(existingGeneration = null) {
 }
 
 async function loadMore() {
-  if (page >= totalPages) return;
+  if (loadingMore || page >= totalPages) return;
+  loadingMore = true;
   const g = searchGen;               // don't bump — only a NEW query invalidates us
   const btn = $('searchMore'); if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
   try {
@@ -316,7 +346,17 @@ async function loadMore() {
     if (g !== searchGen) return;
     page += 1; pool = pool.concat(d.results);
     renderResults();
+    hydrateIMDb();
   } catch (e) { if (g === searchGen) renderResults(); }
+  finally { if (g === searchGen) loadingMore = false; }
+}
+
+function hydrateIMDb() {
+  if (!String($('fltSort')?.value).startsWith('imdb')) return;
+  const generation = searchGen;
+  fetchIMDbScores(pool.filter(isTitle).map(item => ({ id: item.id, type: resolveType(item) })), () => {
+    if (generation === searchGen && String($('fltSort')?.value).startsWith('imdb')) renderResults();
+  });
 }
 
 // ================= rendering =================
@@ -445,7 +485,7 @@ function renderSuggest(raw, q) {
     const tl = t === 'tv' ? 'TV' : isP ? 'Person' : 'Movie';
     const rate = (!isP && r.vote_average) ? r.vote_average.toFixed(1) : '';
     const href = isP ? `/person/${r.id}` : `/${t}/${r.id}`;
-    return `<a class="sx-row" href="${href}" role="option" data-i="${i}" data-action="${isP ? 'open-person' : 'open-detail'}" data-id="${r.id}"${isP ? '' : ` data-type="${t}"`}>
+    return `<a class="sx-row" id="search-option-${i}" href="${href}" role="option" aria-selected="false" tabindex="-1" data-i="${i}" data-action="${isP ? 'open-person' : 'open-detail'}" data-id="${r.id}"${isP ? '' : ` data-type="${t}"`}>
       <div class="sx-thumb"><img src="${thumb}" alt="" loading="lazy" data-ph="${PH}"></div>
       <div class="sx-info"><div class="sx-title">${highlight(r.title || r.name, q)}</div><div class="sx-sub">${[year, tl].filter(Boolean).join(' • ')}</div></div>
       ${rate ? `<div class="sx-rate"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>${rate}</div>` : ''}
@@ -453,22 +493,26 @@ function renderSuggest(raw, q) {
   }).join('') + `<button class="sx-all" data-action="search-submit" data-q="${esc(q)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>See all results for “<span></span>”</button>`;
   box.querySelector('.sx-all span').textContent = q;
   box.classList.add('open');
-  if (input) input.setAttribute('aria-expanded', 'true');
+  if (input) { input.setAttribute('aria-expanded', 'true'); input.removeAttribute('aria-activedescendant'); }
 }
 function closeSuggest() {
+  suggestGen++;
   const box = $('searchSuggest'), input = $('searchIn');
   if (box) box.classList.remove('open');
-  if (input) input.setAttribute('aria-expanded', 'false');
+  if (input) { input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); }
   suggestIdx = -1;
 }
 function highlightSuggest() {
   const rows = $('searchSuggest').querySelectorAll('.sx-row');
-  rows.forEach((el, i) => el.classList.toggle('active', i === suggestIdx));
-  if (suggestIdx >= 0 && rows[suggestIdx]) rows[suggestIdx].scrollIntoView({ block: 'nearest' });
+  rows.forEach((el, i) => { el.classList.toggle('active', i === suggestIdx); el.setAttribute('aria-selected', String(i === suggestIdx)); });
+  if (suggestIdx >= 0 && rows[suggestIdx]) {
+    $('searchIn').setAttribute('aria-activedescendant', rows[suggestIdx].id);
+    rows[suggestIdx].scrollIntoView({ block: 'nearest' });
+  }
 }
 function openSuggestItem(i) {
   const it = suggestItems[i]; if (!it) return;
-  addToHistory(curQuery);
+  addToHistory($('searchIn').value.trim());
   closeSuggest();
   const dest = it.t === 'person' ? `/person/${it.r.id}` : `/${it.t}/${it.r.id}`;
   document.dispatchEvent(new CustomEvent('cv:go', { detail: dest }));
@@ -523,6 +567,8 @@ async function vibeSearch(el) {
   curQuery = '';
   const input = $('searchIn'); if (input) { input.value = ''; toggleClear(); }
   closeSuggest();
+  paintCommandHint(null);
+  history.replaceState(history.state, '', location.pathname);
   await runInitial();
 }
 
@@ -588,8 +634,7 @@ function bindVoiceBridge() {
   document.addEventListener('cv:voice-command', event => {
     const detail = event.detail || {};
     if (detail.id === 'clear') {
-      const input = $('searchIn'); if (input) input.value = '';
-      toggleClear(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault();
+      clearSearch();
       return;
     }
     if (detail.id === 'search' && detail.query) {
@@ -619,12 +664,17 @@ function setFilter(f) {
 export function initSearch() {
   const input = $('searchIn');
 
-  input.addEventListener('input', debounce(function () {
+  const suggestLater = debounce((q, generation) => liveSuggest(q, generation), 180);
+  input.addEventListener('input', function () {
     toggleClear();
+    closeSuggest(); suggestItems = [];
     const q = this.value.trim();
-    if (q.length < 2) { closeSuggest(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault(); return; }
-    liveSuggest(q);
-  }, 180));
+    if (q.length < 2) {
+      const typed = this.value;
+      clearSearch(); this.value = typed; toggleClear(); return;
+    }
+    suggestLater(q, suggestGen);
+  });
 
   input.addEventListener('keydown', e => {
     const open = $('searchSuggest').classList.contains('open') && suggestItems.length;
@@ -633,11 +683,16 @@ export function initSearch() {
     else if (e.key === 'Enter') {
       const q = e.target.value.trim();
       if (open && suggestIdx >= 0) { e.preventDefault(); openSuggestItem(suggestIdx); }
-      else if (q.length >= 2) { addToHistory(q); doSearch(q); }
+      else if (q.length >= 2) { e.preventDefault(); addToHistory(q); doSearch(q); }
     } else if (e.key === 'Escape') { closeSuggest(); }
   });
 
-  input.addEventListener('focus', () => { if (input.value.trim().length >= 2 && suggestItems.length) $('searchSuggest').classList.add('open'); });
+  input.addEventListener('focus', () => {
+    if (input.value.trim().length >= 2 && suggestItems.length) {
+      $('searchSuggest').classList.add('open'); input.setAttribute('aria-expanded', 'true');
+      highlightSuggest();
+    }
+  });
 
   // Close the dropdown when clicking outside the search field.
   document.addEventListener('click', e => { if (!e.target.closest('.search-field')) closeSuggest(); });
@@ -663,11 +718,11 @@ export function initSearch() {
       // Ordering by IMDb needs the scores: fetch the ones this device is missing
       // for the results in hand, then draw them again in the right order.
       if (el?.id === 'fltSort' && String(el.value).startsWith('imdb')) {
-        fetchIMDbScores(pool.filter(entry => entry.t === 'movie' || entry.t === 'tv').map(entry => ({ id: entry.r.id, type: entry.t })), renderResults);
+        hydrateIMDb();
       }
     },
     'search-reset': () => { ['fltGenre', 'fltDecade', 'fltRating', 'fltRatingMax', 'fltVotes', 'fltLanguage'].forEach(id => { const s = $(id); if (s) s.value = ''; }); const collection = $('fltCollection'); if (collection) collection.value = 'all'; const so = $('fltSort'); if (so) so.value = 'relevance'; renderResults(); },
-    'search-clear': () => { input.value = ''; toggleClear(); curQuery = ''; commandCtx = null; keywordCtx = null; paintCommandHint(null); showDefault(); input.focus(); },
+    'search-clear': () => { clearSearch(); input.focus(); },
     'load-more-search': () => loadMore(),
     'search-submit': (el) => { const q = el.dataset.q || $('searchIn').value.trim(); if (q.length >= 2) { addToHistory(q); doSearch(q); } },
     'search-retry': () => { if (mode === 'vibe') runInitial(); else if (curQuery) doSearch(curQuery); },

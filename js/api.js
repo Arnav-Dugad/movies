@@ -19,15 +19,16 @@ export async function tmdb(p, params = {}, { cache = true } = {}) {
   let lastErr;
   // One retry on transient failure (network / 429 / 5xx).
   for (let attempt = 0; attempt < 2; attempt++) {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 12000);
+    let retryable = true;
     try {
-      const ctrl = new AbortController();
-      const to = setTimeout(() => ctrl.abort(), 12000);
       const r = await fetch(u, { signal: ctrl.signal });
-      clearTimeout(to);
       if (!r.ok) {
-        if ((r.status === 429 || r.status >= 500) && attempt === 0) { await sleep(600); continue; }
+        retryable = r.status === 429 || r.status >= 500;
         throw new Error(r.status);
       }
+      // The deadline includes the body: headers can arrive while JSON stalls.
       const data = await r.json();
       if (cache) {
         tmdbCache.set(key, { data, ts: Date.now() });
@@ -39,8 +40,11 @@ export async function tmdb(p, params = {}, { cache = true } = {}) {
       return data;
     } catch (e) {
       lastErr = e;
-      if (attempt === 0) { await sleep(500); continue; }
+      if (!retryable || attempt === 1) throw e;
+    } finally {
+      clearTimeout(timeout);
     }
+    await sleep(500);
   }
   throw lastErr || new Error('tmdb failed');
 }

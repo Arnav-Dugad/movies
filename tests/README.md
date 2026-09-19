@@ -1,15 +1,27 @@
 # CineVerse tests
 
-Two suites with very different requirements.
+Logic, browser, and Firestore suites have different requirements.
 
 ```
 cd tests
-npm install          # only needed for the rules suite
+npm install          # needed for browser and rules suites
 npm run test:logic   # no dependencies, no Java — just Node
 npm run coverage     # no dependencies
+npm run test:browser # Chrome on Windows, or an installed Playwright Chromium
 npm run test:rules   # needs npm install AND a JDK
-npm test             # all three
+npm test             # logic, coverage, and rules
 ```
+
+`npm test` runs logic, rule coverage, and Firestore tests. Run the browser suite
+separately. On machines without Chrome, install its browser with
+`npx playwright install chromium` first. `CV_PLAYWRIGHT_EXECUTABLE` can point to
+another Chromium executable.
+
+The browser suite covers episode tracking, movie progress, settings, themes,
+search races and pagination, IMDb sorting, keyboard suggestions, hero focus,
+trailing-slash routes, and main-page layouts at desktop and phone widths. Search
+regressions stub external data and Firebase so they do not depend on live titles
+or write to real accounts. API tests cover retry limits and stalled response bodies.
 
 ## `logic/` — pure-logic suites (Node only)
 

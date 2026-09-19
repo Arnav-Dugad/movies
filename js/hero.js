@@ -115,7 +115,7 @@ function renderHero(key) {
     const year = (item.release_date || item.first_air_date || '').slice(0, 4);
     const rating = item.vote_average ? item.vote_average.toFixed(1) : '';
     const genres = (item.genre_ids || []).slice(0, 3).map(id => genreMap[id] || '').filter(Boolean);
-    return `<div class="hero-slide ${index === model.index ? 'active' : ''}" data-idx="${index}">
+    return `<div class="hero-slide ${index === model.index ? 'active' : ''}" data-idx="${index}"${index === model.index ? '' : ' inert aria-hidden="true"'}>
       <img src="${IMG}original${item.backdrop_path}" alt="" loading="${index === 0 ? 'eager' : 'lazy'}">
       <div class="hero-vignette"></div>
       <div class="hero-content">
@@ -158,7 +158,12 @@ export function goHero(index, key = 'home') {
   if (!model.items.length || !host) return;
   model.index = ((index % model.items.length) + model.items.length) % model.items.length;
   if (key === 'home') state.heroIdx = model.index;
-  host.querySelectorAll('.hero-slide').forEach((slide, idx) => slide.classList.toggle('active', idx === model.index));
+  host.querySelectorAll('.hero-slide').forEach((slide, idx) => {
+    const active = idx === model.index;
+    slide.classList.toggle('active', active);
+    slide.inert = !active;
+    if (active) slide.removeAttribute('aria-hidden'); else slide.setAttribute('aria-hidden', 'true');
+  });
   host.querySelectorAll('.hero-prog-item').forEach((progress, idx) => {
     progress.classList.remove('active', 'done');
     if (idx < model.index) progress.classList.add('done');
@@ -173,7 +178,7 @@ export function goHero(index, key = 'home') {
 export function startHeroTimer(key = 'home') {
   const model = modelFor(key), host = hostFor(model);
   clearInterval(model.timer);
-  if (!host?.offsetParent || model.paused || prefersReducedMotion() || model.items.length < 2) return;
+  if (!host?.offsetParent || model.paused || host.matches(':focus-within') || document.hidden || prefersReducedMotion() || model.items.length < 2) return;
   model.timer = setInterval(() => {
     const host = hostFor(model);
     if (host?.offsetParent) goHero(model.index + 1, key);
@@ -208,8 +213,10 @@ export function initHeroInteractions() {
       host.addEventListener('mouseleave', () => resumeHero(key));
     }
     // Keyboard: focusing any control inside the hero keeps it expanded.
-    host.addEventListener('focusin', () => expandDescription(model));
-    host.addEventListener('focusout', event => { if (!host.contains(event.relatedTarget)) scheduleCollapse(model); });
+    host.addEventListener('focusin', () => { clearInterval(model.timer); expandDescription(model); });
+    host.addEventListener('focusout', event => {
+      if (!host.contains(event.relatedTarget)) { startHeroTimer(key); scheduleCollapse(model); }
+    });
     // Touch: the first tap on a collapsed slide only brings the details back.
     host.addEventListener('click', event => {
       const slide = event.target.closest('.hero-slide.collapsed');

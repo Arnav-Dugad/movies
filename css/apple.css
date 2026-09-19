@@ -117,3 +117,19 @@ html[data-glass="rich"] :is(.card-rating, .card-myrating, .card-badge, .card-wl,
   :root { --radius-xl: 22px; --radius-2xl: 26px; }
   .card-img { border-radius: var(--radius); }
 }
+
+/* Search: readable prompts, clear grouping, and controls large enough to tap. */
+.search-field { min-width: 0; }
+#searchDefault > div:not(:empty) ~ div:not(:empty):not(.search-grid) { margin-top: 28px; }
+.search-field input:focus-visible { outline: none; }
+.command-examples button { font-size: .8125rem; line-height: 1.5; min-height: 52px; }
+.search-field .sx-rate svg,
+.search-field .sx-all svg { position: static; flex-shrink: 0; }
+.sx-all { flex-wrap: wrap; text-align: left; overflow-wrap: anywhere; }
+.search-history-item:focus-within .remove { opacity: 1; }
+@media (max-width: 600px) {
+  .search-clear { width: 40px; height: 40px; right: 4px; }
+  .search-chips .chip { min-height: 44px; }
+  .search-select, .filter-reset { min-height: 44px; }
+  .search-history-item .remove { opacity: .7; min-width: 40px; min-height: 40px; }
+}

@@ -10,7 +10,7 @@ import { renderStats } from './stats.js';
 import { renderPersonalRows } from './home.js';
 import { renderFranchisePage } from './franchise-page.js';
 import { renderBoxOfficePage } from './box-office-page.js';
-import { openSearch } from './search.js';
+import { openSearch, closeSearch } from './search.js';
 import { stopVoiceSearch } from './voice.js';
 import { openDetail, closeDetail, openCollection } from './detail.js';
 import { openPerson } from './person.js';
@@ -220,6 +220,10 @@ function saveScroll() {
 }
 
 function renderRoute(path, { isPopState = false, scroll = true, instant = false } = {}) {
+  // Use the same path for route matching, nav state, and later auth refreshes.
+  const canonical = path.replace(/\/+$/, '') || '/';
+  if (canonical !== path) history.replaceState({ ...history.state, path: canonical }, '', canonical + location.search);
+  path = canonical;
   const query = new URL(location.href).searchParams;
   const matched = matchRoute(path);
   // An unmatched path used to render home while the address bar kept the broken
@@ -231,6 +235,7 @@ function renderRoute(path, { isPopState = false, scroll = true, instant = false 
   path = matched ? path : '/';
 
   closeDetail(); // clears any running countdown intervals
+  closeSearch(); // cancels pending suggestions and search results on navigation
   closeCollabPage(); // drops the shared-list listener when leaving that page
   closeAllModals();
   // The voice console is global now, but a live microphone must never outlive the
